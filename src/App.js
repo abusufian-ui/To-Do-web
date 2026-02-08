@@ -16,100 +16,181 @@ function App() {
   // --- MODAL STATES ---
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null); 
-  const [isEmptyBinModalOpen, setIsEmptyBinModalOpen] = useState(false); 
-  const [isRestoreAllModalOpen, setIsRestoreAllModalOpen] = useState(false); // <--- New State
+  // REMOVED: isEmptyBinModalOpen & isRestoreAllModalOpen (Handled by Bin.js now)
 
   // --- DATA ---
-  const [courses, setCourses] = useState([
-    { name: 'Discrete Structures', type: 'uni' },
-    { name: 'Operating Sys', type: 'general' },
-    { name: 'Math', type: 'general' }
-  ]);
-  
-  const [tasks, setTasks] = useState([
-    { id: 1, name: "Active task 1 test", status: "Scheduled", course: "CCN", date: "2026-02-14", priority: "High" },
-    { id: 2, name: "Prepare for Quiz", status: "In Progress", course: "Operating Sys", date: "2026-02-07", priority: "Critical" },
-    { id: 3, name: "Submit Assignment", status: "New task", course: "Math", date: "2026-02-20", priority: "Medium" },
-  ]);
-
+  const [courses, setCourses] = useState([]); 
+  const [tasks, setTasks] = useState([]); 
   const [deletedTasks, setDeletedTasks] = useState([]); 
 
   const [filters, setFilters] = useState({
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: ''
   });
 
+  // --- INITIAL LOAD ---
+  useEffect(() => {
+    fetchTasks();
+    fetchBin();
+    fetchCourses();
+  }, []);
+
+  const fetchTasks = async () => {
+    try {
+      const res = await fetch('/api/tasks');
+      const data = await res.json();
+      const formattedTasks = data.map(t => ({ ...t, id: t._id }));
+      setTasks(formattedTasks);
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+    }
+  };
+
+  const fetchBin = async () => {
+    try {
+      const res = await fetch('/api/bin');
+      const data = await res.json();
+      const formattedBin = data.map(t => ({ ...t, id: t._id }));
+      setDeletedTasks(formattedBin);
+    } catch (error) {
+      console.error("Error fetching bin:", error);
+    }
+  };
+
+  const fetchCourses = async () => {
+    try {
+      const res = await fetch('/api/courses');
+      const data = await res.json();
+      setCourses(data.map(c => ({ ...c, id: c._id })));
+    } catch (error) {
+      console.error("Error fetching courses:", error);
+    }
+  };
+
   // --- ACTIONS ---
 
-  const handleAddTask = (newTaskData) => {
-    const newTask = { id: Date.now(), ...newTaskData };
-    setTasks([newTask, ...tasks]);
-    if (activeTab !== 'Tasks') setActiveTab('Tasks');
+  const handleAddTask = async (newTaskData) => {
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTaskData)
+      });
+      
+      if (!res.ok) throw new Error("Server Error");
+
+      const savedTask = await res.json();
+      setTasks(prev => [{ ...savedTask, id: savedTask._id }, ...prev]);
+      
+      if (activeTab !== 'Tasks') setActiveTab('Tasks');
+    } catch (error) {
+      console.error("Error adding task:", error);
+      alert("Failed to save task. Please check the console.");
+    }
   };
 
   const deleteTask = (taskId) => {
     setTaskToDelete(taskId); 
   };
 
-  const executeDelete = () => {
+  const executeDelete = async () => {
     if (!taskToDelete) return;
-    const taskObj = tasks.find(t => t.id === taskToDelete);
-    if (taskObj) {
-      setDeletedTasks([{ ...taskObj, deletedAt: new Date().toISOString() }, ...deletedTasks]);
-      setTasks(prevTasks => prevTasks.filter(t => t.id !== taskToDelete));
-    }
-    setTaskToDelete(null);
-  };
+    try {
+      await fetch(`/api/tasks/${taskToDelete}/delete`, { method: 'PUT' });
 
-  const restoreTask = (taskId) => {
-    const taskToRestore = deletedTasks.find(t => t.id === taskId);
-    if (taskToRestore) {
-      const { deletedAt, ...rest } = taskToRestore; 
-      setTasks([rest, ...tasks]);
-      setDeletedTasks(prev => prev.filter(t => t.id !== taskId));
+      const taskObj = tasks.find(t => t.id === taskToDelete);
+      if (taskObj) {
+        setDeletedTasks([{ ...taskObj, deletedAt: new Date().toISOString() }, ...deletedTasks]);
+        setTasks(prevTasks => prevTasks.filter(t => t.id !== taskToDelete));
+      }
+      setTaskToDelete(null);
+    } catch (error) {
+      console.error("Error deleting task:", error);
     }
   };
 
-  const permanentlyDeleteTask = (taskId) => {
-    if (window.confirm("This will permanently delete the task. Are you sure?")) {
+  const restoreTask = async (taskId) => {
+    try {
+      await fetch(`/api/tasks/${taskId}/restore`, { method: 'PUT' });
+      
+      const taskToRestore = deletedTasks.find(t => t.id === taskId);
+      if (taskToRestore) {
+        const { deletedAt, ...rest } = taskToRestore; 
+        setTasks([rest, ...tasks]);
+        setDeletedTasks(prev => prev.filter(t => t.id !== taskId));
+      }
+    } catch (error) {
+      console.error("Error restoring task:", error);
+    }
+  };
+
+  // FIXED: Removed window.confirm (Handled by Bin.js)
+  const permanentlyDeleteTask = async (taskId) => {
+    try {
+      await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
       setDeletedTasks(prev => prev.filter(t => t.id !== taskId));
+    } catch (error) {
+      console.error("Error deleting permanently:", error);
     }
   };
 
   // --- BULK ACTIONS ---
 
-  // 1. Restore All
-  const handleRestoreAll = () => {
-    // Remove 'deletedAt' timestamp from all tasks and move them back
-    const restored = deletedTasks.map(({ deletedAt, ...task }) => task);
-    setTasks([...restored, ...tasks]);
-    setDeletedTasks([]);
-    setIsRestoreAllModalOpen(false);
+  // FIXED: Removed modal state logic
+  const restoreAll = async () => {
+    try {
+      await fetch('/api/bin/restore-all', { method: 'PUT' });
+      const restored = deletedTasks.map(({ deletedAt, ...task }) => task);
+      setTasks([...restored, ...tasks]);
+      setDeletedTasks([]);
+    } catch (error) {
+      console.error("Error restoring all:", error);
+    }
   };
 
-  // 2. Empty Bin
-  const handleEmptyBin = () => {
-    setDeletedTasks([]);
-    setIsEmptyBinModalOpen(false);
+  // FIXED: Removed modal state logic
+  const deleteAll = async () => {
+    try {
+      await fetch('/api/bin/empty', { method: 'DELETE' });
+      setDeletedTasks([]);
+    } catch (error) {
+      console.error("Error emptying bin:", error);
+    }
+  };
+
+  // --- COURSES ACTIONS ---
+  
+  const addCourse = async (name, type) => {
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, type })
+      });
+      const newCourse = await res.json();
+      setCourses([...courses, { ...newCourse, id: newCourse._id }]);
+    } catch (error) {
+      console.error("Error adding course:", error);
+    }
+  };
+  
+  const removeCourse = async (courseId) => {
+    setCourses(courses.filter(c => c.id !== courseId));
+    try {
+      await fetch(`/api/courses/${courseId}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error("Error deleting course:", error);
+      alert("Failed to delete course from database");
+    }
   };
 
   // --- HELPERS ---
-  
-  useEffect(() => {
-    const now = new Date();
-    setDeletedTasks(prevBin => prevBin.filter(task => {
-      const deleteDate = new Date(task.deletedAt);
-      const diffTime = Math.abs(now - deleteDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-      return diffDays <= 30; 
-    }));
-  }, []); 
 
   const getFilteredTasks = () => {
     return tasks.filter(task => {
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase();
-        const matchesName = task.name.toLowerCase().includes(query);
-        const matchesCourse = task.course.toLowerCase().includes(query);
+        const matchesName = task.name?.toLowerCase().includes(query) || false;
+        const matchesCourse = task.course?.toLowerCase().includes(query) || false;
         if (!matchesName && !matchesCourse) return false; 
       }
       if (filters.course !== 'All' && task.course !== filters.course) return false;
@@ -132,20 +213,19 @@ function App() {
 
   useEffect(() => { document.documentElement.classList.add('dark'); }, []);
 
-  const updateTask = (id, field, value) => {
+  const updateTask = async (id, field, value) => {
     setTasks(prevTasks => prevTasks.map(task => 
       task.id === id ? { ...task, [field]: value } : task
     ));
-  };
-
-  const addCourse = (name, type) => setCourses([...courses, { name, type }]);
-  
-  const removeCourse = (courseName) => {
-    setCourses(courses.filter(c => {
-        if (!c) return false;
-        if (typeof c === 'string') return c !== courseName;
-        return c.name !== courseName;
-    }));
+    try {
+      await fetch(`/api/tasks/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+    } catch (error) {
+      console.error("Error updating task:", error);
+    }
   };
 
   return (
@@ -205,7 +285,13 @@ function App() {
           )}
 
           {activeTab === 'Settings' && (
-            <Settings courses={courses} addCourse={addCourse} removeCourse={removeCourse} />
+            <Settings
+              courses={courses}
+              addCourse={addCourse}
+              removeCourse={removeCourse}
+              tasks={tasks}
+              updateTask={updateTask} 
+            />
           )}
 
           {activeTab === 'Bin' && (
@@ -213,9 +299,8 @@ function App() {
               deletedTasks={deletedTasks} 
               restoreTask={restoreTask} 
               permanentlyDeleteTask={permanentlyDeleteTask} 
-              // PASSING THE MODAL TRIGGERS
-              onEmptyBin={() => setIsEmptyBinModalOpen(true)} 
-              onRestoreAll={() => setIsRestoreAllModalOpen(true)}
+              deleteAll={deleteAll}     // FIXED: Passing function directly
+              restoreAll={restoreAll}   // FIXED: Passing function directly
             />
           )}
 
@@ -229,7 +314,6 @@ function App() {
         courses={courses}
       />
 
-      {/* Modal 1: Soft Delete Single Task */}
       <ConfirmationModal 
         isOpen={!!taskToDelete} 
         onClose={() => setTaskToDelete(null)}
@@ -240,27 +324,7 @@ function App() {
         confirmStyle="danger"
       />
 
-      {/* Modal 2: Empty Bin (Permanent) */}
-      <ConfirmationModal 
-        isOpen={isEmptyBinModalOpen} 
-        onClose={() => setIsEmptyBinModalOpen(false)}
-        onConfirm={handleEmptyBin}
-        title="Empty Recycle Bin?"
-        message="This will permanently delete ALL tasks in the bin. This action cannot be undone."
-        confirmText="Empty Bin"
-        confirmStyle="danger"
-      />
-
-      {/* Modal 3: Restore All */}
-      <ConfirmationModal 
-        isOpen={isRestoreAllModalOpen} 
-        onClose={() => setIsRestoreAllModalOpen(false)}
-        onConfirm={handleRestoreAll}
-        title="Restore All Items?"
-        message="This will move all items from the bin back to your active tasks list."
-        confirmText="Restore All"
-        confirmStyle="primary" // Blue button for positive action
-      />
+      {/* REMOVED: Redundant ConfirmationModals for Bin actions */}
 
     </div>
   );
