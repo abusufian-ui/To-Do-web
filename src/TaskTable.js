@@ -1,12 +1,50 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   CheckCircle2, Calendar as CalendarIcon, Mail, Clock, 
-  ChevronDown, ChevronRight, ChevronsUp, ChevronUp,  
+  ChevronDown, ChevronRight, ChevronsUp, ChevronUp,   
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
   X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle,
   CalendarDays 
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
+
+// --- HELPER: CONVERT LONG NAMES TO ABBREVIATIONS ---
+const getAbbreviation = (name) => {
+  if (!name || name === 'Select') return name;
+  const n = name.toLowerCase().trim();
+
+  // 1. Standard CS Abbreviations
+  if (n.includes('operating system')) return 'OS';
+  if (n.includes('differential equation')) return 'DE';
+  if (n.includes('software engineering')) return 'SE';
+  if (n.includes('design and analysis')) return 'DAA';
+  if (n.includes('game development')) return 'GameDev';
+  if (n.includes('artificial intelligence')) return 'AI';
+  if (n.includes('linear algebra')) return 'LA';
+  if (n.includes('communication skills')) return 'Comm';
+  if (n.includes('islamic studies')) return 'Islamiat';
+  if (n.includes('pakistan studies')) return 'Pak Std';
+  if (n.includes('programming fundamental')) return 'PF';
+  if (n.includes('object oriented')) return 'OOP';
+  if (n.includes('data structure')) return 'DSA';
+  if (n.includes('database')) return 'DB';
+  if (n.includes('computer network')) return 'CN';
+  if (n.includes('general task')) return 'General';
+
+  // 2. Fallback: If it's still long (e.g. > 15 chars), make an acronym
+  if (name.length > 15) {
+    const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for'];
+    return name
+      .split(' ')
+      .filter(word => !ignoredWords.includes(word.toLowerCase()))
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 5); // Max 5 chars
+  }
+
+  return name;
+};
 
 const COL = {
   name: "flex-1 pl-4", status: "w-[160px]", course: "w-[150px]", date: "w-[140px]", priority: "w-[100px]",     
@@ -236,8 +274,13 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                       <AlertTriangle size={16} /> Deleted
                     </button>
                   ) : (
-                    <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:opacity-80 text-left w-full font-medium py-1 truncate">
-                      <CourseIcon type={courseType} name={task.course} /> {task.course || "Select"}
+                    // --- ABBREVIATION APPLIED HERE ---
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} 
+                        className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:opacity-80 text-left w-full font-medium py-1 truncate"
+                        title={task.course} // Tooltip shows full name
+                    >
+                      <CourseIcon type={courseType} name={task.course} /> {getAbbreviation(task.course) || "Select"}
                     </button>
                   )}
 
@@ -366,7 +409,7 @@ const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOpt
   );
 };
 
-// --- UPDATED DATE CELL ---
+// --- DATE CELL COMPONENT ---
 const DateCell = ({ date, time, onChange }) => {
   const inputRef = useRef(null);
   

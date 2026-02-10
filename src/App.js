@@ -8,7 +8,7 @@ import ConfirmationModal from './ConfirmationModal';
 import Bin from './Bin';
 import Login from './Login';
 import Calendar from './Calendar'; 
-import GradeBook from './GradeBook'; // <--- NEW IMPORT
+import GradeBook from './GradeBook'; 
 import { Heart, ArrowRight } from 'lucide-react';
 
 function App() {
@@ -89,7 +89,7 @@ function App() {
   useEffect(() => {
     fetchTasks();
     fetchBin();
-    fetchCourses();
+    fetchCourses(); // <--- This now fetches from Scraper
   }, []);
 
   const fetchTasks = async () => {
@@ -114,21 +114,31 @@ function App() {
     }
   };
 
+  // --- UPDATED: Fetch Courses from Grade Book + General ---
   const fetchCourses = async () => {
     try {
-      const res = await fetch('/api/courses');
-      const data = await res.json();
-      const formattedCourses = data.map(c => ({ ...c, id: c._id }));
-      
-      const hasEvent = formattedCourses.find(c => c.name === 'Event');
-      if (!hasEvent) {
-        formattedCourses.unshift({ id: 'permanent-event', name: 'Event', type: 'event' });
-      }
-      
-      setCourses(formattedCourses);
+      // 1. Fetch the Scraped Grades
+      const res = await fetch('/api/grades');
+      const gradeData = await res.json();
+
+      // 2. Map them to Course Objects
+      const uniCourses = gradeData.map(g => ({
+        id: g._id, 
+        name: g.courseName, // This comes from the Robot!
+        type: 'uni'
+      }));
+
+      // 3. Add the permanent "General Task" option
+      const allCourses = [
+        { id: 'general-task', name: 'General Task', type: 'general' },
+        ...uniCourses
+      ];
+
+      setCourses(allCourses);
     } catch (error) {
       console.error("Error fetching courses:", error);
-      setCourses([{ id: 'permanent-event', name: 'Event', type: 'event' }]);
+      // Fallback
+      setCourses([{ id: 'general-task', name: 'General Task', type: 'general' }]);
     }
   };
 
@@ -218,33 +228,14 @@ function App() {
     }
   };
 
+  // NOTE: addCourse and removeCourse are essentially disabled for users now
+  // but we keep them empty or logging just in case child components call them.
   const addCourse = async (name, type) => {
-    try {
-      const res = await fetch('/api/courses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type })
-      });
-      const newCourse = await res.json();
-      setCourses([...courses, { ...newCourse, id: newCourse._id }]);
-    } catch (error) {
-      console.error("Error adding course:", error);
-    }
+    console.log("Course creation is now handled by the Portal Sync.");
   };
   
   const removeCourse = async (courseId) => {
-    const course = courses.find(c => c.id === courseId);
-    if (course && course.name === 'Event') {
-      alert("The 'Event' course is a permanent system course and cannot be deleted.");
-      return;
-    }
-    setCourses(courses.filter(c => c.id !== courseId));
-    try {
-      await fetch(`/api/courses/${courseId}`, { method: 'DELETE' });
-    } catch (error) {
-      console.error("Error deleting course:", error);
-      alert("Failed to delete course from database");
-    }
+    console.log("Course deletion is disabled. Sync from portal.");
   };
 
   const getFilteredTasks = () => {
@@ -340,9 +331,8 @@ function App() {
             />
           )}
 
-          {/* --- NEW GRADE BOOK TAB --- */}
-          {activeTab === 'GradeBook' && (
-            <GradeBook isDarkMode={isDarkMode} />
+          {activeTab === 'Grade Book' && (
+            <GradeBook />
           )}
 
           {activeTab === 'Settings' && (

@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { Trash2, Plus, BookOpen, Book, AlertTriangle, Shield, Clock } from 'lucide-react';
+import { 
+  Trash2, Plus, BookOpen, Book, AlertTriangle, Shield, Clock, 
+  Lock, CheckCircle2, RefreshCw 
+} from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
 const Settings = ({ 
@@ -8,8 +11,8 @@ const Settings = ({
   removeCourse, 
   tasks = [], 
   updateTask,
-  idleTimeout,      // <--- NEW PROP
-  setIdleTimeout    // <--- NEW PROP
+  idleTimeout,
+  setIdleTimeout 
 }) => {
   const [newCourse, setNewCourse] = useState("");
   const [selectedType, setSelectedType] = useState('uni');
@@ -62,11 +65,11 @@ const Settings = ({
         </h3>
         
         <p className="text-gray-500 dark:text-gray-400 mb-6">
-          Add and view your courses below. Switch tabs to filter between University and General lists.
+          View your synced university courses or manage your personal categories below.
         </p>
 
         {/* --- TYPE SELECTOR --- */}
-        <div className="flex flex-col gap-4 mb-8">
+        <div className="flex flex-col gap-6 mb-8">
           <div className="flex gap-3">
             <button 
               onClick={() => setSelectedType('uni')}
@@ -87,23 +90,39 @@ const Settings = ({
                   : 'bg-white dark:bg-[#2C2C2C] border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-700 opacity-60 hover:opacity-100'
                 }`}
             >
-              <Book size={28} className="text-current" /> General Courses
+              <Book size={28} className="text-current" /> General Tasks
             </button>
           </div>
 
-          <div className="flex gap-3 mt-2 relative z-10">
-            <input 
-              type="text" 
-              value={newCourse} 
-              onChange={(e) => setNewCourse(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-              placeholder={`Add a new ${selectedType === 'uni' ? 'University' : 'General'} course...`}
-              className="flex-1 bg-gray-50 dark:bg-[#121212] border border-gray-300 dark:border-[#2C2C2C] rounded-lg px-4 py-3 dark:text-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors text-base"
-            />
-            <button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium flex items-center gap-2 transition-colors text-base shadow-lg shadow-blue-500/30">
-              <Plus size={20} /> Add
-            </button>
-          </div>
+          {/* --- CONDITIONAL ADD / INFO SECTION --- */}
+          {selectedType === 'uni' ? (
+             // UNIVERSITY MODE: Read-Only Message
+             <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl flex items-start gap-3">
+                <Shield size={20} className="text-brand-blue mt-1 shrink-0" />
+                <div>
+                   <h4 className="font-bold text-brand-blue text-sm">Automated Sync Active</h4>
+                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
+                     University courses are managed automatically by the Portal Robot. You cannot add or remove them manually here.
+                     <br/>To update this list, go to the <b>Grade Book</b> tab and click <b>Sync Now</b>.
+                   </p>
+                </div>
+             </div>
+          ) : (
+             // GENERAL MODE: Add Input (Editable)
+             <div className="flex gap-3 relative z-10 animate-fadeIn">
+               <input 
+                 type="text" 
+                 value={newCourse} 
+                 onChange={(e) => setNewCourse(e.target.value)}
+                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                 placeholder="Add a new general category (e.g., Gym, Shopping)..."
+                 className="flex-1 bg-gray-50 dark:bg-[#121212] border border-gray-300 dark:border-[#2C2C2C] rounded-lg px-4 py-3 dark:text-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors text-base"
+               />
+               <button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium flex items-center gap-2 transition-colors text-base shadow-lg shadow-blue-500/30">
+                 <Plus size={20} /> Add
+               </button>
+             </div>
+          )}
         </div>
 
         {/* --- LIST --- */}
@@ -112,22 +131,39 @@ const Settings = ({
             <div key={index} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#121212] rounded-lg border border-gray-200 dark:border-[#2C2C2C] group animate-slideUp">
               <div className="flex items-center gap-4">
                  {course.type === 'uni' ? <UCPLogo className="w-8 h-8 text-blue-600 dark:text-blue-400" /> : <Book size={28} className="text-gray-400" />}
-                 <span className="font-medium dark:text-white text-gray-700 text-lg">{course.name}</span>
+                 <div>
+                    <span className="font-medium dark:text-white text-gray-700 text-lg block">{course.name}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
+                      {course.type === 'uni' ? 'University Course' : 'Personal Category'}
+                    </span>
+                 </div>
               </div>
-              <button onClick={() => initiateDelete(course)} className="text-gray-400 hover:text-red-500 transition-colors p-3 rounded-full hover:bg-gray-200 dark:hover:bg-[#333]" title="Remove course">
-                <Trash2 size={20} />
-              </button>
+
+              {/* ACTION BUTTONS */}
+              {course.type === 'uni' ? (
+                // Locked for University
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-400 bg-gray-200 dark:bg-[#2a2a2a] px-3 py-1.5 rounded-full" title="Managed by Portal Sync">
+                   <Lock size={12} /> Synced
+                </div>
+              ) : (
+                // Delete for General
+                <button onClick={() => initiateDelete(course)} className="text-gray-400 hover:text-red-500 transition-colors p-3 rounded-full hover:bg-gray-200 dark:hover:bg-[#333]" title="Remove category">
+                  <Trash2 size={20} />
+                </button>
+              )}
             </div>
           ))}
+
           {filteredCourses.length === 0 && (
             <div className="text-center text-gray-400 italic py-12 bg-gray-50/50 dark:bg-[#121212]/50 rounded-xl border border-dashed border-gray-200 dark:border-[#2C2C2C]">
-              No {selectedType === 'uni' ? 'University' : 'General'} courses found. <br/> Add one above!
+              No {selectedType === 'uni' ? 'University' : 'General'} courses found. 
+              {selectedType === 'general' && <><br/> Add one above!</>}
             </div>
           )}
         </div>
       </div>
 
-      {/* --- SECTION 2: SECURITY & SESSION (NEW) --- */}
+      {/* --- SECTION 2: SECURITY & SESSION --- */}
       <div className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#2C2C2C] p-6 shadow-sm">
         <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 dark:text-white text-gray-800">
           <Shield size={24} className="text-green-600 dark:text-green-500" />
@@ -169,10 +205,10 @@ const Settings = ({
               <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertTriangle size={24} className="text-red-600 dark:text-red-500" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete Course?</h3>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete Category?</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
                 The following tasks are assigned to <strong>"{courseToDelete.name}"</strong>. 
-                Deleting this course will mark them as <span className="text-red-500 font-bold">"Course Deleted"</span>.
+                Deleting this category will mark them as <span className="text-red-500 font-bold">"Course Deleted"</span>.
               </p>
               
               <div className="bg-gray-50 dark:bg-[#121212] rounded-lg p-3 mb-6 max-h-32 overflow-y-auto text-left border border-gray-200 dark:border-[#333]">

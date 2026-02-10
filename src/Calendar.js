@@ -6,7 +6,45 @@ import {
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
-// --- 1. HELPER: COLORS & ICONS ---
+// --- 1. HELPER: SMART ABBREVIATIONS ---
+const getAbbreviation = (name) => {
+  if (!name) return '';
+  const n = name.toLowerCase().trim();
+
+  // Standard CS Abbreviations
+  if (n.includes('operating system')) return 'OS';
+  if (n.includes('differential equation')) return 'DE';
+  if (n.includes('software engineering')) return 'SE';
+  if (n.includes('design and analysis')) return 'DAA';
+  if (n.includes('game development')) return 'GameDev';
+  if (n.includes('artificial intelligence')) return 'AI';
+  if (n.includes('linear algebra')) return 'LA';
+  if (n.includes('communication skills')) return 'Comm';
+  if (n.includes('islamic studies')) return 'Islamiat';
+  if (n.includes('pakistan studies')) return 'Pak Std';
+  if (n.includes('programming fundamental')) return 'PF';
+  if (n.includes('object oriented')) return 'OOP';
+  if (n.includes('data structure')) return 'DSA';
+  if (n.includes('database')) return 'DB';
+  if (n.includes('computer network')) return 'CN';
+  if (n.includes('general task')) return 'General';
+
+  // Fallback: Create Acronym if > 15 chars
+  if (name.length > 15) {
+    const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for'];
+    return name
+      .split(' ')
+      .filter(word => !ignoredWords.includes(word.toLowerCase()))
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 5); 
+  }
+
+  return name;
+};
+
+// --- HELPER: COLORS & ICONS ---
 const getCourseColor = (courseName) => {
   if (!courseName) return { bg: 'bg-gray-700', text: 'text-gray-200' };
   if (courseName.toLowerCase() === 'event') return { bg: 'bg-rose-600', text: 'text-white', isEvent: true };
@@ -183,9 +221,10 @@ const CalendarTaskModal = ({ task, onClose, courses, onUpdate, onDelete }) => {
         {/* Header */}
         <div className={`p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-start ${theme.bg}`}>
           <div className="flex-1 mr-4">
-            <div className={`flex items-center gap-2 px-2 py-1 rounded-md bg-white/30 backdrop-blur-md text-white mb-2 w-fit border border-white/20 shadow-sm`}>
+            {/* ABBREVIATED BADGE */}
+            <div className={`flex items-center gap-2 px-2 py-1 rounded-md bg-white/30 backdrop-blur-md text-white mb-2 w-fit border border-white/20 shadow-sm`} title={task.course}>
                <CourseTypeIcon courseName={task.course} courses={courses} className="w-3 h-3 text-black" />
-               <span className="text-[10px] font-bold uppercase tracking-wider">{task.course}</span>
+               <span className="text-[10px] font-bold uppercase tracking-wider">{getAbbreviation(task.course)}</span>
             </div>
             {isEditing ? (
               <input 
@@ -331,7 +370,7 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
       {/* --- UNIFIED SINGLE GRID --- */}
       <div className="flex-1 overflow-y-auto custom-scrollbar relative">
         <div className="grid grid-cols-7 grid-rows-[auto_1fr] min-h-full">
-          {/* Header Cells - FIXED: Removed conditional background transparency */}
+          {/* Header Cells */}
           {weekDays.map((day, i) => (
             <div key={`header-${i}`} className={`py-3 text-center border-b border-r border-gray-200 dark:border-[#27272a] last:border-r-0 sticky top-0 z-30 bg-white dark:bg-[#09090b]`}>
               <span className={`text-[11px] font-bold uppercase block mb-1 tracking-wider ${isToday(day) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>{day.toLocaleDateString('en-US', { weekday: 'short' })}</span>
@@ -368,9 +407,10 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
                         {task.time ? (
                           <div className="flex flex-col gap-1.5 mb-2">
                              <div className="flex justify-between items-start">
-                                <span className="text-[10px] font-bold uppercase opacity-80 flex items-center gap-1">
+                                {/* ABBREVIATED IN CARD */}
+                                <span className="text-[10px] font-bold uppercase opacity-80 flex items-center gap-1" title={task.course}>
                                    <CourseTypeIcon courseName={task.course} courses={courses} className="w-3 h-3" />
-                                   {task.course}
+                                   {getAbbreviation(task.course)}
                                 </span>
                                 {task.priority === 'Critical' && <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse shadow-[0_0_5px_white]"></div>}
                              </div>
@@ -380,9 +420,10 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
                           </div>
                         ) : (
                           <div className="flex justify-between items-start mb-1">
-                            <span className="text-[10px] font-bold uppercase opacity-80 truncate max-w-[80%] flex items-center gap-1">
+                            {/* ABBREVIATED IN CARD */}
+                            <span className="text-[10px] font-bold uppercase opacity-80 truncate max-w-[80%] flex items-center gap-1" title={task.course}>
                                <CourseTypeIcon courseName={task.course} courses={courses} className="w-3 h-3" />
-                               {task.course}
+                               {getAbbreviation(task.course)}
                             </span>
                             {task.priority === 'Critical' && <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse shadow-[0_0_5px_white]"></div>}
                           </div>
@@ -405,4 +446,4 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
   );
 };
 
-export default Calendar;  
+export default Calendar;
