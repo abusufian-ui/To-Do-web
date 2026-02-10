@@ -5,6 +5,10 @@ const TaskSchema = new mongoose.Schema({
   description: { type: String, default: '' },
   course: { type: String, default: 'General' },
   date: { type: String, default: '' },
+  
+  // --- ADDED THIS FIELD ---
+  time: { type: String, default: null }, 
+  
   priority: { type: String, default: 'Medium' },
   status: { type: String, default: 'New task' },
   completed: { type: Boolean, default: false },

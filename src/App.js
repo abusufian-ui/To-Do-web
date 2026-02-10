@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import TaskTable from './TaskTable';
@@ -6,19 +6,49 @@ import Settings from './Settings';
 import AddTaskModal from './AddTaskModal';
 import ConfirmationModal from './ConfirmationModal';
 import Bin from './Bin';
+import Login from './Login';
+import Calendar from './Calendar'; 
+import GradeBook from './GradeBook'; // <--- NEW IMPORT
 import { Heart, ArrowRight } from 'lucide-react';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return sessionStorage.getItem('isLoggedIn') === 'true'; 
+  });
+
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) return savedTheme === 'dark';
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return true;
+    return false;
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const [idleTimeout, setIdleTimeout] = useState(() => {
+    const saved = localStorage.getItem('idleTimeout');
+    return saved ? parseInt(saved, 10) : 900000;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('idleTimeout', idleTimeout);
+  }, [idleTimeout]);
+
   const [activeTab, setActiveTab] = useState('Welcome');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  
-  // --- MODAL STATES ---
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null); 
-  // REMOVED: isEmptyBinModalOpen & isRestoreAllModalOpen (Handled by Bin.js now)
+  const [prefilledDate, setPrefilledDate] = useState(''); 
 
-  // --- DATA ---
   const [courses, setCourses] = useState([]); 
   const [tasks, setTasks] = useState([]); 
   const [deletedTasks, setDeletedTasks] = useState([]); 
@@ -27,7 +57,35 @@ function App() {
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: ''
   });
 
-  // --- INITIAL LOAD ---
+  const checkForInactivity = useCallback(() => {
+    if (!isAuthenticated || idleTimeout === 0) return;
+    const timer = setTimeout(() => {
+      console.log("Session timed out. Locking screen...");
+      setIsAuthenticated(false); 
+      sessionStorage.removeItem('isLoggedIn');
+    }, idleTimeout);
+    return timer;
+  }, [isAuthenticated, idleTimeout]);
+
+  useEffect(() => {
+    let timeoutId = checkForInactivity();
+    const handleUserActivity = () => {
+      clearTimeout(timeoutId);
+      timeoutId = checkForInactivity();
+    };
+    window.addEventListener('mousemove', handleUserActivity);
+    window.addEventListener('keydown', handleUserActivity);
+    window.addEventListener('click', handleUserActivity);
+    window.addEventListener('scroll', handleUserActivity);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('click', handleUserActivity);
+      window.removeEventListener('scroll', handleUserActivity);
+    };
+  }, [checkForInactivity]);
+
   useEffect(() => {
     fetchTasks();
     fetchBin();
@@ -60,13 +118,24 @@ function App() {
     try {
       const res = await fetch('/api/courses');
       const data = await res.json();
-      setCourses(data.map(c => ({ ...c, id: c._id })));
+      const formattedCourses = data.map(c => ({ ...c, id: c._id }));
+      
+      const hasEvent = formattedCourses.find(c => c.name === 'Event');
+      if (!hasEvent) {
+        formattedCourses.unshift({ id: 'permanent-event', name: 'Event', type: 'event' });
+      }
+      
+      setCourses(formattedCourses);
     } catch (error) {
       console.error("Error fetching courses:", error);
+      setCourses([{ id: 'permanent-event', name: 'Event', type: 'event' }]);
     }
   };
 
-  // --- ACTIONS ---
+  const handleLogin = (email, password) => {
+    sessionStorage.setItem('isLoggedIn', 'true');
+    setIsAuthenticated(true);
+  };
 
   const handleAddTask = async (newTaskData) => {
     try {
@@ -75,13 +144,12 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTaskData)
       });
-      
       if (!res.ok) throw new Error("Server Error");
-
       const savedTask = await res.json();
       setTasks(prev => [{ ...savedTask, id: savedTask._id }, ...prev]);
-      
-      if (activeTab !== 'Tasks') setActiveTab('Tasks');
+      if (activeTab !== 'Tasks' && activeTab !== 'Calendar') {
+        setActiveTab('Tasks');
+      }
     } catch (error) {
       console.error("Error adding task:", error);
       alert("Failed to save task. Please check the console.");
@@ -96,7 +164,6 @@ function App() {
     if (!taskToDelete) return;
     try {
       await fetch(`/api/tasks/${taskToDelete}/delete`, { method: 'PUT' });
-
       const taskObj = tasks.find(t => t.id === taskToDelete);
       if (taskObj) {
         setDeletedTasks([{ ...taskObj, deletedAt: new Date().toISOString() }, ...deletedTasks]);
@@ -111,7 +178,6 @@ function App() {
   const restoreTask = async (taskId) => {
     try {
       await fetch(`/api/tasks/${taskId}/restore`, { method: 'PUT' });
-      
       const taskToRestore = deletedTasks.find(t => t.id === taskId);
       if (taskToRestore) {
         const { deletedAt, ...rest } = taskToRestore; 
@@ -123,7 +189,6 @@ function App() {
     }
   };
 
-  // FIXED: Removed window.confirm (Handled by Bin.js)
   const permanentlyDeleteTask = async (taskId) => {
     try {
       await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
@@ -133,9 +198,6 @@ function App() {
     }
   };
 
-  // --- BULK ACTIONS ---
-
-  // FIXED: Removed modal state logic
   const restoreAll = async () => {
     try {
       await fetch('/api/bin/restore-all', { method: 'PUT' });
@@ -147,7 +209,6 @@ function App() {
     }
   };
 
-  // FIXED: Removed modal state logic
   const deleteAll = async () => {
     try {
       await fetch('/api/bin/empty', { method: 'DELETE' });
@@ -157,8 +218,6 @@ function App() {
     }
   };
 
-  // --- COURSES ACTIONS ---
-  
   const addCourse = async (name, type) => {
     try {
       const res = await fetch('/api/courses', {
@@ -174,6 +233,11 @@ function App() {
   };
   
   const removeCourse = async (courseId) => {
+    const course = courses.find(c => c.id === courseId);
+    if (course && course.name === 'Event') {
+      alert("The 'Event' course is a permanent system course and cannot be deleted.");
+      return;
+    }
     setCourses(courses.filter(c => c.id !== courseId));
     try {
       await fetch(`/api/courses/${courseId}`, { method: 'DELETE' });
@@ -182,8 +246,6 @@ function App() {
       alert("Failed to delete course from database");
     }
   };
-
-  // --- HELPERS ---
 
   const getFilteredTasks = () => {
     return tasks.filter(task => {
@@ -203,15 +265,8 @@ function App() {
   };
 
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    if (!isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    setIsDarkMode(prev => !prev);
   };
-
-  useEffect(() => { document.documentElement.classList.add('dark'); }, []);
 
   const updateTask = async (id, field, value) => {
     setTasks(prevTasks => prevTasks.map(task => 
@@ -228,47 +283,38 @@ function App() {
     }
   };
 
+  const openAddTaskWithDate = (dateString) => {
+    setPrefilledDate(dateString);
+    setIsAddTaskOpen(true);
+  };
+
+  if (!isAuthenticated) return <Login onLogin={handleLogin} />;
+
   return (
     <div className={`flex h-screen w-full transition-colors duration-300 ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        isOpen={isSidebarOpen}
-        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        binCount={deletedTasks.length} 
-      />
-
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} binCount={deletedTasks.length} />
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300">
-        
         <Header 
+          activeTab={activeTab}
           isDarkMode={isDarkMode} 
-          toggleTheme={toggleTheme}
-          filters={filters}
-          setFilters={setFilters}
-          courses={courses}
-          onAddClick={() => setIsAddTaskOpen(true)}
+          toggleTheme={toggleTheme} 
+          filters={filters} 
+          setFilters={setFilters} 
+          courses={courses} 
+          onAddClick={() => { setPrefilledDate(''); setIsAddTaskOpen(true); }} 
         />
-
         <div className="flex-1 overflow-auto p-0 relative">
           
           {activeTab === 'Welcome' && (
             <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
               <div className="max-w-2xl">
-                <h1 className="text-5xl font-bold mb-6 dark:text-white text-gray-900 tracking-tight">
-                  Welcome to Your Portal
-                </h1>
-                <p className="text-gray-500 dark:text-gray-400 text-lg mb-12">
-                  Select a module from the sidebar to manage your academic journey.
-                </p>
+                <h1 className="text-5xl font-bold mb-6 dark:text-white text-gray-900 tracking-tight">Welcome to Your Portal</h1>
+                <p className="text-gray-500 dark:text-gray-400 text-lg mb-12">Select a module from the sidebar to manage your academic journey.</p>
                 <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border p-8 rounded-2xl shadow-lg relative overflow-hidden transition-colors">
                   <Heart className="w-8 h-8 text-brand-pink mb-4 mx-auto animate-pulse" fill="#E11D48" />
-                  <p className="text-xl md:text-2xl font-medium dark:text-white text-gray-800 leading-relaxed font-serif italic">
-                    "Your mom and dad are still waiting to celebrate your success."
-                  </p>
+                  <p className="text-xl md:text-2xl font-medium dark:text-white text-gray-800 leading-relaxed font-serif italic">"Your mom and dad are still waiting to celebrate your success."</p>
                   <div className="mt-6 flex justify-center">
-                    <button onClick={() => setActiveTab('Tasks')} className="text-brand-blue hover:text-blue-600 flex items-center gap-2 transition-colors font-medium">
-                      Start working now <ArrowRight size={16} />
-                    </button>
+                    <button onClick={() => setActiveTab('Tasks')} className="text-brand-blue hover:text-blue-600 flex items-center gap-2 transition-colors font-medium">Start working now <ArrowRight size={16} /></button>
                   </div>
                 </div>
               </div>
@@ -284,6 +330,21 @@ function App() {
             />
           )}
 
+          {activeTab === 'Calendar' && (
+            <Calendar 
+              tasks={tasks} 
+              courses={courses} 
+              onAddWithDate={openAddTaskWithDate} 
+              onUpdate={updateTask} 
+              onDelete={deleteTask} 
+            />
+          )}
+
+          {/* --- NEW GRADE BOOK TAB --- */}
+          {activeTab === 'GradeBook' && (
+            <GradeBook isDarkMode={isDarkMode} />
+          )}
+
           {activeTab === 'Settings' && (
             <Settings
               courses={courses}
@@ -291,6 +352,8 @@ function App() {
               removeCourse={removeCourse}
               tasks={tasks}
               updateTask={updateTask} 
+              idleTimeout={idleTimeout}
+              setIdleTimeout={setIdleTimeout}
             />
           )}
 
@@ -299,8 +362,8 @@ function App() {
               deletedTasks={deletedTasks} 
               restoreTask={restoreTask} 
               permanentlyDeleteTask={permanentlyDeleteTask} 
-              deleteAll={deleteAll}     // FIXED: Passing function directly
-              restoreAll={restoreAll}   // FIXED: Passing function directly
+              deleteAll={deleteAll}
+              restoreAll={restoreAll}
             />
           )}
 
@@ -312,6 +375,7 @@ function App() {
         onClose={() => setIsAddTaskOpen(false)}
         onSave={handleAddTask}
         courses={courses}
+        initialDate={prefilledDate} 
       />
 
       <ConfirmationModal 
@@ -323,8 +387,6 @@ function App() {
         confirmText="Move to Bin"
         confirmStyle="danger"
       />
-
-      {/* REMOVED: Redundant ConfirmationModals for Bin actions */}
 
     </div>
   );

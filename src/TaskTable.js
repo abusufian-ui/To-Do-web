@@ -3,20 +3,15 @@ import {
   CheckCircle2, Calendar as CalendarIcon, Mail, Clock, 
   ChevronDown, ChevronRight, ChevronsUp, ChevronUp,  
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
-  X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle
+  X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle,
+  CalendarDays 
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
-// --- 1. MAGIC NUMBERS ---
 const COL = {
-  name: "flex-1 pl-4",       
-  status: "w-[160px]",       
-  course: "w-[150px]",      
-  date: "w-[100px]",         
-  priority: "w-[100px]",     
+  name: "flex-1 pl-4", status: "w-[160px]", course: "w-[150px]", date: "w-[140px]", priority: "w-[100px]",     
 };
 
-// --- 2. HELPERS ---
 const formatDate = (dateString) => {
   if (!dateString) return "-";
   const date = new Date(dateString);
@@ -44,14 +39,12 @@ const getStatusConfig = (s) => {
   }
 };
 
-const CourseIcon = ({ type }) => {
-  if (type === 'uni') {
-    return <UCPLogo className="w-5 h-5 text-blue-600 dark:text-blue-400 opacity-90" />;
-  }
+const CourseIcon = ({ type, name }) => {
+  if (name === 'Event') return <CalendarDays size={18} className="text-rose-500" />;
+  if (type === 'uni') return <UCPLogo className="w-5 h-5 text-blue-600 dark:text-blue-400 opacity-90" />;
   return <Book size={18} className="text-gray-400" />;
 };
 
-// --- 3. TASK SUMMARY MODAL ---
 const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
@@ -83,25 +76,14 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
       <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] animate-slideUp overflow-hidden">
         <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center">
           <div className="flex items-center gap-3">
-             <div className="p-2 bg-brand-blue/10 rounded-xl">
-               <Info className="text-brand-blue" size={20} />
-             </div>
+             <div className="p-2 bg-brand-blue/10 rounded-xl"><Info className="text-brand-blue" size={20} /></div>
              <h2 className="text-xl font-bold dark:text-white text-gray-800">Task Details</h2>
           </div>
           <div className="flex items-center gap-2">
-            <button 
-              onClick={isEditing ? handleSave : () => setIsEditing(true)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                isEditing 
-                  ? 'bg-brand-blue text-white hover:bg-blue-600' 
-                  : 'bg-gray-100 dark:bg-[#333] text-gray-500 dark:text-gray-400 hover:text-brand-blue'
-              }`}
-            >
+            <button onClick={isEditing ? handleSave : () => setIsEditing(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${isEditing ? 'bg-brand-blue text-white hover:bg-blue-600' : 'bg-gray-100 dark:bg-[#333] text-gray-500 dark:text-gray-400 hover:text-brand-blue'}`}>
               {isEditing ? <><Save size={14}/> Save</> : <><Edit2 size={14}/> Edit</>}
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-full transition-colors text-gray-400">
-              <X size={20} />
-            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-full transition-colors text-gray-400"><X size={20} /></button>
           </div>
         </div>
 
@@ -109,46 +91,34 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
           <div className="mb-8">
             {isEditing ? (
               <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Task Title</label>
-                  <input type="text" value={editedName} onChange={(e) => setEditedName(e.target.value)}
-                    className="w-full text-2xl font-extrabold bg-transparent border-b border-gray-300 dark:border-[#333] focus:border-brand-blue text-gray-900 dark:text-white outline-none py-1" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Description</label>
-                  <textarea value={editedDesc} onChange={(e) => setEditedDesc(e.target.value)} rows={4}
-                    className="w-full text-sm leading-relaxed bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl p-3 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-brand-blue outline-none resize-none" />
-                </div>
+                <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Task Title</label><input type="text" value={editedName} onChange={(e) => setEditedName(e.target.value)} className="w-full text-2xl font-extrabold bg-transparent border-b border-gray-300 dark:border-[#333] focus:border-brand-blue text-gray-900 dark:text-white outline-none py-1" /></div>
+                <div><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Description</label><textarea value={editedDesc} onChange={(e) => setEditedDesc(e.target.value)} rows={4} className="w-full text-sm leading-relaxed bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#2C2C2C] rounded-xl p-3 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-brand-blue outline-none resize-none" /></div>
               </div>
             ) : (
               <>
                 <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-4 leading-tight">{task.name}</h1>
-                <div className="flex items-start gap-2 text-gray-600 dark:text-gray-400">
-                  <AlignLeft size={18} className="mt-1 flex-shrink-0 opacity-50" />
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{task.description || "No additional notes."}</p>
-                </div>
+                <div className="flex items-start gap-2 text-gray-600 dark:text-gray-400"><AlignLeft size={18} className="mt-1 flex-shrink-0 opacity-50" /><p className="text-sm leading-relaxed whitespace-pre-wrap">{task.description || "No additional notes."}</p></div>
               </>
             )}
           </div>
 
           <div className="grid grid-cols-2 gap-6 mb-8 pt-6 border-t border-gray-100 dark:border-[#2C2C2C]">
             <div className="space-y-4">
-              <div className="flex items-center gap-3 text-sm text-gray-500">
-                <CalendarIcon size={16} className="opacity-70" /> Created: <span className="dark:text-gray-200 font-medium">{new Date(task.createdAt || Date.now()).toLocaleDateString()}</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-500">
-                <CalendarIcon className="text-brand-pink" size={16} /> Due Date: <span className="dark:text-gray-200 font-medium">{task.date || "No date"}</span>
-              </div>
+              <div className="flex items-center gap-3 text-sm text-gray-500"><CalendarIcon size={16} className="opacity-70" /> Created: <span className="dark:text-gray-200 font-medium">{new Date(task.createdAt || Date.now()).toLocaleDateString()}</span></div>
+              <div className="flex items-center gap-3 text-sm text-gray-500"><CalendarIcon className="text-brand-pink" size={16} /> Due Date: <span className="dark:text-gray-200 font-medium">{task.date || "No date"}</span></div>
+              
+              {/* --- CONDITIONALLY SHOW TIME ROW --- */}
+              {task.time && (
+                <div className="flex items-center gap-3 text-sm text-gray-500">
+                  <Clock className="text-brand-pink" size={16} /> Time: 
+                  <span className="dark:text-gray-200 font-medium bg-gray-100 dark:bg-[#333] px-2 py-0.5 rounded ml-1">{task.time}</span>
+                </div>
+              )}
             </div>
+            
             <div className="space-y-4">
-              <div className="flex items-center gap-3 text-sm text-gray-500">
-                <Flag size={16} className="opacity-70" /> Priority: 
-                <span className={`font-medium ${pConfig.color} flex items-center gap-1.5`}><PriorityIcon size={14} /> {task.priority}</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-500">
-                <Book size={16} className="text-brand-blue" /> Course: 
-                <span className="dark:text-gray-200 font-medium flex items-center gap-1.5"><CourseIcon type={courseType} /> {task.course}</span>
-              </div>
+              <div className="flex items-center gap-3 text-sm text-gray-500"><Flag size={16} className="opacity-70" /> Priority: <span className={`font-medium ${pConfig.color} flex items-center gap-1.5`}><PriorityIcon size={14} /> {task.priority}</span></div>
+              <div className="flex items-center gap-3 text-sm text-gray-500"><Book size={16} className="text-brand-blue" /> Course: <span className="dark:text-gray-200 font-medium flex items-center gap-1.5"><CourseIcon type={courseType} name={task.course} /> {task.course}</span></div>
             </div>
           </div>
 
@@ -170,7 +140,6 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
   );
 };
 
-// --- 4. MAIN COMPONENT ---
 const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null); 
@@ -207,12 +176,30 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
     setNewSubTask(prev => ({ ...prev, [taskId]: '' }));
   };
 
+  const handleDeleteSubTask = (taskId, index) => {
+    const task = tasks.find(t => t.id === taskId);
+    const updatedSubTasks = [...task.subTasks];
+    updatedSubTasks.splice(index, 1); 
+    updateTask(taskId, 'subTasks', updatedSubTasks);
+  };
+
   const toggleSubTask = (e, taskId, index) => {
     e.stopPropagation(); 
     const task = tasks.find(t => t.id === taskId);
     const subTasks = [...task.subTasks];
     subTasks[index].completed = !subTasks[index].completed;
     updateTask(taskId, 'subTasks', subTasks);
+  };
+
+  const sortTasks = (taskList) => {
+    return [...taskList].sort((a, b) => {
+      const dateA = a.date || '9999-99-99';
+      const dateB = b.date || '9999-99-99';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      const timeA = a.time || '';
+      const timeB = b.time || '';
+      return timeA.localeCompare(timeB);
+    });
   };
 
   const renderRow = (task, isCompleted = false) => {
@@ -239,11 +226,9 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
               <Dropdown id={`${task.id}-status`} value={isCompleted ? "Completed" : statusConfig.label} icon={statusConfig.icon} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => updateTask(task.id, 'status', val)} colorClass={isCompleted ? 'text-green-600 dark:text-green-500' : statusConfig.color} getOptionConfig={getStatusConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
             </div>
             
-            {/* COURSE - FIXED: REMOVED RED BACKGROUND BOX */}
             <div className={COL.course} onClick={(e) => e.stopPropagation()}>
                 <div className="relative custom-dropdown w-full">
                   {task.course === 'Course Deleted' ? (
-                    // Plain text style (no box), just red color
                     <button 
                       onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} 
                       className="flex items-center gap-2 text-sm text-red-500 hover:opacity-80 text-left w-full font-medium py-1 truncate"
@@ -252,7 +237,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                     </button>
                   ) : (
                     <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:opacity-80 text-left w-full font-medium py-1 truncate">
-                      <CourseIcon type={courseType} /> {task.course || "Select"}
+                      <CourseIcon type={courseType} name={task.course} /> {task.course || "Select"}
                     </button>
                   )}
 
@@ -260,7 +245,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                     <div className="absolute top-full left-0 mt-1 min-w-[170px] bg-white dark:bg-[#1E1E1E] rounded-md shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-50 overflow-hidden animate-fadeIn">
                       {courses.length > 0 ? courses.map((c) => (
                         <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                          <CourseIcon type={c.type} /> <span className="font-medium">{c.name}</span>
+                          <CourseIcon type={c.type} name={c.name} /> <span className="font-medium">{c.name}</span>
                         </div>
                       )) : <div className="p-3 text-xs text-gray-500">No courses added</div>}
                     </div>
@@ -268,7 +253,9 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                 </div>
             </div>
             
-            <div className={COL.date} onClick={(e) => e.stopPropagation()}><DateCell date={task.date} onChange={(val) => updateTask(task.id, 'date', val)} /></div>
+            <div className={COL.date} onClick={(e) => e.stopPropagation()}>
+              <DateCell date={task.date} time={task.time} onChange={(val) => updateTask(task.id, 'date', val)} />
+            </div>
             
             <div className={`${COL.priority} flex items-center justify-between pr-4`} onClick={(e) => e.stopPropagation()}>
               <div className="flex-1">
@@ -286,6 +273,13 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                   {sub.completed ? <CheckSquare size={16} /> : <Square size={16} />}
                 </button>
                 <span className={`text-xs ${sub.completed ? 'line-through text-gray-500 italic' : 'text-gray-700 dark:text-gray-300'}`}>{sub.text}</span>
+                <button 
+                  onClick={() => handleDeleteSubTask(task.id, index)}
+                  className="ml-auto text-gray-400 hover:text-red-500 opacity-0 group-hover/sub:opacity-100 transition-all p-1 rounded-md"
+                  title="Remove subtask"
+                >
+                  <X size={14} /> 
+                </button>
               </div>
             ))}
             <div className="flex items-center gap-3 pt-1 group/input">
@@ -298,8 +292,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
     );
   };
 
-  const activeTasks = tasks.filter(t => t.status !== 'Completed');
-  const completedTasks = tasks.filter(t => t.status === 'Completed');
+  const activeTasks = sortTasks(tasks.filter(t => t.status !== 'Completed'));
+  const completedTasks = sortTasks(tasks.filter(t => t.status === 'Completed'));
 
   return (
     <div className="p-8 w-full animate-fadeIn pb-20">
@@ -372,11 +366,19 @@ const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOpt
   );
 };
 
-const DateCell = ({ date, onChange }) => {
+// --- UPDATED DATE CELL ---
+const DateCell = ({ date, time, onChange }) => {
   const inputRef = useRef(null);
+  
+  const displayDate = formatDate(date); 
+  const displayTime = time ? `, ${time}` : '';
+
   return (
-    <div className="relative cursor-pointer hover:opacity-80 group h-full flex items-center" onClick={(e) => { e.stopPropagation(); inputRef.current.showPicker(); }}>
-      <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">{formatDate(date)}</span>
+    <div className="relative cursor-pointer hover:opacity-80 group h-full flex flex-col justify-center" onClick={(e) => { e.stopPropagation(); inputRef.current.showPicker(); }}>
+      <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
+        {displayDate}
+        {time && <span className="text-xs text-gray-400 ml-1 font-normal">{time}</span>}
+      </span>
       <input ref={inputRef} type="date" value={date} onChange={(e) => onChange(e.target.value)} className="absolute opacity-0 w-0 h-0 dark:[color-scheme:dark]" />
     </div>
   );

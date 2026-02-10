@@ -1,9 +1,16 @@
 import React, { useState } from 'react';
-import { Trash2, Plus, BookOpen, Book, AlertTriangle } from 'lucide-react';
+import { Trash2, Plus, BookOpen, Book, AlertTriangle, Shield, Clock } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
-// FIX 1: Added default value for 'tasks' to prevent crashes if data is missing
-const Settings = ({ courses = [], addCourse, removeCourse, tasks = [], updateTask }) => {
+const Settings = ({ 
+  courses = [], 
+  addCourse, 
+  removeCourse, 
+  tasks = [], 
+  updateTask,
+  idleTimeout,      // <--- NEW PROP
+  setIdleTimeout    // <--- NEW PROP
+}) => {
   const [newCourse, setNewCourse] = useState("");
   const [selectedType, setSelectedType] = useState('uni');
   
@@ -20,30 +27,22 @@ const Settings = ({ courses = [], addCourse, removeCourse, tasks = [], updateTas
 
   const initiateDelete = (course) => {
     if (!course) return;
-
-    // 1. Find tasks using the Name (safely handle missing name)
     const linkedTasks = tasks.filter(t => t.course === course.name);
 
     if (linkedTasks.length > 0) {
-      // 2. If tasks exist, show modal
       setAffectedTasks(linkedTasks);
       setCourseToDelete(course);
     } else {
-      // 3. If no tasks, delete immediately (handle id vs _id)
       removeCourse(course.id || course._id);
     }
   };
 
   const confirmDelete = () => {
     if (courseToDelete) {
-      // 1. Update all affected tasks to "Course Deleted"
       affectedTasks.forEach(task => {
         if (updateTask) updateTask(task.id, 'course', 'Course Deleted');
       });
-      // 2. Remove the course
       removeCourse(courseToDelete.id || courseToDelete._id);
-      
-      // 3. Cleanup
       setCourseToDelete(null);
       setAffectedTasks([]);
     }
@@ -52,10 +51,11 @@ const Settings = ({ courses = [], addCourse, removeCourse, tasks = [], updateTas
   const filteredCourses = courses.filter(c => c && c.name && c.type === selectedType);
 
   return (
-    <div className="p-8 max-w-4xl mx-auto animate-fadeIn">
+    <div className="p-8 max-w-4xl mx-auto animate-fadeIn pb-24">
       <h2 className="text-3xl font-bold mb-6 dark:text-white text-gray-800">Settings</h2>
       
-      <div className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#2C2C2C] p-6 shadow-sm">
+      {/* --- SECTION 1: MANAGE COURSES --- */}
+      <div className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#2C2C2C] p-6 shadow-sm mb-8">
         <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 dark:text-white text-gray-800">
           <BookOpen size={24} className="text-blue-600 dark:text-blue-500" />
           Manage Courses
@@ -91,7 +91,6 @@ const Settings = ({ courses = [], addCourse, removeCourse, tasks = [], updateTas
             </button>
           </div>
 
-          {/* FIX 2: Added relative and z-10 to ensure input is clickable */}
           <div className="flex gap-3 mt-2 relative z-10">
             <input 
               type="text" 
@@ -125,6 +124,40 @@ const Settings = ({ courses = [], addCourse, removeCourse, tasks = [], updateTas
               No {selectedType === 'uni' ? 'University' : 'General'} courses found. <br/> Add one above!
             </div>
           )}
+        </div>
+      </div>
+
+      {/* --- SECTION 2: SECURITY & SESSION (NEW) --- */}
+      <div className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#2C2C2C] p-6 shadow-sm">
+        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 dark:text-white text-gray-800">
+          <Shield size={24} className="text-green-600 dark:text-green-500" />
+          Security & Session
+        </h3>
+        
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 bg-gray-50 dark:bg-[#121212] rounded-lg border border-gray-200 dark:border-[#2C2C2C]">
+          <div className="flex items-center gap-4">
+            <div className="bg-white dark:bg-[#2C2C2C] p-3 rounded-full border border-gray-200 dark:border-[#3E3E3E]">
+              <Clock size={20} className="text-gray-500 dark:text-gray-400" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-gray-900 dark:text-white">Auto-Lock Timer</h4>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Choose how long the portal waits before locking the screen.
+              </p>
+            </div>
+          </div>
+
+          <select 
+            value={idleTimeout}
+            onChange={(e) => setIdleTimeout(Number(e.target.value))}
+            className="w-full md:w-48 px-4 py-2.5 bg-white dark:bg-[#2C2C2C] border border-gray-300 dark:border-[#3E3E3E] rounded-lg text-gray-800 dark:text-gray-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+          >
+            <option value={300000}>5 Minutes</option>
+            <option value={900000}>15 Minutes (Default)</option>
+            <option value={1800000}>30 Minutes</option>
+            <option value={3600000}>1 Hour</option>
+            <option value={0}>Never (Stay Logged In)</option>
+          </select>
         </div>
       </div>
 
