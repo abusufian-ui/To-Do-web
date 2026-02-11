@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Book, RefreshCw, Clock, ChevronDown, ChevronUp, 
   GraduationCap, TrendingUp, AlertCircle, X, CheckCircle2, AlertTriangle, 
-  BookOpen // Added BookOpen for the Completed Credits icon
+  BookOpen 
 } from 'lucide-react';
 
 // --- HELPER: CUSTOM TOAST COMPONENT ---
@@ -47,7 +47,6 @@ const isBelowAverage = (obtained, average) => {
 
 const GradeBook = () => {
   const [grades, setGrades] = useState([]);
-  // State includes 'credits' (Completed) and 'inprogressCr'
   const [stats, setStats] = useState({ cgpa: "0.00", credits: "0", inprogressCr: "0" });
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -65,15 +64,31 @@ const GradeBook = () => {
 
   const fetchData = async () => {
     try {
+      const token = localStorage.getItem('token'); // 1. GET TOKEN
+      const headers = { 
+        'Content-Type': 'application/json',
+        'x-auth-token': token // 2. ATTACH HEADER
+      };
+
       const [gradesRes, statsRes] = await Promise.all([
-        fetch('/api/grades'),
-        fetch('/api/student-stats')
+        fetch('/api/grades', { headers }),
+        fetch('/api/student-stats', { headers })
       ]);
+      
       const gradesData = await gradesRes.json();
       const statsData = await statsRes.json();
       
-      setGrades(gradesData);
-      setStats(statsData);
+      // 3. SAFETY CHECK: Ensure gradesData is an array
+      if (Array.isArray(gradesData)) {
+        setGrades(gradesData);
+      } else {
+        setGrades([]); // Prevent crash if API returns error object
+      }
+
+      if (statsData && !statsData.message) {
+        setStats(statsData);
+      }
+      
       setLoading(false);
     } catch (error) {
       console.error(error);
@@ -88,7 +103,14 @@ const GradeBook = () => {
     showToast("Connecting to University Portal...", "info");
 
     try {
-      const res = await fetch('/api/sync-grades', { method: 'POST' });
+      const token = localStorage.getItem('token'); // GET TOKEN FOR SYNC
+      const res = await fetch('/api/sync-grades', { 
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'x-auth-token': token 
+        }
+      });
       const data = await res.json(); 
 
       if (res.ok) {
