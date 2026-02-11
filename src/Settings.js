@@ -1,9 +1,25 @@
 import React, { useState } from 'react';
 import { 
   Trash2, Plus, BookOpen, Book, AlertTriangle, Shield, Clock, 
-  Lock, CheckCircle2, RefreshCw 
+  Lock, RefreshCw, X, CheckCircle2 
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
+
+// --- HELPER: TOAST FOR SMALL ACTIONS (Add/Delete) ---
+const Toast = ({ message, type, onClose }) => {
+  if (!message) return null;
+  const styles = {
+    success: "bg-emerald-600 text-white shadow-emerald-900/20",
+    error: "bg-red-600 text-white shadow-red-900/20",
+  };
+  return (
+    <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 p-4 rounded-xl shadow-xl animate-slideUp ${styles[type]}`}>
+      <CheckCircle2 size={20} />
+      <span className="font-medium text-sm">{message}</span>
+      <button onClick={onClose}><X size={16} className="opacity-70 hover:opacity-100" /></button>
+    </div>
+  );
+};
 
 const Settings = ({ 
   courses = [], 
@@ -17,14 +33,53 @@ const Settings = ({
   const [newCourse, setNewCourse] = useState("");
   const [selectedType, setSelectedType] = useState('uni');
   
+  // Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null); // To show red box
+  
   // Confirmation Modal State
   const [courseToDelete, setCourseToDelete] = useState(null);
   const [affectedTasks, setAffectedTasks] = useState([]);
+
+  // Toast State (For Add/Delete only)
+  const [toast, setToast] = useState({ message: null, type: null });
+
+  const showToast = (message, type) => {
+    setToast({ message, type });
+    setTimeout(() => setToast({ message: null, type: null }), 3000);
+  };
 
   const handleAdd = () => {
     if (newCourse.trim()) {
       addCourse(newCourse.trim(), selectedType);
       setNewCourse("");
+      showToast("Category added successfully.", "success");
+    }
+  };
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    setSyncError(null); // Reset error
+
+    try {
+      const res = await fetch('/api/sync-grades', { method: 'POST' });
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast("Sync Complete! Reloading...", "success");
+        setTimeout(() => { window.location.reload(); }, 1500);
+      } else {
+        // Error: Show RED INLINE BOX
+        if (res.status === 503) {
+            setSyncError("PORTAL_DOWN");
+        } else {
+            setSyncError(data.message || "Connection Failed");
+        }
+      }
+    } catch (error) {
+      setSyncError("Could not connect to server.");
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -37,6 +92,7 @@ const Settings = ({
       setCourseToDelete(course);
     } else {
       removeCourse(course.id || course._id);
+      showToast("Category removed.", "success");
     }
   };
 
@@ -46,6 +102,7 @@ const Settings = ({
         if (updateTask) updateTask(task.id, 'course', 'Course Deleted');
       });
       removeCourse(courseToDelete.id || courseToDelete._id);
+      showToast("Category deleted.", "success");
       setCourseToDelete(null);
       setAffectedTasks([]);
     }
@@ -54,21 +111,72 @@ const Settings = ({
   const filteredCourses = courses.filter(c => c && c.name && c.type === selectedType);
 
   return (
-    <div className="p-8 max-w-4xl mx-auto animate-fadeIn pb-24">
+    <div className="p-8 max-w-4xl mx-auto animate-fadeIn pb-24 relative">
       <h2 className="text-3xl font-bold mb-6 dark:text-white text-gray-800">Settings</h2>
+
+      <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: null, type: null })} />
       
       {/* --- SECTION 1: MANAGE COURSES --- */}
       <div className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#2C2C2C] p-6 shadow-sm mb-8">
-        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 dark:text-white text-gray-800">
-          <BookOpen size={24} className="text-blue-600 dark:text-blue-500" />
-          Manage Courses
-        </h3>
-        
-        <p className="text-gray-500 dark:text-gray-400 mb-6">
-          View your synced university courses or manage your personal categories below.
-        </p>
+        <div className="flex justify-between items-start mb-4">
+           <div>
+             <h3 className="text-xl font-semibold flex items-center gap-2 dark:text-white text-gray-800">
+               <BookOpen size={24} className="text-blue-600 dark:text-blue-500" />
+               Manage Courses
+             </h3>
+             <p className="text-gray-500 dark:text-gray-400 mt-1">
+               View your synced university courses or manage your personal categories.
+             </p>
+           </div>
+           
+           <button 
+             onClick={handleSync} 
+             disabled={isSyncing}
+             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white shadow-md transition-all active:scale-95 ${isSyncing ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-blue hover:bg-blue-600 shadow-blue-500/30'}`}
+           >
+             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+             {isSyncing ? 'Syncing...' : 'Sync Now'}
+           </button>
+        </div>
 
-        {/* --- TYPE SELECTOR --- */}
+        {/* --- INLINE NOTIFICATIONS (RESTORED) --- */}
+        
+        {/* 1. SYNCING (Real Blue) */}
+        {isSyncing && !syncError && (
+          <div className="mb-6 p-5 bg-blue-600 rounded-xl shadow-lg shadow-blue-900/20 flex items-center gap-4 text-white animate-slideUp">
+             <div className="p-2 bg-white/20 rounded-full animate-spin">
+                <RefreshCw size={24} className="text-white" />
+             </div>
+             <div>
+                <h4 className="font-bold text-base">Syncing with Portal...</h4>
+                <p className="text-sm opacity-90 leading-snug">
+                  Please wait while we fetch your grades. This may take up to 30 seconds.
+                </p>
+             </div>
+          </div>
+        )}
+
+        {/* 2. ERROR (Real Red) */}
+        {syncError && (
+           <div className="mb-6 p-5 bg-red-600 rounded-xl shadow-lg shadow-red-900/20 flex items-start gap-4 text-white animate-slideUp">
+             <div className="p-2 bg-white/20 rounded-full shrink-0">
+                <AlertTriangle size={24} className="text-white" />
+             </div>
+             <div className="flex-1">
+                <h4 className="font-bold text-base">Sync Failed</h4>
+                <p className="text-sm opacity-90 leading-relaxed mt-1">
+                  {syncError === "PORTAL_DOWN" 
+                    ? "The University Portal is currently down (403 Forbidden). We cannot access your grades right now."
+                    : syncError}
+                </p>
+             </div>
+             <button onClick={() => setSyncError(null)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                <X size={20} />
+             </button>
+          </div>
+        )}
+
+        {/* --- REST OF SETTINGS UI --- */}
         <div className="flex flex-col gap-6 mb-8">
           <div className="flex gap-3">
             <button 
@@ -94,28 +202,25 @@ const Settings = ({
             </button>
           </div>
 
-          {/* --- CONDITIONAL ADD / INFO SECTION --- */}
           {selectedType === 'uni' ? (
-             // UNIVERSITY MODE: Read-Only Message
              <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl flex items-start gap-3">
                 <Shield size={20} className="text-brand-blue mt-1 shrink-0" />
                 <div>
                    <h4 className="font-bold text-brand-blue text-sm">Automated Sync Active</h4>
                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
-                     University courses are managed automatically by the Portal Robot. You cannot add or remove them manually here.
-                     <br/>To update this list, go to the <b>Grade Book</b> tab and click <b>Sync Now</b>.
+                     University courses are managed automatically by the Portal Robot.
+                     <br/>To update this list, click the <b>Sync Now</b> button above.
                    </p>
                 </div>
              </div>
           ) : (
-             // GENERAL MODE: Add Input (Editable)
              <div className="flex gap-3 relative z-10 animate-fadeIn">
                <input 
                  type="text" 
                  value={newCourse} 
                  onChange={(e) => setNewCourse(e.target.value)}
                  onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                 placeholder="Add a new general category (e.g., Gym, Shopping)..."
+                 placeholder="Add a new general category..."
                  className="flex-1 bg-gray-50 dark:bg-[#121212] border border-gray-300 dark:border-[#2C2C2C] rounded-lg px-4 py-3 dark:text-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-colors text-base"
                />
                <button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium flex items-center gap-2 transition-colors text-base shadow-lg shadow-blue-500/30">
@@ -139,14 +244,11 @@ const Settings = ({
                  </div>
               </div>
 
-              {/* ACTION BUTTONS */}
               {course.type === 'uni' ? (
-                // Locked for University
                 <div className="flex items-center gap-2 text-xs font-bold text-gray-400 bg-gray-200 dark:bg-[#2a2a2a] px-3 py-1.5 rounded-full" title="Managed by Portal Sync">
                    <Lock size={12} /> Synced
                 </div>
               ) : (
-                // Delete for General
                 <button onClick={() => initiateDelete(course)} className="text-gray-400 hover:text-red-500 transition-colors p-3 rounded-full hover:bg-gray-200 dark:hover:bg-[#333]" title="Remove category">
                   <Trash2 size={20} />
                 </button>

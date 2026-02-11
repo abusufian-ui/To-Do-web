@@ -9,7 +9,9 @@ import Bin from './Bin';
 import Login from './Login';
 import Calendar from './Calendar'; 
 import GradeBook from './GradeBook'; 
+import ResultHistory from './ResultHistory'; // <--- IMPORT
 import { Heart, ArrowRight } from 'lucide-react';
+import CashManager from './CashManager';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -89,7 +91,7 @@ function App() {
   useEffect(() => {
     fetchTasks();
     fetchBin();
-    fetchCourses(); // <--- This now fetches from Scraper
+    fetchCourses(); 
   }, []);
 
   const fetchTasks = async () => {
@@ -114,30 +116,22 @@ function App() {
     }
   };
 
-  // --- UPDATED: Fetch Courses from Grade Book + General ---
   const fetchCourses = async () => {
     try {
-      // 1. Fetch the Scraped Grades
       const res = await fetch('/api/grades');
       const gradeData = await res.json();
-
-      // 2. Map them to Course Objects
       const uniCourses = gradeData.map(g => ({
         id: g._id, 
-        name: g.courseName, // This comes from the Robot!
+        name: g.courseName,
         type: 'uni'
       }));
-
-      // 3. Add the permanent "General Task" option
       const allCourses = [
         { id: 'general-task', name: 'General Task', type: 'general' },
         ...uniCourses
       ];
-
       setCourses(allCourses);
     } catch (error) {
       console.error("Error fetching courses:", error);
-      // Fallback
       setCourses([{ id: 'general-task', name: 'General Task', type: 'general' }]);
     }
   };
@@ -228,8 +222,6 @@ function App() {
     }
   };
 
-  // NOTE: addCourse and removeCourse are essentially disabled for users now
-  // but we keep them empty or logging just in case child components call them.
   const addCourse = async (name, type) => {
     console.log("Course creation is now handled by the Portal Sync.");
   };
@@ -333,6 +325,15 @@ function App() {
 
           {activeTab === 'Grade Book' && (
             <GradeBook />
+          )}
+
+          {activeTab === 'History' && (
+            <ResultHistory />
+          )}
+
+          {/* --- CASH MANAGEMENT ROUTER --- */}
+          {activeTab.startsWith('Cash-') && (
+            <CashManager activeTab={activeTab} />
           )}
 
           {activeTab === 'Settings' && (
