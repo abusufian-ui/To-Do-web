@@ -28,13 +28,17 @@ const runScraper = async (userId) => {
           throw new Error("NO_CREDENTIALS"); 
       }
 
-      // 2. SETUP UNIQUE SESSION PER USER
-      const sessionPath = path.join(__dirname, 'session_data', userId.toString()); 
+      // 2. SESSION ISOLATION FIX
+      // Use the portalId (email) in the path instead of userId. 
+      // This forces a fresh login if the linked account changes.
+      const safePortalId = user.portalId.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const sessionPath = path.join(__dirname, 'session_data', safePortalId); 
+      
       if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
 
       const launchBrowser = async () => {
           return await puppeteer.launch({ 
-            headless: "new", // Run in background (Removed visible window)
+            headless: "new", // Run in background
             defaultViewport: null,
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
             userDataDir: sessionPath 
@@ -45,14 +49,15 @@ const runScraper = async (userId) => {
       let page = await browser.newPage();
 
       // 3. NAVIGATE TO DASHBOARD
-      console.log("🌍 Navigating to Dashboard...");
+      console.log(`🌍 Navigating to Dashboard for ${user.portalId}...`);
       try {
         await page.goto('https://horizon.ucp.edu.pk/student/dashboard', { waitUntil: 'networkidle2', timeout: 60000 });
       } catch (e) { console.log("⚠️ Initial load timeout, checking URL..."); }
 
       // 4. AUTOMATED MICROSOFT LOGIN
+      // If we are redirected to login, it means this specific profile is not logged in.
       if (page.url().includes('login') || page.url().includes('signin') || page.url().includes('microsoft')) {
-          console.log("🔐 Session expired. Initiating Microsoft Login Automation...");
+          console.log("🔐 Profile session not found. Initiating Login...");
           
           const portalId = user.portalId;
           const portalPass = decrypt(user.portalPassword);
@@ -70,19 +75,19 @@ const runScraper = async (userId) => {
                 ]);
             }
 
-            // --- GLITCH BYPASS LOGIC START ---
+            // --- GLITCH BYPASS LOGIC ---
             const handleGlitch = async () => {
                 try {
                     const useDiffAccount = await page.waitForSelector('#cancelLink', { timeout: 5000 }).catch(() => null);
                     if (useDiffAccount) {
-                        console.log("   ⚠️ Glitch Screen Detected: Clicking 'Use a different account'...");
+                        console.log("   ⚠️ Glitch Screen: Clicking 'Use a different account'...");
                         await useDiffAccount.click();
                         await new Promise(r => setTimeout(r, 2000)); 
                         
                         const tileSelector = `div.table[data-test-id="${portalId}"]`;
                         const accountTile = await page.waitForSelector(tileSelector, { timeout: 5000 });
                         if (accountTile) {
-                            console.log("   👉 Selecting Account Tile to force refresh...");
+                            console.log("   👉 Selecting correct Account Tile...");
                             await accountTile.click();
                             await page.waitForNavigation({ waitUntil: 'networkidle2' });
                             return true; 
@@ -119,7 +124,6 @@ const runScraper = async (userId) => {
                 ]);
             }
 
-            // --- CHECK FOR GLITCH AGAIN AFTER PASSWORD ---
             if (await handleGlitch()) console.log("   ✅ Glitch bypassed after password.");
 
             // STEP D: "Stay Signed In?"
@@ -148,7 +152,7 @@ const runScraper = async (userId) => {
           try {
             await page.waitForFunction(() => window.location.href.includes('dashboard'), { timeout: 15000 });
           } catch(e) {
-            console.log("❌ Failed to reach dashboard. Check credentials.");
+            console.log("❌ Failed to reach dashboard.");
             throw new Error("LOGIN_FAILED");
           }
       }
@@ -162,6 +166,10 @@ const runScraper = async (userId) => {
       });
 
       console.log(`   Found ${courseLinks.length} active courses.`);
+
+      // Clear old course data for this user before saving new ones 
+      // (This ensures when switching accounts, old courses don't linger)
+      await Grade.deleteMany({ userId: userId });
 
       if (courseLinks.length > 0) {
           for (const url of courseLinks) {
@@ -220,7 +228,7 @@ const runScraper = async (userId) => {
                       );
                   }
               } catch (e) { 
-                  console.log(`   ⚠️ Skipped active course details: ${e.message}`); 
+                  console.log(`   ⚠️ Skipped course detail: ${e.message}`); 
               }
           }
       }
@@ -273,6 +281,9 @@ const runScraper = async (userId) => {
           });
 
           if (historyData && historyData.length > 0) {
+              // Clear old history before saving to prevent mixing semesters
+              await ResultHistory.deleteMany({ userId: userId });
+
               for (const sem of historyData) {
                   await ResultHistory.findOneAndUpdate(
                       { term: sem.term, userId: userId }, 
@@ -295,13 +306,11 @@ const runScraper = async (userId) => {
                   },
                   { upsert: true }
               );
-              console.log(`✅ Synced ${historyData.length} semesters of history.`);
-          } else {
-              console.log("ℹ️ No history rows found.");
+              console.log(`✅ Synced ${historyData.length} semesters.`);
           }
 
       } catch (historyError) {
-          console.error(`❌ Error scraping history: ${historyError.message}`);
+          console.error(`❌ History Error: ${historyError.message}`);
       }
 
       console.log("🏁 SYNC COMPLETE!");
@@ -312,7 +321,6 @@ const runScraper = async (userId) => {
   } finally {
       if (browser) await browser.close();
       isRobotBusy = false;
-      console.log("🔓 Robot is free.");
   }
 };
 
