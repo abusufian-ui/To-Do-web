@@ -62,12 +62,19 @@ const ResultHistory = () => {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // --- HELPER: Determine Color for Grades ---
+  const getGradeColor = (grade) => {
+    // Grades considered "Less than C"
+    const dangerGrades = ['C-', 'D+', 'D', 'F', 'W']; 
+    if (dangerGrades.includes(grade)) return 'text-red-500';
+    return 'text-blue-500';
+  };
+
   const stats = useMemo(() => {
     if (!Array.isArray(semesters) || semesters.length === 0) return null;
 
     const parse = (val) => parseFloat(val) || 0.0;
 
-    // FIX: Prioritize official CGPA from studentStats (Dashboard/Gradebook value)
     const currentCGPA = studentStats?.cgpa 
         ? parse(studentStats.cgpa) 
         : parse(semesters[semesters.length - 1]?.cgpa);
@@ -83,13 +90,11 @@ const ResultHistory = () => {
         totalCredits += parse(sem.earnedCH);
     });
 
-    // Use official credits if available
     const displayCredits = studentStats?.credits ? parse(studentStats.credits) : totalCredits;
 
     return { currentCGPA, best, worst, totalCredits: displayCredits, totalSemesters: semesters.length };
   }, [semesters, studentStats]);
 
-  // FIX: Degree progress out of 133
   const DEGREE_TOTAL_CREDITS = 133;
   const progressPercentage = stats ? Math.min((stats.totalCredits / DEGREE_TOTAL_CREDITS) * 100, 100) : 0;
 
@@ -249,7 +254,7 @@ const ResultHistory = () => {
                           <td className="px-6 py-4 font-medium text-gray-700 dark:text-gray-300">{course.name}</td>
                           <td className="px-4 py-4 text-center text-gray-500">{course.creditHours}</td>
                           <td className="px-4 py-4 text-center text-gray-500">{course.gradePoints}</td>
-                          <td className="px-6 py-4 text-right font-bold text-blue-500">
+                          <td className={`px-6 py-4 text-right font-bold ${getGradeColor(course.finalGrade)}`}>
                             {course.finalGrade}
                           </td>
                         </tr>

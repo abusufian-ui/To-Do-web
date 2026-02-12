@@ -1,337 +1,397 @@
-// src/Settings.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Trash2, Plus, BookOpen, Book, AlertTriangle, Shield, Clock, 
-  Lock, RefreshCw, X, CheckCircle2, Link2, Unlink 
+  User, Lock, RefreshCw, Unlink, LogOut, Clock, Save, 
+  AlertCircle, CheckCircle2, Book, Plus, Trash2, Link2, Info 
 } from 'lucide-react';
-import UCPLogo from './UCPLogo'; 
-
-// --- HELPER: TOAST ---
-const Toast = ({ message, type, onClose }) => {
-  if (!message) return null;
-  const styles = {
-    success: "bg-emerald-600 text-white shadow-emerald-900/20",
-    error: "bg-red-600 text-white shadow-red-900/20",
-  };
-  return (
-    <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 p-4 rounded-xl shadow-xl animate-slideUp ${styles[type]}`}>
-      <CheckCircle2 size={20} />
-      <span className="font-medium text-sm">{message}</span>
-      <button onClick={onClose}><X size={16} className="opacity-70 hover:opacity-100" /></button>
-    </div>
-  );
-};
 
 const Settings = ({ 
-  courses = [], addCourse, removeCourse, tasks = [], updateTask, idleTimeout, setIdleTimeout 
+  user, 
+  idleTimeout, 
+  setIdleTimeout, 
+  onManualSync, 
+  onDisconnect, 
+  onLinkPortal,
+  onUpdateProfile, 
+  onChangePassword, 
+  courses,
+  addCourse,
+  removeCourse
 }) => {
-  const [newCourse, setNewCourse] = useState("");
-  const [selectedType, setSelectedType] = useState('uni');
-  
-  // Portal Connection State
-  const [portalId, setPortalId] = useState('');
-  const [portalPassword, setPortalPassword] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
-  const [savedPortalId, setSavedPortalId] = useState('');
-  const [connectionLoading, setConnectionLoading] = useState(false);
+  const [activeSection, setActiveSection] = useState('profile');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
 
-  // Sync State
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncError, setSyncError] = useState(null); 
-  
-  // Confirmation Modal
-  const [courseToDelete, setCourseToDelete] = useState(null);
-  const [affectedTasks, setAffectedTasks] = useState([]);
+  // Form States
+  const [name, setName] = useState(user?.name || '');
+  const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
+  const [portalCreds, setPortalCreds] = useState({ portalId: '', portalPassword: '' });
+  const [newCourseName, setNewCourseName] = useState('');
 
-  // Toast State
-  const [toast, setToast] = useState({ message: null, type: null });
+  // --- ACTIONS ---
 
-  const showToast = (message, type) => {
-    setToast({ message, type });
-    setTimeout(() => setToast({ message: null, type: null }), 3000);
+  // 1. Update Profile Name
+  const handleProfileUpdate = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await onUpdateProfile(name); 
+      setMessage({ type: 'success', text: 'Profile updated successfully!' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to update profile.' });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
+    }
   };
 
-  // --- FETCH PORTAL STATUS ---
-  useEffect(() => {
-    const fetchStatus = async () => {
-      const token = localStorage.getItem('token');
-      try {
-        const res = await fetch('/api/user/portal-status', {
-          headers: { 'x-auth-token': token }
-        });
-        const data = await res.json();
-        setIsConnected(data.isConnected);
-        if (data.isConnected) setSavedPortalId(data.portalId || 'Linked Account');
-      } catch (err) { console.error(err); }
-    };
-    fetchStatus();
-  }, []);
+  // 2. Change Password
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    if (passwords.new !== passwords.confirm) {
+      setMessage({ type: 'error', text: "New passwords don't match." });
+      return;
+    }
+    setLoading(true);
+    try {
+      await onChangePassword(passwords.current, passwords.new); 
+      setMessage({ type: 'success', text: 'Password changed successfully.' });
+      setPasswords({ current: '', new: '', confirm: '' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Incorrect password.' });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
+    }
+  };
 
-  // --- PORTAL ACTIONS ---
+  // 3. Link Portal
   const handleLink = async (e) => {
     e.preventDefault();
-    setConnectionLoading(true);
-    const token = localStorage.getItem('token');
+    if (!portalCreds.portalId || !portalCreds.portalPassword) {
+      setMessage({ type: 'error', text: 'Please fill in both fields.' });
+      return;
+    }
+    setLoading(true);
     try {
-      const res = await fetch('/api/user/link-portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-        body: JSON.stringify({ portalId, portalPassword })
-      });
-      if (res.ok) {
-        setIsConnected(true);
-        setSavedPortalId(portalId);
-        setPortalPassword('');
-        showToast("Account connected securely!", "success");
-      } else {
-        showToast("Failed to connect.", "error");
-      }
+      await onLinkPortal(portalCreds.portalId, portalCreds.portalPassword);
+      setMessage({ type: 'success', text: 'Portal linked successfully!' });
+      setPortalCreds({ portalId: '', portalPassword: '' });
     } catch (err) {
-       showToast("Server error.", "error");
-    } finally { setConnectionLoading(false); }
-  };
-
-  const handleUnlink = async () => {
-    if(!window.confirm("Disconnect portal? Automatic sync will stop.")) return;
-    const token = localStorage.getItem('token');
-    try {
-      await fetch('/api/user/unlink-portal', { 
-        method: 'POST', 
-        headers: { 'x-auth-token': token } 
-      });
-      setIsConnected(false);
-      setSavedPortalId('');
-      setPortalId('');
-      showToast("Account disconnected.", "success");
-    } catch (err) { console.error(err); }
-  };
-
-  // --- SYNC ACTION ---
-  const handleSync = async () => {
-    if (!isConnected) {
-        setSyncError("NO_CREDENTIALS");
-        return;
-    }
-    setIsSyncing(true);
-    setSyncError(null); 
-
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/sync-grades', { 
-          method: 'POST',
-          headers: { 'x-auth-token': token } 
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        showToast("Sync Complete! Reloading...", "success");
-        setTimeout(() => { window.location.reload(); }, 1500);
-      } else {
-        setSyncError(data.message || "Connection Failed");
-      }
-    } catch (error) {
-      setSyncError("Could not connect to server.");
+      setMessage({ type: 'error', text: 'Failed to link account. Check credentials.' });
     } finally {
-      setIsSyncing(false);
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
-  const handleAdd = () => {
-    if (newCourse.trim()) {
-      addCourse(newCourse.trim(), selectedType);
-      setNewCourse("");
-      showToast("Category added.", "success");
+  // 4. Manual Sync
+  const handleSync = async () => {
+    setLoading(true);
+    try {
+      await onManualSync();
+      setMessage({ type: 'success', text: 'Sync completed successfully!' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Sync failed. Try again.' });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
-  const initiateDelete = (course) => {
-    if (!course) return;
-    const linkedTasks = tasks.filter(t => t.course === course.name);
-    if (linkedTasks.length > 0) {
-      setAffectedTasks(linkedTasks);
-      setCourseToDelete(course);
-    } else {
-      removeCourse(course.id || course._id);
-      showToast("Category removed.", "success");
+  // 5. Add Custom Course
+  const handleAddCourse = (e) => {
+    e.preventDefault();
+    if (newCourseName.trim()) {
+      addCourse({ name: newCourseName, type: 'manual' }); 
+      setNewCourseName('');
+      setMessage({ type: 'success', text: 'Course added.' });
+      setTimeout(() => setMessage(null), 2000);
     }
   };
 
-  const confirmDelete = () => {
-    if (courseToDelete) {
-      affectedTasks.forEach(task => {
-        if (updateTask) updateTask(task.id, 'course', 'Course Deleted');
-      });
-      removeCourse(courseToDelete.id || courseToDelete._id);
-      showToast("Category deleted.", "success");
-      setCourseToDelete(null);
-      setAffectedTasks([]);
-    }
-  };
-
-  const filteredCourses = courses.filter(c => c && c.name && c.type === selectedType);
+  // --- RENDER HELPERS ---
+  const SidebarItem = ({ id, label, icon: Icon }) => (
+    <button 
+      onClick={() => setActiveSection(id)}
+      className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all ${
+        activeSection === id 
+        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#252525]'
+      }`}
+    >
+      <Icon size={18} />
+      {label}
+    </button>
+  );
 
   return (
-    <div className="p-8 max-w-4xl mx-auto animate-fadeIn pb-24 relative">
-      <h2 className="text-3xl font-bold mb-6 dark:text-white text-gray-800">Settings</h2>
-
-      <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: null, type: null })} />
+    <div className="flex h-full bg-gray-50 dark:bg-[#0c0c0c] animate-fadeIn overflow-hidden">
       
-      {/* --- SECTION 1: UNIVERSITY PORTAL CONNECTION (NEW) --- */}
-      <div className={`p-6 rounded-2xl border mb-8 transition-all ${isConnected ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#2C2C2C]'}`}>
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-                <div className={`p-3 rounded-full ${isConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-50 text-brand-blue'}`}>
-                  {isConnected ? <Link2 size={24} /> : <Unlink size={24} />}
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg dark:text-white">University Portal Connection</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {isConnected ? `Connected as ${savedPortalId}` : "Link your account to enable auto-sync."}
-                  </p>
-                </div>
-            </div>
-            {isConnected && (
-              <button onClick={handleUnlink} className="text-red-500 hover:text-red-600 text-sm font-medium">Disconnect</button>
-            )}
-          </div>
+      {/* LEFT SIDEBAR */}
+      <div className="w-64 border-r border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1E1E1E] p-6 flex flex-col gap-2">
+        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Settings</h2>
+        <SidebarItem id="profile" label="Profile Settings" icon={User} />
+        <SidebarItem id="security" label="Security" icon={Lock} />
+        <SidebarItem id="portal" label="Portal Connection" icon={RefreshCw} />
+        <SidebarItem id="courses" label="Course Manager" icon={Book} />
+        <SidebarItem id="preferences" label="Preferences" icon={Clock} />
+      </div>
 
-          {!isConnected ? (
-            <form onSubmit={handleLink} className="space-y-4 mt-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input 
-                  type="text" 
-                  placeholder="Student ID (e.g., L1F21BSCS...)" 
-                  value={portalId}
-                  onChange={e => setPortalId(e.target.value)}
-                  className="p-3 rounded-xl border border-gray-200 dark:border-[#444] bg-white dark:bg-[#252525] dark:text-white outline-none focus:ring-2 focus:ring-brand-blue"
-                  required
-                />
-                <input 
-                  type="password" 
-                  placeholder="Portal Password" 
-                  value={portalPassword}
-                  onChange={e => setPortalPassword(e.target.value)}
-                  className="p-3 rounded-xl border border-gray-200 dark:border-[#444] bg-white dark:bg-[#252525] dark:text-white outline-none focus:ring-2 focus:ring-brand-blue"
-                  required
-                />
-              </div>
-              <button disabled={connectionLoading} className="px-6 py-2.5 bg-brand-blue text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-600 transition-all">
-                {connectionLoading ? 'Connecting...' : 'Save & Connect'}
-              </button>
-            </form>
-          ) : (
-            <div className="flex items-center gap-2 text-emerald-600 text-sm font-bold bg-emerald-100 dark:bg-emerald-900/30 px-3 py-2 rounded-lg w-fit">
-              <CheckCircle2 size={16} /> Automation Active
+      {/* MAIN CONTENT AREA */}
+      <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
+        <div className="max-w-2xl mx-auto">
+          
+          {/* FEEDBACK MESSAGE */}
+          {message && (
+            <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 text-sm font-bold animate-slideDown ${
+              message.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 text-green-600' : 'bg-red-50 dark:bg-red-900/20 text-red-600'
+            }`}>
+              {message.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+              {message.text}
             </div>
           )}
-      </div>
 
-      {/* --- SECTION 2: MANAGE COURSES --- */}
-      <div className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#2C2C2C] p-6 shadow-sm mb-8">
-        <div className="flex justify-between items-start mb-4">
-           <div>
-             <h3 className="text-xl font-semibold flex items-center gap-2 dark:text-white text-gray-800">
-               <BookOpen size={24} className="text-blue-600 dark:text-blue-500" />
-               Manage Courses
-             </h3>
-             <p className="text-gray-500 dark:text-gray-400 mt-1">
-               Manage categories. Syncing relies on the portal connection above.
-             </p>
-           </div>
-           
-           <button 
-             onClick={handleSync} 
-             disabled={isSyncing}
-             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white shadow-md transition-all active:scale-95 ${isSyncing ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-blue hover:bg-blue-600 shadow-blue-500/30'}`}
-           >
-             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-             {isSyncing ? 'Syncing...' : 'Sync Now'}
-           </button>
-        </div>
-
-        {/* Sync Notifications */}
-        {isSyncing && !syncError && (
-          <div className="mb-6 p-5 bg-blue-600 rounded-xl shadow-lg shadow-blue-900/20 flex items-center gap-4 text-white animate-slideUp">
-             <div className="p-2 bg-white/20 rounded-full animate-spin"><RefreshCw size={24} className="text-white" /></div>
-             <div><h4 className="font-bold text-base">Syncing...</h4><p className="text-sm opacity-90">Logging in securely and updating grades.</p></div>
-          </div>
-        )}
-
-        {syncError && (
-           <div className="mb-6 p-5 bg-red-600 rounded-xl shadow-lg shadow-red-900/20 flex items-start gap-4 text-white animate-slideUp">
-             <div className="p-2 bg-white/20 rounded-full shrink-0"><AlertTriangle size={24} className="text-white" /></div>
-             <div className="flex-1">
-                <h4 className="font-bold text-base">Sync Failed</h4>
-                <p className="text-sm opacity-90 mt-1">
-                  {syncError === "NO_CREDENTIALS" ? "Please link your university account above first." : 
-                   syncError === "LOGIN_FAILED" ? "Login failed. Please check your saved password." : syncError}
-                </p>
-             </div>
-             <button onClick={() => setSyncError(null)} className="p-1 hover:bg-white/20 rounded-lg"><X size={20} /></button>
-          </div>
-        )}
-
-        {/* Course Filters & List */}
-        <div className="flex flex-col gap-6 mb-8">
-          <div className="flex gap-3">
-            <button onClick={() => setSelectedType('uni')} className={`flex items-center gap-3 px-5 py-3 rounded-xl font-medium border ${selectedType === 'uni' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 text-blue-600' : 'bg-white dark:bg-[#2C2C2C] border-gray-200 text-gray-700 dark:text-gray-300'}`}><UCPLogo className="w-8 h-8 text-current" /> University</button>
-            <button onClick={() => setSelectedType('general')} className={`flex items-center gap-3 px-5 py-3 rounded-xl font-medium border ${selectedType === 'general' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 text-blue-600' : 'bg-white dark:bg-[#2C2C2C] border-gray-200 text-gray-700 dark:text-gray-300'}`}><Book size={28} className="text-current" /> General</button>
-          </div>
-
-          {selectedType === 'general' && (
-             <div className="flex gap-3 relative z-10 animate-fadeIn">
-               <input type="text" value={newCourse} onChange={(e) => setNewCourse(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} placeholder="Add category..." className="flex-1 bg-gray-50 dark:bg-[#121212] border border-gray-300 dark:border-[#2C2C2C] rounded-lg px-4 py-3 dark:text-white" />
-               <button onClick={handleAdd} className="bg-blue-600 text-white px-8 py-3 rounded-lg font-medium shadow-lg"><Plus size={20} /> Add</button>
-             </div>
+          {/* --- PROFILE SECTION --- */}
+          {activeSection === 'profile' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold dark:text-white">Personal Information</h2>
+              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
+                <form onSubmit={handleProfileUpdate} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name</label>
+                    <input 
+                      type="text" 
+                      value={name} 
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label>
+                    <input 
+                      type="email" 
+                      value={user.email} 
+                      disabled 
+                      className="w-full bg-gray-100 dark:bg-[#252525] border border-transparent rounded-lg p-3 text-sm text-gray-500 cursor-not-allowed"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Email cannot be changed.</p>
+                  </div>
+                  <button type="submit" disabled={loading} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition-all disabled:opacity-50">
+                    {loading ? 'Saving...' : <><Save size={16} /> Save Changes</>}
+                  </button>
+                </form>
+              </div>
+            </div>
           )}
-        </div>
 
-        <div className="grid gap-3 relative z-0">
-          {filteredCourses.map((course, index) => (
-            <div key={index} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#121212] rounded-lg border border-gray-200 dark:border-[#2C2C2C] group animate-slideUp">
-              <div className="flex items-center gap-4">
-                 {course.type === 'uni' ? <UCPLogo className="w-8 h-8 text-blue-600 dark:text-blue-400" /> : <Book size={28} className="text-gray-400" />}
-                 <div><span className="font-medium dark:text-white text-gray-700 text-lg block">{course.name}</span></div>
-              </div>
-              {course.type === 'uni' ? <div className="flex items-center gap-2 text-xs font-bold text-gray-400 bg-gray-200 dark:bg-[#2a2a2a] px-3 py-1.5 rounded-full"><Lock size={12} /> Synced</div> : <button onClick={() => initiateDelete(course)} className="text-gray-400 hover:text-red-500 p-3 rounded-full hover:bg-gray-200 dark:hover:bg-[#333]"><Trash2 size={20} /></button>}
-            </div>
-          ))}
-          {filteredCourses.length === 0 && <div className="text-center text-gray-400 italic py-12">No courses found.</div>}
-        </div>
-      </div>
-
-      {/* --- SECTION 3: SECURITY --- */}
-      <div className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#2C2C2C] p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 bg-gray-50 dark:bg-[#121212] rounded-lg border border-gray-200 dark:border-[#2C2C2C]">
-          <div className="flex items-center gap-4">
-            <div className="bg-white dark:bg-[#2C2C2C] p-3 rounded-full border border-gray-200 dark:border-[#3E3E3E]"><Clock size={20} className="text-gray-500 dark:text-gray-400" /></div>
-            <div><h4 className="text-base font-bold text-gray-900 dark:text-white">Auto-Lock Timer</h4><p className="text-sm text-gray-500 dark:text-gray-400">Duration before screen lock.</p></div>
-          </div>
-          <select value={idleTimeout} onChange={(e) => setIdleTimeout(Number(e.target.value))} className="w-full md:w-48 px-4 py-2.5 bg-white dark:bg-[#2C2C2C] border border-gray-300 dark:border-[#3E3E3E] rounded-lg text-gray-800 dark:text-gray-200 text-sm outline-none">
-            <option value={300000}>5 Minutes</option>
-            <option value={900000}>15 Minutes</option>
-            <option value={1800000}>30 Minutes</option>
-            <option value={0}>Never</option>
-          </select>
-        </div>
-      </div>
-
-      {/* --- CONFIRMATION MODAL --- */}
-      {courseToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden animate-slideUp">
-            <div className="p-6 text-center">
-              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle size={24} className="text-red-600 dark:text-red-500" /></div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete Category?</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Tasks will be marked as "Course Deleted".</p>
-              <div className="flex gap-3">
-                <button onClick={() => setCourseToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-[#2C2C2C]">Cancel</button>
-                <button onClick={confirmDelete} className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold shadow-lg">Yes, Remove</button>
+          {/* --- SECURITY SECTION --- */}
+          {activeSection === 'security' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold dark:text-white">Security</h2>
+              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
+                <form onSubmit={handlePasswordChange} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Current Password</label>
+                    <input 
+                      type="password" 
+                      value={passwords.current}
+                      onChange={(e) => setPasswords({...passwords, current: e.target.value})}
+                      className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
+                      <input 
+                        type="password" 
+                        value={passwords.new}
+                        onChange={(e) => setPasswords({...passwords, new: e.target.value})}
+                        className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm New</label>
+                      <input 
+                        type="password" 
+                        value={passwords.confirm}
+                        onChange={(e) => setPasswords({...passwords, confirm: e.target.value})}
+                        className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={loading} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition-all disabled:opacity-50">
+                    {loading ? 'Processing...' : <><Save size={16} /> Update Password</>}
+                  </button>
+                </form>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* --- PORTAL SECTION --- */}
+          {activeSection === 'portal' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold dark:text-white">Portal Connection</h2>
+              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
+                {user.isPortalConnected ? (
+                  <div className="space-y-6">
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl flex items-center gap-4">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-800 rounded-full text-blue-600 dark:text-blue-200">
+                        <CheckCircle2 size={24} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-blue-900 dark:text-blue-100">Connected as {user.portalId}</p>
+                        <p className="text-xs text-blue-700 dark:text-blue-300">Your grades and courses are syncing automatically.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <button onClick={handleSync} disabled={loading} className="flex-1 flex items-center justify-center gap-2 bg-gray-100 dark:bg-[#252525] hover:bg-gray-200 dark:hover:bg-[#333] text-gray-700 dark:text-white py-3 rounded-xl font-bold transition-all">
+                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} /> 
+                        {loading ? 'Syncing...' : 'Sync Now'}
+                      </button>
+                      <button onClick={() => { if(window.confirm('Disconnect portal?')) onDisconnect(); }} className="flex-1 flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 py-3 rounded-xl font-bold transition-all">
+                        <Unlink size={18} /> Disconnect
+                      </button>
+                    </div>
+                    
+                    {/* RED NOTE - CONNECTED STATE */}
+                    <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 p-3 rounded-xl flex gap-3 items-start mt-2">
+                      <Info size={16} className="text-red-500 shrink-0 mt-0.5" />
+                      <div className="text-xs text-red-600 dark:text-red-400 leading-relaxed">
+                        <strong>Sync Status:</strong> Connecting to the university database usually takes <strong>15 to 30 seconds</strong>. 
+                        If you don't see your latest data, please click the <strong>Manual Sync</strong> button above to refresh immediately.
+                      </div>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="text-center py-4">
+                      <div className="inline-block p-3 bg-gray-100 dark:bg-[#252525] rounded-full text-gray-400 mb-2">
+                        <Link2 size={24} />
+                      </div>
+                      <h3 className="text-lg font-bold dark:text-white">Connect University Portal</h3>
+                      <p className="text-gray-500 text-xs">Sync your grades, courses, and schedule automatically.</p>
+                    </div>
+
+                    <form onSubmit={handleLink} className="space-y-4 max-w-sm mx-auto">
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Portal ID</label>
+                        <input 
+                          type="text" 
+                          value={portalCreds.portalId}
+                          onChange={(e) => setPortalCreds({ ...portalCreds, portalId: e.target.value })}
+                          placeholder="e.g. L1F19BSCS0000"
+                          className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
+                        <input 
+                          type="password" 
+                          value={portalCreds.portalPassword}
+                          onChange={(e) => setPortalCreds({ ...portalCreds, portalPassword: e.target.value })}
+                          placeholder="••••••••"
+                          className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50">
+                        {loading ? 'Connecting...' : 'Connect Account'}
+                      </button>
+                    </form>
+                    
+                    {/* RED NOTE - DISCONNECTED STATE */}
+                    <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 p-3 rounded-xl flex gap-3 items-start mt-4 max-w-sm mx-auto">
+                      <Info size={16} className="text-red-500 shrink-0 mt-0.5" />
+                      <div className="text-xs text-red-600 dark:text-red-400 leading-relaxed text-left">
+                        <strong>Note:</strong> Initial data retrieval may take <strong>15-30 seconds</strong> after connection. If your dashboard remains empty, please use the <strong>Manual Sync</strong> option in settings.
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* --- COURSE MANAGER --- */}
+          {activeSection === 'courses' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold dark:text-white">Course Manager</h2>
+              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
+                <form onSubmit={handleAddCourse} className="flex gap-2 mb-6">
+                  <input 
+                    type="text" 
+                    value={newCourseName}
+                    onChange={(e) => setNewCourseName(e.target.value)}
+                    placeholder="Enter course name..."
+                    className="flex-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
+                  />
+                  <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg flex items-center gap-2 font-bold text-sm">
+                    <Plus size={16} /> Add
+                  </button>
+                </form>
+
+                <div className="space-y-2">
+                  {courses.length === 0 && <p className="text-sm text-gray-500 text-center">No courses available.</p>}
+                  {courses.map((course) => (
+                    <div key={course.id || course.name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#252525] rounded-lg border border-gray-100 dark:border-[#333]">
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{course.name}</span>
+                      {course.type !== 'uni' && (
+                        <button onClick={() => removeCourse(course.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg transition-colors">
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                      {course.type === 'uni' && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded">Portal</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- PREFERENCES SECTION --- */}
+          {activeSection === 'preferences' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold dark:text-white">System Preferences</h2>
+              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
+                
+                <div className="mb-6">
+                  <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
+                    <LogOut size={16} /> Auto-Logout Timer
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-4">Automatically log out after a period of inactivity.</p>
+                  
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: '5 Mins', value: 300000 },
+                      { label: '15 Mins', value: 900000 },
+                      { label: '30 Mins', value: 1800000 },
+                      { label: '1 Hour', value: 3600000 },
+                      { label: 'Never', value: 0 },
+                    ].map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => setIdleTimeout(opt.value)}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all ${
+                          idleTimeout === opt.value
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white dark:bg-[#252525] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#333] hover:border-blue-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
         </div>
-      )}
+      </div>
     </div>
   );
 };

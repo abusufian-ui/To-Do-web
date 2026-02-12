@@ -10,12 +10,13 @@ import Login from './Login';
 import Calendar from './Calendar'; 
 import GradeBook from './GradeBook'; 
 import ResultHistory from './ResultHistory';
+import AdminDashboard from './AdminDashboard';
 import { Heart, ArrowRight } from 'lucide-react';
 import CashManager from './CashManager';
+import TaskSummaryModal from './TaskSummaryModal';
+import MyProfile from './MyProfile'; 
 
 function App() {
-  // --- UPDATED AUTH STATE ---
-  // Using 'token' determines if user is logged in. No more sessionStorage.
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [user, setUser] = useState(() => {
     const u = localStorage.getItem('user');
@@ -24,6 +25,7 @@ function App() {
   
   const isAuthenticated = !!token;
 
+  // --- THEME STATE ---
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) return savedTheme === 'dark';
@@ -42,20 +44,23 @@ function App() {
     }
   }, [isDarkMode]);
 
+  // --- TIMEOUT STATE ---
   const [idleTimeout, setIdleTimeout] = useState(() => {
     const saved = localStorage.getItem('idleTimeout');
-    return saved ? parseInt(saved, 10) : 900000;
+    return saved ? parseInt(saved, 10) : 300000;
   });
 
   useEffect(() => {
     localStorage.setItem('idleTimeout', idleTimeout);
   }, [idleTimeout]);
 
+  // --- APP STATE ---
   const [activeTab, setActiveTab] = useState('Welcome');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null); 
   const [prefilledDate, setPrefilledDate] = useState(''); 
+  const [viewTask, setViewTask] = useState(null);
 
   const [courses, setCourses] = useState([]); 
   const [tasks, setTasks] = useState([]); 
@@ -65,18 +70,18 @@ function App() {
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: ''
   });
 
-  // --- UPDATED LOGOUT HANDLER ---
+  const authHeaders = { 'Content-Type': 'application/json', 'x-auth-token': token };
+
+  // --- AUTH HANDLERS ---
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    // Clear any potential session leftovers
     sessionStorage.clear();
     setToken(null);
     setUser(null);
     setActiveTab('Welcome');
   };
 
-  // --- UPDATED LOGIN HANDLER ---
   const handleLogin = (authToken, userData) => {
     localStorage.setItem('token', authToken);
     localStorage.setItem('user', JSON.stringify(userData));
@@ -84,6 +89,7 @@ function App() {
     setUser(userData);
   };
 
+  // --- IDLE CHECK ---
   const checkForInactivity = useCallback(() => {
     if (!isAuthenticated || idleTimeout === 0) return;
     const timer = setTimeout(() => {
@@ -110,18 +116,16 @@ function App() {
     };
   }, [checkForInactivity]);
 
-  // --- DATA FETCHING (Authenticated) ---
-  useEffect(() => {
-    if (isAuthenticated && token) {
-      fetchTasks();
-      fetchBin();
-      fetchCourses();
-    }
-  }, [isAuthenticated, token]);
-
-  const authHeaders = {
-    'Content-Type': 'application/json',
-    'x-auth-token': token
+  // --- DATA FETCHING ---
+  const fetchUser = async () => {
+    try {
+      const res = await fetch('/api/auth/user', { headers: authHeaders });
+      if (res.ok) {
+        const freshUser = await res.json();
+        setUser(freshUser);
+        localStorage.setItem('user', JSON.stringify(freshUser));
+      }
+    } catch (error) { console.error("Error fetching user:", error); }
   };
 
   const fetchTasks = async () => {
@@ -147,7 +151,6 @@ function App() {
     try {
       const res = await fetch('/api/grades', { headers: authHeaders });
       const gradeData = await res.json();
-      // Safety check if data is array
       const safeData = Array.isArray(gradeData) ? gradeData : [];
       const uniCourses = safeData.map(g => ({
         id: g._id, name: g.courseName, type: 'uni'
@@ -159,7 +162,16 @@ function App() {
     }
   };
 
-  // --- ACTIONS ---
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      fetchUser(); 
+      fetchTasks();
+      fetchBin();
+      fetchCourses();
+    }
+  }, [isAuthenticated, token]);
+
+  // --- TASK ACTIONS ---
   const handleAddTask = async (newTaskData) => {
     try {
       const res = await fetch('/api/tasks', {
@@ -222,8 +234,24 @@ function App() {
     } catch (error) { console.error("Error emptying bin:", error); }
   };
 
-  const addCourse = async () => { console.log("Managed by Sync."); };
-  const removeCourse = async () => { console.log("Managed by Sync."); };
+  const updateTask = async (id, field, value) => {
+    setTasks(prevTasks => prevTasks.map(task => task.id === id ? { ...task, [field]: value } : task));
+    try {
+      await fetch(`/api/tasks/${id}`, {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({ [field]: value })
+      });
+    } catch (error) { console.error("Error updating task:", error); }
+  };
+
+  const openAddTaskWithDate = (dateString) => {
+    setPrefilledDate(dateString);
+    setIsAddTaskOpen(true);
+  };
+
+  // --- HELPER FUNCTIONS ---
+  const toggleTheme = () => setIsDarkMode(prev => !prev);
 
   const getFilteredTasks = () => {
     return tasks.filter(task => {
@@ -242,29 +270,98 @@ function App() {
     });
   };
 
-  const toggleTheme = () => setIsDarkMode(prev => !prev);
-
-  const updateTask = async (id, field, value) => {
-    setTasks(prevTasks => prevTasks.map(task => task.id === id ? { ...task, [field]: value } : task));
+  // --- SETTINGS ACTIONS ---
+  const handleManualSync = async () => {
     try {
-      await fetch(`/api/tasks/${id}`, {
-        method: 'PUT',
-        headers: authHeaders,
-        body: JSON.stringify({ [field]: value })
-      });
-    } catch (error) { console.error("Error updating task:", error); }
+      await fetch('/api/sync-grades', { method: 'POST', headers: authHeaders });
+      fetchCourses();
+    } catch (e) { throw e; }
   };
 
-  const openAddTaskWithDate = (dateString) => {
-    setPrefilledDate(dateString);
-    setIsAddTaskOpen(true);
+  const handleDisconnect = async () => {
+    try {
+      await fetch('/api/user/unlink-portal', { method: 'POST', headers: authHeaders });
+      const updatedUser = { ...user, isPortalConnected: false, portalId: null };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setCourses(courses.filter(c => c.type !== 'uni')); 
+    } catch (e) { console.error(e); }
+  };
+
+  const handleLinkPortal = async (portalId, portalPassword) => {
+    try {
+      const res = await fetch('/api/user/link-portal', { 
+        method: 'POST', 
+        headers: authHeaders,
+        body: JSON.stringify({ portalId, portalPassword })
+      });
+      if (res.ok) {
+        const updatedUser = { ...user, isPortalConnected: true, portalId };
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        fetchCourses();
+      } else {
+        throw new Error("Failed to link");
+      }
+    } catch (e) { throw e; }
+  };
+
+  const handleUpdateProfile = async (name) => {
+    try {
+      const res = await fetch('/api/user/profile', {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      } else {
+        throw new Error("Update failed");
+      }
+    } catch (e) { throw e; }
+  };
+
+  const handleChangePassword = async (currentPassword, newPassword) => {
+    try {
+      const res = await fetch('/api/user/password', {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed");
+      }
+    } catch (e) { throw e; }
+  };
+
+  const addCourse = (course) => {
+    setCourses([...courses, { ...course, id: Date.now().toString() }]);
+  };
+  const removeCourse = (id) => {
+    setCourses(courses.filter(c => c.id !== id));
+  };
+
+  const handleUpdateLocalUser = (updatedUser) => {
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
   };
 
   if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
   return (
     <div className={`flex h-screen w-full transition-colors duration-300 ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} binCount={deletedTasks.length} />
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        isOpen={isSidebarOpen} 
+        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
+        binCount={deletedTasks.length} 
+        user={user} 
+      />
+      
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300">
         <Header 
           activeTab={activeTab}
@@ -276,6 +373,9 @@ function App() {
           onAddClick={() => { setPrefilledDate(''); setIsAddTaskOpen(true); }} 
           user={user}
           onLogout={handleLogout}
+          tasks={tasks}
+          onOpenTask={(task) => setViewTask(task)}
+          onNavigate={(tab) => setActiveTab(tab)} 
         />
         <div className="flex-1 overflow-auto p-0 relative">
           
@@ -300,13 +400,33 @@ function App() {
           {activeTab === 'Grade Book' && <GradeBook />}
           {activeTab === 'History' && <ResultHistory />}
           {activeTab.startsWith('Cash-') && <CashManager activeTab={activeTab} />}
-          {activeTab === 'Settings' && <Settings courses={courses} addCourse={addCourse} removeCourse={removeCourse} tasks={tasks} updateTask={updateTask} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout}/>}
           {activeTab === 'Bin' && <Bin deletedTasks={deletedTasks} restoreTask={restoreTask} permanentlyDeleteTask={permanentlyDeleteTask} deleteAll={deleteAll} restoreAll={restoreAll}/>}
+          {activeTab === 'Admin' && <AdminDashboard />}
+
+          {/* NEW MODULES */}
+          {activeTab === 'Profile' && <MyProfile user={user} />}
+          
+          {activeTab === 'Settings' && (
+            <Settings 
+              user={user} 
+              idleTimeout={idleTimeout} 
+              setIdleTimeout={setIdleTimeout}
+              onManualSync={handleManualSync}
+              onDisconnect={handleDisconnect}
+              onLinkPortal={handleLinkPortal} 
+              onUpdateProfile={handleUpdateProfile} 
+              onChangePassword={handleChangePassword} 
+              courses={courses}
+              addCourse={addCourse}
+              removeCourse={removeCourse}
+            />
+          )}
 
         </div>
       </div>
 
-      <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} />
+      <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} tasks={tasks} />
+      <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={courses} onUpdate={updateTask} />
       <ConfirmationModal isOpen={!!taskToDelete} onClose={() => setTaskToDelete(null)} onConfirm={executeDelete} title="Move to Bin?" message="Are you sure you want to move this task to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
     </div>
   );

@@ -1,4 +1,3 @@
-// server/models/User.js
 const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
@@ -6,10 +5,13 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   
-  // --- PORTAL CREDENTIALS ---
-  portalId: { type: String },
-  portalPassword: { type: String }, // Encrypted
+  // Portal Credentials
+  portalId: { type: String, default: null },
+  portalPassword: { type: String, default: null },
   isPortalConnected: { type: Boolean, default: false },
+
+  // Admin Flag (Default is false for everyone except you)
+  isAdmin: { type: Boolean, default: false }, 
   
   createdAt: { type: Date, default: Date.now }
 });

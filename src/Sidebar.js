@@ -3,10 +3,10 @@ import {
   CheckSquare, Calendar, StickyNote, BarChart3, Settings, 
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History,
-  GraduationCap
+  GraduationCap, Shield
 } from 'lucide-react';
 
-const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0 }) => {
+const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
   const [isCashExpanded, setIsCashExpanded] = useState(false);
   const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(false);
 
@@ -41,29 +41,47 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0 
     if (isCashExpanded) setIsCashExpanded(false);
   };
 
+  // Helper to check if a section is active (contains the current tab)
+  const isAcademicsActive = ['Grade Book', 'History'].includes(activeTab);
+  const isCashActive = activeTab.startsWith('Cash');
+
   return (
     <div className={`
       relative h-screen bg-white dark:bg-[#1E1E1E] border-r border-gray-200 dark:border-[#2C2C2C] 
       flex flex-col transition-all duration-300 ease-in-out
       ${isOpen ? 'w-64 p-6' : 'w-20 p-4 items-center'}
     `}>
-      {/* --- CSS TRICK TO HIDE SCROLLBAR --- */}
       <style>{`
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #e2e8f0;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #cbd5e1;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #3f3f46;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #52525b;
+        }
       `}</style>
       
-      {/* HEADER */}
       {isOpen && (
         <h2 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4 animate-fadeIn whitespace-nowrap shrink-0">
           Tools
         </h2>
       )}
 
-      {/* --- SCROLLABLE SECTION (WORK TOOLS) --- */}
-      <div className="flex flex-col gap-2 w-full flex-1 overflow-y-auto no-scrollbar">
+      <div className={`flex flex-col gap-2 w-full flex-1 ${isOpen ? 'overflow-y-auto custom-scrollbar' : 'overflow-visible'}`}>
         
-        {/* Standard Items */}
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.name;
@@ -72,7 +90,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0 
               key={item.name}
               onClick={() => setActiveTab(item.name)}
               className={`
-                flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+                w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
                 ${isActive 
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'
@@ -82,102 +100,115 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0 
             >
               <div className="relative"><Icon size={20} strokeWidth={2} /></div>
               {isOpen && <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">{item.name}</span>}
+              
               {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">{item.name}</div>}
             </button>
           );
         })}
 
-        {/* Academics Section */}
-        <div className="pt-1">
-           <button
-             onClick={handleAcademicsClick}
-             className={`
-               w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
-               ${isAcademicsExpanded || ['Grade Book', 'History'].includes(activeTab)
-                 ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' 
-                 : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
-               ${!isOpen && 'justify-center'}
-             `}
-           >
-             <GraduationCap size={20} strokeWidth={2} />
-             {isOpen && (
-               <>
-                 <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Academics</span>
-                 {isAcademicsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-               </>
-             )}
-             {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Academics</div>}
-           </button>
+        {/* --- ACADEMICS SECTION --- */}
+        <button
+          onClick={handleAcademicsClick}
+          className={`
+            w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+            ${isAcademicsActive && !isOpen // Highlight parent only if closed and active
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
+            ${!isOpen && 'justify-center'}
+          `}
+        >
+          <GraduationCap size={20} strokeWidth={2} />
+          {isOpen && (
+            <>
+              <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Academics</span>
+              {isAcademicsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </>
+          )}
+          {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Academics</div>}
+        </button>
 
-           {isOpen && isAcademicsExpanded && (
-             <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
-               {academicsSubItems.map((sub) => (
-                 <button
-                   key={sub.id}
-                   onClick={() => setActiveTab(sub.id)}
-                   className={`
-                     w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
-                     ${activeTab === sub.id 
-                       ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold' 
-                       : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10'}
-                   `}
-                 >
-                   <sub.icon size={16} />
-                   <span>{sub.label}</span>
-                 </button>
-               ))}
-             </div>
-           )}
-        </div>
+        {isOpen && isAcademicsExpanded && (
+          <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
+            {academicsSubItems.map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setActiveTab(sub.id)}
+                className={`
+                  w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
+                  ${activeTab === sub.id 
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-medium' // Dark Blue Active State
+                    : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10'}
+                `}
+              >
+                <sub.icon size={16} />
+                <span>{sub.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
-        {/* Cash Manager Section */}
-        <div className="pt-1">
-           <button
-             onClick={handleCashClick}
-             className={`
-               w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
-               ${isCashExpanded || activeTab.startsWith('Cash')
-                 ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' 
-                 : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
-               ${!isOpen && 'justify-center'}
-             `}
-           >
-             <Wallet size={20} strokeWidth={2} />
-             {isOpen && (
-               <>
-                 <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Cash Manager</span>
-                 {isCashExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-               </>
-             )}
-             {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Cash Management</div>}
-           </button>
+        {/* --- CASH MANAGER SECTION --- */}
+        <button
+          onClick={handleCashClick}
+          className={`
+            w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+            ${isCashActive && !isOpen // Highlight parent only if closed and active
+              ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' 
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
+            ${!isOpen && 'justify-center'}
+          `}
+        >
+          <Wallet size={20} strokeWidth={2} />
+          {isOpen && (
+            <>
+              <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Cash Manager</span>
+              {isCashExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </>
+          )}
+          {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Cash Management</div>}
+        </button>
 
-           {isOpen && isCashExpanded && (
-             <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
-               {cashSubItems.map((sub) => (
-                 <button
-                   key={sub.id}
-                   onClick={() => setActiveTab(sub.id)}
-                   className={`
-                     w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
-                     ${activeTab === sub.id 
-                       ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold' 
-                       : 'text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10'}
-                   `}
-                 >
-                   <sub.icon size={16} />
-                   <span>{sub.label}</span>
-                 </button>
-               ))}
-             </div>
-           )}
-        </div>
+        {isOpen && isCashExpanded && (
+          <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
+            {cashSubItems.map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setActiveTab(sub.id)}
+                className={`
+                  w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
+                  ${activeTab === sub.id 
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20 font-medium' // Dark Green Active State
+                    : 'text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10'}
+                `}
+              >
+                <sub.icon size={16} />
+                <span>{sub.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* --- ADMIN SECTION --- */}
+        {user && user.isAdmin && (
+          <button
+            onClick={() => setActiveTab('Admin')}
+            className={`
+              w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+              ${activeTab === 'Admin' 
+                ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' 
+                : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'}
+              ${!isOpen && 'justify-center'}
+            `}
+          >
+            <div className="relative"><Shield size={20} strokeWidth={2} /></div>
+            {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Admin Panel</span>}
+            {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
+          </button>
+        )}
+
       </div>
 
-      {/* --- FIXED BOTTOM SECTION (UTILITIES) --- */}
       <div className="mt-auto w-full pt-4 border-t border-gray-200 dark:border-[#2C2C2C] flex flex-col gap-2 shrink-0 bg-white dark:bg-[#1E1E1E]">
-        
-        {/* SETTINGS */}
         <button
           onClick={() => setActiveTab('Settings')}
           className={`
@@ -194,7 +225,6 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0 
           {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Settings</div>}
         </button>
 
-        {/* BIN */}
         <button
            onClick={() => setActiveTab('Bin')}
            className={`
@@ -225,7 +255,6 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0 
            {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Recycle Bin</div>}
          </button>
 
-        {/* TOGGLE BUTTON */}
         <button 
           onClick={toggleSidebar}
           className="flex items-center justify-center w-full p-2 mt-1 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors"

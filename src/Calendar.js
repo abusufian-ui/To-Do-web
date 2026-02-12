@@ -6,12 +6,10 @@ import {
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
-// --- 1. HELPER: SMART ABBREVIATIONS ---
+// ... (KEEP ALL HELPER FUNCTIONS LIKE getAbbreviation, getCourseColor, etc. UNCHANGED) ...
 const getAbbreviation = (name) => {
   if (!name) return '';
   const n = name.toLowerCase().trim();
-
-  // Standard CS Abbreviations
   if (n.includes('operating system')) return 'OS';
   if (n.includes('differential equation')) return 'DE';
   if (n.includes('software engineering')) return 'SE';
@@ -28,23 +26,13 @@ const getAbbreviation = (name) => {
   if (n.includes('database')) return 'DB';
   if (n.includes('computer network')) return 'CN';
   if (n.includes('general task')) return 'General';
-
-  // Fallback: Create Acronym if > 15 chars
   if (name.length > 15) {
     const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for'];
-    return name
-      .split(' ')
-      .filter(word => !ignoredWords.includes(word.toLowerCase()))
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 5); 
+    return name.split(' ').filter(word => !ignoredWords.includes(word.toLowerCase())).map(word => word[0]).join('').toUpperCase().substring(0, 5); 
   }
-
   return name;
 };
 
-// --- HELPER: COLORS & ICONS ---
 const getCourseColor = (courseName) => {
   if (!courseName) return { bg: 'bg-gray-700', text: 'text-gray-200' };
   if (courseName.toLowerCase() === 'event') return { bg: 'bg-rose-600', text: 'text-white', isEvent: true };
@@ -72,7 +60,6 @@ const formatDisplayDate = (dateString) => {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
-// --- TIME FORMATTER (24h -> 12h AM/PM) ---
 const formatTime = (timeString) => {
   if (!timeString) return '';
   const [hours, minutes] = timeString.split(':');
@@ -82,7 +69,6 @@ const formatTime = (timeString) => {
   return `${h12}:${minutes} ${ampm}`;
 };
 
-// --- SYNCED PRIORITY CONFIG ---
 const getPriorityConfig = (p) => {
   switch(p) {
     case 'Critical': return { icon: ChevronsUp, color: 'text-red-600 dark:text-red-500', label: p };
@@ -93,7 +79,6 @@ const getPriorityConfig = (p) => {
   }
 };
 
-// --- SYNCED STATUS CONFIG ---
 const getStatusConfig = (s) => {
   switch(s) {
     case 'Scheduled': return { icon: CalendarIcon, color: 'text-gray-500 dark:text-gray-400', label: s };
@@ -112,11 +97,10 @@ const CourseTypeIcon = ({ courseName, courses = [], className = "w-3 h-3" }) => 
   return <Book className={className} />;
 };
 
-// --- CUSTOM DROPDOWN FOR EDIT MODE ---
+// ... (KEEP EditDropdown and CalendarTaskModal COMPONENTS AS THEY WERE, UNCHANGED) ...
 const EditDropdown = ({ value, options, onChange, getConfig }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
-
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -126,35 +110,22 @@ const EditDropdown = ({ value, options, onChange, getConfig }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
   const currentConfig = getConfig(value) || {};
   const CurrentIcon = currentConfig.icon || AlertCircle;
-
   return (
     <div className="relative w-full" ref={dropdownRef}>
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded-lg px-2 py-1.5 text-xs text-left transition-all"
-      >
-        <span className={`flex items-center gap-2 truncate font-medium ${currentConfig.color}`}>
-          <CurrentIcon size={14} /> {value}
-        </span>
+      <button onClick={() => setIsOpen(!isOpen)} className="w-full flex items-center justify-between bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded-lg px-2 py-1.5 text-xs text-left transition-all">
+        <span className={`flex items-center gap-2 truncate font-medium ${currentConfig.color}`}><CurrentIcon size={14} /> {value}</span>
         <ChevronDown size={12} className="text-gray-400" />
       </button>
-
       {isOpen && (
-        <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 overflow-hidden max-h-40 overflow-y-auto">
+        <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 overflow-hidden max-h-40 overflow-y-auto custom-scrollbar">
           {options.map(opt => {
             const config = getConfig(opt) || {};
             const Icon = config.icon || AlertCircle;
             return (
-              <div 
-                key={opt} 
-                onClick={() => { onChange(opt); setIsOpen(false); }}
-                className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs ${config.color || 'text-gray-700'}`}
-              >
-                <Icon size={14} /> 
-                <span>{opt}</span>
+              <div key={opt} onClick={() => { onChange(opt); setIsOpen(false); }} className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs ${config.color || 'text-gray-700'}`}>
+                <Icon size={14} /> <span>{opt}</span>
               </div>
             );
           })}
@@ -164,76 +135,50 @@ const EditDropdown = ({ value, options, onChange, getConfig }) => {
   );
 };
 
-// --- 2. MODAL COMPONENT ---
 const CalendarTaskModal = ({ task, onClose, courses, onUpdate, onDelete }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', date: '', time: '', priority: '', status: '' });
   const [includeTime, setIncludeTime] = useState(false);
-
   useEffect(() => {
     if (task) {
       setForm({
-        name: task.name || '',
-        description: task.description || '',
-        date: task.date || '',
-        time: task.time || '',
-        priority: task.priority || 'Medium',
-        status: task.status || 'New task'
+        name: task.name || '', description: task.description || '', date: task.date || '',
+        time: task.time || '', priority: task.priority || 'Medium', status: task.status || 'New task'
       });
       setIncludeTime(!!task.time);
       setIsEditing(false);
     }
   }, [task]);
-
   if (!task) return null;
   const theme = getCourseColor(task.course);
-  
   const statusConfig = getStatusConfig(task.status);
   const StatusIcon = statusConfig.icon;
-  
   const priorityConfig = getPriorityConfig(task.priority);
   const PriorityIcon = priorityConfig.icon;
-
   const handleSave = () => {
     if (form.name !== task.name) onUpdate(task.id, 'name', form.name);
     if (form.description !== task.description) onUpdate(task.id, 'description', form.description);
     if (form.date !== task.date) onUpdate(task.id, 'date', form.date);
-    
     const timeToSave = includeTime ? form.time : null;
     if (timeToSave !== task.time) onUpdate(task.id, 'time', timeToSave);
-
     if (form.priority !== task.priority) onUpdate(task.id, 'priority', form.priority);
     if (form.status !== task.status) onUpdate(task.id, 'status', form.status);
     setIsEditing(false);
   };
-
-  const handleDelete = () => {
-    onDelete(task.id);
-    onClose();
-  };
-
+  const handleDelete = () => { onDelete(task.id); onClose(); };
   const showTimeCell = isEditing ? includeTime : !!task.time;
-
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] animate-slideUp overflow-hidden">
-        
-        {/* Header */}
-        <div className={`p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-start ${theme.bg}`}>
+      <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] animate-slideUp overflow-hidden flex flex-col max-h-[90vh]">
+        <div className={`p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-start ${theme.bg} shrink-0`}>
           <div className="flex-1 mr-4">
-            {/* ABBREVIATED BADGE */}
             <div className={`flex items-center gap-2 px-2 py-1 rounded-md bg-white/30 backdrop-blur-md text-white mb-2 w-fit border border-white/20 shadow-sm`} title={task.course}>
                <CourseTypeIcon courseName={task.course} courses={courses} className="w-3 h-3 text-black" />
                <span className="text-[10px] font-bold uppercase tracking-wider">{getAbbreviation(task.course)}</span>
             </div>
             {isEditing ? (
-              <input 
-                type="text" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})}
-                className="text-xl font-bold text-white bg-transparent border-b border-white/30 px-0 py-1 w-full outline-none focus:border-white placeholder-white/50"
-              />
-            ) : (
-              <h2 className="text-xl font-bold text-white leading-tight">{task.name}</h2>
-            )}
+              <input type="text" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} className="text-xl font-bold text-white bg-transparent border-b border-white/30 px-0 py-1 w-full outline-none focus:border-white placeholder-white/50" />
+            ) : (<h2 className="text-xl font-bold text-white leading-tight">{task.name}</h2>)}
           </div>
           <div className="flex gap-2">
             <button onClick={isEditing ? handleSave : () => setIsEditing(true)} className="p-2 bg-black/20 hover:bg-black/40 rounded-full transition-colors text-white">{isEditing ? <Save size={18} /> : <Edit2 size={18} />}</button>
@@ -241,33 +186,27 @@ const CalendarTaskModal = ({ task, onClose, courses, onUpdate, onDelete }) => {
             <button onClick={onClose} className="p-2 bg-black/20 hover:bg-black/40 rounded-full transition-colors text-white"><X size={18} /></button>
           </div>
         </div>
-
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
           <div className="flex gap-3">
              <div className="mt-1"><AlignLeft size={18} className="text-gray-400" /></div>
-             <div className="flex-1">
+             <div className="flex-1 min-w-0">
                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Description</h4>
                {isEditing ? (
-                 <textarea value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} rows="3" className="w-full text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                 <textarea value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} rows="3" className="w-full text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 resize-none custom-scrollbar" />
                ) : (
-                 <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">{task.description || "No description provided."}</p>
+                 <div className="max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-words">{task.description || "No description provided."}</p>
+                 </div>
                )}
              </div>
           </div>
-
           <div className="grid grid-cols-2 gap-4">
-            
-            {/* Due Date */}
             <div className="bg-gray-50 dark:bg-[#121212] p-3 rounded-xl border border-gray-100 dark:border-[#2C2C2C]">
               <div className="flex items-center gap-2 mb-1"><CalendarIcon size={14} className="text-gray-400" /><span className="text-[10px] font-bold text-gray-400 uppercase">Due Date</span></div>
               {isEditing ? (
                 <input type="date" value={form.date} onChange={(e) => setForm({...form, date: e.target.value})} className="w-full text-xs bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded p-1 dark:text-white dark:[color-scheme:dark]" />
-              ) : (
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 pl-6">{formatDisplayDate(task.date)}</p>
-              )}
+              ) : (<p className="text-sm font-semibold text-gray-800 dark:text-gray-200 pl-6">{formatDisplayDate(task.date)}</p>)}
             </div>
-
-            {/* Time / Created On */}
             {showTimeCell ? (
                 <div className="bg-gray-50 dark:bg-[#121212] p-3 rounded-xl border border-gray-100 dark:border-[#2C2C2C]">
                   <div className="flex justify-between items-center mb-1">
@@ -276,9 +215,7 @@ const CalendarTaskModal = ({ task, onClose, courses, onUpdate, onDelete }) => {
                   </div>
                   {isEditing ? (
                     <input type="time" value={form.time} onChange={(e) => setForm({...form, time: e.target.value})} className="w-full text-xs bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded p-1 dark:text-white dark:[color-scheme:dark]" />
-                  ) : (
-                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 pl-6">{formatTime(task.time)}</p>
-                  )}
+                  ) : (<p className="text-sm font-semibold text-gray-800 dark:text-gray-200 pl-6">{formatTime(task.time)}</p>)}
                 </div>
             ) : (
                 <div className="bg-gray-50 dark:bg-[#121212] p-3 rounded-xl border border-gray-100 dark:border-[#2C2C2C]">
@@ -289,29 +226,19 @@ const CalendarTaskModal = ({ task, onClose, courses, onUpdate, onDelete }) => {
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 pl-6">{formatDisplayDate(task.createdAt || new Date())}</p>
                 </div>
             )}
-
-            {/* Priority */}
             <div className="bg-gray-50 dark:bg-[#121212] p-3 rounded-xl border border-gray-100 dark:border-[#2C2C2C]">
               <div className="flex items-center gap-2 mb-1"><Flag size={14} className="text-gray-400" /><span className="text-[10px] font-bold text-gray-400 uppercase">Priority</span></div>
               {isEditing ? (
                 <EditDropdown value={form.priority} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => setForm({...form, priority: val})} getConfig={getPriorityConfig} />
-              ) : (
-                <div className="flex items-center gap-2 pl-6"><PriorityIcon size={14} className={priorityConfig.color} /><p className={`text-sm font-semibold ${priorityConfig.color}`}>{task.priority}</p></div>
-              )}
+              ) : (<div className="flex items-center gap-2 pl-6"><PriorityIcon size={14} className={priorityConfig.color} /><p className={`text-sm font-semibold ${priorityConfig.color}`}>{task.priority}</p></div>)}
             </div>
-
-             {/* Status */}
              <div className="bg-gray-50 dark:bg-[#121212] p-3 rounded-xl border border-gray-100 dark:border-[#2C2C2C]">
               <div className="flex items-center gap-2 mb-1"><CheckCircle2 size={14} className="text-gray-400" /><span className="text-[10px] font-bold text-gray-400 uppercase">Status</span></div>
               {isEditing ? (
                 <EditDropdown value={form.status} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => setForm({...form, status: val})} getConfig={getStatusConfig} />
-              ) : (
-                <div className="flex items-center gap-2 pl-6"><StatusIcon size={14} className={statusConfig.color} /><p className={`text-sm font-semibold ${statusConfig.color}`}>{task.status}</p></div>
-              )}
+              ) : (<div className="flex items-center gap-2 pl-6"><StatusIcon size={14} className={statusConfig.color} /><p className={`text-sm font-semibold ${statusConfig.color}`}>{task.status}</p></div>)}
             </div>
           </div>
-
-          {/* Subtasks */}
           {task.subTasks && task.subTasks.length > 0 && (
              <div className="border-t border-gray-100 dark:border-[#2C2C2C] pt-4">
                 <div className="flex items-center gap-2 mb-3"><ListTodo size={14} className="text-gray-400" /><span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Subtasks</span></div>
@@ -353,8 +280,15 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
 
   return (
     <div className="w-full h-full flex flex-col bg-white dark:bg-[#09090b] animate-fadeIn">
-      
-      {/* Header Toolbar */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #52525b; }
+      `}</style>
+
       <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-[#27272a] shrink-0">
         <h2 className="text-2xl font-bold dark:text-white text-gray-900 tracking-tight">{currentMonth}</h2>
         <div className="flex items-center gap-4">
@@ -367,10 +301,8 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
         </div>
       </div>
 
-      {/* --- UNIFIED SINGLE GRID --- */}
       <div className="flex-1 overflow-y-auto custom-scrollbar relative">
         <div className="grid grid-cols-7 grid-rows-[auto_1fr] min-h-full">
-          {/* Header Cells */}
           {weekDays.map((day, i) => (
             <div key={`header-${i}`} className={`py-3 text-center border-b border-r border-gray-200 dark:border-[#27272a] last:border-r-0 sticky top-0 z-30 bg-white dark:bg-[#09090b]`}>
               <span className={`text-[11px] font-bold uppercase block mb-1 tracking-wider ${isToday(day) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>{day.toLocaleDateString('en-US', { weekday: 'short' })}</span>
@@ -378,11 +310,32 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
             </div>
           ))}
 
-          {/* Body Columns */}
           {weekDays.map((day, i) => {
             const columnDateStr = toISODateString(day);
             let dayTasks = tasks.filter(task => task.date && task.date === columnDateStr);
-            dayTasks.sort((a, b) => { const timeA = a.time || '00:00'; const timeB = b.time || '00:00'; return timeA.localeCompare(timeB); });
+            
+            // --- UPDATED SORTING LOGIC ---
+            dayTasks.sort((a, b) => {
+              // 1. Status: Completed tasks go to the bottom
+              const isCompletedA = a.status === 'Completed';
+              const isCompletedB = b.status === 'Completed';
+              if (isCompletedA && !isCompletedB) return 1;
+              if (!isCompletedA && isCompletedB) return -1;
+
+              // 2. Time: Tasks with time go before non-timed tasks
+              const hasTimeA = !!a.time;
+              const hasTimeB = !!b.time;
+              if (hasTimeA && !hasTimeB) return -1;
+              if (!hasTimeA && hasTimeB) return 1;
+
+              // 3. Time Value: Earliest time first
+              if (hasTimeA && hasTimeB) {
+                return a.time.localeCompare(b.time);
+              }
+
+              // 4. Default: Alphabetical by name if no other criteria
+              return a.name.localeCompare(b.name);
+            });
 
             return (
               <div key={`body-${i}`} className={`p-2 border-r border-gray-200 dark:border-[#27272a] last:border-r-0 transition-colors relative group/col flex flex-col ${isToday(day) ? 'bg-blue-50/5 dark:bg-blue-900/5' : ''}`}>
@@ -407,7 +360,6 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
                         {task.time ? (
                           <div className="flex flex-col gap-1.5 mb-2">
                              <div className="flex justify-between items-start">
-                                {/* ABBREVIATED IN CARD */}
                                 <span className="text-[10px] font-bold uppercase opacity-80 flex items-center gap-1" title={task.course}>
                                    <CourseTypeIcon courseName={task.course} courses={courses} className="w-3 h-3" />
                                    {getAbbreviation(task.course)}
@@ -420,7 +372,6 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
                           </div>
                         ) : (
                           <div className="flex justify-between items-start mb-1">
-                            {/* ABBREVIATED IN CARD */}
                             <span className="text-[10px] font-bold uppercase opacity-80 truncate max-w-[80%] flex items-center gap-1" title={task.course}>
                                <CourseTypeIcon courseName={task.course} courses={courses} className="w-3 h-3" />
                                {getAbbreviation(task.course)}

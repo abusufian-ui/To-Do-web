@@ -28,9 +28,9 @@ const runScraper = async (userId) => {
           throw new Error("NO_CREDENTIALS"); 
       }
 
-      // 2. SESSION ISOLATION FIX
-      // Use the portalId (email) in the path instead of userId. 
-      // This forces a fresh login if the linked account changes.
+      // 2. SESSION ISOLATION (Fixes "Mixed Accounts" Bug)
+      // We use the portalId (Email) as the folder name. 
+      // If the user links a different email, they get a fresh folder.
       const safePortalId = user.portalId.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       const sessionPath = path.join(__dirname, 'session_data', safePortalId); 
       
@@ -38,7 +38,7 @@ const runScraper = async (userId) => {
 
       const launchBrowser = async () => {
           return await puppeteer.launch({ 
-            headless: "new", // Run in background
+            headless: "new", // Run in Background (No visible window)
             defaultViewport: null,
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
             userDataDir: sessionPath 
@@ -55,15 +55,14 @@ const runScraper = async (userId) => {
       } catch (e) { console.log("⚠️ Initial load timeout, checking URL..."); }
 
       // 4. AUTOMATED MICROSOFT LOGIN
-      // If we are redirected to login, it means this specific profile is not logged in.
       if (page.url().includes('login') || page.url().includes('signin') || page.url().includes('microsoft')) {
-          console.log("🔐 Profile session not found. Initiating Login...");
+          console.log("🔐 Session expired. Initiating Microsoft Login...");
           
           const portalId = user.portalId;
           const portalPass = decrypt(user.portalPassword);
 
           try {
-            // STEP A: Click "Login With Microsoft" on UCP Page
+            // STEP A: Click "Login With Microsoft"
             const msBtnSelector = 'a.btn-outline-primary';
             const msBtn = await page.waitForSelector(msBtnSelector, { timeout: 10000 }).catch(() => null);
             
@@ -80,14 +79,14 @@ const runScraper = async (userId) => {
                 try {
                     const useDiffAccount = await page.waitForSelector('#cancelLink', { timeout: 5000 }).catch(() => null);
                     if (useDiffAccount) {
-                        console.log("   ⚠️ Glitch Screen: Clicking 'Use a different account'...");
+                        console.log("   ⚠️ Glitch Screen Detected: Clicking 'Use a different account'...");
                         await useDiffAccount.click();
                         await new Promise(r => setTimeout(r, 2000)); 
                         
                         const tileSelector = `div.table[data-test-id="${portalId}"]`;
                         const accountTile = await page.waitForSelector(tileSelector, { timeout: 5000 });
                         if (accountTile) {
-                            console.log("   👉 Selecting correct Account Tile...");
+                            console.log("   👉 Selecting Account Tile...");
                             await accountTile.click();
                             await page.waitForNavigation({ waitUntil: 'networkidle2' });
                             return true; 
@@ -99,7 +98,7 @@ const runScraper = async (userId) => {
 
             if (await handleGlitch()) console.log("   ✅ Glitch bypassed.");
 
-            // STEP B: Standard Email Entry
+            // STEP B: Enter Email
             const emailInputSelector = 'input[name="loginfmt"]';
             const emailInput = await page.waitForSelector(emailInputSelector, { visible: true, timeout: 10000 }).catch(() => null);
             
@@ -126,7 +125,7 @@ const runScraper = async (userId) => {
 
             if (await handleGlitch()) console.log("   ✅ Glitch bypassed after password.");
 
-            // STEP D: "Stay Signed In?"
+            // STEP D: Stay Signed In
             try {
                 const glitchCheck = await page.$('#cancelLink');
                 if (!glitchCheck) {
@@ -167,8 +166,7 @@ const runScraper = async (userId) => {
 
       console.log(`   Found ${courseLinks.length} active courses.`);
 
-      // Clear old course data for this user before saving new ones 
-      // (This ensures when switching accounts, old courses don't linger)
+      // CLEANUP: Remove old grades for this user to prevent mixing accounts
       await Grade.deleteMany({ userId: userId });
 
       if (courseLinks.length > 0) {
@@ -228,7 +226,7 @@ const runScraper = async (userId) => {
                       );
                   }
               } catch (e) { 
-                  console.log(`   ⚠️ Skipped course detail: ${e.message}`); 
+                  console.log(`   ⚠️ Skipped course: ${e.message}`); 
               }
           }
       }
@@ -255,9 +253,8 @@ const runScraper = async (userId) => {
                   if (row.classList.contains('table-parent-row')) {
                       const tds = row.querySelectorAll('td');
                       if (tds.length >= 8) {
-                          const termText = tds[0].innerText.trim(); 
                           currentSemester = {
-                              term: termText,
+                              term: tds[0].innerText.trim(),
                               earnedCH: tds[4].innerText.trim(),
                               sgpa: tds[6].innerText.trim(),
                               cgpa: tds[7].innerText.trim(),
@@ -281,7 +278,7 @@ const runScraper = async (userId) => {
           });
 
           if (historyData && historyData.length > 0) {
-              // Clear old history before saving to prevent mixing semesters
+              // CLEANUP: Remove old history to prevent duplicate semesters or mixed data
               await ResultHistory.deleteMany({ userId: userId });
 
               for (const sem of historyData) {
@@ -316,7 +313,7 @@ const runScraper = async (userId) => {
       console.log("🏁 SYNC COMPLETE!");
 
   } catch (error) {
-      console.error("❌ SCRAPER CRITICAL ERROR:", error.message);
+      console.error("❌ SCRAPER ERROR:", error.message);
       throw error; 
   } finally {
       if (browser) await browser.close();

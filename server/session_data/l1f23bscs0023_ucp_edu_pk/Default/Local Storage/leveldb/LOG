@@ -1,2 +1,3 @@
-2026/02/12-03:26:22.173 399c Creating DB C:\portal\To-Do-web\server\session_data\l1f23bscs0023_ucp_edu_pk\Default\Local Storage\leveldb since it was missing.
-2026/02/12-03:26:22.210 399c Reusing MANIFEST C:\portal\To-Do-web\server\session_data\l1f23bscs0023_ucp_edu_pk\Default\Local Storage\leveldb/MANIFEST-000001
+2026/02/12-16:01:58.637 5180 Reusing MANIFEST C:\portal\To-Do-web\server\session_data\l1f23bscs0023_ucp_edu_pk\Default\Local Storage\leveldb/MANIFEST-000001
+2026/02/12-16:01:58.643 5180 Recovering log #3
+2026/02/12-16:01:58.646 5180 Reusing old log C:\portal\To-Do-web\server\session_data\l1f23bscs0023_ucp_edu_pk\Default\Local Storage\leveldb/000003.log 

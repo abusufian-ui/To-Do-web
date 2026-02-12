@@ -3,11 +3,11 @@ import {
   X, Plus, Trash2, AlignLeft, ListTodo, Calendar, 
   Flag, Book, Mail, Clock, CheckCircle2, 
   ChevronsUp, ChevronUp, ChevronDown, Minus, ArrowDown,
-  CalendarDays 
+  CalendarDays, AlertCircle 
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
-const AddTaskModal = ({ isOpen, onClose, onSave, courses, initialDate }) => {
+const AddTaskModal = ({ isOpen, onClose, onSave, courses, initialDate, tasks = [] }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [course, setCourse] = useState(''); 
@@ -18,11 +18,17 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, initialDate }) => {
   const [priority, setPriority] = useState('Medium');
   const [subTasks, setSubTasks] = useState([]);
   const [subTaskInput, setSubTaskInput] = useState('');
+  
   const [showCourseList, setShowCourseList] = useState(false);
+  const [errors, setErrors] = useState({}); // Stores validation errors
+
   const courseDropdownRef = useRef(null);
 
   useEffect(() => {
-    if (isOpen && initialDate) setDate(initialDate);
+    if (isOpen) {
+      if (initialDate) setDate(initialDate);
+      setErrors({}); // Reset errors on open
+    }
   }, [isOpen, initialDate]);
 
   useEffect(() => {
@@ -55,7 +61,6 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, initialDate }) => {
     }
   };
 
-  // --- HELPER: Get Course Icon for Dropdown ---
   const getCourseIcon = (c) => {
     if (c.name === 'Event') return <CalendarDays size={16} className="text-rose-500" />;
     if (c.type === 'uni') return <UCPLogo className="w-4 h-4" />;
@@ -74,9 +79,35 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, initialDate }) => {
   };
 
   const handleSave = () => {
-    if (!name.trim()) return alert("Please enter a task name");
-    if (!course) return alert("Please select a course");
-    onSave({ name, description, course, date, time: includeTime ? time : null, priority, status, subTasks });
+    const newErrors = {};
+    
+    // 1. Validation: Required Fields
+    if (!name.trim()) newErrors.name = "Task name is required";
+    if (!course) newErrors.course = "Please select a course";
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    // 2. Validation: Duplicate Check
+    const timeValue = includeTime ? time : null;
+    const isDuplicate = tasks.some(t => 
+      t.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+      t.course === course &&
+      t.date === date &&
+      t.time === timeValue &&
+      t.status === status &&
+      t.priority === priority
+    );
+
+    if (isDuplicate) {
+      setErrors({ general: "This exact task already exists!" });
+      return;
+    }
+
+    // 3. Save
+    onSave({ name, description, course, date, time: timeValue, priority, status, subTasks });
     resetForm();
     onClose();
   };
@@ -84,6 +115,7 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, initialDate }) => {
   const resetForm = () => {
     setName(''); setDescription(''); setCourse(''); setStatus('New task'); 
     setDate(''); setIncludeTime(false); setTime(''); setPriority('Medium'); setSubTasks([]);
+    setErrors({});
   };
 
   return (
@@ -95,11 +127,27 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, initialDate }) => {
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-full"><X size={20} className="text-gray-400" /></button>
         </div>
 
+        {/* DUPLICATE ERROR BANNER */}
+        {errors.general && (
+          <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded-xl flex items-center gap-3 text-red-600 dark:text-red-400 text-sm font-medium animate-fadeIn">
+            <AlertCircle size={18} />
+            {errors.general}
+          </div>
+        )}
+
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
           
+          {/* Name Input with Error Styling */}
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Task Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Prepare for OS Quiz" className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#2C2C2C] rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none border-none focus:ring-offset-0" />
+            <label className={`block text-xs font-bold uppercase mb-2 ${errors.name ? 'text-red-500' : 'text-gray-400'}`}>Task Name</label>
+            <input 
+              type="text" 
+              value={name} 
+              onChange={(e) => { setName(e.target.value); if(errors.name) setErrors({...errors, name: null}); }} 
+              placeholder="e.g. Prepare for OS Quiz" 
+              className={`w-full bg-gray-50 dark:bg-[#121212] border rounded-xl px-4 py-3 text-gray-900 dark:text-white outline-none transition-all ${errors.name ? 'border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-200 dark:border-[#2C2C2C] focus:ring-2 focus:ring-brand-blue'}`} 
+            />
+            {errors.name && <p className="text-red-500 text-xs mt-1 font-medium">{errors.name}</p>}
           </div>
 
           <div>
@@ -114,20 +162,30 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, initialDate }) => {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            
+            {/* Course Select with Error Styling */}
             <div className="relative" ref={courseDropdownRef}>
-              <label className="block text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-2"><Book size={14} /> Course</label>
-              <button type="button" onClick={() => setShowCourseList(!showCourseList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#2C2C2C] rounded-xl px-4 py-3 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
+              <label className={`block text-xs font-bold uppercase mb-2 flex items-center gap-2 ${errors.course ? 'text-red-500' : 'text-gray-400'}`}>
+                <Book size={14} /> Course
+              </label>
+              <button 
+                type="button" 
+                onClick={() => setShowCourseList(!showCourseList)} 
+                className={`w-full flex items-center justify-between bg-gray-50 dark:bg-[#121212] border rounded-xl px-4 py-3 text-sm focus:ring-2 outline-none transition-all ${errors.course ? 'border-red-500 focus:ring-red-200 text-gray-700' : 'border-gray-200 dark:border-[#2C2C2C] focus:ring-brand-blue text-gray-700 dark:text-gray-200'}`}
+              >
                 <span className="flex items-center gap-2 truncate">
                    {isEvent ? <CalendarDays size={16} className="text-rose-500" /> : (isUniCourse ? <UCPLogo className="w-4 h-4" /> : <Book size={16} className="text-gray-400" />)}
                    {course || <span className="text-gray-400">Select Course</span>}
                 </span>
                 <ChevronDown size={14} className={`text-gray-400 transition-transform ${showCourseList ? 'rotate-180' : ''}`} />
               </button>
+              {errors.course && <p className="text-red-500 text-xs mt-1 font-medium">{errors.course}</p>}
+              
               {showCourseList && (
                 <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-50 animate-fadeIn custom-scrollbar max-h-[200px] overflow-y-auto">
                   {courses.length > 0 ? (
                     courses.map(c => (
-                      <div key={c.id || c._id || c.name} onClick={() => { setCourse(c.name); setShowCourseList(false); }} className="p-3 text-sm hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-[#2C2C2C] first:border-none">
+                      <div key={c.id || c._id || c.name} onClick={() => { setCourse(c.name); setShowCourseList(false); if(errors.course) setErrors({...errors, course: null}); }} className="p-3 text-sm hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-[#2C2C2C] first:border-none">
                         <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">
                           {getCourseIcon(c)} {c.name}
                         </span>
