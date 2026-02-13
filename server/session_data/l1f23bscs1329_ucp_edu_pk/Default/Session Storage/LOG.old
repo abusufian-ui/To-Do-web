@@ -1,3 +1,2 @@
-2026/02/12-16:00:00.791 13e0 Reusing MANIFEST C:\portal\To-Do-web\server\session_data\l1f23bscs1329_ucp_edu_pk\Default\Session Storage/MANIFEST-000001
-2026/02/12-16:00:00.793 13e0 Recovering log #3
-2026/02/12-16:00:00.797 13e0 Reusing old log C:\portal\To-Do-web\server\session_data\l1f23bscs1329_ucp_edu_pk\Default\Session Storage/000003.log 
+2026/02/13-08:20:40.474 3fcc Creating DB C:\portal\To-Do-web\server\session_data\l1f23bscs1329_ucp_edu_pk\Default\Session Storage since it was missing.
+2026/02/13-08:20:40.509 3fcc Reusing MANIFEST C:\portal\To-Do-web\server\session_data\l1f23bscs1329_ucp_edu_pk\Default\Session Storage/MANIFEST-000001

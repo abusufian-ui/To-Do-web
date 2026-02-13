@@ -28,9 +28,7 @@ const runScraper = async (userId) => {
           throw new Error("NO_CREDENTIALS"); 
       }
 
-      // 2. SESSION ISOLATION (Fixes "Mixed Accounts" Bug)
-      // We use the portalId (Email) as the folder name. 
-      // If the user links a different email, they get a fresh folder.
+      // 2. SESSION ISOLATION
       const safePortalId = user.portalId.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       const sessionPath = path.join(__dirname, 'session_data', safePortalId); 
       
@@ -38,9 +36,10 @@ const runScraper = async (userId) => {
 
       const launchBrowser = async () => {
           return await puppeteer.launch({ 
-            headless: "new", // Run in Background (No visible window)
+            headless: true,         // Keep visible for testing
             defaultViewport: null,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            slowMo: 50,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'],
             userDataDir: sessionPath 
           });
       };
@@ -64,7 +63,7 @@ const runScraper = async (userId) => {
           try {
             // STEP A: Click "Login With Microsoft"
             const msBtnSelector = 'a.btn-outline-primary';
-            const msBtn = await page.waitForSelector(msBtnSelector, { timeout: 10000 }).catch(() => null);
+            const msBtn = await page.waitForSelector(msBtnSelector, { timeout: 5000 }).catch(() => null);
             
             if (msBtn) {
                 console.log("   👉 Clicking UCP 'Login With Microsoft'...");
@@ -74,33 +73,58 @@ const runScraper = async (userId) => {
                 ]);
             }
 
-            // --- GLITCH BYPASS LOGIC ---
-            const handleGlitch = async () => {
-                try {
-                    const useDiffAccount = await page.waitForSelector('#cancelLink', { timeout: 5000 }).catch(() => null);
-                    if (useDiffAccount) {
-                        console.log("   ⚠️ Glitch Screen Detected: Clicking 'Use a different account'...");
-                        await useDiffAccount.click();
-                        await new Promise(r => setTimeout(r, 2000)); 
-                        
-                        const tileSelector = `div.table[data-test-id="${portalId}"]`;
-                        const accountTile = await page.waitForSelector(tileSelector, { timeout: 5000 });
-                        if (accountTile) {
-                            console.log("   👉 Selecting Account Tile...");
-                            await accountTile.click();
-                            await page.waitForNavigation({ waitUntil: 'networkidle2' });
-                            return true; 
-                        }
+            // --- HANDLE "PICK AN ACCOUNT" (SESSION RESUME) ---
+            try {
+                // Check if "Pick an account" text is present
+                const pickAccountHeader = await page.waitForSelector('::-p-text("Pick an account")', { timeout: 5000 }).catch(() => null);
+
+                if (pickAccountHeader) {
+                    console.log("   👀 'Pick an account' screen detected.");
+
+                    // Selector for the specific user's tile (Microsoft usually uses data-test-id="email")
+                    // If that fails, we look for a div containing the email text.
+                    const tileSelector = `div[data-test-id="${portalId}"], div.table[role="button"]`;
+                    
+                    // 1. Click the Account Tile (First Attempt)
+                    const accountTile = await page.waitForSelector(tileSelector, { timeout: 5000 });
+                    if (accountTile) {
+                        console.log("   👉 Clicking Account Tile (Attempt 1)...");
+                        await accountTile.click();
+                        await new Promise(r => setTimeout(r, 3000)); // Wait for Glitch screen to potentially appear
                     }
-                } catch (e) { }
-                return false;
-            };
 
-            if (await handleGlitch()) console.log("   ✅ Glitch bypassed.");
+                    // 2. Check for "Glitch" Screen ("Let's keep your account secure" / "Use a different account")
+                    const glitchText = await page.waitForSelector('::-p-text("Use a different account")', { timeout: 3000 }).catch(() => null);
+                    
+                    if (glitchText) {
+                        console.log("   ⚠️ Glitch Screen Detected: Resetting session...");
+                        
+                        // Click "Use a different account" to reset
+                        await glitchText.click();
+                        await page.waitForNavigation({ waitUntil: 'networkidle0' });
+                        
+                        console.log("   🔄 Returning to 'Pick an account'...");
+                        
+                        // 3. Click the Account Tile AGAIN (Post-Glitch Fix)
+                        const accountTileRetry = await page.waitForSelector(tileSelector, { timeout: 5000 });
+                        if (accountTileRetry) {
+                            console.log("   👉 Clicking Account Tile (Attempt 2 - Success Path)...");
+                            await accountTileRetry.click();
+                            await new Promise(r => setTimeout(r, 2000));
+                        }
+                    } else {
+                        console.log("   ✅ No glitch detected, proceeding...");
+                    }
+                }
+            } catch (e) {
+                console.log("   ℹ️ 'Pick an account' flow skipped or failed:", e.message);
+            }
+            // -----------------------------------------------------
 
-            // STEP B: Enter Email
+            // STEP B: Enter Email (Only if not already picked via tile)
+            // We check if the email input is actually visible before typing.
             const emailInputSelector = 'input[name="loginfmt"]';
-            const emailInput = await page.waitForSelector(emailInputSelector, { visible: true, timeout: 10000 }).catch(() => null);
+            const emailInput = await page.waitForSelector(emailInputSelector, { visible: true, timeout: 5000 }).catch(() => null);
             
             if (emailInput) {
                 console.log("   📧 Entering Email...");
@@ -111,7 +135,7 @@ const runScraper = async (userId) => {
 
             // STEP C: Enter Password
             const passInputSelector = 'input[name="passwd"]';
-            const passInput = await page.waitForSelector(passInputSelector, { visible: true, timeout: 10000 }).catch(() => null);
+            const passInput = await page.waitForSelector(passInputSelector, { visible: true, timeout: 5000 }).catch(() => null);
             
             if (passInput) {
                 console.log("   🔑 Entering Password...");
@@ -123,20 +147,15 @@ const runScraper = async (userId) => {
                 ]);
             }
 
-            if (await handleGlitch()) console.log("   ✅ Glitch bypassed after password.");
-
             // STEP D: Stay Signed In
             try {
-                const glitchCheck = await page.$('#cancelLink');
-                if (!glitchCheck) {
-                    const staySignedInBtn = await page.waitForSelector('#idSIButton9, input[type="submit"][value="Yes"]', { timeout: 5000 });
-                    if (staySignedInBtn) {
-                        console.log("   👉 Clicking 'Yes' to stay signed in...");
-                        await Promise.all([
-                            staySignedInBtn.click(),
-                            page.waitForNavigation({ waitUntil: 'networkidle2' })
-                        ]);
-                    }
+                const staySignedInBtn = await page.waitForSelector('#idSIButton9, input[type="submit"][value="Yes"]', { timeout: 5000 }).catch(() => null);
+                if (staySignedInBtn) {
+                    console.log("   👉 Clicking 'Yes' to stay signed in...");
+                    await Promise.all([
+                        staySignedInBtn.click(),
+                        page.waitForNavigation({ waitUntil: 'networkidle2' })
+                    ]);
                 }
             } catch (e) {
                 console.log("   ℹ️ 'Stay signed in' screen skipped.");
@@ -147,9 +166,11 @@ const runScraper = async (userId) => {
           }
       }
 
+      // Check if we actually made it
       if (!page.url().includes('dashboard')) {
+          // Give it one last check for a redirect
           try {
-            await page.waitForFunction(() => window.location.href.includes('dashboard'), { timeout: 15000 });
+            await page.waitForFunction(() => window.location.href.includes('dashboard'), { timeout: 10000 });
           } catch(e) {
             console.log("❌ Failed to reach dashboard.");
             throw new Error("LOGIN_FAILED");
@@ -166,7 +187,7 @@ const runScraper = async (userId) => {
 
       console.log(`   Found ${courseLinks.length} active courses.`);
 
-      // CLEANUP: Remove old grades for this user to prevent mixing accounts
+      // CLEANUP: Remove old grades for this user
       await Grade.deleteMany({ userId: userId });
 
       if (courseLinks.length > 0) {
@@ -278,7 +299,6 @@ const runScraper = async (userId) => {
           });
 
           if (historyData && historyData.length > 0) {
-              // CLEANUP: Remove old history to prevent duplicate semesters or mixed data
               await ResultHistory.deleteMany({ userId: userId });
 
               for (const sem of historyData) {
