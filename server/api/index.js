@@ -9,7 +9,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer'); 
 const si = require('systeminformation'); 
-const { encrypt, decrypt } = require('./utils/encryption');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com"; 
@@ -48,15 +48,15 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-const runScraper = require('./scraper');
+const runScraper = require('../scraper');
 
 // --- MODELS ---
-const User = require('./models/User');
-const Task = require('./models/Task');
-const Grade = require('./models/Grade');
-const ResultHistory = require('./models/ResultHistory');
-const StudentStats = require('./models/StudentStats');
-const { Transaction, Budget } = require('./models/Transaction');
+const User = require('../models/User');
+const Task = require('../models/Task');
+const Grade = require('../models/Grade');
+const ResultHistory = require('../models/ResultHistory');
+const StudentStats = require('../models/StudentStats');
+const { Transaction, Budget } = require('../models/Transaction');
 
 // --- NEW: COURSE MODEL (For Manual/General Courses) ---
 const courseSchema = new mongoose.Schema({
@@ -473,5 +473,5 @@ app.post('/api/budgets', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-const PORT = process.env.port || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+module.exports = app;
