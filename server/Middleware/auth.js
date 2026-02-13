@@ -6,7 +6,7 @@ const auth = (req, res, next) => {
   if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
 
   try {
-    const decoded = jwt.verify(token, 'YOUR_SECRET_KEY'); // Replace with a real secret in .env
+    const decoded = jwt.verify(token,process.env.REACT_APP_JWT_SECRET); // Replace with a real secret in .env
     req.user = decoded; // Adds user ID to the request
     next();
   } catch (e) {

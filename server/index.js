@@ -1,6 +1,9 @@
-if (process.env.NODE_ENV !== 'production') {
-    require('dotenv').config();
-}
+//if (process.env.NODE_ENV !== 'production') {
+//    require('dotenv').config();
+//  }
+
+  require('dotenv').config();
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -18,8 +21,8 @@ const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
+    user: process.env.REACT_APP_EMAIL_USER,
+    pass: process.env.REACT_APP_EMAIL_PASS
   }
 });
 
@@ -28,7 +31,7 @@ const auth = (req, res, next) => {
   const token = req.header('x-auth-token');
   if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret_key_123');
+    const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET);
     req.user = decoded;
     next();
   } catch (e) {
@@ -79,7 +82,7 @@ app.use(cors());
 app.use(express.json());
 
 // --- DATABASE CONNECTION ---
-const dbLink = process.env.MONGODB_URI;
+const dbLink = process.env.REACT_APP_MONGODB_URI;
 
 console.log("🔗 Connecting to MyPortal Database...");
 
@@ -255,7 +258,7 @@ app.post('/api/register', async (req, res) => {
     await user.save();
     await OTP.deleteOne({ email });
     
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -273,7 +276,7 @@ app.post('/api/login', async (req, res) => {
         user.isAdmin = true;
         await user.save();
     }
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'secret_key_123', { expiresIn: '30d' });
+    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });

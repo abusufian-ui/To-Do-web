@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, AlertCircle, 
   CheckCircle2, X, AlignLeft, Flag, Minus, ArrowDown, ChevronsUp, ChevronUp,
-  CalendarDays, Book, Plus, Mail, Activity, ListTodo, Trash2, Edit2, Save, ChevronDown
+  CalendarDays, Book, Plus, Mail, ListTodo, Trash2, Edit2, Save, ChevronDown
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 

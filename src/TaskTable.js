@@ -486,7 +486,6 @@ const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOpt
 const DateCell = ({ date, time, onChange }) => {
   const inputRef = useRef(null);
   const displayDate = formatDate(date); 
-  const displayTime = time ? `, ${time}` : '';
   return (
     <div className="relative cursor-pointer hover:opacity-80 group h-full flex flex-col justify-center" onClick={(e) => { e.stopPropagation(); inputRef.current.showPicker(); }}>
       <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">

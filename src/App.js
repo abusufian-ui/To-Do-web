@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import TaskTable from './TaskTable';
@@ -70,17 +70,21 @@ function App() {
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: ''
   });
 
-  const authHeaders = { 'Content-Type': 'application/json', 'x-auth-token': token };
+  // Dynamic Auth Headers to ensure token is always fresh
+  const authHeaders = useMemo(() => ({
+    'Content-Type': 'application/json',
+    'x-auth-token': token
+  }), [token]);
 
   // --- AUTH HANDLERS ---
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     sessionStorage.clear();
     setToken(null);
     setUser(null);
     setActiveTab('Welcome');
-  };
+  }, []);
 
   const handleLogin = (authToken, userData) => {
     localStorage.setItem('token', authToken);
@@ -97,7 +101,7 @@ function App() {
       handleLogout();
     }, idleTimeout);
     return timer;
-  }, [isAuthenticated, idleTimeout]);
+  }, [isAuthenticated, idleTimeout, handleLogout]);
 
   useEffect(() => {
     let timeoutId = checkForInactivity();
@@ -116,19 +120,20 @@ function App() {
     };
   }, [checkForInactivity]);
 
-  // --- DATA FETCHING ---
-  const fetchUser = async () => {
+  // --- DATA FETCHING (Memoized with useCallback) ---
+  const fetchUser = useCallback(async () => {
     try {
       const res = await fetch('/api/auth/user', { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
       if (res.ok) {
         const freshUser = await res.json();
         setUser(freshUser);
         localStorage.setItem('user', JSON.stringify(freshUser));
       }
     } catch (error) { console.error("Error fetching user:", error); }
-  };
+  }, [authHeaders, handleLogout]);
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch('/api/tasks', { headers: authHeaders });
       if (res.status === 401) return handleLogout();
@@ -136,48 +141,47 @@ function App() {
       const formattedTasks = data.map(t => ({ ...t, id: t._id }));
       setTasks(formattedTasks);
     } catch (error) { console.error("Error fetching tasks:", error); }
-  };
+  }, [authHeaders, handleLogout]);
 
-  const fetchBin = async () => {
+  const fetchBin = useCallback(async () => {
     try {
       const res = await fetch('/api/bin', { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
       const data = await res.json();
       const formattedBin = data.map(t => ({ ...t, id: t._id }));
       setDeletedTasks(formattedBin);
     } catch (error) { console.error("Error fetching bin:", error); }
-  };
+  }, [authHeaders, handleLogout]);
 
-  // --- FETCH COURSES ---
-  const fetchCourses = async () => {
-    // 1. UPDATED: Fixed "General Course" (Not General Task)
+  const fetchCourses = useCallback(async () => {
     const fixedCourses = [{ id: 'general-task', name: 'General Course', type: 'general' }];
     let uniCourses = [];
     let customCourses = [];
 
-    // 2. Fetch Uni Courses
     try {
       const res = await fetch('/api/grades', { headers: authHeaders });
-      const gradeData = await res.json();
-      const safeData = Array.isArray(gradeData) ? gradeData : [];
-      uniCourses = safeData.map(g => ({
-        id: g._id, name: g.courseName, type: 'uni'
-      }));
+      if (res.ok) {
+        const gradeData = await res.json();
+        uniCourses = (Array.isArray(gradeData) ? gradeData : []).map(g => ({
+          id: g._id, name: g.courseName, type: 'uni'
+        }));
+      }
     } catch (error) { console.error("Error fetching uni courses:", error); }
 
-    // 3. Fetch Custom Courses
     try {
       const res = await fetch('/api/courses', { headers: authHeaders });
-      const customData = await res.json();
-      const safeCustom = Array.isArray(customData) ? customData : [];
-      customCourses = safeCustom.map(c => ({
-        id: c._id, name: c.name, type: 'general'
-      }));
+      if (res.ok) {
+        const customData = await res.json();
+        customCourses = (Array.isArray(customData) ? customData : []).map(c => ({
+          id: c._id, name: c.name, type: 'general'
+        }));
+      }
     } catch (error) { console.error("Error fetching custom courses:", error); }
 
-    // 4. Merge all
     setCourses([...fixedCourses, ...uniCourses, ...customCourses]);
-  };
+  }, [authHeaders]);
 
+  // Main Data Synchronization Effect
   useEffect(() => {
     if (isAuthenticated && token) {
       fetchUser(); 
@@ -185,7 +189,8 @@ function App() {
       fetchBin();
       fetchCourses();
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchBin, fetchCourses]);
+
 
   // --- TASK ACTIONS ---
   const handleAddTask = async (newTaskData) => {
@@ -266,7 +271,6 @@ function App() {
     setIsAddTaskOpen(true);
   };
 
-  // --- HELPER FUNCTIONS ---
   const toggleTheme = () => setIsDarkMode(prev => !prev);
 
   const getFilteredTasks = () => {
@@ -353,7 +357,6 @@ function App() {
     } catch (e) { throw e; }
   };
 
-  // --- NEW ADD COURSE (Server Call) ---
   const addCourse = async (courseName) => {
     if (!courseName || !courseName.trim()) return;
     try {
@@ -363,12 +366,11 @@ function App() {
         body: JSON.stringify({ name: courseName.trim() })
       });
       if (res.ok) {
-        fetchCourses(); // Reload list from server
+        fetchCourses();
       }
     } catch (e) { console.error("Add course failed", e); }
   };
 
-  // --- NEW REMOVE COURSE (Server Call) ---
   const removeCourse = async (courseId) => {
     try {
       const res = await fetch(`/api/courses/${courseId}`, {
@@ -376,14 +378,9 @@ function App() {
         headers: authHeaders
       });
       if (res.ok) {
-        fetchCourses(); // Reload list from server
+        fetchCourses();
       }
     } catch (e) { console.error("Delete course failed", e); }
-  };
-
-  const handleUpdateLocalUser = (updatedUser) => {
-    setUser(updatedUser);
-    localStorage.setItem('user', JSON.stringify(updatedUser));
   };
 
   if (!isAuthenticated) return <Login onLogin={handleLogin} />;

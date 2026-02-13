@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Mail, Lock, User, Eye, EyeOff, ArrowRight, 
-  CheckCircle2, KeyRound, Loader2, Sparkles, 
+  Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2, Sparkles, 
   GraduationCap, Layout, ShieldCheck, School,
   ChevronLeft, AlertCircle
 } from 'lucide-react';
@@ -103,6 +102,8 @@ const Login = ({ onLogin }) => {
     }
   };
 
+  
+
   // STEP 2: Final Registration
   const handleFinalRegister = async (e) => {
     e.preventDefault();
@@ -138,9 +139,17 @@ const Login = ({ onLogin }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: formData.email, password: formData.password })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Login failed');
-      onLogin(data.token, data.user);
+
+      // Safely check if the response is actually JSON before parsing
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Login failed');
+        onLogin(data.token, data.user);
+      } else {
+        // If the server sends back HTML (like the 431 error), handle it gracefully
+        throw new Error(`Server connection error (${res.status}). Try clearing your browser cookies.`);
+      }
     } catch (err) {
       setError(err.message);
     } finally {

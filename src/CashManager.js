@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Wallet, TrendingUp, TrendingDown, Plus, Search, Trash2, 
+  Wallet, TrendingUp, Plus, Search, Trash2, 
   PieChart, ArrowUpRight, ArrowDownRight, 
   ShoppingBag, Coffee, Car, BookOpen, Zap, Gift, Smartphone, 
   AlertCircle, CheckCircle2, X, Banknote, Calendar as CalendarIcon,
-  BarChart3, Filter, SlidersHorizontal, ArrowUpDown, ChevronDown, LayoutGrid, RotateCcw
+  BarChart3,  SlidersHorizontal, LayoutGrid, RotateCcw
 } from 'lucide-react';
 
 // --- 1. CONFIG & HELPERS ---
