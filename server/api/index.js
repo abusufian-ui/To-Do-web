@@ -473,5 +473,10 @@ app.post('/api/budgets', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
+app.get('/', (req, res) => {
+  res.json({ message: "API is running 🚀" });
+});
+
+
 
 module.exports = app;
