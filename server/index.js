@@ -2,7 +2,7 @@
 //    require('dotenv').config();
 //  }
 
-  require('dotenv').config();
+require('dotenv').config();
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -10,12 +10,12 @@ const cors = require('cors');
 const cron = require('node-cron');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer'); 
-const si = require('systeminformation'); 
+const nodemailer = require('nodemailer');
+const si = require('systeminformation');
 const { encrypt, decrypt } = require('./utils/encryption');
 
 // --- CONFIGURATION ---
-const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com"; 
+const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
 
 // --- NODEMAILER ---
 const transporter = nodemailer.createTransport({
@@ -73,7 +73,7 @@ const Course = mongoose.model('Course', courseSchema);
 const otpSchema = new mongoose.Schema({
   email: { type: String, required: true },
   code: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now, expires: 300 } 
+  createdAt: { type: Date, default: Date.now, expires: 300 }
 });
 const OTP = mongoose.model('OTP', otpSchema);
 
@@ -104,7 +104,7 @@ cron.schedule('0 8-20 * * *', async () => {
         } catch (err) {
           console.error(`❌ Auto-Sync Failed (${users[i].email}):`, err.message);
         }
-      }, i * 120000); 
+      }, i * 120000);
     }
   } catch (error) { console.error("CRON ERROR:", error); }
 });
@@ -122,15 +122,15 @@ app.get('/api/admin/system-stats', async (req, res) => {
     // Real DB Size
     let dbSize = 0;
     if (mongoose.connection.readyState === 1) {
-       const stats = await mongoose.connection.db.stats();
-       dbSize = stats.dataSize; // Returns bytes
+      const stats = await mongoose.connection.db.stats();
+      dbSize = stats.dataSize; // Returns bytes
     }
 
     res.json({
-      cpu: Math.round(cpuLoad.currentLoad), 
+      cpu: Math.round(cpuLoad.currentLoad),
       memory: {
-        active: mem.active, 
-        total: mem.total    
+        active: mem.active,
+        total: mem.total
       },
       dbSize: dbSize
     });
@@ -156,7 +156,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         isAdmin: user.isAdmin,
         isPortalConnected: user.isPortalConnected,
         portalId: user.portalId,
-        portalPassword: visiblePortalPass, 
+        portalPassword: visiblePortalPass,
         createdAt: user.createdAt
       };
     });
@@ -200,7 +200,7 @@ app.post('/api/courses', auth, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ message: "Name required" });
-    
+
     // Check if exists
     const exists = await Course.findOne({ userId: req.user.id, name });
     if (exists) return res.status(400).json({ message: "Course already exists" });
@@ -228,7 +228,7 @@ app.post('/api/send-otp', async (req, res) => {
     if (existingUser) return res.status(400).json({ message: "User already registered" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
-    
+
     transporter.sendMail({
       from: '"MyPortal Support" <ranasuffyan9@gmail.com>',
       to: email,
@@ -246,18 +246,18 @@ app.post('/api/register', async (req, res) => {
   try {
     const validOTP = await OTP.findOne({ email, code: otp });
     if (!validOTP) return res.status(400).json({ message: "Invalid or expired OTP" });
-    
+
     let user = await User.findOne({ email });
     if (user) return res.status(400).json({ message: 'User already exists' });
-    
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     const isAdmin = email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-    
+
     user = new User({ name, email, password: hashedPassword, isAdmin });
     await user.save();
     await OTP.deleteOne({ email });
-    
+
     const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -268,13 +268,13 @@ app.post('/api/login', async (req, res) => {
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
-    
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
-    
+
     if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() && !user.isAdmin) {
-        user.isAdmin = true;
-        await user.save();
+      user.isAdmin = true;
+      await user.save();
     }
     const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
@@ -331,9 +331,9 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
       isPortalConnected: false
     });
     await Promise.all([
-        Grade.deleteMany({ userId: req.user.id }),
-        ResultHistory.deleteMany({ userId: req.user.id }),
-        StudentStats.deleteMany({ userId: req.user.id })
+      Grade.deleteMany({ userId: req.user.id }),
+      ResultHistory.deleteMany({ userId: req.user.id }),
+      StudentStats.deleteMany({ userId: req.user.id })
     ]);
     res.json({ success: true, message: "Portal account removed." });
   } catch (error) { res.status(500).json({ message: "Failed to unlink account." }); }
@@ -348,8 +348,8 @@ app.get('/api/user/portal-status', auth, async (req, res) => {
 
 app.post('/api/sync-grades', auth, async (req, res) => {
   try {
-    await runScraper(req.user.id); 
-    res.json({ message: 'Sync complete' }); 
+    await runScraper(req.user.id);
+    res.json({ message: 'Sync complete' });
   } catch (error) { res.status(500).json({ message: error.message || 'Internal Server Error' }); }
 });
 
@@ -379,7 +379,7 @@ app.get('/api/tasks', auth, async (req, res) => {
   try {
     const tasks = await Task.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
     res.json(tasks);
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.post('/api/tasks', auth, async (req, res) => {
@@ -387,56 +387,56 @@ app.post('/api/tasks', auth, async (req, res) => {
     const newTask = new Task({ ...req.body, userId: req.user.id });
     const savedTask = await newTask.save();
     res.json(savedTask);
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.put('/api/tasks/:id', auth, async (req, res) => {
   try {
     const updatedTask = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { $set: req.body }, { new: true });
     res.json(updatedTask);
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
     res.json(task);
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.delete('/api/tasks/:id', auth, async (req, res) => {
   try {
     await Task.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
     res.json({ message: "Deleted" });
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.get('/api/bin', auth, async (req, res) => {
   try {
     const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).sort({ deletedAt: -1 });
     res.json(tasks);
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.put('/api/tasks/:id/restore', auth, async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
     res.json(task);
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.delete('/api/bin/empty', auth, async (req, res) => {
   try {
     await Task.deleteMany({ userId: req.user.id, isDeleted: true });
     res.json({ message: "Emptied" });
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.put('/api/bin/restore-all', auth, async (req, res) => {
   try {
     await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     res.json({ message: "Restored" });
-  } catch (err) { res.status(500).json({message: err.message}) }
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.get('/api/transactions', auth, async (req, res) => {
@@ -481,5 +481,8 @@ app.get('/', (req, res) => {
 });
 
 
+
+const PORT = process.env.SERVER_PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 module.exports = app;

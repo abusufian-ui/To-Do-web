@@ -1,133 +1,135 @@
 import React, { useState } from 'react';
-import { 
-  User, Shield, RefreshCw, BookOpen, HelpCircle, Info, 
-  CheckCircle2, X, AlertTriangle, Lock, 
-  Calendar, Wallet, GraduationCap, Layout, 
-  Book, Linkedin, Github 
+import {
+    User, Shield, RefreshCw, BookOpen, HelpCircle, Info,
+    CheckCircle2, X, AlertTriangle, Lock,
+    Calendar, Wallet, GraduationCap, Layout,
+    Book, Linkedin, Github
 } from 'lucide-react';
-import UCPLogo from './UCPLogo'; 
+import UCPLogo from './UCPLogo';
+
+const API_BASE = process.env.REACT_APP_API_URL || '';
 
 // --- HELPER: TOAST NOTIFICATION ---
 const Toast = ({ message, type, onClose }) => {
-  if (!message) return null;
-  const styles = {
-    success: "bg-emerald-600 text-white shadow-emerald-900/20",
-    error: "bg-red-600 text-white shadow-red-900/20",
-    info: "bg-blue-600 text-white shadow-blue-900/20"
-  };
-  return (
-    <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 p-4 rounded-xl shadow-xl animate-slideUp ${styles[type] || styles.info}`}>
-      {type === 'success' ? <CheckCircle2 size={20} /> : <Info size={20} />}
-      <span className="font-medium text-sm">{message}</span>
-      <button onClick={onClose}><X size={16} className="opacity-70 hover:opacity-100" /></button>
-    </div>
-  );
+    if (!message) return null;
+    const styles = {
+        success: "bg-emerald-600 text-white shadow-emerald-900/20",
+        error: "bg-red-600 text-white shadow-red-900/20",
+        info: "bg-blue-600 text-white shadow-blue-900/20"
+    };
+    return (
+        <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 p-4 rounded-xl shadow-xl animate-slideUp ${styles[type] || styles.info}`}>
+            {type === 'success' ? <CheckCircle2 size={20} /> : <Info size={20} />}
+            <span className="font-medium text-sm">{message}</span>
+            <button onClick={onClose}><X size={16} className="opacity-70 hover:opacity-100" /></button>
+        </div>
+    );
 };
 
 // --- 1. PROFILE TAB ---
 const ProfileSection = ({ user, showToast }) => {
-  const [name, setName] = useState(user?.name || "");
-  const [loading, setLoading] = useState(false);
+    const [name, setName] = useState(user?.name || "");
+    const [loading, setLoading] = useState(false);
 
-  const handleSave = async () => {
-    setLoading(true);
-    try {
-        const token = localStorage.getItem('token');
-        const res = await fetch('/api/user/profile', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-            body: JSON.stringify({ name })
-        });
-        if(res.ok) showToast("Profile updated successfully", "success");
-        else showToast("Failed to update profile", "error");
-    } catch (e) { showToast("Server error", "error"); }
-    setLoading(false);
-  };
+    const handleSave = async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_BASE}/api/user/profile`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ name })
+            });
+            if (res.ok) showToast("Profile updated successfully", "success");
+            else showToast("Failed to update profile", "error");
+        } catch (e) { showToast("Server error", "error"); }
+        setLoading(false);
+    };
 
-  return (
-    <div className="animate-fadeIn">
-      <div className="mb-8">
-        <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Personal Information</h3>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">Update your display name and view your account details.</p>
-      </div>
-      
-      <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] space-y-6 max-w-xl">
-        <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Display Name</label>
-            <input 
-                type="text" 
-                value={name} 
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all"
-            />
+    return (
+        <div className="animate-fadeIn">
+            <div className="mb-8">
+                <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Personal Information</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Update your display name and view your account details.</p>
+            </div>
+
+            <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] space-y-6 max-w-xl">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Display Name</label>
+                    <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Email Address</label>
+                    <input
+                        type="text"
+                        value={user?.email || ""}
+                        disabled
+                        className="w-full bg-gray-100 dark:bg-[#252525] border border-transparent rounded-xl px-4 py-3 text-gray-500 cursor-not-allowed"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1"><Lock size={10} /> Email cannot be changed.</p>
+                </div>
+                <div className="pt-2">
+                    <button
+                        onClick={handleSave}
+                        disabled={loading}
+                        className="bg-brand-blue hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2"
+                    >
+                        {loading ? "Saving..." : "Save Changes"}
+                    </button>
+                </div>
+            </div>
         </div>
-        <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Email Address</label>
-            <input 
-                type="text" 
-                value={user?.email || ""} 
-                disabled
-                className="w-full bg-gray-100 dark:bg-[#252525] border border-transparent rounded-xl px-4 py-3 text-gray-500 cursor-not-allowed"
-            />
-            <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1"><Lock size={10}/> Email cannot be changed.</p>
-        </div>
-        <div className="pt-2">
-            <button 
-                onClick={handleSave} 
-                disabled={loading}
-                className="bg-brand-blue hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2"
-            >
-                {loading ? "Saving..." : "Save Changes"}
-            </button>
-        </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 // --- 2. SECURITY TAB ---
 const SecuritySection = ({ idleTimeout, setIdleTimeout }) => (
-  <div className="animate-fadeIn">
-    <div className="mb-8">
-        <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Security & Session</h3>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">Manage how long you stay logged in to protect your data.</p>
-    </div>
+    <div className="animate-fadeIn">
+        <div className="mb-8">
+            <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Security & Session</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Manage how long you stay logged in to protect your data.</p>
+        </div>
 
-    <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-            <div className="p-3 bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 rounded-xl">
-                <Shield size={24} />
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+                <div className="p-3 bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 rounded-xl">
+                    <Shield size={24} />
+                </div>
+                <div>
+                    <h4 className="font-bold text-gray-800 dark:text-white">Auto-Lock Timer</h4>
+                    <p className="text-xs text-gray-500 mt-1 max-w-sm">Automatically lock the screen after a period of inactivity to prevent unauthorized access.</p>
+                </div>
             </div>
-            <div>
-                <h4 className="font-bold text-gray-800 dark:text-white">Auto-Lock Timer</h4>
-                <p className="text-xs text-gray-500 mt-1 max-w-sm">Automatically lock the screen after a period of inactivity to prevent unauthorized access.</p>
+            <div className="relative">
+                <select
+                    value={idleTimeout}
+                    onChange={(e) => setIdleTimeout(Number(e.target.value))}
+                    className="appearance-none w-full md:w-48 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 text-sm font-medium dark:text-white focus:ring-2 focus:ring-brand-blue outline-none cursor-pointer"
+                >
+                    <option value={300000}>5 Minutes</option>
+                    <option value={900000}>15 Minutes</option>
+                    <option value={1800000}>30 Minutes</option>
+                    <option value={3600000}>1 Hour</option>
+                    <option value={0}>Never</option>
+                </select>
             </div>
-        </div>
-        <div className="relative">
-            <select 
-                value={idleTimeout}
-                onChange={(e) => setIdleTimeout(Number(e.target.value))}
-                className="appearance-none w-full md:w-48 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 text-sm font-medium dark:text-white focus:ring-2 focus:ring-brand-blue outline-none cursor-pointer"
-            >
-                <option value={300000}>5 Minutes</option>
-                <option value={900000}>15 Minutes</option>
-                <option value={1800000}>30 Minutes</option>
-                <option value={3600000}>1 Hour</option>
-                <option value={0}>Never</option>
-            </select>
         </div>
     </div>
-  </div>
 );
 
 // --- 3. PORTAL CONNECTION TAB ---
 const PortalSection = ({ user, showToast }) => {
     const [isSyncing, setIsSyncing] = useState(false);
-    
+
     const handleSync = async () => {
         setIsSyncing(true);
         try {
-            const res = await fetch('/api/sync-grades', { method: 'POST', headers: {'x-auth-token': localStorage.getItem('token')} });
+            const res = await fetch(`${API_BASE}/api/sync-grades`, { method: 'POST', headers: { 'x-auth-token': localStorage.getItem('token') } });
             if (res.ok) {
                 showToast("Sync Complete! Reloading data...", "success");
                 setTimeout(() => window.location.reload(), 1500);
@@ -172,23 +174,23 @@ const PortalSection = ({ user, showToast }) => {
                     <div className="flex flex-col md:flex-row items-center gap-8">
                         <div className="flex-1">
                             <h5 className="font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
-                                <RefreshCw size={18} className="text-brand-blue"/> Manual Data Sync
+                                <RefreshCw size={18} className="text-brand-blue" /> Manual Data Sync
                             </h5>
                             <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-2">
                                 The Portal Robot fetches your latest grades, attendance, and schedule directly from the University Portal.
                             </p>
                             <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                                <Info size={14} className="text-blue-500"/>
+                                <Info size={14} className="text-blue-500" />
                                 <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">Note: The first sync may take <span className="font-bold">30-60 seconds</span>.</span>
                             </div>
                         </div>
-                        
-                        <button 
+
+                        <button
                             onClick={handleSync}
                             disabled={isSyncing || !user.isPortalConnected}
                             className={`w-full md:w-auto px-8 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-3 shadow-lg transition-all 
-                                ${isSyncing 
-                                    ? 'bg-blue-400 cursor-wait' 
+                                ${isSyncing
+                                    ? 'bg-blue-400 cursor-wait'
                                     : 'bg-brand-blue hover:bg-blue-600 shadow-blue-500/30 hover:scale-[1.02]'
                                 }`}
                         >
@@ -216,11 +218,11 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
     };
 
     const initiateDelete = (course) => {
-        const safeTasks = tasks || []; 
+        const safeTasks = tasks || [];
         const linkedTasks = safeTasks.filter(t => t.course === course.name && !t.isDeleted);
-        
+
         if (linkedTasks.length > 0) {
-            setDeleteModal({ course, linkedTasks }); 
+            setDeleteModal({ course, linkedTasks });
         } else {
             removeCourse(course._id || course.id);
             showToast("Course removed.", "success");
@@ -255,8 +257,8 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                     <div>
                         <h4 className="font-bold text-brand-blue text-sm">Auto-Sync Active</h4>
                         <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
-                            University courses are automatically synchronized with your student portal. 
-                            <br/>If this list is empty or outdated, please perform a <b>Manual Sync</b> in the "Portal Connection" tab.
+                            University courses are automatically synchronized with your student portal.
+                            <br />If this list is empty or outdated, please perform a <b>Manual Sync</b> in the "Portal Connection" tab.
                         </p>
                     </div>
                 </div>
@@ -264,8 +266,8 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
 
             {type === 'general' && (
                 <div className="flex gap-3 mb-6 animate-slideUp">
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         value={newCourse}
                         onChange={(e) => setNewCourse(e.target.value)}
                         placeholder="Enter course or category name..."
@@ -279,18 +281,18 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                 {filtered.map(c => (
                     <div key={c._id || c.id} className="flex items-center justify-between p-4 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl group hover:border-blue-200 dark:hover:border-blue-900 transition-colors">
                         <div className="flex items-center gap-3">
-                            {type === 'uni' ? <UCPLogo className="w-8 h-8 text-brand-blue"/> : <Book size={24} className="text-gray-400 group-hover:text-brand-blue transition-colors"/>}
+                            {type === 'uni' ? <UCPLogo className="w-8 h-8 text-brand-blue" /> : <Book size={24} className="text-gray-400 group-hover:text-brand-blue transition-colors" />}
                             <div>
                                 <span className="font-bold text-gray-800 dark:text-gray-200 block">{c.name}</span>
                                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{type === 'uni' ? 'Synced Course' : 'Personal Course'}</span>
                             </div>
                         </div>
                         {type === 'uni' ? (
-                            <span className="text-[10px] bg-gray-100 dark:bg-[#252525] text-gray-500 px-2 py-1 rounded border border-gray-200 dark:border-[#444] flex items-center gap-1"><Lock size={10}/> Synced</span>
+                            <span className="text-[10px] bg-gray-100 dark:bg-[#252525] text-gray-500 px-2 py-1 rounded border border-gray-200 dark:border-[#444] flex items-center gap-1"><Lock size={10} /> Synced</span>
                         ) : (
                             // --- HIDE DELETE BUTTON FOR DEFAULT COURSE ---
                             (c.id !== 'general-task' && c.name !== 'General Course' && c.name !== 'General Task') && (
-                                <button onClick={() => initiateDelete(c)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg transition-colors"><X size={20}/></button>
+                                <button onClick={() => initiateDelete(c)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg transition-colors"><X size={20} /></button>
                             )
                         )}
                     </div>
@@ -313,10 +315,10 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                             </div>
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Delete "{deleteModal.course.name}"?</h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                                You have <strong>{deleteModal.linkedTasks.length} active tasks</strong> under this course. 
+                                You have <strong>{deleteModal.linkedTasks.length} active tasks</strong> under this course.
                                 Deleting it will leave these tasks uncategorized.
                             </p>
-                            
+
                             <div className="w-full bg-gray-50 dark:bg-[#121212] rounded-lg p-3 mb-6 max-h-32 overflow-y-auto border border-gray-200 dark:border-[#333] text-left">
                                 {deleteModal.linkedTasks.map(t => (
                                     <div key={t.id} className="text-xs text-gray-600 dark:text-gray-300 py-1 border-b border-gray-200 dark:border-[#2C2C2C] last:border-0 flex items-center gap-2">
@@ -326,13 +328,13 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                             </div>
 
                             <div className="flex gap-3 w-full">
-                                <button 
+                                <button
                                     onClick={() => setDeleteModal(null)}
                                     className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#2C2C2C] hover:bg-gray-200 dark:hover:bg-[#383838] transition-colors"
                                 >
                                     Cancel
                                 </button>
-                                <button 
+                                <button
                                     onClick={confirmDelete}
                                     className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all"
                                 >
@@ -357,7 +359,7 @@ const HelpSection = () => (
 
         <div className="grid gap-4">
             <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-brand-blue rounded-lg h-fit"><Layout size={20}/></div>
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-brand-blue rounded-lg h-fit"><Layout size={20} /></div>
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Dashboard & Tasks</h4>
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -365,9 +367,9 @@ const HelpSection = () => (
                     </p>
                 </div>
             </div>
-            
+
             <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
-                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-lg h-fit"><GraduationCap size={20}/></div>
+                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-lg h-fit"><GraduationCap size={20} /></div>
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Academics</h4>
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -377,7 +379,7 @@ const HelpSection = () => (
             </div>
 
             <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg h-fit"><Wallet size={20}/></div>
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg h-fit"><Wallet size={20} /></div>
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Cash Manager</h4>
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -387,7 +389,7 @@ const HelpSection = () => (
             </div>
 
             <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
-                <div className="p-3 bg-orange-50 dark:bg-orange-900/20 text-orange-600 rounded-lg h-fit"><Calendar size={20}/></div>
+                <div className="p-3 bg-orange-50 dark:bg-orange-900/20 text-orange-600 rounded-lg h-fit"><Calendar size={20} /></div>
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Calendar</h4>
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -434,19 +436,19 @@ const AboutSection = () => (
 
         {/* --- ADDED SOCIAL LINKS --- */}
         <div className="flex justify-center gap-4 mt-8 animate-slideUp">
-            <a 
-                href="https://www.linkedin.com/in/abu-sufian-71ba2a303/" 
-                target="_blank" 
+            <a
+                href="https://www.linkedin.com/in/abu-sufian-71ba2a303/"
+                target="_blank"
                 rel="noreferrer"
                 className="group flex items-center gap-2 px-5 py-3 bg-[#0077b5] text-white rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:scale-105 transition-all"
             >
                 <Linkedin size={20} className="group-hover:animate-bounce" />
                 <span className="font-bold text-sm">LinkedIn</span>
             </a>
-            
-            <a 
-                href="https://github.com/abusufian-ui" 
-                target="_blank" 
+
+            <a
+                href="https://github.com/abusufian-ui"
+                target="_blank"
                 rel="noreferrer"
                 className="group flex items-center gap-2 px-5 py-3 bg-[#333] dark:bg-white dark:text-black text-white rounded-xl shadow-lg shadow-gray-500/30 hover:shadow-gray-500/50 hover:scale-105 transition-all"
             >
@@ -458,80 +460,80 @@ const AboutSection = () => (
 );
 
 // --- MAIN SETTINGS LAYOUT ---
-const Settings = ({ 
-  user = {}, 
-  courses = [], 
-  addCourse, 
-  removeCourse, 
-  tasks = [], 
-  idleTimeout = 900000, 
-  setIdleTimeout 
+const Settings = ({
+    user = {},
+    courses = [],
+    addCourse,
+    removeCourse,
+    tasks = [],
+    idleTimeout = 900000,
+    setIdleTimeout
 }) => {
-  const [activeTab, setActiveTab] = useState('profile');
-  const [toast, setToast] = useState({ msg: null, type: null });
+    const [activeTab, setActiveTab] = useState('profile');
+    const [toast, setToast] = useState({ msg: null, type: null });
 
-  const showToast = (msg, type) => {
-    setToast({ msg, type });
-    setTimeout(() => setToast({ msg: null, type: null }), 3000);
-  };
+    const showToast = (msg, type) => {
+        setToast({ msg, type });
+        setTimeout(() => setToast({ msg: null, type: null }), 3000);
+    };
 
-  const tabs = [
-    { id: 'profile', label: 'Profile Settings', icon: User },
-    { id: 'security', label: 'Security', icon: Shield },
-    { id: 'portal', label: 'Portal Connection', icon: RefreshCw },
-    { id: 'courses', label: 'Course Manager', icon: BookOpen },
-    { id: 'help', label: 'Help Center', icon: HelpCircle },
-    { id: 'about', label: 'About', icon: Info },
-  ];
+    const tabs = [
+        { id: 'profile', label: 'Profile Settings', icon: User },
+        { id: 'security', label: 'Security', icon: Shield },
+        { id: 'portal', label: 'Portal Connection', icon: RefreshCw },
+        { id: 'courses', label: 'Course Manager', icon: BookOpen },
+        { id: 'help', label: 'Help Center', icon: HelpCircle },
+        { id: 'about', label: 'About', icon: Info },
+    ];
 
-  return (
-    <div className="flex h-full w-full animate-fadeIn bg-gray-50 dark:bg-[#0c0c0c] overflow-hidden">
-      {/* Global Toast */}
-      <Toast message={toast.msg} type={toast.type} onClose={() => setToast({ msg: null, type: null })} />
+    return (
+        <div className="flex h-full w-full animate-fadeIn bg-gray-50 dark:bg-[#0c0c0c] overflow-hidden">
+            {/* Global Toast */}
+            <Toast message={toast.msg} type={toast.type} onClose={() => setToast({ msg: null, type: null })} />
 
-      {/* LEFT SIDEBAR */}
-      <div className="w-64 border-r border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#151518] flex flex-col h-full shrink-0">
-        <div className="p-6 pb-2">
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Settings</h2>
-        </div>
-        <div className="px-3 space-y-1 overflow-y-auto custom-scrollbar flex-1">
-            {tabs.map(tab => (
-                <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 
-                        ${activeTab === tab.id 
-                            ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-blue shadow-sm' 
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] hover:text-gray-900 dark:hover:text-gray-200'
-                        }`}
-                >
-                    <tab.icon size={18} className={activeTab === tab.id ? "text-brand-blue" : "opacity-70"} />
-                    {tab.label}
-                </button>
-            ))}
-        </div>
-        {/* Footer Credit in Sidebar */}
-        <div className="p-6 border-t border-gray-100 dark:border-[#2C2C2C]">
-            <div className="flex items-center gap-3 opacity-60">
-                <UCPLogo className="w-5 h-5 text-gray-400" />
-                <span className="text-xs font-mono text-gray-400">v2.0.0</span>
+            {/* LEFT SIDEBAR */}
+            <div className="w-64 border-r border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#151518] flex flex-col h-full shrink-0">
+                <div className="p-6 pb-2">
+                    <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Settings</h2>
+                </div>
+                <div className="px-3 space-y-1 overflow-y-auto custom-scrollbar flex-1">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 
+                        ${activeTab === tab.id
+                                    ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-blue shadow-sm'
+                                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] hover:text-gray-900 dark:hover:text-gray-200'
+                                }`}
+                        >
+                            <tab.icon size={18} className={activeTab === tab.id ? "text-brand-blue" : "opacity-70"} />
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+                {/* Footer Credit in Sidebar */}
+                <div className="p-6 border-t border-gray-100 dark:border-[#2C2C2C]">
+                    <div className="flex items-center gap-3 opacity-60">
+                        <UCPLogo className="w-5 h-5 text-gray-400" />
+                        <span className="text-xs font-mono text-gray-400">v2.0.0</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* RIGHT CONTENT AREA */}
+            <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-8 md:p-12 relative">
+                <div className="max-w-3xl mx-auto pb-24">
+                    {activeTab === 'profile' && <ProfileSection user={user} showToast={showToast} />}
+                    {activeTab === 'security' && <SecuritySection idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} />}
+                    {activeTab === 'portal' && <PortalSection user={user} showToast={showToast} />}
+                    {activeTab === 'courses' && <CourseSection courses={courses} addCourse={addCourse} removeCourse={removeCourse} tasks={tasks} showToast={showToast} />}
+                    {activeTab === 'help' && <HelpSection />}
+                    {activeTab === 'about' && <AboutSection />}
+                </div>
             </div>
         </div>
-      </div>
-
-      {/* RIGHT CONTENT AREA */}
-      <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-8 md:p-12 relative">
-        <div className="max-w-3xl mx-auto pb-24">
-            {activeTab === 'profile' && <ProfileSection user={user} showToast={showToast} />}
-            {activeTab === 'security' && <SecuritySection idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} />}
-            {activeTab === 'portal' && <PortalSection user={user} showToast={showToast} />}
-            {activeTab === 'courses' && <CourseSection courses={courses} addCourse={addCourse} removeCourse={removeCourse} tasks={tasks} showToast={showToast} />}
-            {activeTab === 'help' && <HelpSection />}
-            {activeTab === 'about' && <AboutSection />}
-        </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default Settings;

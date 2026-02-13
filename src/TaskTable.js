@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  CheckCircle2, Calendar as CalendarIcon, Mail, Clock, 
-  ChevronDown, ChevronRight, ChevronsUp, ChevronUp,   
+import {
+  CheckCircle2, Calendar as CalendarIcon, Mail, Clock,
+  ChevronDown, ChevronRight, ChevronsUp, ChevronUp,
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
   X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle,
-  CalendarDays, Archive 
+  CalendarDays, Archive
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -38,21 +38,21 @@ const getAbbreviation = (name) => {
   if (n.includes('data structure')) return 'DSA';
   if (n.includes('database')) return 'DB';
   if (n.includes('computer network')) return 'CN';
-  
+
   // --- UPDATED: General Course mapping ---
   if (n.includes('general course') || n.includes('general task')) return 'General';
 
   // 3. Fallback
   if (name.length > 15) {
     const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for', 'the'];
-    return name.split(' ').filter(word => !ignoredWords.includes(word.toLowerCase())).map(word => word[0]).join('').toUpperCase().substring(0, 5); 
+    return name.split(' ').filter(word => !ignoredWords.includes(word.toLowerCase())).map(word => word[0]).join('').toUpperCase().substring(0, 5);
   }
 
   return name;
 };
 
 const COL = {
-  name: "flex-1 pl-4", status: "w-[160px]", course: "w-[150px]", date: "w-[140px]", priority: "w-[100px]",     
+  name: "flex-1 pl-4", status: "w-[160px]", course: "w-[150px]", date: "w-[140px]", priority: "w-[100px]",
 };
 
 const formatDate = (dateString) => {
@@ -62,7 +62,7 @@ const formatDate = (dateString) => {
 };
 
 const getPriorityConfig = (p) => {
-  switch(p) {
+  switch (p) {
     case 'Critical': return { icon: ChevronsUp, color: 'text-red-600 dark:text-red-500', label: p };
     case 'High': return { icon: ChevronUp, color: 'text-orange-600 dark:text-orange-500', label: p };
     case 'Medium': return { icon: Minus, color: 'text-yellow-600 dark:text-yellow-500', label: p };
@@ -72,13 +72,13 @@ const getPriorityConfig = (p) => {
 };
 
 const getStatusConfig = (s) => {
-  switch(s) {
-      case 'Scheduled': return { icon: CalendarIcon, color: 'text-gray-500 dark:text-gray-400', label: s };
-      case 'In Progress': return { icon: Clock, color: 'text-yellow-600 dark:text-yellow-500', label: s };
-      case 'New task': return { icon: Mail, color: 'text-blue-600 dark:text-blue-400', label: 'New task' };
-      case 'New Assigned': return { icon: Mail, color: 'text-blue-600 dark:text-blue-400', label: 'New task' };
-      case 'Completed': return { icon: CheckCircle2, color: 'text-green-600 dark:text-green-500', label: s };
-      default: return { icon: CheckCircle2, color: 'text-gray-400', label: s };
+  switch (s) {
+    case 'Scheduled': return { icon: CalendarIcon, color: 'text-gray-500 dark:text-gray-400', label: s };
+    case 'In Progress': return { icon: Clock, color: 'text-yellow-600 dark:text-yellow-500', label: s };
+    case 'New task': return { icon: Mail, color: 'text-blue-600 dark:text-blue-400', label: 'New task' };
+    case 'New Assigned': return { icon: Mail, color: 'text-blue-600 dark:text-blue-400', label: 'New task' };
+    case 'Completed': return { icon: CheckCircle2, color: 'text-green-600 dark:text-green-500', label: s };
+    default: return { icon: CheckCircle2, color: 'text-gray-400', label: s };
   }
 };
 
@@ -111,7 +111,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
   const handleSave = () => {
     if (editedName.trim() !== task.name) onUpdate(task.id, 'name', editedName);
     if (editedDesc.trim() !== task.description) onUpdate(task.id, 'description', editedDesc);
-    setIsEditing(false); 
+    setIsEditing(false);
   };
 
   return (
@@ -119,12 +119,12 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
       <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] animate-slideUp overflow-hidden">
         <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center">
           <div className="flex items-center gap-3">
-             <div className="p-2 bg-brand-blue/10 rounded-xl"><Info className="text-brand-blue" size={20} /></div>
-             <h2 className="text-xl font-bold dark:text-white text-gray-800">Task Details</h2>
+            <div className="p-2 bg-brand-blue/10 rounded-xl"><Info className="text-brand-blue" size={20} /></div>
+            <h2 className="text-xl font-bold dark:text-white text-gray-800">Task Details</h2>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={isEditing ? handleSave : () => setIsEditing(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${isEditing ? 'bg-brand-blue text-white hover:bg-blue-600' : 'bg-gray-100 dark:bg-[#333] text-gray-500 dark:text-gray-400 hover:text-brand-blue'}`}>
-              {isEditing ? <><Save size={14}/> Save</> : <><Edit2 size={14}/> Edit</>}
+              {isEditing ? <><Save size={14} /> Save</> : <><Edit2 size={14} /> Edit</>}
             </button>
             <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-full transition-colors text-gray-400"><X size={20} /></button>
           </div>
@@ -149,15 +149,15 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm text-gray-500"><CalendarIcon size={16} className="opacity-70" /> Created: <span className="dark:text-gray-200 font-medium">{new Date(task.createdAt || Date.now()).toLocaleDateString()}</span></div>
               <div className="flex items-center gap-3 text-sm text-gray-500"><CalendarIcon className="text-brand-pink" size={16} /> Due Date: <span className="dark:text-gray-200 font-medium">{task.date || "No date"}</span></div>
-              
+
               {task.time && (
                 <div className="flex items-center gap-3 text-sm text-gray-500">
-                  <Clock className="text-brand-pink" size={16} /> Time: 
+                  <Clock className="text-brand-pink" size={16} /> Time:
                   <span className="dark:text-gray-200 font-medium bg-gray-100 dark:bg-[#333] px-2 py-0.5 rounded ml-1">{task.time}</span>
                 </div>
               )}
             </div>
-            
+
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm text-gray-500"><Flag size={16} className="opacity-70" /> Priority: <span className={`font-medium ${pConfig.color} flex items-center gap-1.5`}><PriorityIcon size={14} /> {task.priority}</span></div>
               <div className="flex items-center gap-3 text-sm text-gray-500"><Book size={16} className="text-brand-blue" /> Course: <span className="dark:text-gray-200 font-medium flex items-center gap-1.5"><CourseIcon type={courseType} name={task.course} /> {task.course}</span></div>
@@ -184,11 +184,11 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
 
 const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   const [openDropdownId, setOpenDropdownId] = useState(null);
-  const [selectedTask, setSelectedTask] = useState(null); 
+  const [selectedTask, setSelectedTask] = useState(null);
   const [showActive, setShowActive] = useState(true);
   const [showCompleted, setShowCompleted] = useState(true);
-  const [expandedTasks, setExpandedTasks] = useState({}); 
-  const [newSubTask, setNewSubTask] = useState({}); 
+  const [expandedTasks, setExpandedTasks] = useState({});
+  const [newSubTask, setNewSubTask] = useState({});
   const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
@@ -196,7 +196,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
       const updated = tasks.find(t => t.id === selectedTask.id);
       if (updated) setSelectedTask(updated);
     }
-  }, [tasks]); 
+  }, [tasks, selectedTask]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -207,7 +207,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   }, []);
 
   const toggleExpand = (e, taskId) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
   };
 
@@ -222,12 +222,12 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   const handleDeleteSubTask = (taskId, index) => {
     const task = tasks.find(t => t.id === taskId);
     const updatedSubTasks = [...task.subTasks];
-    updatedSubTasks.splice(index, 1); 
+    updatedSubTasks.splice(index, 1);
     updateTask(taskId, 'subTasks', updatedSubTasks);
   };
 
   const toggleSubTask = (e, taskId, index) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     const task = tasks.find(t => t.id === taskId);
     const subTasks = [...task.subTasks];
     subTasks[index].completed = !subTasks[index].completed;
@@ -272,87 +272,87 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
     return (
       <div key={task.id} className="border-b border-gray-200 dark:border-[#2C2C2C]">
         <div onClick={() => setSelectedTask(task)} className={`group flex items-center py-3 px-0 transition-all cursor-pointer ${isCompleted ? 'bg-gray-50 dark:bg-[#121212] opacity-60' : 'bg-white dark:bg-[#181818] hover:bg-gray-50 dark:hover:bg-[#202020]'}`}>
-            <div className={`${COL.name} flex items-center gap-2 text-sm font-medium ${isCompleted ? 'line-through text-gray-500' : 'text-gray-800 dark:text-white'}`}>
-              <button onClick={(e) => toggleExpand(e, task.id)} className="text-gray-400 hover:text-brand-blue">
-                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </button>
-              <span>{task.name}</span>
-              {totalCount > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 rounded-md font-bold ml-1">{completedCount}/{totalCount}</span>}
-            </div>
-            
-            <div className={COL.status} onClick={(e) => e.stopPropagation()}>
-              <Dropdown id={`${task.id}-status`} value={isCompleted ? "Completed" : statusConfig.label} icon={statusConfig.icon} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => updateTask(task.id, 'status', val)} colorClass={isCompleted ? 'text-green-600 dark:text-green-500' : statusConfig.color} getOptionConfig={getStatusConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
-            </div>
-            
-            <div className={COL.course} onClick={(e) => e.stopPropagation()}>
-                <div className="relative custom-dropdown w-full">
-                  {task.course === 'Course Deleted' ? (
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} 
-                      className="flex items-center gap-2 text-sm text-red-500 hover:opacity-80 text-left w-full font-medium py-1 truncate"
-                    >
-                      <AlertTriangle size={16} /> Deleted
-                    </button>
-                  ) : (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} 
-                        className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:opacity-80 text-left w-full font-medium py-1 truncate"
-                        title={task.course} 
-                    >
-                      <CourseIcon type={courseType} name={task.course} /> {getAbbreviation(task.course) || "Select"}
-                    </button>
-                  )}
+          <div className={`${COL.name} flex items-center gap-2 text-sm font-medium ${isCompleted ? 'line-through text-gray-500' : 'text-gray-800 dark:text-white'}`}>
+            <button onClick={(e) => toggleExpand(e, task.id)} className="text-gray-400 hover:text-brand-blue">
+              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+            <span>{task.name}</span>
+            {totalCount > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 rounded-md font-bold ml-1">{completedCount}/{totalCount}</span>}
+          </div>
 
-                  {openDropdownId === `${task.id}-course` && (
-                    <div className="absolute top-full left-0 mt-1 min-w-[220px] bg-white dark:bg-[#1E1E1E] rounded-md shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-50 overflow-hidden animate-fadeIn max-h-[300px] overflow-y-auto custom-scrollbar-hide">
-                      
-                      {/* --- 1. EVENT BUTTON --- */}
-                      <div 
-                        onClick={() => { updateTask(task.id, 'course', 'Event'); setOpenDropdownId(null); }} 
-                        className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-rose-600 dark:text-rose-500 font-medium border-b border-gray-100 dark:border-[#2C2C2C]"
-                      >
-                         <CalendarDays size={16} /> <span>Event</span>
-                      </div>
+          <div className={COL.status} onClick={(e) => e.stopPropagation()}>
+            <Dropdown id={`${task.id}-status`} value={isCompleted ? "Completed" : statusConfig.label} icon={statusConfig.icon} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => updateTask(task.id, 'status', val)} colorClass={isCompleted ? 'text-green-600 dark:text-green-500' : statusConfig.color} getOptionConfig={getStatusConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
+          </div>
 
-                      {/* --- 2. UNIVERSITY COURSES --- */}
-                      {uniCourses.length > 0 && (
-                        <>
-                          <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
-                             University Courses
-                          </div>
-                          {uniCourses.map((c) => (
-                            <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                              <UCPLogo className="w-4 h-4 text-blue-600" /> <span className="truncate">{c.name}</span>
-                            </div>
-                          ))}
-                        </>
-                      )}
+          <div className={COL.course} onClick={(e) => e.stopPropagation()}>
+            <div className="relative custom-dropdown w-full">
+              {task.course === 'Course Deleted' ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }}
+                  className="flex items-center gap-2 text-sm text-red-500 hover:opacity-80 text-left w-full font-medium py-1 truncate"
+                >
+                  <AlertTriangle size={16} /> Deleted
+                </button>
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }}
+                  className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:opacity-80 text-left w-full font-medium py-1 truncate"
+                  title={task.course}
+                >
+                  <CourseIcon type={courseType} name={task.course} /> {getAbbreviation(task.course) || "Select"}
+                </button>
+              )}
 
-                      {/* --- 3. GENERAL COURSES --- */}
+              {openDropdownId === `${task.id}-course` && (
+                <div className="absolute top-full left-0 mt-1 min-w-[220px] bg-white dark:bg-[#1E1E1E] rounded-md shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-50 overflow-hidden animate-fadeIn max-h-[300px] overflow-y-auto custom-scrollbar-hide">
+
+                  {/* --- 1. EVENT BUTTON --- */}
+                  <div
+                    onClick={() => { updateTask(task.id, 'course', 'Event'); setOpenDropdownId(null); }}
+                    className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-rose-600 dark:text-rose-500 font-medium border-b border-gray-100 dark:border-[#2C2C2C]"
+                  >
+                    <CalendarDays size={16} /> <span>Event</span>
+                  </div>
+
+                  {/* --- 2. UNIVERSITY COURSES --- */}
+                  {uniCourses.length > 0 && (
+                    <>
                       <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
-                          General / Manual
+                        University Courses
                       </div>
-                      {generalCourses.length > 0 ? generalCourses.map((c) => (
+                      {uniCourses.map((c) => (
                         <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                          <Book size={16} className="text-gray-400"/> <span className="truncate">{c.name}</span>
+                          <UCPLogo className="w-4 h-4 text-blue-600" /> <span className="truncate">{c.name}</span>
                         </div>
-                      )) : <div className="p-3 text-xs text-gray-500">No general courses</div>}
-
-                    </div>
+                      ))}
+                    </>
                   )}
+
+                  {/* --- 3. GENERAL COURSES --- */}
+                  <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
+                    General / Manual
+                  </div>
+                  {generalCourses.length > 0 ? generalCourses.map((c) => (
+                    <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                      <Book size={16} className="text-gray-400" /> <span className="truncate">{c.name}</span>
+                    </div>
+                  )) : <div className="p-3 text-xs text-gray-500">No general courses</div>}
+
                 </div>
+              )}
             </div>
-            
-            <div className={COL.date} onClick={(e) => e.stopPropagation()}>
-              <DateCell date={task.date} time={task.time} onChange={(val) => updateTask(task.id, 'date', val)} />
+          </div>
+
+          <div className={COL.date} onClick={(e) => e.stopPropagation()}>
+            <DateCell date={task.date} time={task.time} onChange={(val) => updateTask(task.id, 'date', val)} />
+          </div>
+
+          <div className={`${COL.priority} flex items-center justify-between pr-4`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex-1">
+              <Dropdown id={`${task.id}-priority`} value={task.priority} icon={priorityConfig.icon} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => updateTask(task.id, 'priority', val)} colorClass={`font-medium ${priorityConfig.color}`} getOptionConfig={getPriorityConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
             </div>
-            
-            <div className={`${COL.priority} flex items-center justify-between pr-4`} onClick={(e) => e.stopPropagation()}>
-              <div className="flex-1">
-                <Dropdown id={`${task.id}-priority`} value={task.priority} icon={priorityConfig.icon} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => updateTask(task.id, 'priority', val)} colorClass={`font-medium ${priorityConfig.color}`} getOptionConfig={getPriorityConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }} className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
-            </div>
+            <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }} className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+          </div>
         </div>
 
         {isExpanded && (
@@ -363,18 +363,18 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                   {sub.completed ? <CheckSquare size={16} /> : <Square size={16} />}
                 </button>
                 <span className={`text-xs ${sub.completed ? 'line-through text-gray-500 italic' : 'text-gray-700 dark:text-gray-300'}`}>{sub.text}</span>
-                <button 
+                <button
                   onClick={() => handleDeleteSubTask(task.id, index)}
                   className="ml-auto text-gray-400 hover:text-red-500 opacity-0 group-hover/sub:opacity-100 transition-all p-1 rounded-md"
                   title="Remove subtask"
                 >
-                  <X size={14} /> 
+                  <X size={14} />
                 </button>
               </div>
             ))}
             <div className="flex items-center gap-3 pt-1 group/input">
               <PlusIcon size={14} className="text-brand-blue" />
-              <input type="text" value={newSubTask[task.id] || ''} onChange={(e) => setNewSubTask(prev => ({...prev, [task.id]: e.target.value}))} onKeyDown={(e) => e.key === 'Enter' && handleAddSubTask(task.id, e.target.value)} placeholder="Add a sub-task..." className="bg-transparent border-none text-xs text-brand-blue outline-none focus:ring-0 placeholder-gray-500 italic w-full" />
+              <input type="text" value={newSubTask[task.id] || ''} onChange={(e) => setNewSubTask(prev => ({ ...prev, [task.id]: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && handleAddSubTask(task.id, e.target.value)} placeholder="Add a sub-task..." className="bg-transparent border-none text-xs text-brand-blue outline-none focus:ring-0 placeholder-gray-500 italic w-full" />
             </div>
           </div>
         )}
@@ -386,18 +386,18 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
     <div className="p-8 w-full animate-fadeIn pb-20">
       <div className="mb-10">
         <button onClick={() => setShowActive(!showActive)} className="flex items-center gap-2 mb-4 group focus:outline-none">
-           {showActive ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
-           <h2 className="text-gray-800 dark:text-white font-bold text-sm">Active tasks</h2>
-           <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{activeTasks.length}</span>
+          {showActive ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
+          <h2 className="text-gray-800 dark:text-white font-bold text-sm">Active tasks</h2>
+          <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{activeTasks.length}</span>
         </button>
         {showActive && (
           <>
             <div className="flex text-xs text-gray-500 dark:text-[#71717A] border-b border-gray-200 dark:border-[#2C2C2C] pb-2 px-0">
-                <div className={COL.name}>Task Name</div>
-                <div className={COL.status}>Status</div>
-                <div className={COL.course}>Course</div>
-                <div className={COL.date}>Due date</div>
-                <div className={COL.priority}>Priority</div>
+              <div className={COL.name}>Task Name</div>
+              <div className={COL.status}>Status</div>
+              <div className={COL.course}>Course</div>
+              <div className={COL.date}>Due date</div>
+              <div className={COL.priority}>Priority</div>
             </div>
             {activeTasks.length > 0 ? activeTasks.map(task => renderRow(task, false)) : (
               <p className="py-8 text-center text-gray-500 text-sm italic">No active tasks.</p>
@@ -409,9 +409,9 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
       {completedTasks.length > 0 && (
         <div className="animate-fadeIn mb-10">
           <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 mb-4 group focus:outline-none">
-             {showCompleted ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
-             <h2 className="text-gray-800 dark:text-white font-bold text-sm">Completed tasks</h2>
-             <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{completedTasks.length}</span>
+            {showCompleted ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
+            <h2 className="text-gray-800 dark:text-white font-bold text-sm">Completed tasks</h2>
+            <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{completedTasks.length}</span>
           </button>
           {showCompleted && completedTasks.map(task => renderRow(task, true))}
         </div>
@@ -419,21 +419,21 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
 
       {archivedTasks.length > 0 && (
         <div className="animate-fadeIn pt-6 border-t border-dashed border-gray-200 dark:border-[#2C2C2C]">
-           <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-2 w-full group focus:outline-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-             <Archive size={18} />
-             <h2 className="font-bold text-sm">Past Semester / Archived</h2>
-             <span className="bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 text-xs px-2 py-0.5 rounded-full">{archivedTasks.length}</span>
-             <span className="ml-auto text-xs">{showArchived ? "Hide" : "Show"}</span>
-           </button>
-           
-           {showArchived && (
-             <div className="mt-4 opacity-75">
-               <div className="p-3 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-700 dark:text-yellow-500 text-xs rounded-lg mb-2 flex items-center gap-2">
-                 <AlertTriangle size={14} /> These tasks belong to deleted courses or past semesters.
-               </div>
-               {archivedTasks.map(task => renderRow(task, task.status === 'Completed'))}
-             </div>
-           )}
+          <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-2 w-full group focus:outline-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+            <Archive size={18} />
+            <h2 className="font-bold text-sm">Past Semester / Archived</h2>
+            <span className="bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 text-xs px-2 py-0.5 rounded-full">{archivedTasks.length}</span>
+            <span className="ml-auto text-xs">{showArchived ? "Hide" : "Show"}</span>
+          </button>
+
+          {showArchived && (
+            <div className="mt-4 opacity-75">
+              <div className="p-3 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-700 dark:text-yellow-500 text-xs rounded-lg mb-2 flex items-center gap-2">
+                <AlertTriangle size={14} /> These tasks belong to deleted courses or past semesters.
+              </div>
+              {archivedTasks.map(task => renderRow(task, task.status === 'Completed'))}
+            </div>
+          )}
         </div>
       )}
 
@@ -447,10 +447,10 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
         }
       `}</style>
 
-      <TaskSummaryModal 
-        isOpen={!!selectedTask} 
-        onClose={() => setSelectedTask(null)} 
-        task={selectedTask} 
+      <TaskSummaryModal
+        isOpen={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
+        task={selectedTask}
         courses={courses}
         onUpdate={updateTask}
       />
@@ -470,7 +470,7 @@ const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOpt
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 min-w-[170px] bg-white dark:bg-[#1E1E1E] rounded-md shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-50 overflow-hidden">
           {options.map((opt) => {
-            const config = getOptionConfig ? getOptionConfig(opt) : {}; 
+            const config = getOptionConfig ? getOptionConfig(opt) : {};
             return (
               <div key={opt} onClick={() => handleSelect(opt)} className={`px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 ${config.color || "text-gray-700 dark:text-gray-200"}`}>
                 {config.icon && <config.icon size={16} />} <span>{opt}</span>
@@ -485,7 +485,7 @@ const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOpt
 
 const DateCell = ({ date, time, onChange }) => {
   const inputRef = useRef(null);
-  const displayDate = formatDate(date); 
+  const displayDate = formatDate(date);
   return (
     <div className="relative cursor-pointer hover:opacity-80 group h-full flex flex-col justify-center" onClick={(e) => { e.stopPropagation(); inputRef.current.showPicker(); }}>
       <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">

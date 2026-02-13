@@ -7,14 +7,16 @@ import AddTaskModal from './AddTaskModal';
 import ConfirmationModal from './ConfirmationModal';
 import Bin from './Bin';
 import Login from './Login';
-import Calendar from './Calendar'; 
-import GradeBook from './GradeBook'; 
+import Calendar from './Calendar';
+import GradeBook from './GradeBook';
 import ResultHistory from './ResultHistory';
 import AdminDashboard from './AdminDashboard';
-import { Heart, ArrowRight, StickyNote } from 'lucide-react'; 
+import { Heart, ArrowRight, StickyNote } from 'lucide-react';
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
-import MyProfile from './MyProfile'; 
+import MyProfile from './MyProfile';
+
+const API_BASE = process.env.REACT_APP_API_URL || '';
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
@@ -22,7 +24,7 @@ function App() {
     const u = localStorage.getItem('user');
     return u ? JSON.parse(u) : null;
   });
-  
+
   const isAuthenticated = !!token;
 
   // --- THEME STATE ---
@@ -58,13 +60,13 @@ function App() {
   const [activeTab, setActiveTab] = useState('Welcome');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
-  const [taskToDelete, setTaskToDelete] = useState(null); 
-  const [prefilledDate, setPrefilledDate] = useState(''); 
+  const [taskToDelete, setTaskToDelete] = useState(null);
+  const [prefilledDate, setPrefilledDate] = useState('');
   const [viewTask, setViewTask] = useState(null);
 
-  const [courses, setCourses] = useState([]); 
-  const [tasks, setTasks] = useState([]); 
-  const [deletedTasks, setDeletedTasks] = useState([]); 
+  const [courses, setCourses] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [deletedTasks, setDeletedTasks] = useState([]);
 
   const [filters, setFilters] = useState({
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: ''
@@ -123,7 +125,7 @@ function App() {
   // --- DATA FETCHING (Memoized with useCallback) ---
   const fetchUser = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/user', { headers: authHeaders });
+      const res = await fetch(`${API_BASE}/api/auth/user`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       if (res.ok) {
         const freshUser = await res.json();
@@ -135,7 +137,7 @@ function App() {
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await fetch('/api/tasks', { headers: authHeaders });
+      const res = await fetch(`${API_BASE}/api/tasks`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
       const formattedTasks = data.map(t => ({ ...t, id: t._id }));
@@ -145,7 +147,7 @@ function App() {
 
   const fetchBin = useCallback(async () => {
     try {
-      const res = await fetch('/api/bin', { headers: authHeaders });
+      const res = await fetch(`${API_BASE}/api/bin`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
       const formattedBin = data.map(t => ({ ...t, id: t._id }));
@@ -159,7 +161,7 @@ function App() {
     let customCourses = [];
 
     try {
-      const res = await fetch('/api/grades', { headers: authHeaders });
+      const res = await fetch(`${API_BASE}/api/grades`, { headers: authHeaders });
       if (res.ok) {
         const gradeData = await res.json();
         uniCourses = (Array.isArray(gradeData) ? gradeData : []).map(g => ({
@@ -169,7 +171,7 @@ function App() {
     } catch (error) { console.error("Error fetching uni courses:", error); }
 
     try {
-      const res = await fetch('/api/courses', { headers: authHeaders });
+      const res = await fetch(`${API_BASE}/api/courses`, { headers: authHeaders });
       if (res.ok) {
         const customData = await res.json();
         customCourses = (Array.isArray(customData) ? customData : []).map(c => ({
@@ -184,7 +186,7 @@ function App() {
   // Main Data Synchronization Effect
   useEffect(() => {
     if (isAuthenticated && token) {
-      fetchUser(); 
+      fetchUser();
       fetchTasks();
       fetchBin();
       fetchCourses();
@@ -195,7 +197,7 @@ function App() {
   // --- TASK ACTIONS ---
   const handleAddTask = async (newTaskData) => {
     try {
-      const res = await fetch('/api/tasks', {
+      const res = await fetch(`${API_BASE}/api/tasks`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(newTaskData)
@@ -207,12 +209,12 @@ function App() {
     } catch (error) { alert("Failed to save task."); }
   };
 
-  const deleteTask = (taskId) => setTaskToDelete(taskId); 
+  const deleteTask = (taskId) => setTaskToDelete(taskId);
 
   const executeDelete = async () => {
     if (!taskToDelete) return;
     try {
-      await fetch(`/api/tasks/${taskToDelete}/delete`, { method: 'PUT', headers: authHeaders });
+      await fetch(`${API_BASE}/api/tasks/${taskToDelete}/delete`, { method: 'PUT', headers: authHeaders });
       const taskObj = tasks.find(t => t.id === taskToDelete);
       if (taskObj) {
         setDeletedTasks([{ ...taskObj, deletedAt: new Date().toISOString() }, ...deletedTasks]);
@@ -224,10 +226,10 @@ function App() {
 
   const restoreTask = async (taskId) => {
     try {
-      await fetch(`/api/tasks/${taskId}/restore`, { method: 'PUT', headers: authHeaders });
+      await fetch(`${API_BASE}/api/tasks/${taskId}/restore`, { method: 'PUT', headers: authHeaders });
       const taskToRestore = deletedTasks.find(t => t.id === taskId);
       if (taskToRestore) {
-        const { deletedAt, ...rest } = taskToRestore; 
+        const { deletedAt, ...rest } = taskToRestore;
         setTasks([rest, ...tasks]);
         setDeletedTasks(prev => prev.filter(t => t.id !== taskId));
       }
@@ -236,21 +238,21 @@ function App() {
 
   const permanentlyDeleteTask = async (taskId) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, { method: 'DELETE', headers: authHeaders });
+      await fetch(`${API_BASE}/api/tasks/${taskId}`, { method: 'DELETE', headers: authHeaders });
       setDeletedTasks(prev => prev.filter(t => t.id !== taskId));
     } catch (error) { console.error("Error deleting permanently:", error); }
   };
 
   const restoreAll = async () => {
     try {
-      await fetch('/api/bin/restore-all', { method: 'PUT', headers: authHeaders });
+      await fetch(`${API_BASE}/api/bin/restore-all`, { method: 'PUT', headers: authHeaders });
       fetchTasks(); fetchBin();
     } catch (error) { console.error("Error restoring all:", error); }
   };
 
   const deleteAll = async () => {
     try {
-      await fetch('/api/bin/empty', { method: 'DELETE', headers: authHeaders });
+      await fetch(`${API_BASE}/api/bin/empty`, { method: 'DELETE', headers: authHeaders });
       setDeletedTasks([]);
     } catch (error) { console.error("Error emptying bin:", error); }
   };
@@ -258,7 +260,7 @@ function App() {
   const updateTask = async (id, field, value) => {
     setTasks(prevTasks => prevTasks.map(task => task.id === id ? { ...task, [field]: value } : task));
     try {
-      await fetch(`/api/tasks/${id}`, {
+      await fetch(`${API_BASE}/api/tasks/${id}`, {
         method: 'PUT',
         headers: authHeaders,
         body: JSON.stringify({ [field]: value })
@@ -279,7 +281,7 @@ function App() {
         const query = filters.searchQuery.toLowerCase();
         const matchesName = task.name?.toLowerCase().includes(query) || false;
         const matchesCourse = task.course?.toLowerCase().includes(query) || false;
-        if (!matchesName && !matchesCourse) return false; 
+        if (!matchesName && !matchesCourse) return false;
       }
       if (filters.course !== 'All' && task.course !== filters.course) return false;
       if (filters.status !== 'All' && task.status !== filters.status) return false;
@@ -293,25 +295,25 @@ function App() {
   // --- SETTINGS ACTIONS ---
   const handleManualSync = async () => {
     try {
-      await fetch('/api/sync-grades', { method: 'POST', headers: authHeaders });
+      await fetch(`${API_BASE}/api/sync-grades`, { method: 'POST', headers: authHeaders });
       fetchCourses();
     } catch (e) { throw e; }
   };
 
   const handleDisconnect = async () => {
     try {
-      await fetch('/api/user/unlink-portal', { method: 'POST', headers: authHeaders });
+      await fetch(`${API_BASE}/api/user/unlink-portal`, { method: 'POST', headers: authHeaders });
       const updatedUser = { ...user, isPortalConnected: false, portalId: null };
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      setCourses(prev => prev.filter(c => c.type !== 'uni')); 
+      setCourses(prev => prev.filter(c => c.type !== 'uni'));
     } catch (e) { console.error(e); }
   };
 
   const handleLinkPortal = async (portalId, portalPassword) => {
     try {
-      const res = await fetch('/api/user/link-portal', { 
-        method: 'POST', 
+      const res = await fetch(`${API_BASE}/api/user/link-portal`, {
+        method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({ portalId, portalPassword })
       });
@@ -328,7 +330,7 @@ function App() {
 
   const handleUpdateProfile = async (name) => {
     try {
-      const res = await fetch('/api/user/profile', {
+      const res = await fetch(`${API_BASE}/api/user/profile`, {
         method: 'PUT',
         headers: authHeaders,
         body: JSON.stringify({ name })
@@ -345,7 +347,7 @@ function App() {
 
   const handleChangePassword = async (currentPassword, newPassword) => {
     try {
-      const res = await fetch('/api/user/password', {
+      const res = await fetch(`${API_BASE}/api/user/password`, {
         method: 'PUT',
         headers: authHeaders,
         body: JSON.stringify({ currentPassword, newPassword })
@@ -360,7 +362,7 @@ function App() {
   const addCourse = async (courseName) => {
     if (!courseName || !courseName.trim()) return;
     try {
-      const res = await fetch('/api/courses', {
+      const res = await fetch(`${API_BASE}/api/courses`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({ name: courseName.trim() })
@@ -373,7 +375,7 @@ function App() {
 
   const removeCourse = async (courseId) => {
     try {
-      const res = await fetch(`/api/courses/${courseId}`, {
+      const res = await fetch(`${API_BASE}/api/courses/${courseId}`, {
         method: 'DELETE',
         headers: authHeaders
       });
@@ -387,32 +389,32 @@ function App() {
 
   return (
     <div className={`flex h-screen w-full transition-colors duration-300 ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        isOpen={isSidebarOpen} 
-        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
-        binCount={deletedTasks.length} 
-        user={user} 
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isOpen={isSidebarOpen}
+        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        binCount={deletedTasks.length}
+        user={user}
       />
-      
+
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300">
-        <Header 
+        <Header
           activeTab={activeTab}
-          isDarkMode={isDarkMode} 
-          toggleTheme={toggleTheme} 
-          filters={filters} 
-          setFilters={setFilters} 
-          courses={courses} 
-          onAddClick={() => { setPrefilledDate(''); setIsAddTaskOpen(true); }} 
+          isDarkMode={isDarkMode}
+          toggleTheme={toggleTheme}
+          filters={filters}
+          setFilters={setFilters}
+          courses={courses}
+          onAddClick={() => { setPrefilledDate(''); setIsAddTaskOpen(true); }}
           user={user}
           onLogout={handleLogout}
           tasks={tasks}
           onOpenTask={(task) => setViewTask(task)}
-          onNavigate={(tab) => setActiveTab(tab)} 
+          onNavigate={(tab) => setActiveTab(tab)}
         />
         <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide">
-          
+
           {activeTab === 'Welcome' && (
             <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
               <div className="max-w-2xl">
@@ -437,7 +439,7 @@ function App() {
                 </div>
                 <h2 className="text-2xl font-bold dark:text-white text-gray-900 mb-3 tracking-tight">Notes Module</h2>
                 <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
-                  We're crafting a workspace for your lecture insights and quick thoughts. 
+                  We're crafting a workspace for your lecture insights and quick thoughts.
                   This section is currently <strong>under development</strong>.
                 </p>
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 text-xs font-bold uppercase tracking-widest rounded-full border border-gray-200 dark:border-dark-border">
@@ -448,25 +450,25 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'Tasks' && <TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask}/>}
+          {activeTab === 'Tasks' && <TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} />}
           {activeTab === 'Calendar' && <Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} />}
           {activeTab === 'Grade Book' && <GradeBook />}
           {activeTab === 'History' && <ResultHistory />}
           {activeTab.startsWith('Cash-') && <CashManager activeTab={activeTab} />}
-          {activeTab === 'Bin' && <Bin deletedTasks={deletedTasks} restoreTask={restoreTask} permanentlyDeleteTask={permanentlyDeleteTask} deleteAll={deleteAll} restoreAll={restoreAll}/>}
+          {activeTab === 'Bin' && <Bin deletedTasks={deletedTasks} restoreTask={restoreTask} permanentlyDeleteTask={permanentlyDeleteTask} deleteAll={deleteAll} restoreAll={restoreAll} />}
           {activeTab === 'Admin' && <AdminDashboard />}
           {activeTab === 'Profile' && <MyProfile user={user} />}
-          
+
           {activeTab === 'Settings' && (
-            <Settings 
-              user={user} 
-              idleTimeout={idleTimeout} 
+            <Settings
+              user={user}
+              idleTimeout={idleTimeout}
               setIdleTimeout={setIdleTimeout}
               onManualSync={handleManualSync}
               onDisconnect={handleDisconnect}
-              onLinkPortal={handleLinkPortal} 
-              onUpdateProfile={handleUpdateProfile} 
-              onChangePassword={handleChangePassword} 
+              onLinkPortal={handleLinkPortal}
+              onUpdateProfile={handleUpdateProfile}
+              onChangePassword={handleChangePassword}
               courses={courses}
               addCourse={addCourse}
               removeCourse={removeCourse}
@@ -475,7 +477,7 @@ function App() {
 
         </div>
       </div>
-      
+
       <style>{`
         .custom-scrollbar-hide::-webkit-scrollbar {
           display: none;

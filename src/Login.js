@@ -1,15 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2, Sparkles, 
+import {
+  Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2, Sparkles,
   GraduationCap, Layout, ShieldCheck, School,
   ChevronLeft, AlertCircle
 } from 'lucide-react';
+
+
+
+const API_BASE = process.env.REACT_APP_API_URL || '';
+
+const features = [
+  { icon: School, title: "Academic Excellence", text: "Track your CGPA, grades, and attendance in real-time." },
+  { icon: Layout, title: "Task Management", text: "Organize assignments, quizzes, and personal tasks efficiently." },
+  { icon: ShieldCheck, title: "Secure Portal", text: "Your data is encrypted and synced directly with the university." },
+];
 
 const Login = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [signUpStep, setSignUpStep] = useState(1); // 1: Details, 2: OTP Verification
-  
+
   // Form Data
   const [formData, setFormData] = useState({
     name: '',
@@ -17,7 +27,7 @@ const Login = ({ onLogin }) => {
     password: '',
     confirmPassword: '',
   });
-  
+
   // OTP Individual Digits State
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const otpInputs = useRef([]);
@@ -27,11 +37,7 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [activeFeature, setActiveFeature] = useState(0);
 
-  const features = [
-    { icon: School, title: "Academic Excellence", text: "Track your CGPA, grades, and attendance in real-time." },
-    { icon: Layout, title: "Task Management", text: "Organize assignments, quizzes, and personal tasks efficiently." },
-    { icon: ShieldCheck, title: "Secure Portal", text: "Your data is encrypted and synced directly with the university." },
-  ];
+
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -83,13 +89,13 @@ const Login = ({ onLogin }) => {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/send-otp', {
+      const res = await fetch(`${API_BASE}/api/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: formData.email })
       });
       const data = await res.json();
-      
+
       if (res.ok) {
         setSignUpStep(2); // Switch to Verification block
       } else {
@@ -102,7 +108,7 @@ const Login = ({ onLogin }) => {
     }
   };
 
-  
+
 
   // STEP 2: Final Registration
   const handleFinalRegister = async (e) => {
@@ -112,7 +118,7 @@ const Login = ({ onLogin }) => {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/register', {
+      const res = await fetch(`${API_BASE}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, otp: fullOtp })
@@ -134,7 +140,7 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: formData.email, password: formData.password })
@@ -159,15 +165,15 @@ const Login = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#050505] relative overflow-hidden p-4 md:p-8">
-      
+
       {/* Background Blobs */}
       <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-brand-blue/10 rounded-full blur-[120px] animate-pulse" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-purple-600/10 rounded-full blur-[100px] animate-pulse delay-1000" />
 
       <div className="w-full max-w-5xl h-[650px] bg-[#121212] border border-[#252525] rounded-3xl shadow-2xl flex relative overflow-hidden z-10">
-        
+
         {/* --- INFO PANEL (SLIDING) --- */}
-        <div 
+        <div
           className={`
             hidden md:flex absolute top-0 w-1/2 h-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] 
             flex-col justify-between p-12 z-20 transition-transform duration-700 ease-in-out
@@ -183,8 +189,8 @@ const Login = ({ onLogin }) => {
 
           <div className="relative z-10">
             {features.map((feat, index) => (
-              <div 
-                key={index} 
+              <div
+                key={index}
                 className={`transition-all duration-700 absolute bottom-0 left-0 w-full ${activeFeature === index ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'}`}
               >
                 <div className="w-12 h-12 bg-[#252525] rounded-2xl flex items-center justify-center mb-6 text-white shadow-lg border border-[#333]">
@@ -210,7 +216,7 @@ const Login = ({ onLogin }) => {
         </div>
 
         {/* --- FORM PANEL (SLIDING) --- */}
-        <div 
+        <div
           className={`
             w-full md:w-1/2 h-full absolute top-0 bg-[#121212] p-8 md:p-12 flex flex-col justify-center z-10
             transition-transform duration-700 ease-in-out
@@ -218,24 +224,24 @@ const Login = ({ onLogin }) => {
           `}
         >
           <div className="max-w-sm mx-auto w-full">
-            
+
             {/* Header logic */}
             <div className="mb-10 animate-fadeIn">
-                {/* Back button for OTP step */}
-                {!isLogin && signUpStep === 2 && (
-                    <button 
-                        onClick={() => setSignUpStep(1)} 
-                        className="flex items-center gap-1 text-gray-500 hover:text-white text-xs mb-4 transition-colors group"
-                    >
-                        <ChevronLeft size={14} className="group-hover:-translate-x-0.5 transition-transform"/> Back to details
-                    </button>
-                )}
-                <h1 className="text-3xl font-bold text-white mb-2">
-                    {isLogin ? 'Welcome Back' : (signUpStep === 1 ? 'Create Account' : 'Verify Email')}
-                </h1>
-                <p className="text-gray-500 text-sm">
-                    {isLogin ? 'Enter your credentials to access your dashboard.' : (signUpStep === 1 ? 'Join the academic revolution today.' : `Enter the 6-digit code sent to ${formData.email}`)}
-                </p>
+              {/* Back button for OTP step */}
+              {!isLogin && signUpStep === 2 && (
+                <button
+                  onClick={() => setSignUpStep(1)}
+                  className="flex items-center gap-1 text-gray-500 hover:text-white text-xs mb-4 transition-colors group"
+                >
+                  <ChevronLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" /> Back to details
+                </button>
+              )}
+              <h1 className="text-3xl font-bold text-white mb-2">
+                {isLogin ? 'Welcome Back' : (signUpStep === 1 ? 'Create Account' : 'Verify Email')}
+              </h1>
+              <p className="text-gray-500 text-sm">
+                {isLogin ? 'Enter your credentials to access your dashboard.' : (signUpStep === 1 ? 'Join the academic revolution today.' : `Enter the 6-digit code sent to ${formData.email}`)}
+              </p>
             </div>
 
             {error && (
@@ -283,11 +289,11 @@ const Login = ({ onLogin }) => {
                     />
                   ))}
                 </div>
-                
+
                 <SubmitButton loading={loading} text="Create Account" icon={Sparkles} />
-                
+
                 <div className="text-center">
-                    <p className="text-gray-500 text-xs">Didn't receive the code? <button type="button" onClick={handleInitiateSignUp} className="text-brand-blue font-bold hover:underline">Resend OTP</button></p>
+                  <p className="text-gray-500 text-xs">Didn't receive the code? <button type="button" onClick={handleInitiateSignUp} className="text-brand-blue font-bold hover:underline">Resend OTP</button></p>
                 </div>
               </form>
             )}
@@ -332,8 +338,8 @@ const InputGroup = ({ icon: Icon, type, name, placeholder, value, onChange, togg
 );
 
 const SubmitButton = ({ loading, text, icon: Icon }) => (
-  <button 
-    type="submit" 
+  <button
+    type="submit"
     disabled={loading}
     className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 hover:shadow-blue-600/40 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
   >
