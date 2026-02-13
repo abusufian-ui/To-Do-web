@@ -11,7 +11,7 @@ import Calendar from './Calendar';
 import GradeBook from './GradeBook'; 
 import ResultHistory from './ResultHistory';
 import AdminDashboard from './AdminDashboard';
-import { Heart, ArrowRight } from 'lucide-react';
+import { Heart, ArrowRight, StickyNote } from 'lucide-react'; 
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
 import MyProfile from './MyProfile'; 
@@ -147,19 +147,35 @@ function App() {
     } catch (error) { console.error("Error fetching bin:", error); }
   };
 
+  // --- FETCH COURSES ---
   const fetchCourses = async () => {
+    // 1. UPDATED: Fixed "General Course" (Not General Task)
+    const fixedCourses = [{ id: 'general-task', name: 'General Course', type: 'general' }];
+    let uniCourses = [];
+    let customCourses = [];
+
+    // 2. Fetch Uni Courses
     try {
       const res = await fetch('/api/grades', { headers: authHeaders });
       const gradeData = await res.json();
       const safeData = Array.isArray(gradeData) ? gradeData : [];
-      const uniCourses = safeData.map(g => ({
+      uniCourses = safeData.map(g => ({
         id: g._id, name: g.courseName, type: 'uni'
       }));
-      setCourses([{ id: 'general-task', name: 'General Task', type: 'general' }, ...uniCourses]);
-    } catch (error) {
-      console.error("Error fetching courses:", error);
-      setCourses([{ id: 'general-task', name: 'General Task', type: 'general' }]);
-    }
+    } catch (error) { console.error("Error fetching uni courses:", error); }
+
+    // 3. Fetch Custom Courses
+    try {
+      const res = await fetch('/api/courses', { headers: authHeaders });
+      const customData = await res.json();
+      const safeCustom = Array.isArray(customData) ? customData : [];
+      customCourses = safeCustom.map(c => ({
+        id: c._id, name: c.name, type: 'general'
+      }));
+    } catch (error) { console.error("Error fetching custom courses:", error); }
+
+    // 4. Merge all
+    setCourses([...fixedCourses, ...uniCourses, ...customCourses]);
   };
 
   useEffect(() => {
@@ -284,7 +300,7 @@ function App() {
       const updatedUser = { ...user, isPortalConnected: false, portalId: null };
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      setCourses(courses.filter(c => c.type !== 'uni')); 
+      setCourses(prev => prev.filter(c => c.type !== 'uni')); 
     } catch (e) { console.error(e); }
   };
 
@@ -337,11 +353,32 @@ function App() {
     } catch (e) { throw e; }
   };
 
-  const addCourse = (course) => {
-    setCourses([...courses, { ...course, id: Date.now().toString() }]);
+  // --- NEW ADD COURSE (Server Call) ---
+  const addCourse = async (courseName) => {
+    if (!courseName || !courseName.trim()) return;
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ name: courseName.trim() })
+      });
+      if (res.ok) {
+        fetchCourses(); // Reload list from server
+      }
+    } catch (e) { console.error("Add course failed", e); }
   };
-  const removeCourse = (id) => {
-    setCourses(courses.filter(c => c.id !== id));
+
+  // --- NEW REMOVE COURSE (Server Call) ---
+  const removeCourse = async (courseId) => {
+    try {
+      const res = await fetch(`/api/courses/${courseId}`, {
+        method: 'DELETE',
+        headers: authHeaders
+      });
+      if (res.ok) {
+        fetchCourses(); // Reload list from server
+      }
+    } catch (e) { console.error("Delete course failed", e); }
   };
 
   const handleUpdateLocalUser = (updatedUser) => {
@@ -377,7 +414,7 @@ function App() {
           onOpenTask={(task) => setViewTask(task)}
           onNavigate={(tab) => setActiveTab(tab)} 
         />
-        <div className="flex-1 overflow-auto p-0 relative">
+        <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide">
           
           {activeTab === 'Welcome' && (
             <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
@@ -395,6 +432,25 @@ function App() {
             </div>
           )}
 
+          {activeTab === 'Notes' && (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
+              <div className="max-w-md bg-white dark:bg-[#1E1E1E] border border-dashed border-gray-300 dark:border-[#333] p-12 rounded-3xl shadow-sm">
+                <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-6 rotate-3">
+                  <StickyNote size={40} />
+                </div>
+                <h2 className="text-2xl font-bold dark:text-white text-gray-900 mb-3 tracking-tight">Notes Module</h2>
+                <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+                  We're crafting a workspace for your lecture insights and quick thoughts. 
+                  This section is currently <strong>under development</strong>.
+                </p>
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 text-xs font-bold uppercase tracking-widest rounded-full border border-gray-200 dark:border-dark-border">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                  Coming Soon
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'Tasks' && <TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask}/>}
           {activeTab === 'Calendar' && <Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} />}
           {activeTab === 'Grade Book' && <GradeBook />}
@@ -402,8 +458,6 @@ function App() {
           {activeTab.startsWith('Cash-') && <CashManager activeTab={activeTab} />}
           {activeTab === 'Bin' && <Bin deletedTasks={deletedTasks} restoreTask={restoreTask} permanentlyDeleteTask={permanentlyDeleteTask} deleteAll={deleteAll} restoreAll={restoreAll}/>}
           {activeTab === 'Admin' && <AdminDashboard />}
-
-          {/* NEW MODULES */}
           {activeTab === 'Profile' && <MyProfile user={user} />}
           
           {activeTab === 'Settings' && (
@@ -424,6 +478,16 @@ function App() {
 
         </div>
       </div>
+      
+      <style>{`
+        .custom-scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .custom-scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
 
       <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} tasks={tasks} />
       <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={courses} onUpdate={updateTask} />

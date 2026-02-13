@@ -22,23 +22,31 @@ const runScraper = async (userId) => {
   let browser = null;
 
   try {
-      // 1. FETCH USER CREDENTIALS
+      // 1. FETCH USER CREDENTIALS WITH DETAILED CHECKS
       const user = await User.findById(userId);
-      if (!user || !user.isPortalConnected || !user.portalId) {
-          throw new Error("NO_CREDENTIALS"); 
+      
+      if (!user) {
+          throw new Error(`USER_NOT_FOUND_IN_DB (ID: ${userId}) - Try logging out and back in.`);
+      }
+      if (!user.isPortalConnected) {
+          throw new Error(`PORTAL_NOT_LINKED - Please go to Settings > Link Portal Account.`);
+      }
+      if (!user.portalId || !user.portalPassword) {
+          throw new Error("MISSING_PORTAL_DATA - ID or Password missing in database.");
       }
 
       // 2. SESSION ISOLATION
+      // Sanitize ID to create a valid folder name
       const safePortalId = user.portalId.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      // Use __dirname/session_data (Ensure nodemon ignores this folder!)
       const sessionPath = path.join(__dirname, 'session_data', safePortalId); 
       
       if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
 
       const launchBrowser = async () => {
           return await puppeteer.launch({ 
-            headless: true,         // Keep visible for testing
+            headless: true, // Set to false if you need to debug visually
             defaultViewport: null,
-            slowMo: 50,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'],
             userDataDir: sessionPath 
           });
@@ -81,8 +89,6 @@ const runScraper = async (userId) => {
                 if (pickAccountHeader) {
                     console.log("   👀 'Pick an account' screen detected.");
 
-                    // Selector for the specific user's tile (Microsoft usually uses data-test-id="email")
-                    // If that fails, we look for a div containing the email text.
                     const tileSelector = `div[data-test-id="${portalId}"], div.table[role="button"]`;
                     
                     // 1. Click the Account Tile (First Attempt)
@@ -90,25 +96,22 @@ const runScraper = async (userId) => {
                     if (accountTile) {
                         console.log("   👉 Clicking Account Tile (Attempt 1)...");
                         await accountTile.click();
-                        await new Promise(r => setTimeout(r, 3000)); // Wait for Glitch screen to potentially appear
+                        await new Promise(r => setTimeout(r, 3000)); // Wait for Glitch screen
                     }
 
-                    // 2. Check for "Glitch" Screen ("Let's keep your account secure" / "Use a different account")
+                    // 2. Check for "Glitch" Screen
                     const glitchText = await page.waitForSelector('::-p-text("Use a different account")', { timeout: 3000 }).catch(() => null);
                     
                     if (glitchText) {
                         console.log("   ⚠️ Glitch Screen Detected: Resetting session...");
-                        
-                        // Click "Use a different account" to reset
                         await glitchText.click();
                         await page.waitForNavigation({ waitUntil: 'networkidle0' });
-                        
                         console.log("   🔄 Returning to 'Pick an account'...");
                         
-                        // 3. Click the Account Tile AGAIN (Post-Glitch Fix)
+                        // 3. Click the Account Tile AGAIN
                         const accountTileRetry = await page.waitForSelector(tileSelector, { timeout: 5000 });
                         if (accountTileRetry) {
-                            console.log("   👉 Clicking Account Tile (Attempt 2 - Success Path)...");
+                            console.log("   👉 Clicking Account Tile (Attempt 2)...");
                             await accountTileRetry.click();
                             await new Promise(r => setTimeout(r, 2000));
                         }
@@ -121,8 +124,7 @@ const runScraper = async (userId) => {
             }
             // -----------------------------------------------------
 
-            // STEP B: Enter Email (Only if not already picked via tile)
-            // We check if the email input is actually visible before typing.
+            // STEP B: Enter Email
             const emailInputSelector = 'input[name="loginfmt"]';
             const emailInput = await page.waitForSelector(emailInputSelector, { visible: true, timeout: 5000 }).catch(() => null);
             
@@ -140,7 +142,6 @@ const runScraper = async (userId) => {
             if (passInput) {
                 console.log("   🔑 Entering Password...");
                 await page.type(passInputSelector, portalPass, { delay: 30 });
-                
                 await Promise.all([
                     page.click('#idSIButton9'),
                     page.waitForNavigation({ waitUntil: 'networkidle2' })
@@ -166,14 +167,13 @@ const runScraper = async (userId) => {
           }
       }
 
-      // Check if we actually made it
+      // Verify Dashboard access
       if (!page.url().includes('dashboard')) {
-          // Give it one last check for a redirect
           try {
             await page.waitForFunction(() => window.location.href.includes('dashboard'), { timeout: 10000 });
           } catch(e) {
             console.log("❌ Failed to reach dashboard.");
-            throw new Error("LOGIN_FAILED");
+            throw new Error("LOGIN_FAILED - Check credentials or internet.");
           }
       }
       console.log("✅ Logged in successfully!");
@@ -245,6 +245,7 @@ const runScraper = async (userId) => {
                           { userId: userId, courseUrl: url, courseName: realName, assessments: courseData.assessments, totalPercentage: courseData.total, lastUpdated: new Date() },
                           { upsert: true, new: true }
                       );
+                      console.log(`   ✅ Synced: ${realName}`);
                   }
               } catch (e) { 
                   console.log(`   ⚠️ Skipped course: ${e.message}`); 
@@ -333,6 +334,7 @@ const runScraper = async (userId) => {
       console.log("🏁 SYNC COMPLETE!");
 
   } catch (error) {
+      // Log the specific error to help you debug
       console.error("❌ SCRAPER ERROR:", error.message);
       throw error; 
   } finally {

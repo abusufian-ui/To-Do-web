@@ -1,395 +1,533 @@
 import React, { useState } from 'react';
 import { 
-  User, Lock, RefreshCw, Unlink, LogOut, Clock, Save, 
-  AlertCircle, CheckCircle2, Book, Plus, Trash2, Link2, Info 
+  User, Shield, RefreshCw, BookOpen, HelpCircle, Info, 
+  CheckCircle2, X, AlertTriangle, Lock, 
+  Calendar, Wallet, GraduationCap, Layout, 
+  Book, Linkedin, Github 
 } from 'lucide-react';
+import UCPLogo from './UCPLogo'; 
 
-const Settings = ({ 
-  user, 
-  idleTimeout, 
-  setIdleTimeout, 
-  onManualSync, 
-  onDisconnect, 
-  onLinkPortal,
-  onUpdateProfile, 
-  onChangePassword, 
-  courses,
-  addCourse,
-  removeCourse
-}) => {
-  const [activeSection, setActiveSection] = useState('profile');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState(null);
-
-  // Form States
-  const [name, setName] = useState(user?.name || '');
-  const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
-  const [portalCreds, setPortalCreds] = useState({ portalId: '', portalPassword: '' });
-  const [newCourseName, setNewCourseName] = useState('');
-
-  // --- ACTIONS ---
-
-  // 1. Update Profile Name
-  const handleProfileUpdate = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await onUpdateProfile(name); 
-      setMessage({ type: 'success', text: 'Profile updated successfully!' });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to update profile.' });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setMessage(null), 3000);
-    }
+// --- HELPER: TOAST NOTIFICATION ---
+const Toast = ({ message, type, onClose }) => {
+  if (!message) return null;
+  const styles = {
+    success: "bg-emerald-600 text-white shadow-emerald-900/20",
+    error: "bg-red-600 text-white shadow-red-900/20",
+    info: "bg-blue-600 text-white shadow-blue-900/20"
   };
-
-  // 2. Change Password
-  const handlePasswordChange = async (e) => {
-    e.preventDefault();
-    if (passwords.new !== passwords.confirm) {
-      setMessage({ type: 'error', text: "New passwords don't match." });
-      return;
-    }
-    setLoading(true);
-    try {
-      await onChangePassword(passwords.current, passwords.new); 
-      setMessage({ type: 'success', text: 'Password changed successfully.' });
-      setPasswords({ current: '', new: '', confirm: '' });
-    } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Incorrect password.' });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setMessage(null), 3000);
-    }
-  };
-
-  // 3. Link Portal
-  const handleLink = async (e) => {
-    e.preventDefault();
-    if (!portalCreds.portalId || !portalCreds.portalPassword) {
-      setMessage({ type: 'error', text: 'Please fill in both fields.' });
-      return;
-    }
-    setLoading(true);
-    try {
-      await onLinkPortal(portalCreds.portalId, portalCreds.portalPassword);
-      setMessage({ type: 'success', text: 'Portal linked successfully!' });
-      setPortalCreds({ portalId: '', portalPassword: '' });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to link account. Check credentials.' });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setMessage(null), 3000);
-    }
-  };
-
-  // 4. Manual Sync
-  const handleSync = async () => {
-    setLoading(true);
-    try {
-      await onManualSync();
-      setMessage({ type: 'success', text: 'Sync completed successfully!' });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Sync failed. Try again.' });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setMessage(null), 3000);
-    }
-  };
-
-  // 5. Add Custom Course
-  const handleAddCourse = (e) => {
-    e.preventDefault();
-    if (newCourseName.trim()) {
-      addCourse({ name: newCourseName, type: 'manual' }); 
-      setNewCourseName('');
-      setMessage({ type: 'success', text: 'Course added.' });
-      setTimeout(() => setMessage(null), 2000);
-    }
-  };
-
-  // --- RENDER HELPERS ---
-  const SidebarItem = ({ id, label, icon: Icon }) => (
-    <button 
-      onClick={() => setActiveSection(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all ${
-        activeSection === id 
-        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
-        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#252525]'
-      }`}
-    >
-      <Icon size={18} />
-      {label}
-    </button>
+  return (
+    <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-3 p-4 rounded-xl shadow-xl animate-slideUp ${styles[type] || styles.info}`}>
+      {type === 'success' ? <CheckCircle2 size={20} /> : <Info size={20} />}
+      <span className="font-medium text-sm">{message}</span>
+      <button onClick={onClose}><X size={16} className="opacity-70 hover:opacity-100" /></button>
+    </div>
   );
+};
+
+// --- 1. PROFILE TAB ---
+const ProfileSection = ({ user, showToast }) => {
+  const [name, setName] = useState(user?.name || "");
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/user/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+            body: JSON.stringify({ name })
+        });
+        if(res.ok) showToast("Profile updated successfully", "success");
+        else showToast("Failed to update profile", "error");
+    } catch (e) { showToast("Server error", "error"); }
+    setLoading(false);
+  };
 
   return (
-    <div className="flex h-full bg-gray-50 dark:bg-[#0c0c0c] animate-fadeIn overflow-hidden">
+    <div className="animate-fadeIn">
+      <div className="mb-8">
+        <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Personal Information</h3>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Update your display name and view your account details.</p>
+      </div>
       
+      <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] space-y-6 max-w-xl">
+        <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Display Name</label>
+            <input 
+                type="text" 
+                value={name} 
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all"
+            />
+        </div>
+        <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Email Address</label>
+            <input 
+                type="text" 
+                value={user?.email || ""} 
+                disabled
+                className="w-full bg-gray-100 dark:bg-[#252525] border border-transparent rounded-xl px-4 py-3 text-gray-500 cursor-not-allowed"
+            />
+            <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1"><Lock size={10}/> Email cannot be changed.</p>
+        </div>
+        <div className="pt-2">
+            <button 
+                onClick={handleSave} 
+                disabled={loading}
+                className="bg-brand-blue hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2"
+            >
+                {loading ? "Saving..." : "Save Changes"}
+            </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 2. SECURITY TAB ---
+const SecuritySection = ({ idleTimeout, setIdleTimeout }) => (
+  <div className="animate-fadeIn">
+    <div className="mb-8">
+        <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Security & Session</h3>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Manage how long you stay logged in to protect your data.</p>
+    </div>
+
+    <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+            <div className="p-3 bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 rounded-xl">
+                <Shield size={24} />
+            </div>
+            <div>
+                <h4 className="font-bold text-gray-800 dark:text-white">Auto-Lock Timer</h4>
+                <p className="text-xs text-gray-500 mt-1 max-w-sm">Automatically lock the screen after a period of inactivity to prevent unauthorized access.</p>
+            </div>
+        </div>
+        <div className="relative">
+            <select 
+                value={idleTimeout}
+                onChange={(e) => setIdleTimeout(Number(e.target.value))}
+                className="appearance-none w-full md:w-48 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 text-sm font-medium dark:text-white focus:ring-2 focus:ring-brand-blue outline-none cursor-pointer"
+            >
+                <option value={300000}>5 Minutes</option>
+                <option value={900000}>15 Minutes</option>
+                <option value={1800000}>30 Minutes</option>
+                <option value={3600000}>1 Hour</option>
+                <option value={0}>Never</option>
+            </select>
+        </div>
+    </div>
+  </div>
+);
+
+// --- 3. PORTAL CONNECTION TAB ---
+const PortalSection = ({ user, showToast }) => {
+    const [isSyncing, setIsSyncing] = useState(false);
+    
+    const handleSync = async () => {
+        setIsSyncing(true);
+        try {
+            const res = await fetch('/api/sync-grades', { method: 'POST', headers: {'x-auth-token': localStorage.getItem('token')} });
+            if (res.ok) {
+                showToast("Sync Complete! Reloading data...", "success");
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                showToast("Sync Failed. Please try again later.", "error");
+            }
+        } catch (e) { showToast("Server unreachable.", "error"); }
+        setIsSyncing(false);
+    };
+
+    return (
+        <div className="animate-fadeIn">
+            <div className="mb-8">
+                <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Portal Connection</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Manage the link between MyPortal and the University (UCP) server.</p>
+            </div>
+
+            <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden shadow-sm">
+                <div className="p-6 border-b border-gray-100 dark:border-[#333] flex items-center justify-between bg-gray-50/50 dark:bg-[#252525]">
+                    <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-full ${user.isPortalConnected ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20' : 'bg-red-100 text-red-500'}`}>
+                            {user.isPortalConnected ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-gray-800 dark:text-white text-lg">
+                                {user.isPortalConnected ? "Connected to UCP" : "Not Linked"}
+                            </h4>
+                            <p className="text-xs text-gray-500 font-mono mt-1">
+                                {user.portalId ? `ID: ${user.portalId}` : "No Student ID Linked"}
+                            </p>
+                        </div>
+                    </div>
+                    {user.isPortalConnected && (
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-900/50">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span className="text-emerald-700 dark:text-emerald-400 text-xs font-bold">Active</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-8">
+                    <div className="flex flex-col md:flex-row items-center gap-8">
+                        <div className="flex-1">
+                            <h5 className="font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
+                                <RefreshCw size={18} className="text-brand-blue"/> Manual Data Sync
+                            </h5>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-2">
+                                The Portal Robot fetches your latest grades, attendance, and schedule directly from the University Portal.
+                            </p>
+                            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                                <Info size={14} className="text-blue-500"/>
+                                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">Note: The first sync may take <span className="font-bold">30-60 seconds</span>.</span>
+                            </div>
+                        </div>
+                        
+                        <button 
+                            onClick={handleSync}
+                            disabled={isSyncing || !user.isPortalConnected}
+                            className={`w-full md:w-auto px-8 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-3 shadow-lg transition-all 
+                                ${isSyncing 
+                                    ? 'bg-blue-400 cursor-wait' 
+                                    : 'bg-brand-blue hover:bg-blue-600 shadow-blue-500/30 hover:scale-[1.02]'
+                                }`}
+                        >
+                            <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+                            {isSyncing ? "Syncing Data..." : "Sync Now"}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- 4. COURSE MANAGER TAB ---
+const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) => {
+    const [newCourse, setNewCourse] = useState("");
+    const [type, setType] = useState('uni');
+    const [deleteModal, setDeleteModal] = useState(null);
+
+    const handleAdd = () => {
+        if (!newCourse.trim()) return;
+        addCourse(newCourse, type);
+        setNewCourse("");
+        showToast("Category added successfully", "success");
+    };
+
+    const initiateDelete = (course) => {
+        const safeTasks = tasks || []; 
+        const linkedTasks = safeTasks.filter(t => t.course === course.name && !t.isDeleted);
+        
+        if (linkedTasks.length > 0) {
+            setDeleteModal({ course, linkedTasks }); 
+        } else {
+            removeCourse(course._id || course.id);
+            showToast("Course removed.", "success");
+        }
+    };
+
+    const confirmDelete = () => {
+        if (deleteModal) {
+            removeCourse(deleteModal.course._id || deleteModal.course.id);
+            showToast("Course removed. Tasks are now uncategorized.", "success");
+            setDeleteModal(null);
+        }
+    };
+
+    const filtered = (courses || []).filter(c => c.type === type);
+
+    return (
+        <div className="animate-fadeIn relative">
+            <div className="mb-8">
+                <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Course Manager</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Organize your academic courses and personal task categories.</p>
+            </div>
+
+            <div className="flex p-1 bg-gray-100 dark:bg-[#1E1E1E] rounded-xl mb-6">
+                <button onClick={() => setType('uni')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${type === 'uni' ? 'bg-white dark:bg-[#2C2C2C] text-brand-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>University Courses</button>
+                <button onClick={() => setType('general')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${type === 'general' ? 'bg-white dark:bg-[#2C2C2C] text-brand-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>General Courses</button>
+            </div>
+
+            {type === 'uni' && (
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl flex gap-3 animate-slideUp">
+                    <Info size={20} className="text-brand-blue mt-0.5 shrink-0" />
+                    <div>
+                        <h4 className="font-bold text-brand-blue text-sm">Auto-Sync Active</h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
+                            University courses are automatically synchronized with your student portal. 
+                            <br/>If this list is empty or outdated, please perform a <b>Manual Sync</b> in the "Portal Connection" tab.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {type === 'general' && (
+                <div className="flex gap-3 mb-6 animate-slideUp">
+                    <input 
+                        type="text" 
+                        value={newCourse}
+                        onChange={(e) => setNewCourse(e.target.value)}
+                        placeholder="Enter course or category name..."
+                        className="flex-1 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white transition-all"
+                    />
+                    <button onClick={handleAdd} className="bg-brand-blue text-white px-6 rounded-xl font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20">Add</button>
+                </div>
+            )}
+
+            <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar">
+                {filtered.map(c => (
+                    <div key={c._id || c.id} className="flex items-center justify-between p-4 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl group hover:border-blue-200 dark:hover:border-blue-900 transition-colors">
+                        <div className="flex items-center gap-3">
+                            {type === 'uni' ? <UCPLogo className="w-8 h-8 text-brand-blue"/> : <Book size={24} className="text-gray-400 group-hover:text-brand-blue transition-colors"/>}
+                            <div>
+                                <span className="font-bold text-gray-800 dark:text-gray-200 block">{c.name}</span>
+                                <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{type === 'uni' ? 'Synced Course' : 'Personal Course'}</span>
+                            </div>
+                        </div>
+                        {type === 'uni' ? (
+                            <span className="text-[10px] bg-gray-100 dark:bg-[#252525] text-gray-500 px-2 py-1 rounded border border-gray-200 dark:border-[#444] flex items-center gap-1"><Lock size={10}/> Synced</span>
+                        ) : (
+                            // --- HIDE DELETE BUTTON FOR DEFAULT COURSE ---
+                            (c.id !== 'general-task' && c.name !== 'General Course' && c.name !== 'General Task') && (
+                                <button onClick={() => initiateDelete(c)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg transition-colors"><X size={20}/></button>
+                            )
+                        )}
+                    </div>
+                ))}
+                {filtered.length === 0 && (
+                    <div className="text-center py-12 bg-gray-50 dark:bg-[#1E1E1E] rounded-xl border border-dashed border-gray-200 dark:border-[#333]">
+                        <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-400 text-sm">No {type === 'uni' ? 'courses' : 'general courses'} found.</p>
+                    </div>
+                )}
+            </div>
+
+            {/* DELETE MODAL */}
+            {deleteModal && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+                    <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] p-6 animate-slideUp">
+                        <div className="flex flex-col items-center text-center">
+                            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4 text-red-600 dark:text-red-500">
+                                <AlertTriangle size={24} />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Delete "{deleteModal.course.name}"?</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                                You have <strong>{deleteModal.linkedTasks.length} active tasks</strong> under this course. 
+                                Deleting it will leave these tasks uncategorized.
+                            </p>
+                            
+                            <div className="w-full bg-gray-50 dark:bg-[#121212] rounded-lg p-3 mb-6 max-h-32 overflow-y-auto border border-gray-200 dark:border-[#333] text-left">
+                                {deleteModal.linkedTasks.map(t => (
+                                    <div key={t.id} className="text-xs text-gray-600 dark:text-gray-300 py-1 border-b border-gray-200 dark:border-[#2C2C2C] last:border-0 flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-red-400"></div> {t.name}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex gap-3 w-full">
+                                <button 
+                                    onClick={() => setDeleteModal(null)}
+                                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#2C2C2C] hover:bg-gray-200 dark:hover:bg-[#383838] transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={confirmDelete}
+                                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all"
+                                >
+                                    Yes, Remove
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- 5. HELP SECTION ---
+const HelpSection = () => (
+    <div className="animate-fadeIn">
+        <div className="mb-8">
+            <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Help Center</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Learn how to maximize your productivity with MyPortal.</p>
+        </div>
+
+        <div className="grid gap-4">
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-brand-blue rounded-lg h-fit"><Layout size={20}/></div>
+                <div>
+                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Dashboard & Tasks</h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                        Your central hub. Manage daily to-dos, categorize them by course, and track your progress. Drag and drop tasks to change their status.
+                    </p>
+                </div>
+            </div>
+            
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
+                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-lg h-fit"><GraduationCap size={20}/></div>
+                <div>
+                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Academics</h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                        View your auto-synced grades, GPA, and transcript. This data is fetched directly from the university portal.
+                    </p>
+                </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg h-fit"><Wallet size={20}/></div>
+                <div>
+                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Cash Manager</h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                        Track your income and expenses. Set monthly budgets for categories like Food or Transport to save money effectively.
+                    </p>
+                </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
+                <div className="p-3 bg-orange-50 dark:bg-orange-900/20 text-orange-600 rounded-lg h-fit"><Calendar size={20}/></div>
+                <div>
+                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Calendar</h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                        Visualize your deadlines and academic schedule. Switch between Month, Week, and Day views to stay organized.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+);
+
+// --- 6. ABOUT SECTION (UPDATED) ---
+const AboutSection = () => (
+    <div className="animate-fadeIn text-center py-12">
+        <div className="w-24 h-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl shadow-blue-600/30 mb-6 animate-float">
+            <UCPLogo className="w-12 h-12 text-white" />
+        </div>
+        <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">MyPortal</h2>
+        <p className="text-gray-500 dark:text-gray-400 mb-8 font-medium">Next-Gen Student Academic Assistant</p>
+
+        <div className="inline-block bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl p-8 text-left max-w-sm w-full mx-auto shadow-sm">
+            <div className="space-y-6">
+                <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-[#333]">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Developed By</span>
+                    <span className="font-bold text-gray-800 dark:text-white text-sm">abusufian-ui</span>
+                </div>
+                <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-[#333]">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Student ID</span>
+                    <span className="font-mono text-xs bg-gray-100 dark:bg-[#252525] px-2 py-1 rounded text-gray-600 dark:text-gray-300">L1F23BSCS1329</span>
+                </div>
+                <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-[#333]">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Institution</span>
+                    <div className="flex items-center gap-2">
+                        <UCPLogo className="w-4 h-4 text-brand-blue" />
+                        <span className="font-bold text-gray-800 dark:text-white text-sm">UCP Lahore</span>
+                    </div>
+                </div>
+                <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Version</span>
+                    <span className="font-bold text-emerald-500 text-sm">2.0.0 (Beta)</span>
+                </div>
+            </div>
+        </div>
+
+        {/* --- ADDED SOCIAL LINKS --- */}
+        <div className="flex justify-center gap-4 mt-8 animate-slideUp">
+            <a 
+                href="https://www.linkedin.com/in/abu-sufian-71ba2a303/" 
+                target="_blank" 
+                rel="noreferrer"
+                className="group flex items-center gap-2 px-5 py-3 bg-[#0077b5] text-white rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:scale-105 transition-all"
+            >
+                <Linkedin size={20} className="group-hover:animate-bounce" />
+                <span className="font-bold text-sm">LinkedIn</span>
+            </a>
+            
+            <a 
+                href="https://github.com/abusufian-ui" 
+                target="_blank" 
+                rel="noreferrer"
+                className="group flex items-center gap-2 px-5 py-3 bg-[#333] dark:bg-white dark:text-black text-white rounded-xl shadow-lg shadow-gray-500/30 hover:shadow-gray-500/50 hover:scale-105 transition-all"
+            >
+                <Github size={20} className="group-hover:rotate-12 transition-transform" />
+                <span className="font-bold text-sm">GitHub</span>
+            </a>
+        </div>
+    </div>
+);
+
+// --- MAIN SETTINGS LAYOUT ---
+const Settings = ({ 
+  user = {}, 
+  courses = [], 
+  addCourse, 
+  removeCourse, 
+  tasks = [], 
+  idleTimeout = 900000, 
+  setIdleTimeout 
+}) => {
+  const [activeTab, setActiveTab] = useState('profile');
+  const [toast, setToast] = useState({ msg: null, type: null });
+
+  const showToast = (msg, type) => {
+    setToast({ msg, type });
+    setTimeout(() => setToast({ msg: null, type: null }), 3000);
+  };
+
+  const tabs = [
+    { id: 'profile', label: 'Profile Settings', icon: User },
+    { id: 'security', label: 'Security', icon: Shield },
+    { id: 'portal', label: 'Portal Connection', icon: RefreshCw },
+    { id: 'courses', label: 'Course Manager', icon: BookOpen },
+    { id: 'help', label: 'Help Center', icon: HelpCircle },
+    { id: 'about', label: 'About', icon: Info },
+  ];
+
+  return (
+    <div className="flex h-full w-full animate-fadeIn bg-gray-50 dark:bg-[#0c0c0c] overflow-hidden">
+      {/* Global Toast */}
+      <Toast message={toast.msg} type={toast.type} onClose={() => setToast({ msg: null, type: null })} />
+
       {/* LEFT SIDEBAR */}
-      <div className="w-64 border-r border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1E1E1E] p-6 flex flex-col gap-2">
-        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Settings</h2>
-        <SidebarItem id="profile" label="Profile Settings" icon={User} />
-        <SidebarItem id="security" label="Security" icon={Lock} />
-        <SidebarItem id="portal" label="Portal Connection" icon={RefreshCw} />
-        <SidebarItem id="courses" label="Course Manager" icon={Book} />
-        <SidebarItem id="preferences" label="Preferences" icon={Clock} />
+      <div className="w-64 border-r border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#151518] flex flex-col h-full shrink-0">
+        <div className="p-6 pb-2">
+            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Settings</h2>
+        </div>
+        <div className="px-3 space-y-1 overflow-y-auto custom-scrollbar flex-1">
+            {tabs.map(tab => (
+                <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 
+                        ${activeTab === tab.id 
+                            ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-blue shadow-sm' 
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] hover:text-gray-900 dark:hover:text-gray-200'
+                        }`}
+                >
+                    <tab.icon size={18} className={activeTab === tab.id ? "text-brand-blue" : "opacity-70"} />
+                    {tab.label}
+                </button>
+            ))}
+        </div>
+        {/* Footer Credit in Sidebar */}
+        <div className="p-6 border-t border-gray-100 dark:border-[#2C2C2C]">
+            <div className="flex items-center gap-3 opacity-60">
+                <UCPLogo className="w-5 h-5 text-gray-400" />
+                <span className="text-xs font-mono text-gray-400">v2.0.0</span>
+            </div>
+        </div>
       </div>
 
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
-        <div className="max-w-2xl mx-auto">
-          
-          {/* FEEDBACK MESSAGE */}
-          {message && (
-            <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 text-sm font-bold animate-slideDown ${
-              message.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 text-green-600' : 'bg-red-50 dark:bg-red-900/20 text-red-600'
-            }`}>
-              {message.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-              {message.text}
-            </div>
-          )}
-
-          {/* --- PROFILE SECTION --- */}
-          {activeSection === 'profile' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold dark:text-white">Personal Information</h2>
-              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
-                <form onSubmit={handleProfileUpdate} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name</label>
-                    <input 
-                      type="text" 
-                      value={name} 
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label>
-                    <input 
-                      type="email" 
-                      value={user.email} 
-                      disabled 
-                      className="w-full bg-gray-100 dark:bg-[#252525] border border-transparent rounded-lg p-3 text-sm text-gray-500 cursor-not-allowed"
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">Email cannot be changed.</p>
-                  </div>
-                  <button type="submit" disabled={loading} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition-all disabled:opacity-50">
-                    {loading ? 'Saving...' : <><Save size={16} /> Save Changes</>}
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* --- SECURITY SECTION --- */}
-          {activeSection === 'security' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold dark:text-white">Security</h2>
-              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
-                <form onSubmit={handlePasswordChange} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Current Password</label>
-                    <input 
-                      type="password" 
-                      value={passwords.current}
-                      onChange={(e) => setPasswords({...passwords, current: e.target.value})}
-                      className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
-                      <input 
-                        type="password" 
-                        value={passwords.new}
-                        onChange={(e) => setPasswords({...passwords, new: e.target.value})}
-                        className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm New</label>
-                      <input 
-                        type="password" 
-                        value={passwords.confirm}
-                        onChange={(e) => setPasswords({...passwords, confirm: e.target.value})}
-                        className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-                  <button type="submit" disabled={loading} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition-all disabled:opacity-50">
-                    {loading ? 'Processing...' : <><Save size={16} /> Update Password</>}
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* --- PORTAL SECTION --- */}
-          {activeSection === 'portal' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold dark:text-white">Portal Connection</h2>
-              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
-                {user.isPortalConnected ? (
-                  <div className="space-y-6">
-                    <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-xl flex items-center gap-4">
-                      <div className="p-2 bg-blue-100 dark:bg-blue-800 rounded-full text-blue-600 dark:text-blue-200">
-                        <CheckCircle2 size={24} />
-                      </div>
-                      <div>
-                        <p className="font-bold text-blue-900 dark:text-blue-100">Connected as {user.portalId}</p>
-                        <p className="text-xs text-blue-700 dark:text-blue-300">Your grades and courses are syncing automatically.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-4">
-                      <button onClick={handleSync} disabled={loading} className="flex-1 flex items-center justify-center gap-2 bg-gray-100 dark:bg-[#252525] hover:bg-gray-200 dark:hover:bg-[#333] text-gray-700 dark:text-white py-3 rounded-xl font-bold transition-all">
-                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} /> 
-                        {loading ? 'Syncing...' : 'Sync Now'}
-                      </button>
-                      <button onClick={() => { if(window.confirm('Disconnect portal?')) onDisconnect(); }} className="flex-1 flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 py-3 rounded-xl font-bold transition-all">
-                        <Unlink size={18} /> Disconnect
-                      </button>
-                    </div>
-                    
-                    {/* RED NOTE - CONNECTED STATE */}
-                    <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 p-3 rounded-xl flex gap-3 items-start mt-2">
-                      <Info size={16} className="text-red-500 shrink-0 mt-0.5" />
-                      <div className="text-xs text-red-600 dark:text-red-400 leading-relaxed">
-                        <strong>Sync Status:</strong> Connecting to the university database usually takes <strong>15 to 30 seconds</strong>. 
-                        If you don't see your latest data, please click the <strong>Manual Sync</strong> button above to refresh immediately.
-                      </div>
-                    </div>
-
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="text-center py-4">
-                      <div className="inline-block p-3 bg-gray-100 dark:bg-[#252525] rounded-full text-gray-400 mb-2">
-                        <Link2 size={24} />
-                      </div>
-                      <h3 className="text-lg font-bold dark:text-white">Connect University Portal</h3>
-                      <p className="text-gray-500 text-xs">Sync your grades, courses, and schedule automatically.</p>
-                    </div>
-
-                    <form onSubmit={handleLink} className="space-y-4 max-w-sm mx-auto">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Portal ID</label>
-                        <input 
-                          type="text" 
-                          value={portalCreds.portalId}
-                          onChange={(e) => setPortalCreds({ ...portalCreds, portalId: e.target.value })}
-                          placeholder="e.g. L1F19BSCS0000"
-                          className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
-                        <input 
-                          type="password" 
-                          value={portalCreds.portalPassword}
-                          onChange={(e) => setPortalCreds({ ...portalCreds, portalPassword: e.target.value })}
-                          placeholder="••••••••"
-                          className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
-                        />
-                      </div>
-                      <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50">
-                        {loading ? 'Connecting...' : 'Connect Account'}
-                      </button>
-                    </form>
-                    
-                    {/* RED NOTE - DISCONNECTED STATE */}
-                    <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 p-3 rounded-xl flex gap-3 items-start mt-4 max-w-sm mx-auto">
-                      <Info size={16} className="text-red-500 shrink-0 mt-0.5" />
-                      <div className="text-xs text-red-600 dark:text-red-400 leading-relaxed text-left">
-                        <strong>Note:</strong> Initial data retrieval may take <strong>15-30 seconds</strong> after connection. If your dashboard remains empty, please use the <strong>Manual Sync</strong> option in settings.
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* --- COURSE MANAGER --- */}
-          {activeSection === 'courses' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold dark:text-white">Course Manager</h2>
-              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
-                <form onSubmit={handleAddCourse} className="flex gap-2 mb-6">
-                  <input 
-                    type="text" 
-                    value={newCourseName}
-                    onChange={(e) => setNewCourseName(e.target.value)}
-                    placeholder="Enter course name..."
-                    className="flex-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-sm dark:text-white outline-none focus:border-blue-500"
-                  />
-                  <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg flex items-center gap-2 font-bold text-sm">
-                    <Plus size={16} /> Add
-                  </button>
-                </form>
-
-                <div className="space-y-2">
-                  {courses.length === 0 && <p className="text-sm text-gray-500 text-center">No courses available.</p>}
-                  {courses.map((course) => (
-                    <div key={course.id || course.name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#252525] rounded-lg border border-gray-100 dark:border-[#333]">
-                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{course.name}</span>
-                      {course.type !== 'uni' && (
-                        <button onClick={() => removeCourse(course.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg transition-colors">
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                      {course.type === 'uni' && (
-                        <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded">Portal</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* --- PREFERENCES SECTION --- */}
-          {activeSection === 'preferences' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold dark:text-white">System Preferences</h2>
-              <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333]">
-                
-                <div className="mb-6">
-                  <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
-                    <LogOut size={16} /> Auto-Logout Timer
-                  </h3>
-                  <p className="text-xs text-gray-500 mb-4">Automatically log out after a period of inactivity.</p>
-                  
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { label: '5 Mins', value: 300000 },
-                      { label: '15 Mins', value: 900000 },
-                      { label: '30 Mins', value: 1800000 },
-                      { label: '1 Hour', value: 3600000 },
-                      { label: 'Never', value: 0 },
-                    ].map((opt) => (
-                      <button
-                        key={opt.label}
-                        onClick={() => setIdleTimeout(opt.value)}
-                        className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all ${
-                          idleTimeout === opt.value
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white dark:bg-[#252525] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#333] hover:border-blue-400'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
-
+      {/* RIGHT CONTENT AREA */}
+      <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-8 md:p-12 relative">
+        <div className="max-w-3xl mx-auto pb-24">
+            {activeTab === 'profile' && <ProfileSection user={user} showToast={showToast} />}
+            {activeTab === 'security' && <SecuritySection idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} />}
+            {activeTab === 'portal' && <PortalSection user={user} showToast={showToast} />}
+            {activeTab === 'courses' && <CourseSection courses={courses} addCourse={addCourse} removeCourse={removeCourse} tasks={tasks} showToast={showToast} />}
+            {activeTab === 'help' && <HelpSection />}
+            {activeTab === 'about' && <AboutSection />}
         </div>
       </div>
     </div>

@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronRight, ChevronsUp, ChevronUp,   
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
   X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle,
-  CalendarDays 
+  CalendarDays, Archive 
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -13,7 +13,16 @@ const getAbbreviation = (name) => {
   if (!name || name === 'Select') return name;
   const n = name.toLowerCase().trim();
 
-  // 1. Standard CS Abbreviations
+  if (n === 'event') return 'Event';
+
+  // --- 1. PRIORITY: DETECT LABS FIRST ---
+  if (n.includes('operating system') && (n.includes('lab') || n.includes('laboratory'))) return 'OS Lab';
+  if (n.includes('database') && (n.includes('lab') || n.includes('laboratory'))) return 'DB Lab';
+  if (n.includes('computer network') && (n.includes('lab') || n.includes('laboratory'))) return 'CN Lab';
+  if (n.includes('object oriented') && (n.includes('lab') || n.includes('laboratory'))) return 'OOP Lab';
+  if (n.includes('data structure') && (n.includes('lab') || n.includes('laboratory'))) return 'DSA Lab';
+
+  // --- 2. STANDARD ABBREVIATIONS ---
   if (n.includes('operating system')) return 'OS';
   if (n.includes('differential equation')) return 'DE';
   if (n.includes('software engineering')) return 'SE';
@@ -29,18 +38,14 @@ const getAbbreviation = (name) => {
   if (n.includes('data structure')) return 'DSA';
   if (n.includes('database')) return 'DB';
   if (n.includes('computer network')) return 'CN';
-  if (n.includes('general task')) return 'General';
+  
+  // --- UPDATED: General Course mapping ---
+  if (n.includes('general course') || n.includes('general task')) return 'General';
 
-  // 2. Fallback: If it's still long (e.g. > 15 chars), make an acronym
+  // 3. Fallback
   if (name.length > 15) {
-    const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for'];
-    return name
-      .split(' ')
-      .filter(word => !ignoredWords.includes(word.toLowerCase()))
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 5); // Max 5 chars
+    const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for', 'the'];
+    return name.split(' ').filter(word => !ignoredWords.includes(word.toLowerCase())).map(word => word[0]).join('').toUpperCase().substring(0, 5); 
   }
 
   return name;
@@ -125,7 +130,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
           </div>
         </div>
 
-        <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+        <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar-hide">
           <div className="mb-8">
             {isEditing ? (
               <div className="space-y-4">
@@ -145,7 +150,6 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
               <div className="flex items-center gap-3 text-sm text-gray-500"><CalendarIcon size={16} className="opacity-70" /> Created: <span className="dark:text-gray-200 font-medium">{new Date(task.createdAt || Date.now()).toLocaleDateString()}</span></div>
               <div className="flex items-center gap-3 text-sm text-gray-500"><CalendarIcon className="text-brand-pink" size={16} /> Due Date: <span className="dark:text-gray-200 font-medium">{task.date || "No date"}</span></div>
               
-              {/* --- CONDITIONALLY SHOW TIME ROW --- */}
               {task.time && (
                 <div className="flex items-center gap-3 text-sm text-gray-500">
                   <Clock className="text-brand-pink" size={16} /> Time: 
@@ -185,6 +189,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   const [showCompleted, setShowCompleted] = useState(true);
   const [expandedTasks, setExpandedTasks] = useState({}); 
   const [newSubTask, setNewSubTask] = useState({}); 
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     if (selectedTask) {
@@ -240,11 +245,26 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
     });
   };
 
+  // --- SMART FILTERING ---
+  const isTaskCurrent = (t) => {
+    return courses.some(c => c.name === t.course) || t.course === 'Event';
+  };
+
+  const currentTasks = tasks.filter(isTaskCurrent);
+  const archivedTasks = tasks.filter(t => !isTaskCurrent(t));
+
+  const activeTasks = sortTasks(currentTasks.filter(t => t.status !== 'Completed'));
+  const completedTasks = sortTasks(currentTasks.filter(t => t.status === 'Completed'));
+
+  // --- CATEGORIZE COURSES FOR DROPDOWN ---
+  const uniCourses = courses.filter(c => c.type === 'uni');
+  const generalCourses = courses.filter(c => c.type !== 'uni');
+
   const renderRow = (task, isCompleted = false) => {
     const statusConfig = getStatusConfig(task.status);
     const priorityConfig = getPriorityConfig(task.priority);
     const currentCourse = courses.find(c => c && c.name === task.course);
-    const courseType = currentCourse ? currentCourse.type : 'general';
+    const courseType = currentCourse ? currentCourse.type : (task.course === 'Event' ? 'event' : 'general');
     const isExpanded = expandedTasks[task.id];
     const completedCount = task.subTasks?.filter(s => s.completed).length || 0;
     const totalCount = task.subTasks?.length || 0;
@@ -274,23 +294,50 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                       <AlertTriangle size={16} /> Deleted
                     </button>
                   ) : (
-                    // --- ABBREVIATION APPLIED HERE ---
                     <button 
                         onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} 
                         className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:opacity-80 text-left w-full font-medium py-1 truncate"
-                        title={task.course} // Tooltip shows full name
+                        title={task.course} 
                     >
                       <CourseIcon type={courseType} name={task.course} /> {getAbbreviation(task.course) || "Select"}
                     </button>
                   )}
 
                   {openDropdownId === `${task.id}-course` && (
-                    <div className="absolute top-full left-0 mt-1 min-w-[170px] bg-white dark:bg-[#1E1E1E] rounded-md shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-50 overflow-hidden animate-fadeIn">
-                      {courses.length > 0 ? courses.map((c) => (
-                        <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                          <CourseIcon type={c.type} name={c.name} /> <span className="font-medium">{c.name}</span>
+                    <div className="absolute top-full left-0 mt-1 min-w-[220px] bg-white dark:bg-[#1E1E1E] rounded-md shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-50 overflow-hidden animate-fadeIn max-h-[300px] overflow-y-auto custom-scrollbar-hide">
+                      
+                      {/* --- 1. EVENT BUTTON --- */}
+                      <div 
+                        onClick={() => { updateTask(task.id, 'course', 'Event'); setOpenDropdownId(null); }} 
+                        className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-rose-600 dark:text-rose-500 font-medium border-b border-gray-100 dark:border-[#2C2C2C]"
+                      >
+                         <CalendarDays size={16} /> <span>Event</span>
+                      </div>
+
+                      {/* --- 2. UNIVERSITY COURSES --- */}
+                      {uniCourses.length > 0 && (
+                        <>
+                          <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
+                             University Courses
+                          </div>
+                          {uniCourses.map((c) => (
+                            <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                              <UCPLogo className="w-4 h-4 text-blue-600" /> <span className="truncate">{c.name}</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+
+                      {/* --- 3. GENERAL COURSES --- */}
+                      <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
+                          General / Manual
+                      </div>
+                      {generalCourses.length > 0 ? generalCourses.map((c) => (
+                        <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                          <Book size={16} className="text-gray-400"/> <span className="truncate">{c.name}</span>
                         </div>
-                      )) : <div className="p-3 text-xs text-gray-500">No courses added</div>}
+                      )) : <div className="p-3 text-xs text-gray-500">No general courses</div>}
+
                     </div>
                   )}
                 </div>
@@ -335,9 +382,6 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
     );
   };
 
-  const activeTasks = sortTasks(tasks.filter(t => t.status !== 'Completed'));
-  const completedTasks = sortTasks(tasks.filter(t => t.status === 'Completed'));
-
   return (
     <div className="p-8 w-full animate-fadeIn pb-20">
       <div className="mb-10">
@@ -363,7 +407,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
       </div>
 
       {completedTasks.length > 0 && (
-        <div className="animate-fadeIn">
+        <div className="animate-fadeIn mb-10">
           <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 mb-4 group focus:outline-none">
              {showCompleted ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
              <h2 className="text-gray-800 dark:text-white font-bold text-sm">Completed tasks</h2>
@@ -372,6 +416,36 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
           {showCompleted && completedTasks.map(task => renderRow(task, true))}
         </div>
       )}
+
+      {archivedTasks.length > 0 && (
+        <div className="animate-fadeIn pt-6 border-t border-dashed border-gray-200 dark:border-[#2C2C2C]">
+           <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-2 w-full group focus:outline-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+             <Archive size={18} />
+             <h2 className="font-bold text-sm">Past Semester / Archived</h2>
+             <span className="bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 text-xs px-2 py-0.5 rounded-full">{archivedTasks.length}</span>
+             <span className="ml-auto text-xs">{showArchived ? "Hide" : "Show"}</span>
+           </button>
+           
+           {showArchived && (
+             <div className="mt-4 opacity-75">
+               <div className="p-3 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-700 dark:text-yellow-500 text-xs rounded-lg mb-2 flex items-center gap-2">
+                 <AlertTriangle size={14} /> These tasks belong to deleted courses or past semesters.
+               </div>
+               {archivedTasks.map(task => renderRow(task, task.status === 'Completed'))}
+             </div>
+           )}
+        </div>
+      )}
+
+      <style>{`
+        .custom-scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .custom-scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
 
       <TaskSummaryModal 
         isOpen={!!selectedTask} 
@@ -409,18 +483,14 @@ const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOpt
   );
 };
 
-// --- DATE CELL COMPONENT ---
 const DateCell = ({ date, time, onChange }) => {
   const inputRef = useRef(null);
-  
   const displayDate = formatDate(date); 
   const displayTime = time ? `, ${time}` : '';
-
   return (
     <div className="relative cursor-pointer hover:opacity-80 group h-full flex flex-col justify-center" onClick={(e) => { e.stopPropagation(); inputRef.current.showPicker(); }}>
       <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
-        {displayDate}
-        {time && <span className="text-xs text-gray-400 ml-1 font-normal">{time}</span>}
+        {displayDate}{time && <span className="text-xs text-gray-400 ml-1 font-normal">{time}</span>}
       </span>
       <input ref={inputRef} type="date" value={date} onChange={(e) => onChange(e.target.value)} className="absolute opacity-0 w-0 h-0 dark:[color-scheme:dark]" />
     </div>

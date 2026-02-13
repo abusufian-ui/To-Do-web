@@ -14,7 +14,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
   const menuItems = [
     { name: 'Tasks', icon: CheckSquare },
     { name: 'Calendar', icon: Calendar },
-    { name: 'Notes', icon: StickyNote },
+    { name: 'Notes', icon: StickyNote }, // Correctly mapped to Notes
   ];
 
   const academicsSubItems = [
@@ -88,7 +88,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           return (
             <button
               key={item.name}
-              onClick={() => setActiveTab(item.name)}
+              onClick={() => setActiveTab(item.name)} // Sets 'Notes' tab when clicked
               className={`
                 w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
                 ${isActive 
@@ -136,7 +136,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
                 className={`
                   w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
                   ${activeTab === sub.id 
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-medium' // Dark Blue Active State
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-medium' 
                     : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10'}
                 `}
               >
@@ -177,7 +177,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
                 className={`
                   w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
                   ${activeTab === sub.id 
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20 font-medium' // Dark Green Active State
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20 font-medium' 
                     : 'text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10'}
                 `}
               >
