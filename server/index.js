@@ -75,7 +75,10 @@ const otpSchema = new mongoose.Schema({
 const OTP = mongoose.model('OTP', otpSchema);
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ["https://to-do-web-eta.vercel.app", "http://localhost:3000"],
+  credentials: true
+}));
 app.use(express.json());
 
 // --- DATABASE CONNECTION ---
@@ -478,5 +481,7 @@ app.get('/', (req, res) => {
 });
 
 
-
-module.exports = app;
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT} 🚀`);
+});
