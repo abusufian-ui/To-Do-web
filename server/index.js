@@ -19,10 +19,20 @@ const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
 
 // --- NODEMAILER ---
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true, // Use SSL
   auth: {
     user: process.env.REACT_APP_EMAIL_USER,
     pass: process.env.REACT_APP_EMAIL_PASS
+  }
+});
+
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("❌ NODEMAILER CONFIG ERROR (Check your App Password):", error);
+  } else {
+    console.log("✅ Nodemailer is connected and ready to send emails!");
   }
 });
 
@@ -248,22 +258,20 @@ app.post('/api/send-otp', async (req, res) => {
     
     console.log(`[OTP] Database updated. Attempting to send email via: ${process.env.REACT_APP_EMAIL_USER}`);
 
-    transporter.sendMail({
-      from: '"MyPortal Support" <ranasuffyan9@gmail.com>',
+    // Force the server to wait for the email to send
+    const info = await transporter.sendMail({
+      from: `"MyPortal Support" <${process.env.REACT_APP_EMAIL_USER}>`,
       to: email,
       subject: 'Verification Code: ' + code,
       text: `Your verification code is: ${code}`
-    }, (error, info) => {
-      if (error) {
-        console.error("❌ NODEMAILER ERROR:", error); // This will reveal the exact email issue!
-        return res.status(500).json({ message: "Failed to send email" });
-      }
-      console.log("✅ Email sent successfully:", info.response);
-      res.json({ message: "OTP sent successfully" });
     });
+
+    console.log("✅ Email sent successfully:", info.messageId);
+    res.json({ message: "OTP sent successfully" });
+
   } catch (error) { 
-    console.error("❌ DATABASE/SERVER ERROR:", error); // This will reveal if MongoDB is crashing
-    res.status(500).json({ message: "Server Error" }); 
+    console.error("❌ FATAL SEND-OTP ERROR:", error); 
+    res.status(500).json({ message: "Failed to send email" }); 
   }
 });
 
