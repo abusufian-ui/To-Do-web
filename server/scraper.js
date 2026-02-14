@@ -49,17 +49,6 @@ const runScraper = async (userId) => {
 
       let page = await browser.newPage();
 
-      // --- 🚀 NEW: TURBO MODE (Block Images & CSS) ---
-      console.log("⚡ Enabling Turbo Mode (Blocking images/CSS)...");
-      await page.setRequestInterception(true);
-      page.on('request', (req) => {
-          if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-              req.abort();
-          } else {
-              req.continue();
-          }
-      });
-
       // 3. NAVIGATE TO DASHBOARD
       console.log(`🌍 Navigating to Dashboard for ${user.portalId}...`);
       try {
@@ -81,7 +70,7 @@ const runScraper = async (userId) => {
             if (msBtn) {
                 console.log("   👉 Clicking UCP 'Login With Microsoft'...");
                 
-                // NATIVE JS CLICK: Bypasses the "not clickable" error caused by missing CSS
+                // NATIVE JS CLICK
                 await page.evaluate((selector) => {
                     const btn = document.querySelector(selector);
                     if (btn) btn.click();
@@ -171,9 +160,8 @@ const runScraper = async (userId) => {
       }
       console.log("✅ Logged in successfully!");
 
-      // --- ⏳ NEW: WAIT FOR DATA TO RENDER ---
+      // --- ⏳ WAIT FOR DATA TO RENDER ---
       console.log("   ⏳ Waiting for course cards to load on dashboard...");
-      // We give the dashboard up to 15 seconds to pull your courses from the UCP database
       await page.waitForSelector('a[href*="/student/course/info/"]', { timeout: 15000 }).catch(() => {
           console.log("   ⚠️ No course cards appeared. You might not have active courses this semester.");
       });
@@ -191,8 +179,8 @@ const runScraper = async (userId) => {
           console.log(`   📚 Found ${courseLinks.length} active courses! Scraping grades...`);
           for (const url of courseLinks) {
               try {
-                  // Reduced waitUntil to 'domcontentloaded' for speed since images are blocked
-                  await page.goto(url, { waitUntil: 'domcontentloaded' });
+                  // Reverted to networkidle2 to ensure full page load
+                  await page.goto(url, { waitUntil: 'networkidle2' });
                   const gradeTab = await page.waitForSelector('::-p-text("Grade Book")', { timeout: 5000 });
                   
                   if (gradeTab) {
@@ -257,8 +245,8 @@ const runScraper = async (userId) => {
       // --- STEP 6: SCRAPE RESULT HISTORY ---
       try {
           console.log("   📜 Navigating to Result History...");
-          // Reduced waitUntil to 'domcontentloaded' for speed
-          await page.goto('https://horizon.ucp.edu.pk/student/results', { waitUntil: 'domcontentloaded', timeout: 60000 });
+          // Reverted to networkidle2
+          await page.goto('https://horizon.ucp.edu.pk/student/results', { waitUntil: 'networkidle2', timeout: 60000 });
           
           const previousTab = await page.waitForSelector('::-p-text("Previous Courses")', { timeout: 10000 });
           if (previousTab) {
