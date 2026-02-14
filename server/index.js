@@ -241,7 +241,7 @@ app.post('/api/send-otp', async (req, res) => {
 
     // Send the email using Resend's API
     const { data, error } = await resend.emails.send({
-      from: 'MyPortal <onboarding@resend.dev>', // Resend's free testing email address
+      from: 'MyPortal <onboarding@myportalucp.online>', // Resend's free testing email address
       to: email,
       subject: 'MyPortal Verification Code',
       html: `<p>Your verification code is: <strong>${code}</strong></p>`
