@@ -4,8 +4,6 @@ const ResultHistory = require('./models/ResultHistory');
 const StudentStats = require('./models/StudentStats');
 const User = require('./models/User');
 const { decrypt } = require('./utils/encryption');
-const path = require('path');
-const fs = require('fs');
 
 // --- GLOBAL LOCK ---
 let isRobotBusy = false;
@@ -35,18 +33,32 @@ const runScraper = async (userId) => {
           throw new Error("MISSING_PORTAL_DATA - ID or Password missing in database.");
       }
 
-      // 2. CONNECT TO CLOUD BROWSER (Browserless.io)
-      // This bypasses the need for Chrome to be installed on Render
-      // 2. SMART BROWSER TOGGLE
+      // 2. SMART BROWSER TOGGLE (Stealth Mode Enabled)
       if (process.env.RENDER || process.env.NODE_ENV === 'production') {
           console.log("🌐 Cloud Mode: Connecting to Browserless.io...");
           browser = await puppeteer.connect({
-              // ADDED &replay=true to the end of the URL!
               browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}&stealth=true&replay=true`,
+          });
+      } else {
+          console.log("🖥️ Local Testing Mode: Launching visible Chrome browser...");
+          browser = await puppeteer.launch({ 
+              headless: false, 
+              defaultViewport: null, 
           });
       }
 
       let page = await browser.newPage();
+
+      // --- 🚀 NEW: TURBO MODE (Block Images & CSS) ---
+      console.log("⚡ Enabling Turbo Mode (Blocking images/CSS)...");
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+          if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+              req.abort();
+          } else {
+              req.continue();
+          }
+      });
 
       // 3. NAVIGATE TO DASHBOARD
       console.log(`🌍 Navigating to Dashboard for ${user.portalId}...`);
@@ -100,7 +112,11 @@ const runScraper = async (userId) => {
             if (emailInput) {
                 console.log("   📧 Entering Email...");
                 await page.type(emailInputSelector, portalId, { delay: 30 });
-                await page.click('#idSIButton9'); 
+                
+                await page.evaluate(() => {
+                    const btn = document.querySelector('#idSIButton9');
+                    if(btn) btn.click();
+                });
                 await new Promise(r => setTimeout(r, 2000));
             }
 
@@ -111,20 +127,25 @@ const runScraper = async (userId) => {
             if (passInput) {
                 console.log("   🔑 Entering Password...");
                 await page.type(passInputSelector, portalPass, { delay: 30 });
-                await Promise.all([
-                    page.click('#idSIButton9'),
-                    page.waitForNavigation({ waitUntil: 'networkidle2' })
-                ]);
+                
+                // Native Click to avoid Target Closed error
+                await page.evaluate(() => {
+                    const btn = document.querySelector('#idSIButton9');
+                    if(btn) btn.click();
+                });
+                await new Promise(r => setTimeout(r, 4000));
             }
 
             // STEP D: Stay Signed In
             try {
-                const staySignedInBtn = await page.waitForSelector('#idSIButton9', { timeout: 5000 }).catch(() => null);
+                const staySignedInBtn = await page.waitForSelector('#idSIButton9', { visible: true, timeout: 5000 }).catch(() => null);
                 if (staySignedInBtn) {
-                    await Promise.all([
-                        staySignedInBtn.click(),
-                        page.waitForNavigation({ waitUntil: 'networkidle2' })
-                    ]);
+                    console.log("   ✅ 'Stay signed in' screen detected, bypassing...");
+                    await page.evaluate(() => {
+                        const btn = document.querySelector('#idSIButton9');
+                        if(btn) btn.click();
+                    });
+                    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => null);
                 }
             } catch (e) {
                 console.log("   ℹ️ 'Stay signed in' screen skipped.");
@@ -145,7 +166,15 @@ const runScraper = async (userId) => {
       }
       console.log("✅ Logged in successfully!");
 
+      // --- ⏳ NEW: WAIT FOR DATA TO RENDER ---
+      console.log("   ⏳ Waiting for course cards to load on dashboard...");
+      // We give the dashboard up to 15 seconds to pull your courses from the UCP database
+      await page.waitForSelector('a[href*="/student/course/info/"]', { timeout: 15000 }).catch(() => {
+          console.log("   ⚠️ No course cards appeared. You might not have active courses this semester.");
+      });
+
       // --- STEP 5: SCRAPE ACTIVE COURSES ---
+      console.log("   🔍 Searching for courses...");
       const courseLinks = await page.evaluate(() => {
         const cards = document.querySelectorAll('a[href*="/student/course/info/"]');
         return Array.from(cards).map(card => card.href);
@@ -154,9 +183,11 @@ const runScraper = async (userId) => {
       await Grade.deleteMany({ userId: userId });
 
       if (courseLinks.length > 0) {
+          console.log(`   📚 Found ${courseLinks.length} active courses! Scraping grades...`);
           for (const url of courseLinks) {
               try {
-                  await page.goto(url, { waitUntil: 'networkidle2' });
+                  // Reduced waitUntil to 'domcontentloaded' for speed since images are blocked
+                  await page.goto(url, { waitUntil: 'domcontentloaded' });
                   const gradeTab = await page.waitForSelector('::-p-text("Grade Book")', { timeout: 5000 });
                   
                   if (gradeTab) {
@@ -214,11 +245,15 @@ const runScraper = async (userId) => {
                   console.log(`   ⚠️ Skipped course: ${e.message}`); 
               }
           }
+      } else {
+          console.log("   ⚠️ Skipping grade sync (No courses found).");
       }
 
       // --- STEP 6: SCRAPE RESULT HISTORY ---
       try {
-          await page.goto('https://horizon.ucp.edu.pk/student/results', { waitUntil: 'networkidle2', timeout: 60000 });
+          console.log("   📜 Navigating to Result History...");
+          // Reduced waitUntil to 'domcontentloaded' for speed
+          await page.goto('https://horizon.ucp.edu.pk/student/results', { waitUntil: 'domcontentloaded', timeout: 60000 });
           
           const previousTab = await page.waitForSelector('::-p-text("Previous Courses")', { timeout: 10000 });
           if (previousTab) {
@@ -226,6 +261,7 @@ const runScraper = async (userId) => {
              await new Promise(r => setTimeout(r, 2000)); 
           }
 
+          // Wait for the history table to render
           await page.waitForSelector('tr.table-parent-row', { timeout: 20000 });
 
           const historyData = await page.evaluate(() => {
@@ -286,7 +322,7 @@ const runScraper = async (userId) => {
                   },
                   { upsert: true }
               );
-              console.log(`✅ Synced ${historyData.length} semesters.`);
+              console.log(`   ✅ Synced ${historyData.length} semesters.`);
           }
 
       } catch (historyError) {
