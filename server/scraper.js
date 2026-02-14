@@ -42,7 +42,7 @@ const runScraper = async (userId) => {
           console.log("🌐 Cloud Mode: Connecting to Browserless.io...");
           browser = await puppeteer.connect({
               // ADDED &replay=true to the end of the URL!
-              browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}&replay=true`,
+              browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}&stealth=true&replay=true`,
           });
       }
 
