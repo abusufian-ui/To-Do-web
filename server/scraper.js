@@ -164,6 +164,15 @@ const runScraper = async (userId) => {
       }
       console.log("✅ Logged in successfully!");
 
+      // --- 🛑 FIX: FORCE THE ROBOT TO WAIT ---
+      console.log("   🔄 Waiting for Microsoft's background redirects to finish...");
+      // 1. Hard pause for 5 seconds to let the frame fully stabilize
+      await new Promise(r => setTimeout(r, 5000)); 
+      
+      // 2. Wait until we can physically see the dashboard elements before proceeding
+      console.log("   ⏳ Waiting for dashboard content to render...");
+      await page.waitForSelector('.breadcrumb, a[href*="/student/course/info/"]', { timeout: 15000 }).catch(() => null);
+
       // --- STEP 5: SCRAPE ACTIVE COURSES ---
       console.log("🔎 Scanning for active courses...");
       const courseLinks = await page.evaluate(() => {
@@ -287,8 +296,6 @@ const runScraper = async (userId) => {
           });
 
           if (historyData && historyData.length > 0) {
-              await ResultHistory.deleteMany({ userId: userId });
-
               for (const sem of historyData) {
                   await ResultHistory.findOneAndUpdate(
                       { term: sem.term, userId: userId }, 
