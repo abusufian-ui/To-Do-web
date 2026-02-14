@@ -80,10 +80,15 @@ const runScraper = async (userId) => {
             
             if (msBtn) {
                 console.log("   👉 Clicking UCP 'Login With Microsoft'...");
-                await Promise.all([
-                    msBtn.click(),
-                    page.waitForNavigation({ waitUntil: 'networkidle2' }) 
-                ]);
+                
+                // NATIVE JS CLICK: Bypasses the "not clickable" error caused by missing CSS
+                await page.evaluate((selector) => {
+                    const btn = document.querySelector(selector);
+                    if (btn) btn.click();
+                }, msBtnSelector);
+
+                // Wait for the redirect safely
+                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => null); 
             }
 
             // --- HANDLE "PICK AN ACCOUNT" ---
