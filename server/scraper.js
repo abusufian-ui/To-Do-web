@@ -4,6 +4,8 @@ const ResultHistory = require('./models/ResultHistory');
 const StudentStats = require('./models/StudentStats');
 const User = require('./models/User');
 const { decrypt } = require('./utils/encryption');
+const path = require('path');
+const fs = require('fs');
 
 // --- GLOBAL LOCK ---
 let isRobotBusy = false;
@@ -22,18 +24,11 @@ const runScraper = async (userId) => {
   try {
       // 1. FETCH USER CREDENTIALS
       const user = await User.findById(userId);
-      
-      if (!user) {
-          throw new Error(`USER_NOT_FOUND_IN_DB (ID: ${userId}) - Try logging out and back in.`);
-      }
-      if (!user.isPortalConnected) {
-          throw new Error(`PORTAL_NOT_LINKED - Please go to Settings > Link Portal Account.`);
-      }
-      if (!user.portalId || !user.portalPassword) {
-          throw new Error("MISSING_PORTAL_DATA - ID or Password missing in database.");
+      if (!user || !user.isPortalConnected || !user.portalId) {
+          throw new Error("NO_CREDENTIALS"); 
       }
 
-      // 2. SMART BROWSER TOGGLE (Stealth Mode Enabled)
+      // 2. SMART BROWSER TOGGLE (Browserless for Cloud, Local Chrome for Dev)
       if (process.env.RENDER || process.env.NODE_ENV === 'production') {
           console.log("🌐 Cloud Mode: Connecting to Browserless.io...");
           browser = await puppeteer.connect({
@@ -41,105 +36,113 @@ const runScraper = async (userId) => {
           });
       } else {
           console.log("🖥️ Local Testing Mode: Launching visible Chrome browser...");
+          // We keep your local session persistence just for local testing!
+          const sessionPath = path.join(__dirname, 'session_data', userId.toString()); 
+          if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
+
           browser = await puppeteer.launch({ 
               headless: false, 
-              defaultViewport: null, 
+              defaultViewport: null,
+              args: ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox'],
+              userDataDir: sessionPath 
           });
       }
 
       let page = await browser.newPage();
 
       // 3. NAVIGATE TO DASHBOARD
-      console.log(`🌍 Navigating to Dashboard for ${user.portalId}...`);
+      console.log("🌍 Navigating to Dashboard...");
       try {
         await page.goto('https://horizon.ucp.edu.pk/student/dashboard', { waitUntil: 'networkidle2', timeout: 60000 });
       } catch (e) { console.log("⚠️ Initial load timeout, checking URL..."); }
 
       // 4. AUTOMATED MICROSOFT LOGIN
       if (page.url().includes('login') || page.url().includes('signin') || page.url().includes('microsoft')) {
-          console.log("🔐 Session expired. Initiating Microsoft Login...");
+          console.log("🔐 Session expired. Initiating Microsoft Login Automation...");
           
           const portalId = user.portalId;
           const portalPass = decrypt(user.portalPassword);
 
           try {
-            // STEP A: Click "Login With Microsoft"
+            // STEP A: Click "Login With Microsoft" on UCP Page
             const msBtnSelector = 'a.btn-outline-primary';
-            const msBtn = await page.waitForSelector(msBtnSelector, { timeout: 5000 }).catch(() => null);
+            const msBtn = await page.waitForSelector(msBtnSelector, { timeout: 10000 }).catch(() => null);
             
             if (msBtn) {
                 console.log("   👉 Clicking UCP 'Login With Microsoft'...");
-                
-                // NATIVE JS CLICK
-                await page.evaluate((selector) => {
-                    const btn = document.querySelector(selector);
-                    if (btn) btn.click();
-                }, msBtnSelector);
-
-                // Wait for the redirect safely
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => null); 
+                await Promise.all([
+                    msBtn.click(),
+                    page.waitForNavigation({ waitUntil: 'networkidle2' }) 
+                ]);
             }
 
-            // --- HANDLE "PICK AN ACCOUNT" ---
-            try {
-                const pickAccountHeader = await page.waitForSelector('::-p-text("Pick an account")', { timeout: 5000 }).catch(() => null);
-
-                if (pickAccountHeader) {
-                    console.log("   👀 'Pick an account' screen detected.");
-                    const tileSelector = `div[data-test-id="${portalId}"], div.table[role="button"]`;
-                    
-                    const accountTile = await page.waitForSelector(tileSelector, { timeout: 5000 });
-                    if (accountTile) {
-                        console.log("   👉 Clicking Account Tile...");
-                        await accountTile.click();
-                        await new Promise(r => setTimeout(r, 3000));
+            // --- GLITCH BYPASS LOGIC START ---
+            const handleGlitch = async () => {
+                try {
+                    const useDiffAccount = await page.waitForSelector('#cancelLink', { timeout: 5000 }).catch(() => null);
+                    if (useDiffAccount) {
+                        console.log("   ⚠️ Glitch Screen Detected: Clicking 'Use a different account'...");
+                        await useDiffAccount.click();
+                        await new Promise(r => setTimeout(r, 2000)); 
+                        
+                        const tileSelector = `div.table[data-test-id="${portalId}"]`;
+                        const accountTile = await page.waitForSelector(tileSelector, { timeout: 5000 });
+                        if (accountTile) {
+                            console.log("   👉 Selecting Account Tile to force refresh...");
+                            await accountTile.click();
+                            await page.waitForNavigation({ waitUntil: 'networkidle2' });
+                            return true; 
+                        }
                     }
+                } catch (e) { 
+                    // No glitch screen found, continue normal flow
                 }
-            } catch (e) {
-                console.log("   ℹ️ 'Pick an account' flow skipped.");
-            }
+                return false;
+            };
 
-            // STEP B: Enter Email
+            if (await handleGlitch()) console.log("   ✅ Glitch bypassed.");
+
+            // STEP B: Standard Email Entry
             const emailInputSelector = 'input[name="loginfmt"]';
-            const emailInput = await page.waitForSelector(emailInputSelector, { visible: true, timeout: 5000 }).catch(() => null);
+            const emailInput = await page.waitForSelector(emailInputSelector, { visible: true, timeout: 10000 }).catch(() => null);
             
             if (emailInput) {
                 console.log("   📧 Entering Email...");
                 await page.type(emailInputSelector, portalId, { delay: 30 });
-                
-                await page.evaluate(() => {
-                    const btn = document.querySelector('#idSIButton9');
-                    if(btn) btn.click();
-                });
+                await page.click('#idSIButton9'); 
                 await new Promise(r => setTimeout(r, 2000));
             }
 
             // STEP C: Enter Password
             const passInputSelector = 'input[name="passwd"]';
-            const passInput = await page.waitForSelector(passInputSelector, { visible: true, timeout: 5000 }).catch(() => null);
+            const passInput = await page.waitForSelector(passInputSelector, { visible: true, timeout: 10000 }).catch(() => null);
             
             if (passInput) {
                 console.log("   🔑 Entering Password...");
                 await page.type(passInputSelector, portalPass, { delay: 30 });
                 
-                // Native Click to avoid Target Closed error
-                await page.evaluate(() => {
-                    const btn = document.querySelector('#idSIButton9');
-                    if(btn) btn.click();
-                });
-                await new Promise(r => setTimeout(r, 4000));
+                await Promise.all([
+                    page.click('#idSIButton9'),
+                    page.waitForNavigation({ waitUntil: 'networkidle2' })
+                ]);
             }
 
-            // STEP D: Stay Signed In
+            // --- CHECK FOR GLITCH AGAIN AFTER PASSWORD ---
+            if (await handleGlitch()) console.log("   ✅ Glitch bypassed after password.");
+
+            // STEP D: "Stay Signed In?"
             try {
-                const staySignedInBtn = await page.waitForSelector('#idSIButton9', { visible: true, timeout: 5000 }).catch(() => null);
-                if (staySignedInBtn) {
-                    console.log("   ✅ 'Stay signed in' screen detected, bypassing...");
-                    await page.evaluate(() => {
-                        const btn = document.querySelector('#idSIButton9');
-                        if(btn) btn.click();
-                    });
-                    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => null);
+                const glitchCheck = await page.$('#cancelLink');
+                
+                if (!glitchCheck) {
+                    const staySignedInBtn = await page.waitForSelector('#idSIButton9, input[type="submit"][value="Yes"]', { timeout: 5000 });
+                    if (staySignedInBtn) {
+                        console.log("   👉 Clicking 'Yes' to stay signed in...");
+                        await Promise.all([
+                            staySignedInBtn.click(),
+                            page.waitForNavigation({ waitUntil: 'networkidle2' })
+                        ]);
+                    }
                 }
             } catch (e) {
                 console.log("   ℹ️ 'Stay signed in' screen skipped.");
@@ -150,46 +153,30 @@ const runScraper = async (userId) => {
           }
       }
 
-      // Verify Dashboard access
+      // CHECK: Did we make it?
       if (!page.url().includes('dashboard')) {
           try {
-            await page.waitForFunction(() => window.location.href.includes('dashboard'), { timeout: 10000 });
+            await page.waitForFunction(() => window.location.href.includes('dashboard'), { timeout: 15000 });
           } catch(e) {
-            throw new Error("LOGIN_FAILED - Check credentials or internet.");
+            console.log("❌ Failed to reach dashboard. Check credentials.");
+            throw new Error("LOGIN_FAILED");
           }
       }
       console.log("✅ Logged in successfully!");
 
-      // --- 🛠️ FIX: STABILIZE THE FRAME ---
-      // Microsoft login sometimes does a delayed background refresh.
-      // We force a clean navigation to the dashboard to prevent "Detached Frame" errors.
-      console.log("   🔄 Stabilizing page context...");
-      await page.goto('https://horizon.ucp.edu.pk/student/dashboard', { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
-      await new Promise(r => setTimeout(r, 3000));
-
-      // --- ⏳ WAIT FOR DATA TO RENDER ---
-      console.log("   ⏳ Waiting for course cards to load on dashboard...");
-      await page.waitForSelector('a[href*="/student/course/info/"]', { timeout: 15000 }).catch(() => {
-          console.log("   ⚠️ No course cards appeared. You might not have active courses this semester.");
+      // --- STEP 5: SCRAPE ACTIVE COURSES ---
+      console.log("🔎 Scanning for active courses...");
+      const courseLinks = await page.evaluate(() => {
+        const cards = document.querySelectorAll('a[href*="/student/course/info/"]');
+        return Array.from(cards).map(card => card.href);
       });
 
-      // --- STEP 5: SCRAPE ACTIVE COURSES ---
-      console.log("   🔍 Searching for courses...");
-      let courseLinks = [];
-      try {
-          // Wrapped in Try/Catch to protect against frame detachments
-          courseLinks = await page.evaluate(() => {
-            const cards = document.querySelectorAll('a[href*="/student/course/info/"]');
-            return Array.from(cards).map(card => card.href);
-          });
-      } catch (evaluateError) {
-          console.log("   ⚠️ Frame detached during course search. Proceeding safely to history...");
-      }
+      console.log(`   Found ${courseLinks.length} active courses.`);
 
+      // Clear old grades to refresh them
       await Grade.deleteMany({ userId: userId });
 
       if (courseLinks.length > 0) {
-          console.log(`   📚 Found ${courseLinks.length} active courses! Scraping grades...`);
           for (const url of courseLinks) {
               try {
                   await page.goto(url, { waitUntil: 'networkidle2' });
@@ -244,19 +231,16 @@ const runScraper = async (userId) => {
                           { userId: userId, courseUrl: url, courseName: realName, assessments: courseData.assessments, totalPercentage: courseData.total, lastUpdated: new Date() },
                           { upsert: true, new: true }
                       );
-                      console.log(`   ✅ Synced: ${realName}`);
                   }
               } catch (e) { 
-                  console.log(`   ⚠️ Skipped course: ${e.message}`); 
+                  console.log(`   ⚠️ Skipped active course details: ${e.message}`); 
               }
           }
-      } else {
-          console.log("   ⚠️ Skipping grade sync (No courses found on dashboard).");
       }
 
       // --- STEP 6: SCRAPE RESULT HISTORY ---
+      console.log("📜 Robot: Fetching Result History...");
       try {
-          console.log("   📜 Navigating to Result History...");
           await page.goto('https://horizon.ucp.edu.pk/student/results', { waitUntil: 'networkidle2', timeout: 60000 });
           
           const previousTab = await page.waitForSelector('::-p-text("Previous Courses")', { timeout: 10000 });
@@ -265,6 +249,7 @@ const runScraper = async (userId) => {
              await new Promise(r => setTimeout(r, 2000)); 
           }
 
+          // Wait for Parent Rows
           await page.waitForSelector('tr.table-parent-row', { timeout: 20000 });
 
           const historyData = await page.evaluate(() => {
@@ -276,8 +261,9 @@ const runScraper = async (userId) => {
                   if (row.classList.contains('table-parent-row')) {
                       const tds = row.querySelectorAll('td');
                       if (tds.length >= 8) {
+                          const termText = tds[0].innerText.trim(); 
                           currentSemester = {
-                              term: tds[0].innerText.trim(),
+                              term: termText,
                               earnedCH: tds[4].innerText.trim(),
                               sgpa: tds[6].innerText.trim(),
                               cgpa: tds[7].innerText.trim(),
@@ -325,21 +311,24 @@ const runScraper = async (userId) => {
                   },
                   { upsert: true }
               );
-              console.log(`   ✅ Synced ${historyData.length} semesters.`);
+              console.log(`✅ Synced ${historyData.length} semesters of history.`);
+          } else {
+              console.log("ℹ️ No history rows found.");
           }
 
       } catch (historyError) {
-          console.error(`❌ History Error: ${historyError.message}`);
+          console.error(`❌ Error scraping history: ${historyError.message}`);
       }
 
       console.log("🏁 SYNC COMPLETE!");
 
   } catch (error) {
-      console.error("❌ SCRAPER ERROR:", error.message);
+      console.error("❌ SCRAPER CRITICAL ERROR:", error.message);
       throw error; 
   } finally {
       if (browser) await browser.close();
       isRobotBusy = false;
+      console.log("🔓 Robot is free.");
   }
 };
 
