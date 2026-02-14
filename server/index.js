@@ -235,21 +235,36 @@ app.delete('/api/courses/:id', auth, async (req, res) => {
 app.post('/api/send-otp', async (req, res) => {
   const { email } = req.body;
   try {
+    console.log(`[OTP] Request received for: ${email}`);
+    
     const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ message: "User already registered" });
+    if (existingUser) {
+      console.log(`[OTP] Failed: User ${email} already exists.`);
+      return res.status(400).json({ message: "User already registered" });
+    }
+
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
+    
+    console.log(`[OTP] Database updated. Attempting to send email via: ${process.env.REACT_APP_EMAIL_USER}`);
 
     transporter.sendMail({
       from: '"MyPortal Support" <ranasuffyan9@gmail.com>',
       to: email,
       subject: 'Verification Code: ' + code,
       text: `Your verification code is: ${code}`
-    }, (error) => {
-      if (error) return res.status(500).json({ message: "Failed to send email" });
+    }, (error, info) => {
+      if (error) {
+        console.error("❌ NODEMAILER ERROR:", error); // This will reveal the exact email issue!
+        return res.status(500).json({ message: "Failed to send email" });
+      }
+      console.log("✅ Email sent successfully:", info.response);
       res.json({ message: "OTP sent successfully" });
     });
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+  } catch (error) { 
+    console.error("❌ DATABASE/SERVER ERROR:", error); // This will reveal if MongoDB is crashing
+    res.status(500).json({ message: "Server Error" }); 
+  }
 });
 
 app.post('/api/register', async (req, res) => {
