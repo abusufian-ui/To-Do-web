@@ -10,31 +10,13 @@ const cors = require('cors');
 const cron = require('node-cron');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 const si = require('systeminformation');
 const { encrypt, decrypt } = require('./utils/encryption');
+const { Resend } = require('resend');
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
-
-// --- NODEMAILER ---
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true, // Use SSL
-  auth: {
-    user: process.env.REACT_APP_EMAIL_USER,
-    pass: process.env.REACT_APP_EMAIL_PASS
-  }
-});
-
-transporter.verify((error, success) => {
-  if (error) {
-    console.error("❌ NODEMAILER CONFIG ERROR (Check your App Password):", error);
-  } else {
-    console.log("✅ Nodemailer is connected and ready to send emails!");
-  }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --- MIDDLEWARE ---
 const auth = (req, res, next) => {
@@ -249,29 +231,33 @@ app.post('/api/send-otp', async (req, res) => {
     
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      console.log(`[OTP] Failed: User ${email} already exists.`);
       return res.status(400).json({ message: "User already registered" });
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
     
-    console.log(`[OTP] Database updated. Attempting to send email via: ${process.env.REACT_APP_EMAIL_USER}`);
+    console.log(`[OTP] Sending email via Resend to: ${email}`);
 
-    // Force the server to wait for the email to send
-    const info = await transporter.sendMail({
-      from: `"MyPortal Support" <${process.env.REACT_APP_EMAIL_USER}>`,
+    // Send the email using Resend's API
+    const { data, error } = await resend.emails.send({
+      from: 'MyPortal <onboarding@resend.dev>', // Resend's free testing email address
       to: email,
-      subject: 'Verification Code: ' + code,
-      text: `Your verification code is: ${code}`
+      subject: 'MyPortal Verification Code',
+      html: `<p>Your verification code is: <strong>${code}</strong></p>`
     });
 
-    console.log("✅ Email sent successfully:", info.messageId);
+    if (error) {
+      console.error("❌ RESEND API ERROR:", error);
+      return res.status(500).json({ message: "Failed to send email" });
+    }
+
+    console.log("✅ Email sent successfully! ID:", data.id);
     res.json({ message: "OTP sent successfully" });
 
   } catch (error) { 
-    console.error("❌ FATAL SEND-OTP ERROR:", error); 
-    res.status(500).json({ message: "Failed to send email" }); 
+    console.error("❌ SERVER ERROR:", error); 
+    res.status(500).json({ message: "Server Error" }); 
   }
 });
 

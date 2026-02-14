@@ -24,6 +24,7 @@
     "nodemailer": "^8.0.1",
     "nodemon": "^3.1.11",
     "puppeteer": "^24.37.2",
+    "resend": "^6.9.2",
     "systeminformation": "^5.30.7"
   }
 }
