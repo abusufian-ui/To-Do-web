@@ -18,12 +18,12 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "systeminformation": "^5.30.7",
     "mongodb": "^7.1.0",
     "mongoose": "^9.1.6",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.1",
     "nodemon": "^3.1.11",
-    "puppeteer": "^24.37.2"
+    "puppeteer": "^24.37.2",
+    "systeminformation": "^5.30.7"
   }
 }

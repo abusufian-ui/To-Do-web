@@ -78,14 +78,16 @@ const otpSchema = new mongoose.Schema({
 const OTP = mongoose.model('OTP', otpSchema);
 
 const app = express();
+
 // --- SECURE CORS CONFIGURATION ---
 app.use(cors({
   origin: [
     'http://localhost:3000', // Keeps your local computer working
     'https://to-do-web-jct8.vercel.app', // Your main Vercel link
-    'https://to-do-web-jct8-omd6dfo52-abu-sufians-projects-4bac0908.vercel.app' // Your new preview link (Notice: NO slash at the end!)
+    'https://to-do-web-jct8-omd6dfo52-abu-sufians-projects-4bac0908.vercel.app', // Your new preview link
+    'https://to-do-web-eta.vercel.app' // ADDED: The Vercel link currently causing the CORS error
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // ADDED: OPTIONS to clear preflight requests
   credentials: true 
 }));
 app.use(express.json());
