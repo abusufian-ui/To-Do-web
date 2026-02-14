@@ -74,10 +74,10 @@ const app = express();
 // --- SECURE CORS CONFIGURATION ---
 app.use(cors({
   origin: [
-    'http://localhost:3000', // Keeps your local computer working
-    'https://myportalucp.online' // Front end domain
+    'http://localhost:3000', 
+    'https://myportalucp.online' 
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // ADDED: OPTIONS to clear preflight requests
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
   credentials: true 
 }));
 app.use(express.json());
@@ -93,9 +93,10 @@ mongoose.connect(dbLink)
   })
   .catch(err => console.log(err));
 
-// --- CRON JOBS ---
-cron.schedule('0 8-20 * * *', async () => {
-  console.log("⏰ CRON: Starting Hourly Auto-Sync...");
+// --- CRON JOBS (REDUCED FREQUENCY) ---
+// Changed to run every 12 hours (00:00 and 12:00) instead of every hour
+cron.schedule('0 0,12 * * *', async () => {
+  console.log("⏰ CRON: Starting Auto-Sync (Runs every 12 hours)...");
   try {
     const users = await User.find({ isPortalConnected: true });
     for (let i = 0; i < users.length; i++) {
@@ -115,16 +116,13 @@ cron.schedule('0 8-20 * * *', async () => {
 // 1. SYSTEM STATS (REAL-TIME DATA)
 app.get('/api/admin/system-stats', async (req, res) => {
   try {
-    // Real CPU Load
     const cpuLoad = await si.currentLoad();
-    // Real Memory Usage
     const mem = await si.mem();
 
-    // Real DB Size
     let dbSize = 0;
     if (mongoose.connection.readyState === 1) {
       const stats = await mongoose.connection.db.stats();
-      dbSize = stats.dataSize; // Returns bytes
+      dbSize = stats.dataSize; 
     }
 
     res.json({
@@ -186,6 +184,7 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
     res.json({ message: "User deleted permanently." });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
+
 // --- NEW ROUTES: GENERAL COURSES MANAGEMENT ---
 
 // 1. GET Custom Courses
@@ -239,7 +238,7 @@ app.post('/api/send-otp', async (req, res) => {
 
     // Send the email using Resend's API
     const { data, error } = await resend.emails.send({
-    from: 'MyPortal <otp@myportalucp.online>', // Ensure this domain is verified in Resend
+    from: 'MyPortal <otp@myportalucp.online>', 
     to: email,
     subject: 'MyPortal Verification Code',
     html: `<p>Your verification code is: <strong>${code}</strong></p>`
@@ -497,8 +496,6 @@ app.post('/api/budgets', auth, async (req, res) => {
 app.get('/', (req, res) => {
   res.json({ message: "API is running 🚀" });
 });
-
-
 
 const PORT = process.env.SERVER_PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

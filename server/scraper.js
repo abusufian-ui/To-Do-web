@@ -160,6 +160,13 @@ const runScraper = async (userId) => {
       }
       console.log("✅ Logged in successfully!");
 
+      // --- 🛠️ FIX: STABILIZE THE FRAME ---
+      // Microsoft login sometimes does a delayed background refresh.
+      // We force a clean navigation to the dashboard to prevent "Detached Frame" errors.
+      console.log("   🔄 Stabilizing page context...");
+      await page.goto('https://horizon.ucp.edu.pk/student/dashboard', { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
+      await new Promise(r => setTimeout(r, 3000));
+
       // --- ⏳ WAIT FOR DATA TO RENDER ---
       console.log("   ⏳ Waiting for course cards to load on dashboard...");
       await page.waitForSelector('a[href*="/student/course/info/"]', { timeout: 15000 }).catch(() => {
@@ -168,10 +175,16 @@ const runScraper = async (userId) => {
 
       // --- STEP 5: SCRAPE ACTIVE COURSES ---
       console.log("   🔍 Searching for courses...");
-      const courseLinks = await page.evaluate(() => {
-        const cards = document.querySelectorAll('a[href*="/student/course/info/"]');
-        return Array.from(cards).map(card => card.href);
-      });
+      let courseLinks = [];
+      try {
+          // Wrapped in Try/Catch to protect against frame detachments
+          courseLinks = await page.evaluate(() => {
+            const cards = document.querySelectorAll('a[href*="/student/course/info/"]');
+            return Array.from(cards).map(card => card.href);
+          });
+      } catch (evaluateError) {
+          console.log("   ⚠️ Frame detached during course search. Proceeding safely to history...");
+      }
 
       await Grade.deleteMany({ userId: userId });
 
@@ -179,7 +192,6 @@ const runScraper = async (userId) => {
           console.log(`   📚 Found ${courseLinks.length} active courses! Scraping grades...`);
           for (const url of courseLinks) {
               try {
-                  // Reverted to networkidle2 to ensure full page load
                   await page.goto(url, { waitUntil: 'networkidle2' });
                   const gradeTab = await page.waitForSelector('::-p-text("Grade Book")', { timeout: 5000 });
                   
@@ -239,13 +251,12 @@ const runScraper = async (userId) => {
               }
           }
       } else {
-          console.log("   ⚠️ Skipping grade sync (No courses found).");
+          console.log("   ⚠️ Skipping grade sync (No courses found on dashboard).");
       }
 
       // --- STEP 6: SCRAPE RESULT HISTORY ---
       try {
           console.log("   📜 Navigating to Result History...");
-          // Reverted to networkidle2
           await page.goto('https://horizon.ucp.edu.pk/student/results', { waitUntil: 'networkidle2', timeout: 60000 });
           
           const previousTab = await page.waitForSelector('::-p-text("Previous Courses")', { timeout: 10000 });
@@ -254,7 +265,6 @@ const runScraper = async (userId) => {
              await new Promise(r => setTimeout(r, 2000)); 
           }
 
-          // Wait for the history table to render
           await page.waitForSelector('tr.table-parent-row', { timeout: 20000 });
 
           const historyData = await page.evaluate(() => {
