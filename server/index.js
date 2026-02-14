@@ -78,7 +78,16 @@ const otpSchema = new mongoose.Schema({
 const OTP = mongoose.model('OTP', otpSchema);
 
 const app = express();
-app.use(cors());
+// --- SECURE CORS CONFIGURATION ---
+app.use(cors({
+  origin: [
+    'http://localhost:3000', // Keeps your local computer working
+    'https://to-do-web-jct8.vercel.app', // Your main Vercel link
+    'https://to-do-web-jct8-omd6dfo52-abu-sufians-projects-4bac0908.vercel.app' // Your new preview link (Notice: NO slash at the end!)
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true 
+}));
 app.use(express.json());
 
 // --- DATABASE CONNECTION ---
