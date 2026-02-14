@@ -122,10 +122,18 @@ const SecuritySection = ({ idleTimeout, setIdleTimeout }) => (
     </div>
 );
 
-// --- 3. PORTAL CONNECTION TAB ---
+// --- 3. PORTAL CONNECTION TAB (UPDATED) ---
 const PortalSection = ({ user, showToast }) => {
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isLinking, setIsLinking] = useState(false);
+    const [isUnlinking, setIsUnlinking] = useState(false);
+    
+    // Form state for connecting a new portal
+    const [portalId, setPortalId] = useState('');
+    const [portalPassword, setPortalPassword] = useState('');
+    const [showPass, setShowPass] = useState(false);
 
+    // Manual Sync Function
     const handleSync = async () => {
         setIsSyncing(true);
         try {
@@ -134,10 +142,57 @@ const PortalSection = ({ user, showToast }) => {
                 showToast("Sync Complete! Reloading data...", "success");
                 setTimeout(() => window.location.reload(), 1500);
             } else {
-                showToast("Sync Failed. Please try again later.", "error");
+                const data = await res.json();
+                showToast(data.message || "Sync Failed. Please try again later.", "error");
             }
         } catch (e) { showToast("Server unreachable.", "error"); }
         setIsSyncing(false);
+    };
+
+    // Connect New Portal Function
+    const handleLinkPortal = async (e) => {
+        e.preventDefault();
+        if(!portalId || !portalPassword) return showToast("Please enter both ID and Password.", "error");
+        
+        setIsLinking(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/user/link-portal`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('token') },
+                body: JSON.stringify({ portalId, portalPassword })
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+                showToast("Portal successfully linked! Fetching initial data...", "success");
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                showToast(data.message || "Failed to link portal. Check credentials.", "error");
+            }
+        } catch (e) { 
+            showToast("Server unreachable.", "error"); 
+        }
+        setIsLinking(false);
+    };
+
+    // Disconnect Portal Function
+    const handleUnlinkPortal = async () => {
+        if(!window.confirm("Are you sure you want to unlink your portal? All synced courses and grades will be cleared.")) return;
+        
+        setIsUnlinking(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/user/unlink-portal`, {
+                method: 'POST',
+                headers: { 'x-auth-token': localStorage.getItem('token') }
+            });
+            if (res.ok) {
+                showToast("Portal disconnected successfully.", "success");
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                showToast("Failed to disconnect portal.", "error");
+            }
+        } catch (e) { showToast("Server error.", "error"); }
+        setIsUnlinking(false);
     };
 
     return (
@@ -148,9 +203,11 @@ const PortalSection = ({ user, showToast }) => {
             </div>
 
             <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden shadow-sm">
-                <div className="p-6 border-b border-gray-100 dark:border-[#333] flex items-center justify-between bg-gray-50/50 dark:bg-[#252525]">
+                
+                {/* Status Header */}
+                <div className="p-6 border-b border-gray-100 dark:border-[#333] flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/50 dark:bg-[#252525]">
                     <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-full ${user.isPortalConnected ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20' : 'bg-red-100 text-red-500'}`}>
+                        <div className={`p-3 rounded-full ${user.isPortalConnected ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20' : 'bg-red-100 text-red-500 dark:bg-red-900/20'}`}>
                             {user.isPortalConnected ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
                         </div>
                         <div>
@@ -163,7 +220,7 @@ const PortalSection = ({ user, showToast }) => {
                         </div>
                     </div>
                     {user.isPortalConnected && (
-                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-900/50">
+                        <div className="flex items-center gap-2 px-3 py-1 w-fit rounded-full bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-900/50">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                             <span className="text-emerald-700 dark:text-emerald-400 text-xs font-bold">Active</span>
                         </div>
@@ -171,33 +228,95 @@ const PortalSection = ({ user, showToast }) => {
                 </div>
 
                 <div className="p-8">
-                    <div className="flex flex-col md:flex-row items-center gap-8">
-                        <div className="flex-1">
+                    {!user.isPortalConnected ? (
+                        // --- UNLINKED STATE: Show Login Form ---
+                        <div className="max-w-md animate-fadeIn">
                             <h5 className="font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
-                                <RefreshCw size={18} className="text-brand-blue" /> Manual Data Sync
+                                Link Your Account
                             </h5>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-2">
-                                The Portal Robot fetches your latest grades, attendance, and schedule directly from the University Portal.
+                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
+                                Enter your university credentials to enable automated grade tracking and schedule syncing. Your password is encrypted before saving.
                             </p>
-                            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                                <Info size={14} className="text-blue-500" />
-                                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">Note: The first sync may take <span className="font-bold">30-60 seconds</span>.</span>
+                            
+                            <form onSubmit={handleLinkPortal} className="space-y-4">
+                                <input
+                                    type="text"
+                                    placeholder="Student ID (e.g., L1F23BSCS1329)"
+                                    value={portalId}
+                                    onChange={(e) => setPortalId(e.target.value)}
+                                    className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all"
+                                    required
+                                />
+                                <div className="relative">
+                                    <input
+                                        type={showPass ? "text" : "password"}
+                                        placeholder="Portal Password"
+                                        value={portalPassword}
+                                        onChange={(e) => setPortalPassword(e.target.value)}
+                                        className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all"
+                                        required
+                                    />
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setShowPass(!showPass)} 
+                                        className="absolute right-4 top-3.5 text-gray-400 hover:text-brand-blue"
+                                    >
+                                        <Lock size={18} />
+                                    </button>
+                                </div>
+                                
+                                <button
+                                    type="submit"
+                                    disabled={isLinking}
+                                    className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20"
+                                >
+                                    {isLinking ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                                    {isLinking ? "Connecting to University..." : "Secure Link & Sync"}
+                                </button>
+                            </form>
+                        </div>
+                    ) : (
+                        // --- LINKED STATE: Show Sync & Unlink Buttons ---
+                        <div className="animate-fadeIn">
+                            <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
+                                <div className="flex-1">
+                                    <h5 className="font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
+                                        <RefreshCw size={18} className="text-brand-blue" /> Manual Data Sync
+                                    </h5>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-4">
+                                        The Portal Robot fetches your latest grades, attendance, and schedule directly from the University Portal.
+                                    </p>
+                                    <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                                        <Info size={14} className="text-blue-500" />
+                                        <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">Takes approx. <span className="font-bold">15-30 seconds</span>.</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-3 w-full md:w-auto">
+                                    <button
+                                        onClick={handleSync}
+                                        disabled={isSyncing || isUnlinking}
+                                        className={`w-full px-8 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-3 shadow-lg transition-all 
+                                            ${isSyncing
+                                                ? 'bg-blue-400 cursor-wait'
+                                                : 'bg-brand-blue hover:bg-blue-600 shadow-blue-500/30 hover:scale-[1.02]'
+                                            }`}
+                                    >
+                                        <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+                                        {isSyncing ? "Syncing Data..." : "Force Sync Now"}
+                                    </button>
+                                    
+                                    <button
+                                        onClick={handleUnlinkPortal}
+                                        disabled={isSyncing || isUnlinking}
+                                        className="w-full px-8 py-3 rounded-xl font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all border border-transparent hover:border-red-200 dark:hover:border-red-900/50"
+                                    >
+                                        {isUnlinking ? "Disconnecting..." : "Unlink Portal"}
+                                    </button>
+                                </div>
                             </div>
                         </div>
-
-                        <button
-                            onClick={handleSync}
-                            disabled={isSyncing || !user.isPortalConnected}
-                            className={`w-full md:w-auto px-8 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-3 shadow-lg transition-all 
-                                ${isSyncing
-                                    ? 'bg-blue-400 cursor-wait'
-                                    : 'bg-brand-blue hover:bg-blue-600 shadow-blue-500/30 hover:scale-[1.02]'
-                                }`}
-                        >
-                            <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
-                            {isSyncing ? "Syncing Data..." : "Sync Now"}
-                        </button>
-                    </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -401,7 +520,7 @@ const HelpSection = () => (
     </div>
 );
 
-// --- 6. ABOUT SECTION (UPDATED) ---
+// --- 6. ABOUT SECTION ---
 const AboutSection = () => (
     <div className="animate-fadeIn text-center py-12">
         <div className="w-24 h-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl shadow-blue-600/30 mb-6 animate-float">
@@ -434,7 +553,6 @@ const AboutSection = () => (
             </div>
         </div>
 
-        {/* --- ADDED SOCIAL LINKS --- */}
         <div className="flex justify-center gap-4 mt-8 animate-slideUp">
             <a
                 href="https://www.linkedin.com/in/abu-sufian-71ba2a303/"
@@ -488,7 +606,6 @@ const Settings = ({
 
     return (
         <div className="flex h-full w-full animate-fadeIn bg-gray-50 dark:bg-[#0c0c0c] overflow-hidden">
-            {/* Global Toast */}
             <Toast message={toast.msg} type={toast.type} onClose={() => setToast({ msg: null, type: null })} />
 
             {/* LEFT SIDEBAR */}
@@ -512,7 +629,6 @@ const Settings = ({
                         </button>
                     ))}
                 </div>
-                {/* Footer Credit in Sidebar */}
                 <div className="p-6 border-t border-gray-100 dark:border-[#2C2C2C]">
                     <div className="flex items-center gap-3 opacity-60">
                         <UCPLogo className="w-5 h-5 text-gray-400" />

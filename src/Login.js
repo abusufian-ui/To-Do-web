@@ -2,10 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2, Sparkles,
   GraduationCap, Layout, ShieldCheck, School,
-  ChevronLeft, AlertCircle
+  ChevronLeft, AlertCircle, RefreshCw
 } from 'lucide-react';
-
-
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
@@ -18,7 +16,10 @@ const features = [
 const Login = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [signUpStep, setSignUpStep] = useState(1); // 1: Details, 2: OTP Verification
+  const [signUpStep, setSignUpStep] = useState(1); // 1: Details, 2: OTP, 3: Link Portal
+
+  // Auth Storage to hold token before linking portal
+  const [tempAuth, setTempAuth] = useState(null);
 
   // Form Data
   const [formData, setFormData] = useState({
@@ -26,6 +27,12 @@ const Login = ({ onLogin }) => {
     email: '',
     password: '',
     confirmPassword: '',
+  });
+
+  // Portal Data for Step 3
+  const [portalData, setPortalData] = useState({
+    portalId: '',
+    portalPassword: ''
   });
 
   // OTP Individual Digits State
@@ -36,8 +43,6 @@ const Login = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [activeFeature, setActiveFeature] = useState(0);
-
-
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -57,6 +62,7 @@ const Login = ({ onLogin }) => {
     setSignUpStep(1);
     setFormData({ name: '', email: '', password: '', confirmPassword: '' });
     setOtpDigits(['', '', '', '', '', '']);
+    setTempAuth(null);
   };
 
   // --- OTP INPUT LOGIC ---
@@ -66,7 +72,6 @@ const Login = ({ onLogin }) => {
     newOtp[index] = value.substring(value.length - 1);
     setOtpDigits(newOtp);
 
-    // Auto-focus next input
     if (value && index < 5) {
       otpInputs.current[index + 1].focus();
     }
@@ -97,7 +102,7 @@ const Login = ({ onLogin }) => {
       const data = await res.json();
 
       if (res.ok) {
-        setSignUpStep(2); // Switch to Verification block
+        setSignUpStep(2); 
       } else {
         setError(data.message || "Failed to send OTP.");
       }
@@ -108,9 +113,7 @@ const Login = ({ onLogin }) => {
     }
   };
 
-
-
-  // STEP 2: Final Registration
+  // STEP 2: Final Registration & Move to Step 3
   const handleFinalRegister = async (e) => {
     e.preventDefault();
     const fullOtp = otpDigits.join('');
@@ -127,7 +130,9 @@ const Login = ({ onLogin }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Registration failed');
 
-      onLogin(data.token, data.user);
+      // Save token temporarily and move to Portal Link step
+      setTempAuth({ token: data.token, user: data.user });
+      setSignUpStep(3);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -135,6 +140,35 @@ const Login = ({ onLogin }) => {
     }
   };
 
+  // STEP 3: Link Portal and Login
+  const handlePortalLink = async (e) => {
+    e.preventDefault();
+    if(!portalData.portalId || !portalData.portalPassword) return setError("Please enter both ID and Password");
+    
+    setLoading(true);
+    setError('');
+    try {
+        const res = await fetch(`${API_BASE}/api/user/link-portal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-auth-token': tempAuth.token },
+            body: JSON.stringify(portalData)
+        });
+        
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.message || 'Failed to link portal. Check credentials.');
+        }
+        
+        // Success! Log the user in officially.
+        onLogin(tempAuth.token, tempAuth.user);
+    } catch (err) {
+        setError(err.message);
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  // LOGIN
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -146,14 +180,12 @@ const Login = ({ onLogin }) => {
         body: JSON.stringify({ email: formData.email, password: formData.password })
       });
 
-      // Safely check if the response is actually JSON before parsing
       const contentType = res.headers.get("content-type");
       if (contentType && contentType.indexOf("application/json") !== -1) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Login failed');
         onLogin(data.token, data.user);
       } else {
-        // If the server sends back HTML (like the 431 error), handle it gracefully
         throw new Error(`Server connection error (${res.status}). Try clearing your browser cookies.`);
       }
     } catch (err) {
@@ -162,6 +194,9 @@ const Login = ({ onLogin }) => {
       setLoading(false);
     }
   };
+
+  // Determines if we are in the expanded full-screen mode
+  const isExpandedMode = (!isLogin && signUpStep >= 2);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#050505] relative overflow-hidden p-4 md:p-8">
@@ -172,12 +207,13 @@ const Login = ({ onLogin }) => {
 
       <div className="w-full max-w-5xl h-[650px] bg-[#121212] border border-[#252525] rounded-3xl shadow-2xl flex relative overflow-hidden z-10">
 
-        {/* --- INFO PANEL (SLIDING) --- */}
+        {/* --- INFO PANEL (SLIDES OUT DURING OTP/STEP 3) --- */}
         <div
           className={`
             hidden md:flex absolute top-0 w-1/2 h-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] 
-            flex-col justify-between p-12 z-20 transition-transform duration-700 ease-in-out
+            flex-col justify-between p-12 z-20 transition-all duration-700 ease-in-out
             ${isLogin ? 'translate-x-full border-l border-[#252525]' : 'translate-x-0 border-r border-[#252525]'}
+            ${isExpandedMode ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}
           `}
         >
           <div className="flex items-center gap-3">
@@ -201,9 +237,7 @@ const Login = ({ onLogin }) => {
               </div>
             ))}
             <div className="opacity-0 pointer-events-none">
-              <div className="w-12 h-12 mb-6"></div>
-              <h2 className="text-3xl mb-4">Spacer</h2>
-              <p className="text-lg">Spacer</p>
+              <div className="w-12 h-12 mb-6"></div><h2 className="text-3xl mb-4">Spacer</h2><p className="text-lg">Spacer</p>
             </div>
           </div>
 
@@ -215,34 +249,37 @@ const Login = ({ onLogin }) => {
           <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
         </div>
 
-        {/* --- FORM PANEL (SLIDING) --- */}
+        {/* --- FORM PANEL (EXPANDS TO FULL WIDTH FOR OTP/STEP 3) --- */}
         <div
           className={`
-            w-full md:w-1/2 h-full absolute top-0 bg-[#121212] p-8 md:p-12 flex flex-col justify-center z-10
-            transition-transform duration-700 ease-in-out
-            ${isLogin ? 'translate-x-0' : 'md:translate-x-full'} 
+            h-full absolute top-0 bg-[#121212] p-8 md:p-12 flex flex-col justify-center z-10
+            transition-all duration-700 ease-in-out
+            ${isLogin ? 'translate-x-0 w-full md:w-1/2' : 'md:translate-x-full w-full md:w-1/2'} 
+            ${isExpandedMode ? '!w-full !translate-x-0' : ''}
           `}
         >
-          <div className="max-w-sm mx-auto w-full">
+          {/* Dynamic wrapper width: Small for login, Large for OTP/Step 3 */}
+          <div className={`mx-auto w-full transition-all duration-700 ${isExpandedMode ? 'max-w-lg md:max-w-xl' : 'max-w-sm'}`}>
 
-            {/* Header logic */}
-            <div className="mb-10 animate-fadeIn">
-              {/* Back button for OTP step */}
-              {!isLogin && signUpStep === 2 && (
-                <button
-                  onClick={() => setSignUpStep(1)}
-                  className="flex items-center gap-1 text-gray-500 hover:text-white text-xs mb-4 transition-colors group"
-                >
-                  <ChevronLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" /> Back to details
-                </button>
-              )}
-              <h1 className="text-3xl font-bold text-white mb-2">
-                {isLogin ? 'Welcome Back' : (signUpStep === 1 ? 'Create Account' : 'Verify Email')}
-              </h1>
-              <p className="text-gray-500 text-sm">
-                {isLogin ? 'Enter your credentials to access your dashboard.' : (signUpStep === 1 ? 'Join the academic revolution today.' : `Enter the 6-digit code sent to ${formData.email}`)}
-              </p>
-            </div>
+            {/* Standard Header (Hidden on Step 3) */}
+            {signUpStep !== 3 && (
+                <div className={`mb-10 animate-fadeIn ${signUpStep === 2 ? 'flex flex-col items-center text-center' : ''}`}>
+                {!isLogin && signUpStep === 2 && (
+                    <button
+                    onClick={() => setSignUpStep(1)}
+                    className="flex items-center gap-1 text-gray-500 hover:text-white text-sm mb-6 transition-colors group"
+                    >
+                    <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to details
+                    </button>
+                )}
+                <h1 className={`text-3xl font-bold text-white mb-2 ${signUpStep === 2 ? 'md:text-4xl mb-4' : ''}`}>
+                    {isLogin ? 'Welcome Back' : (signUpStep === 1 ? 'Create Account' : 'Verify Email')}
+                </h1>
+                <p className={`text-gray-500 text-sm ${signUpStep === 2 ? 'md:text-base max-w-sm' : ''}`}>
+                    {isLogin ? 'Enter your credentials to access your dashboard.' : (signUpStep === 1 ? 'Join the academic revolution today.' : `Enter the 6-digit code sent to ${formData.email}`)}
+                </p>
+                </div>
+            )}
 
             {error && (
               <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 text-xs font-medium animate-fadeIn">
@@ -272,10 +309,10 @@ const Login = ({ onLogin }) => {
               </form>
             )}
 
-            {/* SIGN UP STEP 2: OTP Verification */}
+            {/* SIGN UP STEP 2: OTP Verification (Expanded Inputs) */}
             {!isLogin && signUpStep === 2 && (
-              <form onSubmit={handleFinalRegister} className="space-y-8 animate-fadeIn">
-                <div className="flex justify-between gap-2">
+              <form onSubmit={handleFinalRegister} className="space-y-10 animate-fadeIn">
+                <div className="flex justify-center gap-3 md:gap-5">
                   {otpDigits.map((digit, index) => (
                     <input
                       key={index}
@@ -285,28 +322,63 @@ const Login = ({ onLogin }) => {
                       value={digit}
                       onChange={(e) => handleOtpChange(index, e.target.value)}
                       onKeyDown={(e) => handleKeyDown(index, e)}
-                      className="w-12 h-14 bg-[#1a1a1a] border border-[#333] focus:border-brand-blue rounded-xl text-center text-xl font-bold text-white outline-none transition-all"
+                      className="w-14 h-16 md:w-20 md:h-24 bg-[#1a1a1a] border border-[#333] focus:border-brand-blue rounded-2xl text-center text-2xl md:text-4xl font-bold text-white outline-none transition-all shadow-inner"
                     />
                   ))}
                 </div>
 
-                <SubmitButton loading={loading} text="Create Account" icon={Sparkles} />
+                <div className="max-w-sm mx-auto">
+                    <SubmitButton loading={loading} text="Create Account" icon={Sparkles} />
+                </div>
 
-                <div className="text-center">
-                  <p className="text-gray-500 text-xs">Didn't receive the code? <button type="button" onClick={handleInitiateSignUp} className="text-brand-blue font-bold hover:underline">Resend OTP</button></p>
+                <div className="text-center mt-6">
+                  <p className="text-gray-500 text-sm">Didn't receive the code? <button type="button" onClick={handleInitiateSignUp} className="text-brand-blue font-bold hover:underline transition-all hover:text-blue-400">Resend OTP</button></p>
                 </div>
               </form>
             )}
 
-            {/* BOTTOM TOGGLE */}
-            <div className="mt-8 text-center pt-6 border-t border-[#252525]">
-              <p className="text-gray-500 text-sm">
-                {isLogin ? "Don't have an account?" : "Already have an account?"}
-                <button onClick={toggleMode} className="ml-2 text-white font-bold hover:text-brand-blue transition-colors">
-                  {isLogin ? 'Sign Up' : 'Log In'}
-                </button>
-              </p>
-            </div>
+            {/* SIGN UP STEP 3: Link University Portal (Centered and scaled) */}
+            {!isLogin && signUpStep === 3 && (
+              <form onSubmit={handlePortalLink} className="space-y-6 animate-fadeIn">
+                  <div className="text-center mb-10">
+                      <div className="w-24 h-24 bg-brand-blue/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <School size={48} className="text-brand-blue" />
+                      </div>
+                      <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Link University Portal</h2>
+                      <p className="text-gray-400 text-sm md:text-base max-w-md mx-auto">Automate your grades, attendance, and schedule by securely connecting your UCP account.</p>
+                  </div>
+                  
+                  <div className="max-w-md mx-auto space-y-4">
+                      <InputGroup icon={User} type="text" name="portalId" placeholder="Student ID (e.g., L1F23BSCS1329)" value={portalData.portalId} onChange={(e) => setPortalData({...portalData, portalId: e.target.value})} />
+                      <InputGroup icon={Lock} type={showPassword ? "text" : "password"} name="portalPassword" placeholder="Portal Password" value={portalData.portalPassword} onChange={(e) => setPortalData({...portalData, portalPassword: e.target.value})} togglePass={() => setShowPassword(!showPassword)} />
+                      
+                      <div className="pt-4">
+                        <SubmitButton loading={loading} text={loading ? "Syncing Data (15s)..." : "Link & Sync Now"} icon={RefreshCw} spinIcon={loading} />
+                      </div>
+                      
+                      <button 
+                        type="button" 
+                        disabled={loading} 
+                        onClick={() => onLogin(tempAuth.token, tempAuth.user)} 
+                        className="w-full mt-4 py-3 text-sm text-gray-500 font-medium hover:text-white transition-colors disabled:opacity-50"
+                      >
+                          Skip for now
+                      </button>
+                  </div>
+              </form>
+            )}
+
+            {/* BOTTOM TOGGLE (Hidden on Step 3) */}
+            {signUpStep !== 3 && (
+                <div className="mt-8 text-center pt-6 border-t border-[#252525]">
+                <p className="text-gray-500 text-sm">
+                    {isLogin ? "Don't have an account?" : "Already have an account?"}
+                    <button onClick={toggleMode} className="ml-2 text-white font-bold hover:text-brand-blue transition-colors">
+                    {isLogin ? 'Sign Up' : 'Log In'}
+                    </button>
+                </p>
+                </div>
+            )}
           </div>
         </div>
       </div>
@@ -317,8 +389,8 @@ const Login = ({ onLogin }) => {
 // Reusable Components
 const InputGroup = ({ icon: Icon, type, name, placeholder, value, onChange, togglePass }) => (
   <div className="relative group">
-    <div className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-brand-blue transition-colors">
-      <Icon size={18} />
+    <div className="absolute left-4 top-4 text-gray-500 group-focus-within:text-brand-blue transition-colors">
+      <Icon size={20} />
     </div>
     <input
       type={type}
@@ -326,29 +398,29 @@ const InputGroup = ({ icon: Icon, type, name, placeholder, value, onChange, togg
       placeholder={placeholder}
       value={value}
       onChange={onChange}
-      className="w-full bg-[#1a1a1a] border border-[#333] group-focus-within:border-brand-blue rounded-xl py-3 pl-12 pr-4 text-sm text-white placeholder-gray-600 outline-none transition-all shadow-inner"
+      className="w-full bg-[#1a1a1a] border border-[#333] group-focus-within:border-brand-blue rounded-xl py-4 pl-12 pr-4 text-base text-white placeholder-gray-600 outline-none transition-all shadow-inner"
       required
     />
     {name.includes('password') && togglePass && (
-      <button type="button" onClick={togglePass} className="absolute right-4 top-3.5 text-gray-600 hover:text-white transition-colors">
-        {type === 'password' ? <Eye size={18} /> : <EyeOff size={18} />}
+      <button type="button" onClick={togglePass} className="absolute right-4 top-4 text-gray-600 hover:text-white transition-colors">
+        {type === 'password' ? <Eye size={20} /> : <EyeOff size={20} />}
       </button>
     )}
   </div>
 );
 
-const SubmitButton = ({ loading, text, icon: Icon }) => (
+const SubmitButton = ({ loading, text, icon: Icon, spinIcon }) => (
   <button
     type="submit"
     disabled={loading}
-    className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 hover:shadow-blue-600/40 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+    className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 hover:shadow-blue-600/40 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed text-lg"
   >
-    {loading ? <Loader2 size={20} className="animate-spin" /> : (
+    {loading && !spinIcon ? <Loader2 size={24} className="animate-spin" /> : (
       <>
-        {text} {Icon && <Icon size={18} />}
+        {text} {Icon && <Icon size={20} className={spinIcon ? "animate-spin" : ""} />}
       </>
     )}
   </button>
 );
 
-export default Login; 
+export default Login;

@@ -37,10 +37,14 @@ const runScraper = async (userId) => {
 
       // 2. CONNECT TO CLOUD BROWSER (Browserless.io)
       // This bypasses the need for Chrome to be installed on Render
-      console.log("🌐 Connecting to Browserless.io...");
-      browser = await puppeteer.connect({
-          browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}`,
-      });
+      // 2. SMART BROWSER TOGGLE
+      if (process.env.RENDER || process.env.NODE_ENV === 'production') {
+          console.log("🌐 Cloud Mode: Connecting to Browserless.io...");
+          browser = await puppeteer.connect({
+              // ADDED &replay=true to the end of the URL!
+              browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}&replay=true`,
+          });
+      }
 
       let page = await browser.newPage();
 
