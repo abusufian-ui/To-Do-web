@@ -22,7 +22,7 @@ const runScraper = async (userId) => {
   let browser = null;
 
   try {
-      // 1. FETCH USER CREDENTIALS WITH DETAILED CHECKS
+      // 1. FETCH USER CREDENTIALS
       const user = await User.findById(userId);
       
       if (!user) {
@@ -35,24 +35,13 @@ const runScraper = async (userId) => {
           throw new Error("MISSING_PORTAL_DATA - ID or Password missing in database.");
       }
 
-      // 2. SESSION ISOLATION
-      // Sanitize ID to create a valid folder name
-      const safePortalId = user.portalId.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      // Use __dirname/session_data (Ensure nodemon ignores this folder!)
-      const sessionPath = path.join(__dirname, 'session_data', safePortalId); 
-      
-      if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
+      // 2. CONNECT TO CLOUD BROWSER (Browserless.io)
+      // This bypasses the need for Chrome to be installed on Render
+      console.log("🌐 Connecting to Browserless.io...");
+      browser = await puppeteer.connect({
+          browserWSEndpoint: `wss://chrome.browserless.io?token=${process.env.BROWSERLESS_TOKEN}`,
+      });
 
-      const launchBrowser = async () => {
-          return await puppeteer.launch({ 
-            headless: true, // Set to false if you need to debug visually
-            defaultViewport: null,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'],
-            userDataDir: sessionPath 
-          });
-      };
-
-      browser = await launchBrowser(); 
       let page = await browser.newPage();
 
       // 3. NAVIGATE TO DASHBOARD
@@ -81,48 +70,24 @@ const runScraper = async (userId) => {
                 ]);
             }
 
-            // --- HANDLE "PICK AN ACCOUNT" (SESSION RESUME) ---
+            // --- HANDLE "PICK AN ACCOUNT" ---
             try {
-                // Check if "Pick an account" text is present
                 const pickAccountHeader = await page.waitForSelector('::-p-text("Pick an account")', { timeout: 5000 }).catch(() => null);
 
                 if (pickAccountHeader) {
                     console.log("   👀 'Pick an account' screen detected.");
-
                     const tileSelector = `div[data-test-id="${portalId}"], div.table[role="button"]`;
                     
-                    // 1. Click the Account Tile (First Attempt)
                     const accountTile = await page.waitForSelector(tileSelector, { timeout: 5000 });
                     if (accountTile) {
-                        console.log("   👉 Clicking Account Tile (Attempt 1)...");
+                        console.log("   👉 Clicking Account Tile...");
                         await accountTile.click();
-                        await new Promise(r => setTimeout(r, 3000)); // Wait for Glitch screen
-                    }
-
-                    // 2. Check for "Glitch" Screen
-                    const glitchText = await page.waitForSelector('::-p-text("Use a different account")', { timeout: 3000 }).catch(() => null);
-                    
-                    if (glitchText) {
-                        console.log("   ⚠️ Glitch Screen Detected: Resetting session...");
-                        await glitchText.click();
-                        await page.waitForNavigation({ waitUntil: 'networkidle0' });
-                        console.log("   🔄 Returning to 'Pick an account'...");
-                        
-                        // 3. Click the Account Tile AGAIN
-                        const accountTileRetry = await page.waitForSelector(tileSelector, { timeout: 5000 });
-                        if (accountTileRetry) {
-                            console.log("   👉 Clicking Account Tile (Attempt 2)...");
-                            await accountTileRetry.click();
-                            await new Promise(r => setTimeout(r, 2000));
-                        }
-                    } else {
-                        console.log("   ✅ No glitch detected, proceeding...");
+                        await new Promise(r => setTimeout(r, 3000));
                     }
                 }
             } catch (e) {
-                console.log("   ℹ️ 'Pick an account' flow skipped or failed:", e.message);
+                console.log("   ℹ️ 'Pick an account' flow skipped.");
             }
-            // -----------------------------------------------------
 
             // STEP B: Enter Email
             const emailInputSelector = 'input[name="loginfmt"]';
@@ -150,9 +115,8 @@ const runScraper = async (userId) => {
 
             // STEP D: Stay Signed In
             try {
-                const staySignedInBtn = await page.waitForSelector('#idSIButton9, input[type="submit"][value="Yes"]', { timeout: 5000 }).catch(() => null);
+                const staySignedInBtn = await page.waitForSelector('#idSIButton9', { timeout: 5000 }).catch(() => null);
                 if (staySignedInBtn) {
-                    console.log("   👉 Clicking 'Yes' to stay signed in...");
                     await Promise.all([
                         staySignedInBtn.click(),
                         page.waitForNavigation({ waitUntil: 'networkidle2' })
@@ -172,22 +136,17 @@ const runScraper = async (userId) => {
           try {
             await page.waitForFunction(() => window.location.href.includes('dashboard'), { timeout: 10000 });
           } catch(e) {
-            console.log("❌ Failed to reach dashboard.");
             throw new Error("LOGIN_FAILED - Check credentials or internet.");
           }
       }
       console.log("✅ Logged in successfully!");
 
       // --- STEP 5: SCRAPE ACTIVE COURSES ---
-      console.log("🔎 Scanning for active courses...");
       const courseLinks = await page.evaluate(() => {
         const cards = document.querySelectorAll('a[href*="/student/course/info/"]');
         return Array.from(cards).map(card => card.href);
       });
 
-      console.log(`   Found ${courseLinks.length} active courses.`);
-
-      // CLEANUP: Remove old grades for this user
       await Grade.deleteMany({ userId: userId });
 
       if (courseLinks.length > 0) {
@@ -254,7 +213,6 @@ const runScraper = async (userId) => {
       }
 
       // --- STEP 6: SCRAPE RESULT HISTORY ---
-      console.log("📜 Robot: Fetching Result History...");
       try {
           await page.goto('https://horizon.ucp.edu.pk/student/results', { waitUntil: 'networkidle2', timeout: 60000 });
           
@@ -334,7 +292,6 @@ const runScraper = async (userId) => {
       console.log("🏁 SYNC COMPLETE!");
 
   } catch (error) {
-      // Log the specific error to help you debug
       console.error("❌ SCRAPER ERROR:", error.message);
       throw error; 
   } finally {
