@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Users, Activity, Search, Trash2,
-  Shield, HardDrive, Cpu, Cloud, Eye, EyeOff, AlertTriangle, X
+  Shield, HardDrive, Cpu, Cloud, AlertTriangle, X
 } from 'lucide-react';
-
-
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
@@ -40,7 +38,6 @@ const LiveGraph = ({ data, color = "#3b82f6" }) => {
 
 // 2. Storage Bar Component
 const StorageBar = ({ label, used, total, color, percentage }) => {
-  // If percentage is passed directly, use it, otherwise calculate
   const pct = percentage !== undefined ? percentage : Math.min((used / total) * 100, 100);
 
   return (
@@ -59,10 +56,8 @@ const StorageBar = ({ label, used, total, color, percentage }) => {
   );
 };
 
-// 3. User Row Component
+// 3. User Row Component (Updated for Extension Tracking)
 const UserRow = ({ u, onInitiateDelete }) => {
-  const [showPass, setShowPass] = useState(false);
-
   return (
     <tr className="hover:bg-gray-50 dark:hover:bg-[#1c1c1f] transition-colors group border-b border-gray-100 dark:border-[#27272a]">
 
@@ -95,38 +90,22 @@ const UserRow = ({ u, onInitiateDelete }) => {
         )}
       </td>
 
-      {/* CREDENTIALS */}
+      {/* EXTENSION SYNC ACTIVITY */}
       <td className="px-6 py-4">
-        <div className="bg-gray-50 dark:bg-[#09090b] border border-gray-200 dark:border-[#27272a] rounded-lg px-3 py-2 w-fit min-w-[220px]">
-          <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-1 uppercase tracking-wider font-bold">
-            <Cloud size={10} /> Portal Credentials
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between items-center text-xs text-gray-700 dark:text-gray-300 font-mono bg-white dark:bg-[#151518] px-2 py-1 rounded border border-gray-200 dark:border-[#27272a]">
-              <span className="text-gray-500">ID:</span>
-              <span className="text-blue-600 dark:text-blue-400 font-semibold">{u.portalId || "N/A"}</span>
-            </div>
-
-            <div className="flex justify-between items-center text-xs text-gray-700 dark:text-gray-300 font-mono bg-white dark:bg-[#151518] px-2 py-1 rounded border border-gray-200 dark:border-[#27272a]">
-              <span className="text-gray-500">Pass:</span>
-              <div className="flex items-center gap-2">
-                <span className={showPass ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400 dark:text-gray-500 tracking-widest"}>
-                  {u.portalPassword ? (showPass ? u.portalPassword : '••••••••') : 'N/A'}
+        {u.isPortalConnected ? (
+            <div className="flex flex-col">
+                <span className="text-sm font-bold text-gray-900 dark:text-gray-200">
+                    {u.lastSyncAt 
+                        ? new Date(u.lastSyncAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) 
+                        : 'Waiting for extension...'}
                 </span>
-                {u.portalPassword && (
-                  <button
-                    onClick={() => setShowPass(!showPass)}
-                    className="text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors focus:outline-none"
-                    title={showPass ? "Hide Password" : "Show Password"}
-                  >
-                    {showPass ? <EyeOff size={12} /> : <Eye size={12} />}
-                  </button>
-                )}
-              </div>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-1 uppercase tracking-wider font-bold">
+                    Extension Active
+                </span>
             </div>
-          </div>
-        </div>
+        ) : (
+            <span className="text-sm text-gray-500 italic">No data synced</span>
+        )}
       </td>
 
       {/* ACTIONS */}
@@ -306,7 +285,7 @@ const AdminDashboard = () => {
               <tr>
                 <th className="px-6 py-4">User Identity</th>
                 <th className="px-6 py-4">Portal Status</th>
-                <th className="px-6 py-4">Credentials</th>
+                <th className="px-6 py-4">Last Sync Activity</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>

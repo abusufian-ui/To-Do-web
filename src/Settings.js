@@ -122,38 +122,40 @@ const SecuritySection = ({ idleTimeout, setIdleTimeout }) => (
     </div>
 );
 
-// --- 3. PORTAL CONNECTION TAB (OVERHAULED) ---
+// --- 3. PORTAL CONNECTION TAB (NO LOGIN FORM) ---
 const PortalSection = ({ user, showToast }) => {
-    const [isLinking, setIsLinking] = useState(false);
     const [isUnlinking, setIsUnlinking] = useState(false);
     const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
-    
-    const [portalId, setPortalId] = useState('');
-    const [portalPassword, setPortalPassword] = useState('');
-    const [showPass, setShowPass] = useState(false);
 
-    const handleLinkPortal = async (e) => {
-        e.preventDefault();
-        if(!portalId || !portalPassword) return showToast("Please enter both ID and Password.", "error");
-        
-        setIsLinking(true);
-        try {
-            const res = await fetch(`${API_BASE}/api/user/link-portal`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('token') },
-                body: JSON.stringify({ portalId, portalPassword })
-            });
-            const data = await res.json();
-            
-            if (res.ok) {
-                showToast("Portal successfully linked!", "success");
-                setTimeout(() => window.location.reload(), 2000);
-            } else {
-                showToast(data.message || "Failed to link portal.", "error");
-            }
-        } catch (e) { showToast("Server unreachable.", "error"); }
-        setIsLinking(false);
-    };
+    // Wizard State
+    const [wizardStep, setWizardStep] = useState(1);
+    const [verifySuccess, setVerifySuccess] = useState(false);
+
+    // Live Polling
+    useEffect(() => {
+        let pollInterval;
+        const checkStatus = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/user/portal-status`, {
+                    headers: { 'x-auth-token': localStorage.getItem('token') }
+                });
+                const data = await res.json();
+                
+                if (data.isConnected) {
+                    clearInterval(pollInterval);
+                    setVerifySuccess(true);
+                    showToast("Connection Established!", "success");
+                    setTimeout(() => window.location.reload(), 2000);
+                }
+            } catch (err) { console.error(err); }
+        };
+
+        if (!user.isPortalConnected && wizardStep === 3) {
+            checkStatus();
+            pollInterval = setInterval(checkStatus, 3000);
+        }
+        return () => clearInterval(pollInterval);
+    }, [wizardStep, user.isPortalConnected, showToast]);
 
     const confirmUnlink = async () => {
         setIsUnlinking(true);
@@ -190,119 +192,132 @@ const PortalSection = ({ user, showToast }) => {
                         </div>
                         <div>
                             <h4 className="font-bold text-gray-800 dark:text-white text-lg">
-                                {user.isPortalConnected ? "Connected to UCP" : "Not Linked"}
+                                {user.isPortalConnected ? "Connected via Extension" : "Not Linked"}
                             </h4>
-                            <p className="text-xs text-gray-500 font-mono mt-1">
-                                {user.portalId ? `ID: ${user.portalId}` : "No Student ID Linked"}
+                            <p className="text-xs text-gray-500 mt-1">
+                                {user.isPortalConnected ? `ID: ${user.portalId || 'Active'}` : "Waiting for first extension sync..."}
                             </p>
                         </div>
                     </div>
+                    {user.isPortalConnected && (
+                        <button onClick={() => setShowUnlinkConfirm(true)} className="px-5 py-2.5 bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 rounded-xl text-sm font-bold transition-colors">
+                            Disconnect
+                        </button>
+                    )}
                 </div>
 
                 <div className="p-8">
-                    {!user.isPortalConnected ? (
-                        // --- UNLINKED STATE: Show Login Form ---
-                        <div className="max-w-md animate-fadeIn">
-                            <h5 className="font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
-                                Link Your Account
-                            </h5>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
-                                Enter your university credentials. Once connected, you will receive the extension to begin background syncing.
+                    {/* --- UNLINKED STATE: The Wizard --- */}
+                    {!user.isPortalConnected && (
+                        <div className="max-w-2xl mx-auto animate-fadeIn">
+                            <h5 className="font-bold text-gray-800 dark:text-white mb-2 text-lg text-center">Secure Setup</h5>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-8 text-center max-w-lg mx-auto">
+                                We no longer ask for your password. Follow these steps to connect your extension.
                             </p>
+
+                            {/* Wizard Progress */}
+                            <div className="flex items-center justify-between w-full mb-8 relative">
+                                {[1, 2, 3].map(step => (
+                                    <div key={step} className="flex flex-col items-center relative z-10 flex-1">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-500
+                                            ${wizardStep > step ? 'bg-emerald-500 text-white' : 
+                                            wizardStep === step ? 'bg-brand-blue text-white ring-4 ring-blue-500/20' : 'bg-gray-100 dark:bg-[#252525] text-gray-400'}`}
+                                        >
+                                            {wizardStep > step ? <CheckCircle2 size={16} /> : step}
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="absolute top-4 left-[15%] right-[15%] h-[2px] bg-gray-100 dark:bg-[#252525] -z-0">
+                                    <div className="h-full bg-brand-blue transition-all duration-700 ease-out" style={{ width: `${((wizardStep - 1) / 2) * 100}%` }}></div>
+                                </div>
+                            </div>
+
+                            {/* Wizard Content */}
+                            <div className="bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333] rounded-2xl p-6 relative overflow-hidden">
+                                
+                                {wizardStep === 1 && (
+                                    <div className="animate-fadeIn text-center">
+                                        <div className="aspect-video w-full max-w-sm mx-auto bg-white dark:bg-[#252525] rounded-xl border border-gray-200 dark:border-[#333] mb-6 flex items-center justify-center shadow-sm">
+                                            {/* <video src="/assets/step1.mp4" autoPlay loop muted /> */}
+                                            <Puzzle size={48} className="text-brand-blue/50 animate-bounce" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">1. Load the Extension</h3>
+                                        <p className="text-gray-500 text-xs mb-6 max-w-sm mx-auto">Download the zip below, extract it, and load it into Chrome via Developer Mode.</p>
+                                        <div className="flex gap-3 justify-center">
+                                            <a href="/MyPortal-Extension.zip" download className="bg-gray-200 dark:bg-[#333] hover:bg-gray-300 dark:hover:bg-[#444] text-gray-800 dark:text-white font-bold py-3 px-6 rounded-xl flex items-center gap-2 transition-colors">
+                                                <Download size={16} /> Download Zip
+                                            </a>
+                                            <button onClick={() => setWizardStep(2)} className="bg-brand-blue hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-xl transition-colors">
+                                                Next Step
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {wizardStep === 2 && (
+                                    <div className="animate-fadeIn text-center">
+                                        <div className="aspect-video w-full max-w-sm mx-auto bg-white dark:bg-[#252525] rounded-xl border border-gray-200 dark:border-[#333] mb-6 flex items-center justify-center shadow-sm">
+                                            {/* <video src="/assets/step2.mp4" autoPlay loop muted /> */}
+                                            <School size={48} className="text-blue-500/50 animate-pulse" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">2. Login to Horizon</h3>
+                                        <p className="text-gray-500 text-xs mb-6 max-w-sm mx-auto">Log into your university portal in a new tab so the extension can detect your session.</p>
+                                        <div className="flex gap-3 justify-center">
+                                            <a href="https://horizon.ucp.edu.pk" target="_blank" rel="noreferrer" className="bg-gray-200 dark:bg-[#333] hover:bg-gray-300 dark:hover:bg-[#444] text-gray-800 dark:text-white font-bold py-3 px-6 rounded-xl flex items-center gap-2 transition-colors">
+                                                Open Portal <ExternalLink size={16} />
+                                            </a>
+                                            <button onClick={() => setWizardStep(3)} className="bg-brand-blue hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-xl transition-colors">
+                                                Next Step
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {wizardStep === 3 && (
+                                    <div className="animate-fadeIn text-center py-6">
+                                        {verifySuccess ? (
+                                            <div className="animate-slideUp flex flex-col items-center">
+                                                <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400">
+                                                    <CheckCircle2 size={32} />
+                                                </div>
+                                                <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-1">Success!</h3>
+                                                <p className="text-emerald-600 text-sm">Refreshing settings...</p>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center">
+                                                <div className="relative w-24 h-24 flex items-center justify-center mb-6">
+                                                    <div className="absolute inset-0 border-4 border-brand-blue/20 rounded-full animate-ping"></div>
+                                                    <RefreshCw size={28} className="text-brand-blue animate-spin relative z-10" />
+                                                </div>
+                                                <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">Awaiting Data...</h3>
+                                                <p className="text-gray-500 text-xs max-w-xs mx-auto">
+                                                    Open the extension popup and click <strong>Force Sync</strong>. We are listening for the connection.
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                             
-                            <form onSubmit={handleLinkPortal} className="space-y-4">
-                                <input
-                                    type="text"
-                                    placeholder="Student ID (e.g., L1F23BSCS1329)"
-                                    value={portalId}
-                                    onChange={(e) => setPortalId(e.target.value)}
-                                    className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all"
-                                    required
-                                />
-                                <div className="relative">
-                                    <input
-                                        type={showPass ? "text" : "password"}
-                                        placeholder="Portal Password"
-                                        value={portalPassword}
-                                        onChange={(e) => setPortalPassword(e.target.value)}
-                                        className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all"
-                                        required
-                                    />
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setShowPass(!showPass)} 
-                                        className="absolute right-4 top-3.5 text-gray-400 hover:text-brand-blue"
-                                    >
-                                        <Lock size={18} />
+                            {/* Skip Button */}
+                            {wizardStep < 3 && (
+                                <div className="text-center mt-6">
+                                    <button onClick={() => window.location.reload()} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium underline">
+                                        Skip configuration for now
                                     </button>
                                 </div>
-                                
-                                <button
-                                    type="submit"
-                                    disabled={isLinking}
-                                    className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20"
-                                >
-                                    {isLinking ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-                                    {isLinking ? "Connecting..." : "Secure Link & Continue"}
-                                </button>
-                            </form>
+                            )}
                         </div>
-                    ) : (
-                        // --- LINKED STATE: Show Sync Status & Instructions ---
-                        <div className="animate-fadeIn w-full">
-                            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 p-5 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-xl">
-                                <div>
-                                    <h5 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2">
-                                        <RefreshCw size={18} className="animate-spin" /> Background Sync Active
-                                    </h5>
-                                    <p className="text-sm text-emerald-600 dark:text-emerald-500 mt-1">Your extension is ready to push live data.</p>
-                                </div>
-                                <button onClick={() => setShowUnlinkConfirm(true)} className="px-6 py-2.5 bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 rounded-xl text-sm font-bold transition-colors">
-                                    Unlink Account
-                                </button>
-                            </div>
+                    )}
 
-                            {/* Setup Instructions */}
-                            <h5 className="font-bold text-gray-800 dark:text-white mb-4 text-lg">Extension Setup</h5>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                                <div className="bg-gray-50 dark:bg-[#1a1a1a] p-6 rounded-2xl border border-gray-200 dark:border-[#333] text-center relative hover:-translate-y-1 transition-transform">
-                                    <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">1</div>
-                                    <Puzzle size={32} className="text-brand-blue mx-auto mb-4" />
-                                    <h3 className="text-gray-900 dark:text-white font-bold mb-2">Install Extension</h3>
-                                    <p className="text-gray-500 text-xs">Download the zip file below and load it in Chrome Extensions.</p>
-                                </div>
-                                
-                                <div className="bg-gray-50 dark:bg-[#1a1a1a] p-6 rounded-2xl border border-gray-200 dark:border-[#333] text-center relative hover:-translate-y-1 transition-transform">
-                                    <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">2</div>
-                                    <School size={32} className="text-brand-blue mx-auto mb-4" />
-                                    <h3 className="text-gray-900 dark:text-white font-bold mb-2">Login to Horizon</h3>
-                                    <p className="text-gray-500 text-xs">Open your UCP portal and log in with your normal credentials.</p>
-                                </div>
-
-                                <div className="bg-gray-50 dark:bg-[#1a1a1a] p-6 rounded-2xl border border-gray-200 dark:border-[#333] text-center relative hover:-translate-y-1 transition-transform">
-                                    <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">3</div>
-                                    <RefreshCw size={32} className="text-brand-blue mx-auto mb-4" />
-                                    <h3 className="text-gray-900 dark:text-white font-bold mb-2">Sync & Relax</h3>
-                                    <p className="text-gray-500 text-xs">The extension will silently push your academic updates in the background.</p>
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col sm:flex-row gap-4">
-                                <a 
-                                    href="/MyPortal-Extension.zip" 
-                                    download 
-                                    className="flex-1 bg-brand-blue hover:bg-blue-600 shadow-lg shadow-blue-600/20 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
-                                >
-                                    <Download size={18} /> Download Extension
-                                </a>
-                                <a 
-                                    href="https://horizon.ucp.edu.pk/student/dashboard" 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="flex-1 bg-gray-100 dark:bg-[#252525] hover:bg-gray-200 dark:hover:bg-[#333] border border-gray-200 dark:border-[#444] text-gray-800 dark:text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
-                                >
-                                    Open UCP Portal <ExternalLink size={18} />
-                                </a>
+                    {/* --- LINKED STATE: Show Sync Status --- */}
+                    {user.isPortalConnected && (
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-5 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-xl animate-fadeIn">
+                            <div>
+                                <h5 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2">
+                                    <RefreshCw size={18} className="animate-spin" /> Background Sync Active
+                                </h5>
+                                <p className="text-sm text-emerald-600 dark:text-emerald-500 mt-1">Your extension is actively pushing live data.</p>
                             </div>
                         </div>
                     )}

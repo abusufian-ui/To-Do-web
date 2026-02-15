@@ -5,14 +5,15 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   
-  // Portal Credentials
+  // Portal Identity (Password removed for security!)
   portalId: { type: String, default: null },
-  portalPassword: { type: String, default: null },
   isPortalConnected: { type: Boolean, default: false },
-
-  // Admin Flag (Default is false for everyone except you)
-  isAdmin: { type: Boolean, default: false }, 
   
+  // Extension Tracking
+  lastSyncAt: { type: Date, default: null },
+  
+  // Admin Flag
+  isAdmin: { type: Boolean, default: false }, 
   createdAt: { type: Date, default: Date.now }
 });
 

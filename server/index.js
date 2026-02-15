@@ -7,7 +7,6 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-// Scraper & Cron imports removed here
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const si = require('systeminformation');
@@ -42,8 +41,6 @@ const adminAuth = async (req, res, next) => {
     res.status(500).json({ message: "Server Error" });
   }
 };
-
-// Scraper import removed here
 
 // --- MODELS ---
 const User = require('./models/User');
@@ -94,8 +91,6 @@ mongoose.connect(dbLink)
   })
   .catch(err => console.log(err));
 
-// Cron scheduled jobs block removed here
-
 // --- ADMIN ROUTES ---
 
 // 1. SYSTEM STATS (REAL-TIME DATA)
@@ -124,15 +119,11 @@ app.get('/api/admin/system-stats', async (req, res) => {
   }
 });
 
-// 2. GET USERS
+// 2. GET USERS (Updated to remove password decryption and send lastSyncAt)
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
-    const usersWithDecryptedData = users.map(user => {
-      let visiblePortalPass = null;
-      if (user.portalPassword) {
-        try { visiblePortalPass = decrypt(user.portalPassword); } catch (e) { visiblePortalPass = "[Error]"; }
-      }
+    const cleanUsers = users.map(user => {
       return {
         _id: user._id,
         name: user.name,
@@ -140,11 +131,11 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         isAdmin: user.isAdmin,
         isPortalConnected: user.isPortalConnected,
         portalId: user.portalId,
-        portalPassword: visiblePortalPass,
+        lastSyncAt: user.lastSyncAt, // Send sync timestamp to Admin panel
         createdAt: user.createdAt
       };
     });
-    res.json(usersWithDecryptedData);
+    res.json(cleanUsers);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
@@ -223,11 +214,11 @@ app.post('/api/send-otp', async (req, res) => {
 
     // Send the email using Resend's API
     const { data, error } = await resend.emails.send({
-    from: 'MyPortal <otp@myportalucp.online>', 
-    to: email,
-    subject: 'MyPortal Verification Code',
-    html: `<p>Your verification code is: <strong>${code}</strong></p>`
-});
+      from: 'MyPortal <otp@myportalucp.online>', 
+      to: email,
+      subject: 'MyPortal Verification Code',
+      html: `<p>Your verification code is: <strong>${code}</strong></p>`
+    });
 
     if (error) {
       console.error("❌ RESEND API ERROR:", error);
@@ -312,17 +303,16 @@ app.put('/api/user/password', auth, async (req, res) => {
 });
 
 app.post('/api/user/link-portal', auth, async (req, res) => {
-  const { portalId, portalPassword } = req.body;
+  const { portalId } = req.body; // No longer expecting portalPassword!
   try {
-    const encryptedPass = encrypt(portalPassword);
     await User.findByIdAndUpdate(req.user.id, {
       portalId: portalId,
-      portalPassword: encryptedPass,
       isPortalConnected: true
     });
-    // Scraper trigger removed here
     res.json({ success: true, message: "Account linked. Please use the Chrome Extension to sync data." });
-  } catch (error) { res.status(500).json({ message: "Failed to link account." }); }
+  } catch (error) { 
+    res.status(500).json({ message: "Failed to link account." }); 
+  }
 });
 
 app.post('/api/user/unlink-portal', auth, async (req, res) => {
@@ -330,7 +320,8 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
     await User.findByIdAndUpdate(req.user.id, {
       portalId: null,
       portalPassword: null,
-      isPortalConnected: false
+      isPortalConnected: false,
+      lastSyncAt: null // Clear sync timestamp on disconnect
     });
     await Promise.all([
       Grade.deleteMany({ userId: req.user.id }),
@@ -350,7 +341,6 @@ app.get('/api/user/portal-status', auth, async (req, res) => {
 
 app.post('/api/sync-grades', auth, async (req, res) => {
   try {
-    // Scraper trigger removed here
     res.json({ message: 'Sync is now handled via the Chrome Extension.' });
   } catch (error) { res.status(500).json({ message: error.message || 'Internal Server Error' }); }
 });
@@ -358,9 +348,31 @@ app.post('/api/sync-grades', auth, async (req, res) => {
 // --- NEW EXTENSION SYNC ROUTE ---
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
-    const { gradesData, historyData, statsData } = req.body;
+    // We now expect the scraper to send the portalId it found on the page
+    const { gradesData, historyData, statsData, portalId } = req.body; 
     const userId = req.user.id;
 
+    // Fetch the user to check their current linked status
+    const user = await User.findById(userId);
+
+    // --- 1. STRICT IDENTITY LOCK CHECK ---
+    if (!portalId) {
+        return res.status(400).json({ message: "Could not detect Student ID from the UCP portal." });
+    }
+
+    if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
+        // The ID on the screen doesn't match the ID in the database! REJECT.
+        return res.status(403).json({ 
+            message: `Mismatch! Linked to ${user.portalId}, but found ${portalId}. Please disconnect in settings first.` 
+        });
+    }
+
+    // If the user has no portalId linked yet, lock it to this new one automatically!
+    if (!user.portalId) {
+        user.portalId = portalId.toUpperCase();
+    }
+
+    // --- 2. SAVE GRADES ---
     if (gradesData && gradesData.length > 0) {
       await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
@@ -372,6 +384,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
+    // --- 3. SAVE HISTORY ---
     if (historyData && historyData.length > 0) {
       await ResultHistory.deleteMany({ userId });
       for (const sem of historyData) {
@@ -383,6 +396,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
+    // --- 4. SAVE STATS ---
     if (statsData && statsData.cgpa) {
       await StudentStats.findOneAndUpdate(
         { userId },
@@ -390,6 +404,12 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         { upsert: true }
       );
     }
+    
+    // --- 5. UPDATE USER STATUS ---
+    user.isPortalConnected = true;
+    user.lastSyncAt = new Date();
+    await user.save(); // Save the new timestamp and portalId lock
+
     res.json({ message: 'Sync complete via Extension!' });
   } catch (error) { 
     res.status(500).json({ message: error.message || 'Internal Server Error' }); 
