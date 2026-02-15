@@ -160,12 +160,23 @@ const runScraper = async (userId) => {
       }
       console.log("✅ Logged in successfully!");
 
-      // Wait a moment for any background redirects to stop
-      await new Promise(r => setTimeout(r, 3000));
+      // --- 🛠️ THE ULTIMATE FRAME STABILIZER ---
+      console.log("   🔄 Forcing a clean reload to kill Microsoft's background redirects...");
+      // By manually navigating here, we destroy Microsoft's dying frame and create a permanent, stable one.
+      await page.goto('https://horizon.ucp.edu.pk/student/dashboard', { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
+      
+      // Brief 2-second pause to let the HTML structure settle
+      await new Promise(r => setTimeout(r, 2000)); 
 
       // --- STEP 5: HTML SNAPSHOT FOR DASHBOARD (CHEERIO) ---
       console.log("🔎 Scanning for active courses using HTML Snapshot...");
-      await page.waitForSelector('a[href*="/student/course/info/"]', { timeout: 10000 }).catch(() => null);
+      
+      // We wrap the wait in a try/catch so if a straggling detach happens, it safely ignores it instead of crashing the app
+      try {
+          await page.waitForSelector('a[href*="/student/course/info/"]', { timeout: 10000 });
+      } catch (e) {
+          console.log("   ⚠️ Course cards didn't load in time, or frame shifted. Taking snapshot anyway...");
+      }
       
       const dashboardHtml = await page.content();
       const $ = cheerio.load(dashboardHtml);
