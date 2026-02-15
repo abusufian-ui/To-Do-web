@@ -27,7 +27,7 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [activeFeature, setActiveFeature] = useState(0);
 
-  // --- NEW: Wizard State for Step 3 ---
+  // Wizard State
   const [wizardStep, setWizardStep] = useState(1);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifySuccess, setVerifySuccess] = useState(false);
@@ -39,7 +39,7 @@ const Login = ({ onLogin }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // --- NEW: Live Polling for Extension Sync ---
+  // Live Polling for Extension Sync Status
   useEffect(() => {
     let pollInterval;
     
@@ -54,7 +54,7 @@ const Login = ({ onLogin }) => {
           clearInterval(pollInterval);
           setIsVerifying(false);
           setVerifySuccess(true);
-          // Magic Moment: Auto-login after 2 seconds of showing success!
+          // Redirect after showing success state
           setTimeout(() => onLogin(tempAuth.token, tempAuth.user), 2000);
         }
       } catch (err) {
@@ -64,7 +64,6 @@ const Login = ({ onLogin }) => {
 
     if (signUpStep === 3 && wizardStep === 3) {
       setIsVerifying(true);
-      // Check immediately, then every 3 seconds
       checkStatus();
       pollInterval = setInterval(checkStatus, 3000);
     }
@@ -137,9 +136,9 @@ const Login = ({ onLogin }) => {
       if (!res.ok) throw new Error(data.message || 'Registration failed');
 
       setTempAuth({ token: data.token, user: data.user });
-      setSignUpStep(3); // Enter the Wizard!
+      setSignUpStep(3);
       
-      // Auto-trigger download on reaching Step 3
+      // Auto-trigger extension download
       const link = document.createElement('a');
       link.href = '/MyPortal-Extension.zip';
       link.download = 'MyPortal-Sync-Extension.zip';
@@ -175,12 +174,13 @@ const Login = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#050505] relative overflow-hidden p-4 md:p-8">
+      {/* Background Decorations */}
       <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-brand-blue/10 rounded-full blur-[120px] animate-pulse" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-purple-600/10 rounded-full blur-[100px] animate-pulse delay-1000" />
 
       <div className="w-full max-w-5xl h-[650px] bg-[#121212] border border-[#252525] rounded-3xl shadow-2xl flex relative overflow-hidden z-10">
 
-        {/* LEFT INFO PANEL */}
+        {/* LEFT INFO PANEL (Visible only in standard mode) */}
         <div className={`hidden md:flex absolute top-0 w-1/2 h-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] flex-col justify-between p-12 z-20 transition-all duration-700 ease-in-out ${isLogin ? 'translate-x-full border-l border-[#252525]' : 'translate-x-0 border-r border-[#252525]'} ${isExpandedMode ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
           <div className="flex items-center gap-3">
             <div className="p-2 bg-brand-blue/10 rounded-xl"><GraduationCap className="w-8 h-8 text-brand-blue" /></div>
@@ -201,10 +201,11 @@ const Login = ({ onLogin }) => {
           </div>
         </div>
 
-        {/* RIGHT FORM PANEL */}
+        {/* RIGHT FORM PANEL (Expands for OTP and Wizard) */}
         <div className={`h-full absolute top-0 bg-[#121212] p-8 md:p-12 flex flex-col justify-center z-10 transition-all duration-700 ease-in-out ${isLogin ? 'translate-x-0 w-full md:w-1/2' : 'md:translate-x-full w-full md:w-1/2'} ${isExpandedMode ? '!w-full !translate-x-0' : ''}`}>
-          <div className={`mx-auto w-full transition-all duration-700 ${isExpandedMode ? 'max-w-lg md:max-w-2xl' : 'max-w-sm'}`}>
+          <div className={`mx-auto w-full transition-all duration-700 ${isExpandedMode ? 'max-w-4xl' : 'max-w-sm'}`}>
 
+            {/* Standard Headers (OTP/Login only) */}
             {signUpStep !== 3 && (
                 <div className={`mb-10 animate-fadeIn ${signUpStep === 2 ? 'flex flex-col items-center text-center' : ''}`}>
                 {!isLogin && signUpStep === 2 && (
@@ -221,6 +222,7 @@ const Login = ({ onLogin }) => {
 
             {error && <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 text-xs font-medium animate-fadeIn"><AlertCircle size={16} /> {error}</div>}
 
+            {/* LOGIN FORM */}
             {isLogin && (
               <form onSubmit={handleLoginSubmit} className="space-y-4 animate-fadeIn">
                 <InputGroup icon={Mail} type="email" name="email" placeholder="Email Address" value={formData.email} onChange={handleChange} />
@@ -229,6 +231,7 @@ const Login = ({ onLogin }) => {
               </form>
             )}
 
+            {/* SIGN UP STEP 1 */}
             {!isLogin && signUpStep === 1 && (
               <form onSubmit={handleInitiateSignUp} className="space-y-4 animate-fadeIn">
                 <InputGroup icon={User} type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleChange} />
@@ -241,6 +244,7 @@ const Login = ({ onLogin }) => {
               </form>
             )}
 
+            {/* SIGN UP STEP 2: OTP */}
             {!isLogin && signUpStep === 2 && (
               <form onSubmit={handleFinalRegister} className="space-y-10 animate-fadeIn">
                 <div className="flex justify-center gap-3 md:gap-5">
@@ -256,95 +260,93 @@ const Login = ({ onLogin }) => {
               </form>
             )}
 
-            {/* --- THE EXTENSION WIZARD --- */}
+            {/* SIGN UP STEP 3: EXTENSION WIZARD (REFINED LAYOUT) */}
             {!isLogin && signUpStep === 3 && (
-              <div className="animate-fadeIn w-full flex flex-col items-center max-w-xl mx-auto">
+              <div className="animate-fadeIn w-full flex flex-col items-center">
                 
-                {/* Wizard Header */}
-                <div className="flex items-center justify-between w-full mb-8">
+                {/* Wizard Header - Centered & Wide */}
+                <div className="flex items-center justify-between w-full max-w-2xl mb-12 relative">
                   {[1, 2, 3].map(step => (
-                    <div key={step} className="flex flex-col items-center relative z-10 flex-1">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-500
+                    <div key={step} className="flex flex-col items-center relative z-10 w-24">
+                      <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl transition-all duration-500
                         ${wizardStep > step ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' : 
                           wizardStep === step ? 'bg-brand-blue text-white ring-4 ring-blue-500/30' : 'bg-[#252525] text-gray-500 border border-[#333]'}`}
                       >
-                        {wizardStep > step ? <CheckCircle2 size={20} /> : step}
+                        {wizardStep > step ? <CheckCircle2 size={28} /> : step}
                       </div>
-                      <span className={`text-[10px] mt-2 font-bold uppercase tracking-wider ${wizardStep >= step ? 'text-brand-blue' : 'text-gray-600'}`}>
+                      <span className={`text-xs mt-3 font-bold uppercase tracking-widest ${wizardStep >= step ? 'text-brand-blue' : 'text-gray-600'}`}>
                         {step === 1 ? 'Install' : step === 2 ? 'Login' : 'Verify'}
                       </span>
                     </div>
                   ))}
-                  <div className="absolute top-5 left-[10%] right-[10%] h-[2px] bg-[#252525] -z-0">
+                  {/* Global Progress Line */}
+                  <div className="absolute top-7 left-[10%] right-[10%] h-[2px] bg-[#252525] z-0">
                     <div className="h-full bg-brand-blue transition-all duration-700 ease-out" style={{ width: `${((wizardStep - 1) / 2) * 100}%` }}></div>
                   </div>
                 </div>
 
-                {/* Wizard Content */}
-                <div className="w-full bg-[#1a1a1a] border border-[#333] rounded-3xl p-6 md:p-8 relative overflow-hidden shadow-xl">
+                {/* Wizard Content - Large & Professional */}
+                <div className="w-full max-w-3xl text-center">
                   
-                  {/* Step 1: Install */}
+                  {/* Step 1: Install Instructions */}
                   {wizardStep === 1 && (
-                    <div className="animate-fadeIn text-center">
-                      {/* Video/Animation Box */}
-                      <div className="aspect-video w-full bg-gradient-to-br from-[#252525] to-[#121212] rounded-2xl border border-[#333] mb-6 flex items-center justify-center relative overflow-hidden">
-                         {/* Replace this icon with your actual video later: <video src="/assets/step1.mp4" autoPlay loop muted className="object-cover w-full h-full" /> */}
-                         <Puzzle size={64} className="text-brand-blue/50 animate-bounce" />
+                    <div className="animate-fadeIn">
+                      <div className="aspect-video w-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] rounded-3xl border border-[#333] mb-8 flex items-center justify-center relative overflow-hidden shadow-2xl">
+                         {/* Placeholder Icon - Replace with <video src="/step1.mp4" autoPlay loop muted /> */}
+                         <Puzzle size={80} className="text-brand-blue/40 animate-bounce" />
                       </div>
-                      <h3 className="text-xl font-bold text-white mb-2">Extract & Load Extension</h3>
-                      <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-                        We downloaded a `.zip` file for you. Extract it, open Chrome Extensions, turn on Developer Mode, and click <strong>Load unpacked</strong>.
+                      <h3 className="text-3xl font-extrabold text-white mb-4">Load the Sync Extension</h3>
+                      <p className="text-gray-400 text-lg mb-10 max-w-xl mx-auto leading-relaxed">
+                        The extension was downloaded automatically. Extract the zip, open <strong>chrome://extensions</strong>, enable Developer Mode, and click <strong>Load unpacked</strong>.
                       </p>
-                      <button onClick={() => setWizardStep(2)} className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-all">
-                        I have loaded the extension <ArrowRight size={18} />
+                      <button onClick={() => setWizardStep(2)} className="w-full max-w-md mx-auto bg-brand-blue hover:bg-blue-600 text-white font-bold py-5 rounded-2xl flex justify-center items-center gap-3 transition-all shadow-xl shadow-blue-500/20 active:scale-[0.98] text-lg">
+                        I've loaded the extension <ArrowRight size={22} />
                       </button>
                     </div>
                   )}
 
-                  {/* Step 2: Login */}
+                  {/* Step 2: Session Detection */}
                   {wizardStep === 2 && (
-                    <div className="animate-fadeIn text-center">
-                      <div className="aspect-video w-full bg-gradient-to-br from-[#252525] to-[#121212] rounded-2xl border border-[#333] mb-6 flex items-center justify-center">
-                         {/* <video src="/assets/step2.mp4" autoPlay loop muted className="object-cover w-full h-full" /> */}
-                         <School size={64} className="text-blue-500/50 animate-pulse" />
+                    <div className="animate-fadeIn">
+                      <div className="aspect-video w-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] rounded-3xl border border-[#333] mb-8 flex items-center justify-center shadow-2xl">
+                         <School size={80} className="text-blue-500/40 animate-pulse" />
                       </div>
-                      <h3 className="text-xl font-bold text-white mb-2">Login to UCP Horizon</h3>
-                      <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-                        Open the university portal in a new tab and log in. The extension needs an active session to begin fetching your data securely.
+                      <h3 className="text-3xl font-extrabold text-white mb-4">Login to UCP Horizon</h3>
+                      <p className="text-gray-400 text-lg mb-10 max-w-xl mx-auto leading-relaxed">
+                        To securely fetch your data, the extension needs you to be logged into your university portal in another tab.
                       </p>
-                      <div className="flex gap-3">
-                        <a href="https://horizon.ucp.edu.pk/student/dashboard" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#252525] hover:bg-[#333] border border-[#444] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors">
-                          Open Portal <ExternalLink size={16} />
+                      <div className="flex gap-4 max-w-lg mx-auto">
+                        <a href="https://horizon.ucp.edu.pk/student/dashboard" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#252525] hover:bg-[#333] border border-[#444] text-white py-5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors text-lg">
+                          Open Portal <ExternalLink size={20} />
                         </a>
-                        <button onClick={() => setWizardStep(3)} className="flex-1 bg-brand-blue hover:bg-blue-600 text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-all">
-                          Done <ArrowRight size={18} />
+                        <button onClick={() => setWizardStep(3)} className="flex-1 bg-brand-blue hover:bg-blue-600 text-white font-bold py-5 rounded-2xl flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-500/20 text-lg">
+                          Next Step <ArrowRight size={20} />
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* Step 3: Verify (Live Polling) */}
+                  {/* Step 3: Server Verification (Polling) */}
                   {wizardStep === 3 && (
-                    <div className="animate-fadeIn text-center py-6">
-                      
+                    <div className="animate-fadeIn py-10">
                       {verifySuccess ? (
                         <div className="animate-slideUp flex flex-col items-center">
-                          <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center mb-6">
-                            <CheckCircle2 size={48} className="text-green-500" />
+                          <div className="w-28 h-28 bg-green-500/20 rounded-full flex items-center justify-center mb-8 shadow-lg shadow-green-500/10 border border-green-500/20">
+                            <CheckCircle2 size={56} className="text-green-500" />
                           </div>
-                          <h3 className="text-2xl font-bold text-white mb-2">Connection Established!</h3>
-                          <p className="text-green-400 text-sm">Data is flowing. Redirecting to your dashboard...</p>
+                          <h3 className="text-4xl font-extrabold text-white mb-4">Portal Connected!</h3>
+                          <p className="text-green-400 text-lg">Identity verified. Your dashboard is ready.</p>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center">
-                          <div className="relative w-32 h-32 flex items-center justify-center mb-8">
-                             <div className="absolute inset-0 border-4 border-brand-blue/30 rounded-full animate-ping"></div>
-                             <div className="absolute inset-4 border-4 border-brand-blue/50 rounded-full animate-spin"></div>
-                             <Search size={32} className="text-brand-blue relative z-10" />
+                          <div className="relative w-40 h-40 flex items-center justify-center mb-10">
+                             <div className="absolute inset-0 border-4 border-brand-blue/20 rounded-full animate-ping"></div>
+                             <div className="absolute inset-6 border-4 border-brand-blue/40 rounded-full animate-spin"></div>
+                             <Search size={40} className="text-brand-blue relative z-10" />
                           </div>
-                          <h3 className="text-xl font-bold text-white mb-2">Waiting for Extension...</h3>
-                          <p className="text-gray-400 text-sm leading-relaxed max-w-sm mx-auto">
-                            Please open your UCP dashboard and click the <strong>Force Sync</strong> button in the extension. We are listening for your data...
+                          <h3 className="text-3xl font-extrabold text-white mb-4 tracking-tight">Listening for Extension...</h3>
+                          <p className="text-gray-400 text-lg max-w-md mx-auto leading-relaxed">
+                            Please open your UCP dashboard and click <strong>Force Sync</strong> in the extension. We will detect your data automatically.
                           </p>
                         </div>
                       )}
@@ -352,19 +354,19 @@ const Login = ({ onLogin }) => {
                   )}
                 </div>
 
-                {/* Universal Skip Button */}
+                {/* universal skip/logout button */}
                 {!verifySuccess && (
                   <button 
                     onClick={() => onLogin(tempAuth.token, tempAuth.user)}
-                    className="mt-6 text-sm text-gray-500 hover:text-white transition-colors font-medium underline underline-offset-4"
+                    className="mt-16 text-sm text-gray-500 hover:text-white transition-colors font-medium underline underline-offset-4 decoration-gray-700"
                   >
-                    I'll figure this out later, let me in.
+                    I'll complete this later, take me to my dashboard.
                   </button>
                 )}
               </div>
             )}
 
-            {/* BOTTOM TOGGLE (Hidden on Step 3) */}
+            {/* SIGN IN TOGGLE (Login/Step 1/Step 2 only) */}
             {signUpStep !== 3 && (
                 <div className="mt-8 text-center pt-6 border-t border-[#252525]">
                 <p className="text-gray-500 text-sm">
@@ -382,7 +384,7 @@ const Login = ({ onLogin }) => {
   );
 };
 
-// Reusable Components (Unchanged)
+// --- REUSABLE COMPONENTS (preserved) ---
 const InputGroup = ({ icon: Icon, type, name, placeholder, value, onChange, togglePass }) => (
   <div className="relative group">
     <div className="absolute left-4 top-4 text-gray-500 group-focus-within:text-brand-blue transition-colors">
