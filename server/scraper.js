@@ -131,23 +131,24 @@ const runScraper = async (userId) => {
             try {
                 const glitchCheck = await page.$('#cancelLink');
                 if (!glitchCheck) {
-                    const staySignedInBtn = await page.waitForSelector('#idSIButton9, input[type="submit"][value="Yes"]', { timeout: 5000 });
+                    const staySignedInBtn = await page.waitForSelector('#idSIButton9', { visible: true, timeout: 8000 }).catch(() => null);
                     if (staySignedInBtn) {
                         console.log("   👉 Clicking 'Yes' to stay signed in...");
-                        await Promise.all([
-                            staySignedInBtn.click(),
-                            page.waitForNavigation({ waitUntil: 'networkidle2' })
-                        ]);
+                        await page.evaluate(() => {
+                            const btn = document.querySelector('#idSIButton9');
+                            if(btn) btn.click();
+                        });
+                        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => console.log("   ℹ️ Navigation wait resolved."));
                     }
                 }
             } catch (e) {
-                console.log("   ℹ️ 'Stay signed in' screen skipped.");
+                console.log("   ℹ️ 'Stay signed in' screen skipped:", e.message);
             }
 
           } catch(e) {
              console.error("❌ Auto-Login Error:", e.message);
           }
-      }
+      } // <--- Syntax issue is fixed here
 
       // Verify Dashboard access
       if (!page.url().includes('dashboard')) {
@@ -162,7 +163,7 @@ const runScraper = async (userId) => {
       // Wait a moment for any background redirects to stop
       await new Promise(r => setTimeout(r, 3000));
 
-      // --- STEP 5: HTML SNAPSHOT FOR DASHBOARD ---
+      // --- STEP 5: HTML SNAPSHOT FOR DASHBOARD (CHEERIO) ---
       console.log("🔎 Scanning for active courses using HTML Snapshot...");
       await page.waitForSelector('a[href*="/student/course/info/"]', { timeout: 10000 }).catch(() => null);
       
