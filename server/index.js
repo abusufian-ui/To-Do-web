@@ -75,7 +75,8 @@ const app = express();
 app.use(cors({
   origin: [
     'http://localhost:3000', 
-    'https://myportalucp.online' 
+    'https://myportalucp.online',
+    'https://horizon.ucp.edu.pk' 
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
   credentials: true 
