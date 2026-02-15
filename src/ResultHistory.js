@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   ChevronDown, ChevronUp, BookOpen, Clock, Award,
-  TrendingUp, Star, Layout, RefreshCw
+  TrendingUp, Star, Layout
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -12,7 +12,6 @@ const ResultHistory = () => {
   const [studentStats, setStudentStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState({});
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -44,29 +43,12 @@ const ResultHistory = () => {
     fetchData();
   }, []);
 
-  const handleSync = async () => {
-    setIsSyncing(true);
-    try {
-      const token = localStorage.getItem('token');
-      await fetch(`${API_BASE}/api/sync-grades`, {
-        method: 'POST',
-        headers: { 'x-auth-token': token }
-      });
-      await fetchData();
-    } catch (error) {
-      console.error("Sync failed:", error);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const toggle = (id) => {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   // --- HELPER: Determine Color for Grades ---
   const getGradeColor = (grade) => {
-    // Grades considered "Less than C"
     const dangerGrades = ['C-', 'D+', 'D', 'F', 'W'];
     if (dangerGrades.includes(grade)) return 'text-red-500';
     return 'text-blue-500';
@@ -111,14 +93,6 @@ const ResultHistory = () => {
           <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Academic Performance</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm font-medium">Track your CGPA, credits, and detailed assessment results.</p>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={isSyncing}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50"
-        >
-          <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
-          {isSyncing ? 'Syncing...' : 'Sync Portal'}
-        </button>
       </div>
 
       {/* STATS GRID */}

@@ -3,7 +3,7 @@ import {
     User, Shield, RefreshCw, BookOpen, HelpCircle, Info,
     CheckCircle2, X, AlertTriangle, Lock,
     Calendar, Wallet, GraduationCap, Layout,
-    Book, Linkedin, Github
+    Book, Linkedin, Github, Puzzle, School, ExternalLink, Download
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -122,34 +122,16 @@ const SecuritySection = ({ idleTimeout, setIdleTimeout }) => (
     </div>
 );
 
-// --- 3. PORTAL CONNECTION TAB (UPDATED) ---
+// --- 3. PORTAL CONNECTION TAB (OVERHAULED) ---
 const PortalSection = ({ user, showToast }) => {
-    const [isSyncing, setIsSyncing] = useState(false);
     const [isLinking, setIsLinking] = useState(false);
     const [isUnlinking, setIsUnlinking] = useState(false);
+    const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
     
-    // Form state for connecting a new portal
     const [portalId, setPortalId] = useState('');
     const [portalPassword, setPortalPassword] = useState('');
     const [showPass, setShowPass] = useState(false);
 
-    // Manual Sync Function
-    const handleSync = async () => {
-        setIsSyncing(true);
-        try {
-            const res = await fetch(`${API_BASE}/api/sync-grades`, { method: 'POST', headers: { 'x-auth-token': localStorage.getItem('token') } });
-            if (res.ok) {
-                showToast("Sync Complete! Reloading data...", "success");
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                const data = await res.json();
-                showToast(data.message || "Sync Failed. Please try again later.", "error");
-            }
-        } catch (e) { showToast("Server unreachable.", "error"); }
-        setIsSyncing(false);
-    };
-
-    // Connect New Portal Function
     const handleLinkPortal = async (e) => {
         e.preventDefault();
         if(!portalId || !portalPassword) return showToast("Please enter both ID and Password.", "error");
@@ -164,21 +146,16 @@ const PortalSection = ({ user, showToast }) => {
             const data = await res.json();
             
             if (res.ok) {
-                showToast("Portal successfully linked! Fetching initial data...", "success");
+                showToast("Portal successfully linked!", "success");
                 setTimeout(() => window.location.reload(), 2000);
             } else {
-                showToast(data.message || "Failed to link portal. Check credentials.", "error");
+                showToast(data.message || "Failed to link portal.", "error");
             }
-        } catch (e) { 
-            showToast("Server unreachable.", "error"); 
-        }
+        } catch (e) { showToast("Server unreachable.", "error"); }
         setIsLinking(false);
     };
 
-    // Disconnect Portal Function
-    const handleUnlinkPortal = async () => {
-        if(!window.confirm("Are you sure you want to unlink your portal? All synced courses and grades will be cleared.")) return;
-        
+    const confirmUnlink = async () => {
         setIsUnlinking(true);
         try {
             const res = await fetch(`${API_BASE}/api/user/unlink-portal`, {
@@ -193,13 +170,14 @@ const PortalSection = ({ user, showToast }) => {
             }
         } catch (e) { showToast("Server error.", "error"); }
         setIsUnlinking(false);
+        setShowUnlinkConfirm(false);
     };
 
     return (
         <div className="animate-fadeIn">
             <div className="mb-8">
                 <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Portal Connection</h3>
-                <p className="text-gray-500 dark:text-gray-400 text-sm">Manage the link between MyPortal and the University (UCP) server.</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Manage your secure Chrome Extension connection with the UCP server.</p>
             </div>
 
             <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden shadow-sm">
@@ -219,12 +197,6 @@ const PortalSection = ({ user, showToast }) => {
                             </p>
                         </div>
                     </div>
-                    {user.isPortalConnected && (
-                        <div className="flex items-center gap-2 px-3 py-1 w-fit rounded-full bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-900/50">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span className="text-emerald-700 dark:text-emerald-400 text-xs font-bold">Active</span>
-                        </div>
-                    )}
                 </div>
 
                 <div className="p-8">
@@ -235,7 +207,7 @@ const PortalSection = ({ user, showToast }) => {
                                 Link Your Account
                             </h5>
                             <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-6">
-                                Enter your university credentials to enable automated grade tracking and schedule syncing. Your password is encrypted before saving.
+                                Enter your university credentials. Once connected, you will receive the extension to begin background syncing.
                             </p>
                             
                             <form onSubmit={handleLinkPortal} className="space-y-4">
@@ -271,54 +243,103 @@ const PortalSection = ({ user, showToast }) => {
                                     className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20"
                                 >
                                     {isLinking ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-                                    {isLinking ? "Connecting to University..." : "Secure Link & Sync"}
+                                    {isLinking ? "Connecting..." : "Secure Link & Continue"}
                                 </button>
                             </form>
                         </div>
                     ) : (
-                        // --- LINKED STATE: Show Sync & Unlink Buttons ---
-                        <div className="animate-fadeIn">
-                            <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
-                                <div className="flex-1">
-                                    <h5 className="font-bold text-gray-800 dark:text-white mb-2 flex items-center gap-2">
-                                        <RefreshCw size={18} className="text-brand-blue" /> Manual Data Sync
+                        // --- LINKED STATE: Show Sync Status & Instructions ---
+                        <div className="animate-fadeIn w-full">
+                            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 p-5 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-xl">
+                                <div>
+                                    <h5 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2">
+                                        <RefreshCw size={18} className="animate-spin" /> Background Sync Active
                                     </h5>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mb-4">
-                                        The Portal Robot fetches your latest grades, attendance, and schedule directly from the University Portal.
-                                    </p>
-                                    <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                                        <Info size={14} className="text-blue-500" />
-                                        <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">Takes approx. <span className="font-bold">15-30 seconds</span>.</span>
-                                    </div>
+                                    <p className="text-sm text-emerald-600 dark:text-emerald-500 mt-1">Your extension is ready to push live data.</p>
+                                </div>
+                                <button onClick={() => setShowUnlinkConfirm(true)} className="px-6 py-2.5 bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 rounded-xl text-sm font-bold transition-colors">
+                                    Unlink Account
+                                </button>
+                            </div>
+
+                            {/* Setup Instructions */}
+                            <h5 className="font-bold text-gray-800 dark:text-white mb-4 text-lg">Extension Setup</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                <div className="bg-gray-50 dark:bg-[#1a1a1a] p-6 rounded-2xl border border-gray-200 dark:border-[#333] text-center relative hover:-translate-y-1 transition-transform">
+                                    <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">1</div>
+                                    <Puzzle size={32} className="text-brand-blue mx-auto mb-4" />
+                                    <h3 className="text-gray-900 dark:text-white font-bold mb-2">Install Extension</h3>
+                                    <p className="text-gray-500 text-xs">Download the zip file below and load it in Chrome Extensions.</p>
+                                </div>
+                                
+                                <div className="bg-gray-50 dark:bg-[#1a1a1a] p-6 rounded-2xl border border-gray-200 dark:border-[#333] text-center relative hover:-translate-y-1 transition-transform">
+                                    <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">2</div>
+                                    <School size={32} className="text-brand-blue mx-auto mb-4" />
+                                    <h3 className="text-gray-900 dark:text-white font-bold mb-2">Login to Horizon</h3>
+                                    <p className="text-gray-500 text-xs">Open your UCP portal and log in with your normal credentials.</p>
                                 </div>
 
-                                <div className="flex flex-col gap-3 w-full md:w-auto">
-                                    <button
-                                        onClick={handleSync}
-                                        disabled={isSyncing || isUnlinking}
-                                        className={`w-full px-8 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-3 shadow-lg transition-all 
-                                            ${isSyncing
-                                                ? 'bg-blue-400 cursor-wait'
-                                                : 'bg-brand-blue hover:bg-blue-600 shadow-blue-500/30 hover:scale-[1.02]'
-                                            }`}
-                                    >
-                                        <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
-                                        {isSyncing ? "Syncing Data..." : "Force Sync Now"}
-                                    </button>
-                                    
-                                    <button
-                                        onClick={handleUnlinkPortal}
-                                        disabled={isSyncing || isUnlinking}
-                                        className="w-full px-8 py-3 rounded-xl font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all border border-transparent hover:border-red-200 dark:hover:border-red-900/50"
-                                    >
-                                        {isUnlinking ? "Disconnecting..." : "Unlink Portal"}
-                                    </button>
+                                <div className="bg-gray-50 dark:bg-[#1a1a1a] p-6 rounded-2xl border border-gray-200 dark:border-[#333] text-center relative hover:-translate-y-1 transition-transform">
+                                    <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">3</div>
+                                    <RefreshCw size={32} className="text-brand-blue mx-auto mb-4" />
+                                    <h3 className="text-gray-900 dark:text-white font-bold mb-2">Sync & Relax</h3>
+                                    <p className="text-gray-500 text-xs">The extension will silently push your academic updates in the background.</p>
                                 </div>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <a 
+                                    href="/MyPortal-Extension.zip" 
+                                    download 
+                                    className="flex-1 bg-brand-blue hover:bg-blue-600 shadow-lg shadow-blue-600/20 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                                >
+                                    <Download size={18} /> Download Extension
+                                </a>
+                                <a 
+                                    href="https://horizon.ucp.edu.pk/student/dashboard" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="flex-1 bg-gray-100 dark:bg-[#252525] hover:bg-gray-200 dark:hover:bg-[#333] border border-gray-200 dark:border-[#444] text-gray-800 dark:text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    Open UCP Portal <ExternalLink size={18} />
+                                </a>
                             </div>
                         </div>
                     )}
                 </div>
             </div>
+
+            {/* CUSTOM UNLINK CONFIRMATION MODAL */}
+            {showUnlinkConfirm && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+                    <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] p-6 animate-slideUp">
+                        <div className="flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4 text-red-600 dark:text-red-500">
+                                <AlertTriangle size={32} />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Unlink Portal?</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
+                                Are you sure you want to disconnect? <strong className="text-gray-800 dark:text-gray-200">All your synced courses, grades, and academic history will vanish</strong> from your dashboard immediately.
+                            </p>
+                            <div className="flex gap-3 w-full">
+                                <button 
+                                    onClick={() => setShowUnlinkConfirm(false)} 
+                                    className="flex-1 py-3 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#2C2C2C] hover:bg-gray-200 dark:hover:bg-[#383838] transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={confirmUnlink} 
+                                    disabled={isUnlinking} 
+                                    className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all flex justify-center items-center"
+                                >
+                                    {isUnlinking ? <RefreshCw className="animate-spin" size={18}/> : 'Yes, Vanish Data'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -376,8 +397,7 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                     <div>
                         <h4 className="font-bold text-brand-blue text-sm">Auto-Sync Active</h4>
                         <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
-                            University courses are automatically synchronized with your student portal.
-                            <br />If this list is empty or outdated, please perform a <b>Manual Sync</b> in the "Portal Connection" tab.
+                            University courses are automatically synchronized by your Chrome Extension.
                         </p>
                     </div>
                 </div>
@@ -492,7 +512,7 @@ const HelpSection = () => (
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Academics</h4>
                     <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        View your auto-synced grades, GPA, and transcript. This data is fetched directly from the university portal.
+                        View your auto-synced grades, GPA, and transcript. This data is fetched seamlessly by your Chrome Extension.
                     </p>
                 </div>
             </div>

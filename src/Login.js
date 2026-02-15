@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2, Sparkles,
   GraduationCap, Layout, ShieldCheck, School,
-  ChevronLeft, AlertCircle, RefreshCw
+  ChevronLeft, AlertCircle, RefreshCw, Download, Puzzle, ExternalLink, CheckCircle
 } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
@@ -16,9 +16,9 @@ const features = [
 const Login = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [signUpStep, setSignUpStep] = useState(1); // 1: Details, 2: OTP, 3: Link Portal
+  const [signUpStep, setSignUpStep] = useState(1); // 1: Details, 2: OTP, 3: Extension Setup
 
-  // Auth Storage to hold token before linking portal
+  // Auth Storage to hold token before finalizing setup
   const [tempAuth, setTempAuth] = useState(null);
 
   // Form Data
@@ -27,12 +27,6 @@ const Login = ({ onLogin }) => {
     email: '',
     password: '',
     confirmPassword: '',
-  });
-
-  // Portal Data for Step 3
-  const [portalData, setPortalData] = useState({
-    portalId: '',
-    portalPassword: ''
   });
 
   // OTP Individual Digits State
@@ -50,6 +44,21 @@ const Login = ({ onLogin }) => {
     }, 4000);
     return () => clearInterval(interval);
   }, []);
+
+  // Auto-trigger extension download when reaching Step 3
+  useEffect(() => {
+    if (signUpStep === 3) {
+      // NOTE: Replace this URL with the actual path to your extension .zip or Chrome Web Store link
+      const extensionUrl = '/MyPortal-Extension.zip'; 
+      
+      const link = document.createElement('a');
+      link.href = extensionUrl;
+      link.download = 'MyPortal-Sync-Extension.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }, [signUpStep]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -130,41 +139,13 @@ const Login = ({ onLogin }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Registration failed');
 
-      // Save token temporarily and move to Portal Link step
+      // Save token temporarily and move to Extension Onboarding step
       setTempAuth({ token: data.token, user: data.user });
       setSignUpStep(3);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // STEP 3: Link Portal and Login
-  const handlePortalLink = async (e) => {
-    e.preventDefault();
-    if(!portalData.portalId || !portalData.portalPassword) return setError("Please enter both ID and Password");
-    
-    setLoading(true);
-    setError('');
-    try {
-        const res = await fetch(`${API_BASE}/api/user/link-portal`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-auth-token': tempAuth.token },
-            body: JSON.stringify(portalData)
-        });
-        
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.message || 'Failed to link portal. Check credentials.');
-        }
-        
-        // Success! Log the user in officially.
-        onLogin(tempAuth.token, tempAuth.user);
-    } catch (err) {
-        setError(err.message);
-    } finally {
-        setLoading(false);
     }
   };
 
@@ -258,8 +239,7 @@ const Login = ({ onLogin }) => {
             ${isExpandedMode ? '!w-full !translate-x-0' : ''}
           `}
         >
-          {/* Dynamic wrapper width: Small for login, Large for OTP/Step 3 */}
-          <div className={`mx-auto w-full transition-all duration-700 ${isExpandedMode ? 'max-w-lg md:max-w-xl' : 'max-w-sm'}`}>
+          <div className={`mx-auto w-full transition-all duration-700 ${isExpandedMode ? 'max-w-lg md:max-w-2xl' : 'max-w-sm'}`}>
 
             {/* Standard Header (Hidden on Step 3) */}
             {signUpStep !== 3 && (
@@ -309,7 +289,7 @@ const Login = ({ onLogin }) => {
               </form>
             )}
 
-            {/* SIGN UP STEP 2: OTP Verification (Expanded Inputs) */}
+            {/* SIGN UP STEP 2: OTP Verification */}
             {!isLogin && signUpStep === 2 && (
               <form onSubmit={handleFinalRegister} className="space-y-10 animate-fadeIn">
                 <div className="flex justify-center gap-3 md:gap-5">
@@ -337,35 +317,69 @@ const Login = ({ onLogin }) => {
               </form>
             )}
 
-            {/* SIGN UP STEP 3: Link University Portal (Centered and scaled) */}
+            {/* SIGN UP STEP 3: Extension Setup (Modern UI) */}
             {!isLogin && signUpStep === 3 && (
-              <form onSubmit={handlePortalLink} className="space-y-6 animate-fadeIn">
+              <div className="animate-fadeIn w-full">
                   <div className="text-center mb-10">
-                      <div className="w-24 h-24 bg-brand-blue/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <School size={48} className="text-brand-blue" />
+                      <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <CheckCircle size={40} className="text-green-500" />
                       </div>
-                      <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Link University Portal</h2>
-                      <p className="text-gray-400 text-sm md:text-base max-w-md mx-auto">Automate your grades, attendance, and schedule by securely connecting your UCP account.</p>
+                      <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Account Verified!</h2>
+                      <p className="text-gray-400 text-sm md:text-base max-w-lg mx-auto">
+                        To keep your data strictly private, we use a secure browser extension instead of asking for your portal password. 
+                        Your download should start automatically.
+                      </p>
                   </div>
                   
-                  <div className="max-w-md mx-auto space-y-4">
-                      <InputGroup icon={User} type="text" name="portalId" placeholder="Student ID (e.g., L1F23BSCS1329)" value={portalData.portalId} onChange={(e) => setPortalData({...portalData, portalId: e.target.value})} />
-                      <InputGroup icon={Lock} type={showPassword ? "text" : "password"} name="portalPassword" placeholder="Portal Password" value={portalData.portalPassword} onChange={(e) => setPortalData({...portalData, portalPassword: e.target.value})} togglePass={() => setShowPassword(!showPassword)} />
-                      
-                      <div className="pt-4">
-                        <SubmitButton loading={loading} text={loading ? "Syncing Data (15s)..." : "Link & Sync Now"} icon={RefreshCw} spinIcon={loading} />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                      {/* Step 1 */}
+                      <div className="bg-[#1a1a1a] p-6 rounded-2xl border border-[#333] text-center relative hover:-translate-y-1 transition-transform">
+                          <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">1</div>
+                          <Puzzle size={32} className="text-brand-blue mx-auto mb-4" />
+                          <h3 className="text-white font-bold mb-2">Install Extension</h3>
+                          <p className="text-gray-500 text-xs">Extract the downloaded zip and load it in Chrome Extensions.</p>
                       </div>
                       
-                      <button 
-                        type="button" 
-                        disabled={loading} 
-                        onClick={() => onLogin(tempAuth.token, tempAuth.user)} 
-                        className="w-full mt-4 py-3 text-sm text-gray-500 font-medium hover:text-white transition-colors disabled:opacity-50"
+                      {/* Step 2 */}
+                      <div className="bg-[#1a1a1a] p-6 rounded-2xl border border-[#333] text-center relative hover:-translate-y-1 transition-transform">
+                          <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">2</div>
+                          <School size={32} className="text-brand-blue mx-auto mb-4" />
+                          <h3 className="text-white font-bold mb-2">Login to Horizon</h3>
+                          <p className="text-gray-500 text-xs">Open your UCP portal and log in with your normal credentials.</p>
+                      </div>
+
+                      {/* Step 3 */}
+                      <div className="bg-[#1a1a1a] p-6 rounded-2xl border border-[#333] text-center relative hover:-translate-y-1 transition-transform">
+                          <div className="absolute -top-3 -left-3 w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-lg">3</div>
+                          <RefreshCw size={32} className="text-brand-blue mx-auto mb-4" />
+                          <h3 className="text-white font-bold mb-2">Sync & Relax</h3>
+                          <p className="text-gray-500 text-xs">Click the extension icon to instantly sync your data in the background.</p>
+                      </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-xl mx-auto">
+                      <a 
+                        href="https://horizon.ucp.edu.pk/student/dashboard" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex-1 bg-[#252525] hover:bg-[#333] border border-[#444] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
                       >
-                          Skip for now
+                         Open UCP Portal <ExternalLink size={18} />
+                      </a>
+                      <button 
+                        onClick={() => onLogin(tempAuth.token, tempAuth.user)} 
+                        className="flex-1 bg-brand-blue hover:bg-blue-600 shadow-lg shadow-blue-600/20 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
+                      >
+                         I've done this, let's go! <ArrowRight size={18} />
                       </button>
                   </div>
-              </form>
+                  
+                  <div className="text-center mt-6">
+                      <a href="/MyPortal-Extension.zip" download className="text-sm text-gray-500 hover:text-white underline transition-colors">
+                          Download didn't start? Click here.
+                      </a>
+                  </div>
+              </div>
             )}
 
             {/* BOTTOM TOGGLE (Hidden on Step 3) */}
@@ -386,7 +400,7 @@ const Login = ({ onLogin }) => {
   );
 };
 
-// Reusable Components
+// Reusable Components (Unchanged)
 const InputGroup = ({ icon: Icon, type, name, placeholder, value, onChange, togglePass }) => (
   <div className="relative group">
     <div className="absolute left-4 top-4 text-gray-500 group-focus-within:text-brand-blue transition-colors">

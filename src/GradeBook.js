@@ -1,43 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Book, RefreshCw, Clock, ChevronDown, ChevronUp,
-  GraduationCap, TrendingUp, AlertCircle, X, CheckCircle2, AlertTriangle,
-  BookOpen
+  Book, Clock, ChevronDown, ChevronUp,
+  GraduationCap, TrendingUp, AlertCircle, BookOpen
 } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
-
-// --- HELPER: CUSTOM TOAST COMPONENT ---
-const Toast = ({ message, type, onClose }) => {
-  if (!message) return null;
-
-  const styles = {
-    success: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300",
-    error: "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300",
-    info: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300"
-  };
-
-  const icons = {
-    success: <CheckCircle2 size={20} />,
-    error: <AlertTriangle size={20} />,
-    info: <RefreshCw size={20} className="animate-spin" />
-  };
-
-  return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-start gap-3 p-4 rounded-xl border shadow-2xl max-w-md animate-slideUp ${styles[type] || styles.info}`}>
-      <div className="mt-0.5 shrink-0">{icons[type]}</div>
-      <div className="flex-1">
-        <h4 className="font-bold text-sm uppercase tracking-wider mb-1">
-          {type === 'error' ? 'Sync Failed' : type === 'success' ? 'Sync Complete' : 'Syncing'}
-        </h4>
-        <p className="text-sm leading-relaxed opacity-90">{message}</p>
-      </div>
-      <button onClick={onClose} className="p-1 hover:bg-black/5 rounded-full transition-colors">
-        <X size={16} />
-      </button>
-    </div>
-  );
-};
 
 // Helper to check if score is below average
 const isBelowAverage = (obtained, average) => {
@@ -51,25 +18,14 @@ const GradeBook = () => {
   const [grades, setGrades] = useState([]);
   const [stats, setStats] = useState({ cgpa: "0.00", credits: "0", inprogressCr: "0" });
   const [loading, setLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [expandedRows, setExpandedRows] = useState({});
-
-  // Notification State
-  const [notification, setNotification] = useState({ message: null, type: null });
-
-  const showToast = (message, type = 'info') => {
-    setNotification({ message, type });
-    if (type !== 'error') {
-      setTimeout(() => setNotification({ message: null, type: null }), 5000);
-    }
-  };
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('token'); // 1. GET TOKEN
+      const token = localStorage.getItem('token');
       const headers = {
         'Content-Type': 'application/json',
-        'x-auth-token': token // 2. ATTACH HEADER
+        'x-auth-token': token 
       };
 
       const [gradesRes, statsRes] = await Promise.all([
@@ -80,11 +36,10 @@ const GradeBook = () => {
       const gradesData = await gradesRes.json();
       const statsData = await statsRes.json();
 
-      // 3. SAFETY CHECK: Ensure gradesData is an array
       if (Array.isArray(gradesData)) {
         setGrades(gradesData);
       } else {
-        setGrades([]); // Prevent crash if API returns error object
+        setGrades([]); 
       }
 
       if (statsData && !statsData.message) {
@@ -100,34 +55,6 @@ const GradeBook = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleSync = async () => {
-    setIsSyncing(true);
-    showToast("Connecting to University Portal...", "info");
-
-    try {
-      const token = localStorage.getItem('token'); // GET TOKEN FOR SYNC
-      const res = await fetch(`${API_BASE}/api/sync-grades`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': token
-        }
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        await fetchData();
-        showToast("Courses, Grades, and CGPA updated successfully.", "success");
-      } else {
-        showToast(data.message || "Unknown server error occurred.", "error");
-      }
-    } catch (error) {
-      showToast("Could not connect to the local server. Is it running?", "error");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const toggleRow = (courseId, idx) => {
     const key = `${courseId}-${idx}`;
     setExpandedRows(prev => ({ ...prev, [key]: !prev[key] }));
@@ -138,13 +65,6 @@ const GradeBook = () => {
   return (
     <div className="p-8 w-full h-full overflow-y-auto animate-fadeIn custom-scrollbar pb-24 relative">
 
-      {/* TOAST NOTIFICATION AREA */}
-      <Toast
-        message={notification.message}
-        type={notification.type}
-        onClose={() => setNotification({ message: null, type: null })}
-      />
-
       {/* 1. HEADER & CONTROLS */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
@@ -153,19 +73,10 @@ const GradeBook = () => {
             Track your CGPA, credits, and detailed assessment results.
           </p>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={isSyncing}
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white shadow-lg transition-all active:scale-95 ${isSyncing ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-blue hover:bg-blue-600 shadow-blue-500/30'}`}
-        >
-          <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
-          {isSyncing ? 'Syncing...' : 'Sync Portal'}
-        </button>
       </div>
 
       {/* 2. STATS CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-
         {/* Card 1: CGPA */}
         <div className="bg-gradient-to-br from-indigo-600 to-blue-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><GraduationCap size={100} /></div>
@@ -188,7 +99,7 @@ const GradeBook = () => {
           <p className="text-xs text-gray-400 mt-2">Currently Enrolled</p>
         </div>
 
-        {/* Card 3: COMPLETED CREDITS (Replaces Active Courses) */}
+        {/* Card 3: COMPLETED CREDITS */}
         <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl p-6 shadow-sm relative">
           <div className="absolute top-4 right-4 p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-600">
             <BookOpen size={20} />
@@ -203,7 +114,7 @@ const GradeBook = () => {
       {grades.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 dark:bg-[#121212] rounded-2xl border border-dashed border-gray-300 dark:border-[#333]">
           <p className="text-gray-500 font-medium">No grades found.</p>
-          <button onClick={handleSync} className="mt-2 text-brand-blue font-bold hover:underline">Sync now</button>
+          <p className="mt-2 text-brand-blue text-sm font-bold">Please ensure your Chrome Extension is active and synced.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-8">
