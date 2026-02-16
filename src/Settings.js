@@ -53,7 +53,7 @@ const ProfileSection = ({ user, showToast }) => {
                 <p className="text-gray-500 dark:text-gray-400 text-sm">Update your display name and view your account details.</p>
             </div>
 
-            <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] space-y-6 max-w-xl">
+            <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] space-y-6 max-w-xl shadow-sm">
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Display Name</label>
                     <input
@@ -95,7 +95,7 @@ const SecuritySection = ({ idleTimeout, setIdleTimeout }) => (
             <p className="text-gray-500 dark:text-gray-400 text-sm">Manage how long you stay logged in to protect your data.</p>
         </div>
 
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
             <div className="flex items-center gap-4">
                 <div className="p-3 bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 rounded-xl">
                     <Shield size={24} />
@@ -122,7 +122,7 @@ const SecuritySection = ({ idleTimeout, setIdleTimeout }) => (
     </div>
 );
 
-// --- 3. PORTAL CONNECTION TAB (NO LOGIN FORM) ---
+// --- 3. PORTAL CONNECTION TAB ---
 const PortalSection = ({ user, showToast }) => {
     const [isUnlinking, setIsUnlinking] = useState(false);
     const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
@@ -238,8 +238,8 @@ const PortalSection = ({ user, showToast }) => {
                                 {wizardStep === 1 && (
                                     <div className="animate-fadeIn text-center">
                                         <div className="aspect-video w-full max-w-sm mx-auto bg-white dark:bg-[#252525] rounded-xl border border-gray-200 dark:border-[#333] mb-6 flex items-center justify-center shadow-sm">
-                                            {/* <video src="/assets/step1.mp4" autoPlay loop muted /> */}
-                                            <Puzzle size={48} className="text-brand-blue/50 animate-bounce" />
+                                            {/* Static Icon (Animations Removed) */}
+                                            <Puzzle size={48} className="text-brand-blue/50" />
                                         </div>
                                         <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">1. Load the Extension</h3>
                                         <p className="text-gray-500 text-xs mb-6 max-w-sm mx-auto">Download the zip below, extract it, and load it into Chrome via Developer Mode.</p>
@@ -257,8 +257,8 @@ const PortalSection = ({ user, showToast }) => {
                                 {wizardStep === 2 && (
                                     <div className="animate-fadeIn text-center">
                                         <div className="aspect-video w-full max-w-sm mx-auto bg-white dark:bg-[#252525] rounded-xl border border-gray-200 dark:border-[#333] mb-6 flex items-center justify-center shadow-sm">
-                                            {/* <video src="/assets/step2.mp4" autoPlay loop muted /> */}
-                                            <School size={48} className="text-blue-500/50 animate-pulse" />
+                                            {/* Static Icon (Animations Removed) */}
+                                            <School size={48} className="text-blue-500/50" />
                                         </div>
                                         <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">2. Login to Horizon</h3>
                                         <p className="text-gray-500 text-xs mb-6 max-w-sm mx-auto">Log into your university portal in a new tab so the extension can detect your session.</p>
@@ -512,7 +512,7 @@ const HelpSection = () => (
         </div>
 
         <div className="grid gap-4">
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4 shadow-sm">
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-brand-blue rounded-lg h-fit"><Layout size={20} /></div>
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Dashboard & Tasks</h4>
@@ -522,7 +522,7 @@ const HelpSection = () => (
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4 shadow-sm">
                 <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-lg h-fit"><GraduationCap size={20} /></div>
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Academics</h4>
@@ -532,7 +532,7 @@ const HelpSection = () => (
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4 shadow-sm">
                 <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg h-fit"><Wallet size={20} /></div>
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Cash Manager</h4>
@@ -542,7 +542,7 @@ const HelpSection = () => (
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4">
+            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4 shadow-sm">
                 <div className="p-3 bg-orange-50 dark:bg-orange-900/20 text-orange-600 rounded-lg h-fit"><Calendar size={20} /></div>
                 <div>
                     <h4 className="font-bold text-gray-800 dark:text-white mb-1">Calendar</h4>

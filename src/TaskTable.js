@@ -15,14 +15,12 @@ const getAbbreviation = (name) => {
 
   if (n === 'event') return 'Event';
 
-  // --- 1. PRIORITY: DETECT LABS FIRST ---
   if (n.includes('operating system') && (n.includes('lab') || n.includes('laboratory'))) return 'OS Lab';
   if (n.includes('database') && (n.includes('lab') || n.includes('laboratory'))) return 'DB Lab';
   if (n.includes('computer network') && (n.includes('lab') || n.includes('laboratory'))) return 'CN Lab';
   if (n.includes('object oriented') && (n.includes('lab') || n.includes('laboratory'))) return 'OOP Lab';
   if (n.includes('data structure') && (n.includes('lab') || n.includes('laboratory'))) return 'DSA Lab';
 
-  // --- 2. STANDARD ABBREVIATIONS ---
   if (n.includes('operating system')) return 'OS';
   if (n.includes('differential equation')) return 'DE';
   if (n.includes('software engineering')) return 'SE';
@@ -39,10 +37,8 @@ const getAbbreviation = (name) => {
   if (n.includes('database')) return 'DB';
   if (n.includes('computer network')) return 'CN';
 
-  // --- UPDATED: General Course mapping ---
   if (n.includes('general course') || n.includes('general task')) return 'General';
 
-  // 3. Fallback
   if (name.length > 15) {
     const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for', 'the'];
     return name.split(' ').filter(word => !ignoredWords.includes(word.toLowerCase())).map(word => word[0]).join('').toUpperCase().substring(0, 5);
@@ -145,7 +141,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-6 mb-8 pt-6 border-t border-gray-100 dark:border-[#2C2C2C]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 pt-6 border-t border-gray-100 dark:border-[#2C2C2C]">
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm text-gray-500"><CalendarIcon size={16} className="opacity-70" /> Created: <span className="dark:text-gray-200 font-medium">{new Date(task.createdAt || Date.now()).toLocaleDateString()}</span></div>
               <div className="flex items-center gap-3 text-sm text-gray-500"><CalendarIcon className="text-brand-pink" size={16} /> Due Date: <span className="dark:text-gray-200 font-medium">{task.date || "No date"}</span></div>
@@ -256,7 +252,6 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   const activeTasks = sortTasks(currentTasks.filter(t => t.status !== 'Completed'));
   const completedTasks = sortTasks(currentTasks.filter(t => t.status === 'Completed'));
 
-  // --- CATEGORIZE COURSES FOR DROPDOWN ---
   const uniCourses = courses.filter(c => c.type === 'uni');
   const generalCourses = courses.filter(c => c.type !== 'uni');
 
@@ -276,7 +271,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
             <button onClick={(e) => toggleExpand(e, task.id)} className="text-gray-400 hover:text-brand-blue">
               {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
-            <span>{task.name}</span>
+            <span className="truncate">{task.name}</span>
             {totalCount > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 rounded-md font-bold ml-1">{completedCount}/{totalCount}</span>}
           </div>
 
@@ -306,7 +301,6 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
               {openDropdownId === `${task.id}-course` && (
                 <div className="absolute top-full left-0 mt-1 min-w-[220px] bg-white dark:bg-[#1E1E1E] rounded-md shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-50 overflow-hidden animate-fadeIn max-h-[300px] overflow-y-auto custom-scrollbar-hide">
 
-                  {/* --- 1. EVENT BUTTON --- */}
                   <div
                     onClick={() => { updateTask(task.id, 'course', 'Event'); setOpenDropdownId(null); }}
                     className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-rose-600 dark:text-rose-500 font-medium border-b border-gray-100 dark:border-[#2C2C2C]"
@@ -314,7 +308,6 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                     <CalendarDays size={16} /> <span>Event</span>
                   </div>
 
-                  {/* --- 2. UNIVERSITY COURSES --- */}
                   {uniCourses.length > 0 && (
                     <>
                       <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
@@ -328,7 +321,6 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                     </>
                   )}
 
-                  {/* --- 3. GENERAL COURSES --- */}
                   <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
                     General / Manual
                   </div>
@@ -383,7 +375,9 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   };
 
   return (
-    <div className="p-8 w-full animate-fadeIn pb-20">
+    <div className="p-4 md:p-8 w-full animate-fadeIn pb-20">
+      
+      {/* Active Tasks Table wrapped for Mobile Scroll */}
       <div className="mb-10">
         <button onClick={() => setShowActive(!showActive)} className="flex items-center gap-2 mb-4 group focus:outline-none">
           {showActive ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
@@ -391,21 +385,24 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
           <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{activeTasks.length}</span>
         </button>
         {showActive && (
-          <>
-            <div className="flex text-xs text-gray-500 dark:text-[#71717A] border-b border-gray-200 dark:border-[#2C2C2C] pb-2 px-0">
-              <div className={COL.name}>Task Name</div>
-              <div className={COL.status}>Status</div>
-              <div className={COL.course}>Course</div>
-              <div className={COL.date}>Due date</div>
-              <div className={COL.priority}>Priority</div>
+          <div className="overflow-x-auto custom-scrollbar pb-2">
+            <div className="min-w-[800px]">
+              <div className="flex text-xs text-gray-500 dark:text-[#71717A] border-b border-gray-200 dark:border-[#2C2C2C] pb-2 px-0">
+                <div className={COL.name}>Task Name</div>
+                <div className={COL.status}>Status</div>
+                <div className={COL.course}>Course</div>
+                <div className={COL.date}>Due date</div>
+                <div className={COL.priority}>Priority</div>
+              </div>
+              {activeTasks.length > 0 ? activeTasks.map(task => renderRow(task, false)) : (
+                <p className="py-8 text-center text-gray-500 text-sm italic">No active tasks.</p>
+              )}
             </div>
-            {activeTasks.length > 0 ? activeTasks.map(task => renderRow(task, false)) : (
-              <p className="py-8 text-center text-gray-500 text-sm italic">No active tasks.</p>
-            )}
-          </>
+          </div>
         )}
       </div>
 
+      {/* Completed Tasks Table */}
       {completedTasks.length > 0 && (
         <div className="animate-fadeIn mb-10">
           <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 mb-4 group focus:outline-none">
@@ -413,10 +410,17 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
             <h2 className="text-gray-800 dark:text-white font-bold text-sm">Completed tasks</h2>
             <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{completedTasks.length}</span>
           </button>
-          {showCompleted && completedTasks.map(task => renderRow(task, true))}
+          {showCompleted && (
+            <div className="overflow-x-auto custom-scrollbar pb-2">
+              <div className="min-w-[800px]">
+                {completedTasks.map(task => renderRow(task, true))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
+      {/* Archived Tasks Table */}
       {archivedTasks.length > 0 && (
         <div className="animate-fadeIn pt-6 border-t border-dashed border-gray-200 dark:border-[#2C2C2C]">
           <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-2 w-full group focus:outline-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
@@ -431,13 +435,30 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
               <div className="p-3 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-700 dark:text-yellow-500 text-xs rounded-lg mb-2 flex items-center gap-2">
                 <AlertTriangle size={14} /> These tasks belong to deleted courses or past semesters.
               </div>
-              {archivedTasks.map(task => renderRow(task, task.status === 'Completed'))}
+              <div className="overflow-x-auto custom-scrollbar pb-2">
+                <div className="min-w-[800px]">
+                  {archivedTasks.map(task => renderRow(task, task.status === 'Completed'))}
+                </div>
+              </div>
             </div>
           )}
         </div>
       )}
 
       <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          height: 8px; /* Increased for mobile touch target */
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 10px;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #3f3f46;
+        }
         .custom-scrollbar-hide::-webkit-scrollbar {
           display: none;
         }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Search, SlidersHorizontal, User, Inbox, Sun, Moon, Filter,
-  Book, Mail, Clock, CheckCircle2, Calendar, 
+  Book, Mail, Clock, CheckCircle2, Calendar, Menu,
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown, 
   Settings, LogOut 
 } from 'lucide-react';
@@ -19,7 +19,8 @@ const Header = ({
   onLogout, 
   tasks = [], 
   onOpenTask,
-  onNavigate 
+  onNavigate,
+  onMenuClick 
 }) => {
   // --- STATE MANAGEMENT ---
   const [showFilters, setShowFilters] = useState(false);
@@ -123,19 +124,24 @@ const Header = ({
   ].filter(Boolean).length;
 
   return (
-    <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-8 transition-colors duration-300 relative z-20">
+    <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-20">
       
       {/* --- LEFT SIDE --- */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-4">
         
-        {/* ADD NEW BUTTON */}
-        <button onClick={onAddClick} className="flex items-center gap-2 bg-brand-blue hover:bg-blue-600 text-white px-5 py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95">
-          <Plus size={18} />
-          <span className="text-sm font-semibold">Add new</span>
+        {/* NEW: Mobile Hamburger Menu */}
+        <button onClick={onMenuClick} className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors">
+          <Menu size={22} />
         </button>
 
-        {/* SEARCH BAR */}
-        <div className="flex items-center gap-2 relative" ref={searchRef}>
+        {/* ADD NEW BUTTON */}
+        <button onClick={onAddClick} className="flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-600 text-white w-9 h-9 md:w-auto md:px-5 md:py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95">
+          <Plus size={18} />
+          <span className="hidden md:inline text-sm font-semibold">Add new</span>
+        </button>
+
+        {/* SEARCH BAR (Hidden on very small screens, visible on sm and up) */}
+        <div className="hidden sm:flex items-center gap-2 relative" ref={searchRef}>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search size={16} className="text-gray-400 group-focus-within:text-brand-blue transition-colors" />
@@ -146,7 +152,7 @@ const Header = ({
               onChange={handleSearchChange}
               onFocus={() => filters?.searchQuery && setShowSearchDropdown(true)}
               placeholder="Search tasks..."
-              className="bg-gray-100 dark:bg-dark-surface border border-transparent focus:border-brand-blue text-gray-800 dark:text-white text-sm rounded-full py-2 pl-10 pr-4 w-48 focus:w-64 transition-all outline-none"
+              className="bg-gray-100 dark:bg-dark-surface border border-transparent focus:border-brand-blue text-gray-800 dark:text-white text-sm rounded-full py-2 pl-10 pr-4 w-32 md:w-48 focus:w-48 md:focus:w-64 transition-all outline-none"
             />
           </div>
 
@@ -219,7 +225,7 @@ const Header = ({
                       )}
                     </div>
 
-                    {/* STATUS DROPDOWN (Scroll List) */}
+                    {/* STATUS DROPDOWN */}
                     <div className="relative" ref={statusDropdownRef}>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Status</label>
                       <button onClick={() => setShowStatusList(!showStatusList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
@@ -239,7 +245,7 @@ const Header = ({
                       )}
                     </div>
 
-                    {/* PRIORITY DROPDOWN (Scroll List) */}
+                    {/* PRIORITY DROPDOWN */}
                     <div className="relative" ref={priorityDropdownRef}>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Priority</label>
                       <button onClick={() => setShowPriorityList(!showPriorityList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
@@ -293,7 +299,7 @@ const Header = ({
       </div>
 
       {/* --- RIGHT SIDE --- */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-4">
         
         {/* INBOX BUTTON */}
         <div className="relative">
@@ -305,7 +311,6 @@ const Header = ({
             <span>Inbox</span>
           </button>
           
-          {/* COMING SOON POPUP */}
           {inboxMessage && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-gray-900 text-white text-[10px] px-3 py-1 rounded-md shadow-lg whitespace-nowrap animate-fadeIn z-50">
               Coming Soon!
@@ -324,14 +329,14 @@ const Header = ({
         {/* --- PROFILE DROPDOWN --- */}
         <div className="relative" ref={profileDropdownRef}>
           <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333]">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase">
+            <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase">
               {user?.name?.charAt(0) || 'U'}
             </div>
             <div className="text-left hidden md:block">
               <p className="text-sm font-bold text-gray-700 dark:text-white leading-none">{user?.name || 'User'}</p>
               <p className="text-[10px] text-gray-400 font-medium">{user?.isAdmin ? 'Admin' : 'Student'}</p>
             </div>
-            <ChevronDown size={16} className="text-gray-400" />
+            <ChevronDown size={16} className="text-gray-400 hidden md:block" />
           </button>
 
           {isProfileOpen && (

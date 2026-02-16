@@ -10,11 +10,11 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
   const [isCashExpanded, setIsCashExpanded] = useState(false);
   const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(false);
 
-  // 1. WORK TOOLS (Top Section)
+  // 1. WORK TOOLS
   const menuItems = [
     { name: 'Tasks', icon: CheckSquare },
     { name: 'Calendar', icon: Calendar },
-    { name: 'Notes', icon: StickyNote }, // Correctly mapped to Notes
+    { name: 'Notes', icon: StickyNote },
   ];
 
   const academicsSubItems = [
@@ -41,37 +41,22 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     if (isCashExpanded) setIsCashExpanded(false);
   };
 
-  // Helper to check if a section is active (contains the current tab)
   const isAcademicsActive = ['Grade Book', 'History'].includes(activeTab);
   const isCashActive = activeTab.startsWith('Cash');
 
   return (
     <div className={`
-      relative h-screen bg-white dark:bg-[#1E1E1E] border-r border-gray-200 dark:border-[#2C2C2C] 
-      flex flex-col transition-all duration-300 ease-in-out
-      ${isOpen ? 'w-64 p-6' : 'w-20 p-4 items-center'}
+      fixed inset-y-0 left-0 md:relative z-[60] h-screen bg-white dark:bg-[#1E1E1E] border-r border-gray-200 dark:border-[#2C2C2C] 
+      flex flex-col transition-transform duration-300 ease-in-out md:transition-all
+      ${isOpen ? 'translate-x-0 w-64 p-6 shadow-2xl md:shadow-none' : '-translate-x-full md:translate-x-0 md:w-20 p-6 md:p-4 md:items-center'}
     `}>
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-          height: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #e2e8f0;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #cbd5e1;
-        }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #3f3f46;
-        }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #52525b;
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #52525b; }
       `}</style>
       
       {isOpen && (
@@ -88,20 +73,20 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           return (
             <button
               key={item.name}
-              onClick={() => setActiveTab(item.name)} // Sets 'Notes' tab when clicked
+              onClick={() => setActiveTab(item.name)} 
               className={`
                 w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
                 ${isActive 
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'
                 }
-                ${!isOpen && 'justify-center'}
+                ${!isOpen && 'md:justify-center'}
               `}
             >
               <div className="relative"><Icon size={20} strokeWidth={2} /></div>
               {isOpen && <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">{item.name}</span>}
               
-              {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">{item.name}</div>}
+              {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">{item.name}</div>}
             </button>
           );
         })}
@@ -111,10 +96,10 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           onClick={handleAcademicsClick}
           className={`
             w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
-            ${isAcademicsActive && !isOpen // Highlight parent only if closed and active
+            ${isAcademicsActive && !isOpen 
               ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
               : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
-            ${!isOpen && 'justify-center'}
+            ${!isOpen && 'md:justify-center'}
           `}
         >
           <GraduationCap size={20} strokeWidth={2} />
@@ -124,7 +109,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
               {isAcademicsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </>
           )}
-          {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Academics</div>}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Academics</div>}
         </button>
 
         {isOpen && isAcademicsExpanded && (
@@ -152,10 +137,10 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           onClick={handleCashClick}
           className={`
             w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
-            ${isCashActive && !isOpen // Highlight parent only if closed and active
+            ${isCashActive && !isOpen 
               ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' 
               : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
-            ${!isOpen && 'justify-center'}
+            ${!isOpen && 'md:justify-center'}
           `}
         >
           <Wallet size={20} strokeWidth={2} />
@@ -165,7 +150,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
               {isCashExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </>
           )}
-          {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Cash Management</div>}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Cash Management</div>}
         </button>
 
         {isOpen && isCashExpanded && (
@@ -197,12 +182,12 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
               ${activeTab === 'Admin' 
                 ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' 
                 : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'}
-              ${!isOpen && 'justify-center'}
+              ${!isOpen && 'md:justify-center'}
             `}
           >
             <div className="relative"><Shield size={20} strokeWidth={2} /></div>
             {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Admin Panel</span>}
-            {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
+            {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
           </button>
         )}
 
@@ -217,12 +202,12 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
               ? 'bg-gray-100 dark:bg-[#333] text-gray-900 dark:text-white font-bold' 
               : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'
             }
-            ${!isOpen && 'justify-center'}
+            ${!isOpen && 'md:justify-center'}
           `}
         >
           <div className="relative"><Settings size={20} strokeWidth={2} /></div>
           {isOpen && <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Settings</span>}
-          {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Settings</div>}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Settings</div>}
         </button>
 
         <button
@@ -232,7 +217,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
              ${activeTab === 'Bin' 
                ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' 
                : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600'}
-             ${!isOpen && 'justify-center'}
+             ${!isOpen && 'md:justify-center'}
            `}
          >
            <div className="relative">
@@ -252,12 +237,12 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
                )}
              </div>
            )}
-           {!isOpen && <div className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Recycle Bin</div>}
+           {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Recycle Bin</div>}
          </button>
 
         <button 
           onClick={toggleSidebar}
-          className="flex items-center justify-center w-full p-2 mt-1 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors"
+          className="hidden md:flex items-center justify-center w-full p-2 mt-1 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors"
         >
           {isOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
         </button>

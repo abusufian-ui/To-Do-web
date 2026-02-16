@@ -58,7 +58,9 @@ function App() {
 
   // --- APP STATE ---
   const [activeTab, setActiveTab] = useState('Welcome');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  
+  // NEW: Initialize sidebar based on screen size (closed on mobile)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [prefilledDate, setPrefilledDate] = useState('');
@@ -72,7 +74,19 @@ function App() {
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: ''
   });
 
-  // Dynamic Auth Headers to ensure token is always fresh
+  // Handle window resize for sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setIsSidebarOpen(false);
+      } else {
+        setIsSidebarOpen(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const authHeaders = useMemo(() => ({
     'Content-Type': 'application/json',
     'x-auth-token': token
@@ -95,7 +109,6 @@ function App() {
     setUser(userData);
   };
 
-  // --- IDLE CHECK ---
   const checkForInactivity = useCallback(() => {
     if (!isAuthenticated || idleTimeout === 0) return;
     const timer = setTimeout(() => {
@@ -122,7 +135,7 @@ function App() {
     };
   }, [checkForInactivity]);
 
-  // --- DATA FETCHING (Memoized with useCallback) ---
+  // --- DATA FETCHING ---
   const fetchUser = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/user`, { headers: authHeaders });
@@ -183,7 +196,6 @@ function App() {
     setCourses([...fixedCourses, ...uniCourses, ...customCourses]);
   }, [authHeaders]);
 
-  // Main Data Synchronization Effect
   useEffect(() => {
     if (isAuthenticated && token) {
       fetchUser();
@@ -385,20 +397,37 @@ function App() {
     } catch (e) { console.error("Delete course failed", e); }
   };
 
+  // NEW: Navigate logic that auto-closes sidebar on mobile
+  const handleNavigate = (tab) => {
+    setActiveTab(tab);
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+  };
+
   if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
   return (
-    <div className={`flex h-screen w-full transition-colors duration-300 ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
+    <div className={`flex h-screen w-full transition-colors duration-300 relative ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
+      
+      {/* NEW: Mobile Overlay for Sidebar */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm transition-opacity" 
+          onClick={() => setIsSidebarOpen(false)} 
+        />
+      )}
+
       <Sidebar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={handleNavigate}
         isOpen={isSidebarOpen}
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         binCount={deletedTasks.length}
         user={user}
       />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300 w-full">
         <Header
           activeTab={activeTab}
           isDarkMode={isDarkMode}
@@ -411,20 +440,21 @@ function App() {
           onLogout={handleLogout}
           tasks={tasks}
           onOpenTask={(task) => setViewTask(task)}
-          onNavigate={(tab) => setActiveTab(tab)}
+          onNavigate={handleNavigate}
+          onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
         />
         <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide">
 
           {activeTab === 'Welcome' && (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
+            <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn">
               <div className="max-w-2xl">
-                <h1 className="text-5xl font-bold mb-6 dark:text-white text-gray-900 tracking-tight">Welcome, {user?.name || 'Student'}</h1>
-                <p className="text-gray-500 dark:text-gray-400 text-lg mb-12">Select a module from the sidebar to manage your academic journey.</p>
-                <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border p-8 rounded-2xl shadow-lg relative overflow-hidden transition-colors">
+                <h1 className="text-3xl md:text-5xl font-bold mb-4 md:mb-6 dark:text-white text-gray-900 tracking-tight">Welcome, {user?.name || 'Student'}</h1>
+                <p className="text-gray-500 dark:text-gray-400 text-base md:text-lg mb-8 md:mb-12">Select a module from the sidebar to manage your academic journey.</p>
+                <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border p-6 md:p-8 rounded-2xl shadow-lg relative overflow-hidden transition-colors">
                   <Heart className="w-8 h-8 text-brand-pink mb-4 mx-auto animate-pulse" fill="#E11D48" />
-                  <p className="text-xl md:text-2xl font-medium dark:text-white text-gray-800 leading-relaxed font-serif italic">"Your mom and dad are still waiting to celebrate your success."</p>
+                  <p className="text-lg md:text-2xl font-medium dark:text-white text-gray-800 leading-relaxed font-serif italic">"Your mom and dad are still waiting to celebrate your success."</p>
                   <div className="mt-6 flex justify-center">
-                    <button onClick={() => setActiveTab('Tasks')} className="text-brand-blue hover:text-blue-600 flex items-center gap-2 transition-colors font-medium">Start working now <ArrowRight size={16} /></button>
+                    <button onClick={() => handleNavigate('Tasks')} className="text-brand-blue hover:text-blue-600 flex items-center gap-2 transition-colors font-medium">Start working now <ArrowRight size={16} /></button>
                   </div>
                 </div>
               </div>
@@ -432,13 +462,13 @@ function App() {
           )}
 
           {activeTab === 'Notes' && (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
-              <div className="max-w-md bg-white dark:bg-[#1E1E1E] border border-dashed border-gray-300 dark:border-[#333] p-12 rounded-3xl shadow-sm">
+            <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn">
+              <div className="max-w-md bg-white dark:bg-[#1E1E1E] border border-dashed border-gray-300 dark:border-[#333] p-8 md:p-12 rounded-3xl shadow-sm">
                 <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-6 rotate-3">
                   <StickyNote size={40} />
                 </div>
-                <h2 className="text-2xl font-bold dark:text-white text-gray-900 mb-3 tracking-tight">Notes Module</h2>
-                <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+                <h2 className="text-xl md:text-2xl font-bold dark:text-white text-gray-900 mb-3 tracking-tight">Notes Module</h2>
+                <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
                   We're crafting a workspace for your lecture insights and quick thoughts.
                   This section is currently <strong>under development</strong>.
                 </p>
