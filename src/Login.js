@@ -260,19 +260,19 @@ const Login = ({ onLogin }) => {
               </form>
             )}
 
-            {/* SIGN UP STEP 3: EXTENSION WIZARD (REFINED LAYOUT) */}
+            {/* SIGN UP STEP 3: EXTENSION WIZARD (Fixed Sizing) */}
             {!isLogin && signUpStep === 3 && (
               <div className="animate-fadeIn w-full flex flex-col items-center">
                 
-                {/* Wizard Header - Centered & Wide */}
-                <div className="flex items-center justify-between w-full max-w-2xl mb-12 relative">
+                {/* Wizard Header */}
+                <div className="flex items-center justify-between w-full max-w-xl mx-auto mb-8 relative">
                   {[1, 2, 3].map(step => (
-                    <div key={step} className="flex flex-col items-center relative z-10 w-24">
-                      <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl transition-all duration-500
+                    <div key={step} className="flex flex-col items-center relative z-10 w-20">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-500
                         ${wizardStep > step ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' : 
                           wizardStep === step ? 'bg-brand-blue text-white ring-4 ring-blue-500/30' : 'bg-[#252525] text-gray-500 border border-[#333]'}`}
                       >
-                        {wizardStep > step ? <CheckCircle2 size={28} /> : step}
+                        {wizardStep > step ? <CheckCircle2 size={24} /> : step}
                       </div>
                       <span className={`text-xs mt-3 font-bold uppercase tracking-widest ${wizardStep >= step ? 'text-brand-blue' : 'text-gray-600'}`}>
                         {step === 1 ? 'Install' : step === 2 ? 'Login' : 'Verify'}
@@ -280,27 +280,26 @@ const Login = ({ onLogin }) => {
                     </div>
                   ))}
                   {/* Global Progress Line */}
-                  <div className="absolute top-7 left-[10%] right-[10%] h-[2px] bg-[#252525] z-0">
+                  <div className="absolute top-6 left-[15%] right-[15%] h-[2px] bg-[#252525] z-0">
                     <div className="h-full bg-brand-blue transition-all duration-700 ease-out" style={{ width: `${((wizardStep - 1) / 2) * 100}%` }}></div>
                   </div>
                 </div>
 
-                {/* Wizard Content - Large & Professional */}
+                {/* Wizard Content */}
                 <div className="w-full max-w-3xl text-center">
                   
                   {/* Step 1: Install Instructions */}
                   {wizardStep === 1 && (
                     <div className="animate-fadeIn">
-                      <div className="aspect-video w-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] rounded-3xl border border-[#333] mb-8 flex items-center justify-center relative overflow-hidden shadow-2xl">
-                         {/* Placeholder Icon - Replace with <video src="/step1.mp4" autoPlay loop muted /> */}
-                         <Puzzle size={80} className="text-brand-blue/40 animate-bounce" />
+                      <div className="aspect-video w-full max-w-sm mx-auto bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] rounded-2xl border border-[#333] mb-6 flex items-center justify-center relative overflow-hidden shadow-xl">
+                         <Puzzle size={64} className="text-brand-blue/50" />
                       </div>
-                      <h3 className="text-3xl font-extrabold text-white mb-4">Load the Sync Extension</h3>
-                      <p className="text-gray-400 text-lg mb-10 max-w-xl mx-auto leading-relaxed">
+                      <h3 className="text-2xl font-bold text-white mb-2">Load the Sync Extension</h3>
+                      <p className="text-gray-400 text-sm mb-6 max-w-md mx-auto leading-relaxed">
                         The extension was downloaded automatically. Extract the zip, open <strong>chrome://extensions</strong>, enable Developer Mode, and click <strong>Load unpacked</strong>.
                       </p>
-                      <button onClick={() => setWizardStep(2)} className="w-full max-w-md mx-auto bg-brand-blue hover:bg-blue-600 text-white font-bold py-5 rounded-2xl flex justify-center items-center gap-3 transition-all shadow-xl shadow-blue-500/20 active:scale-[0.98] text-lg">
-                        I've loaded the extension <ArrowRight size={22} />
+                      <button onClick={() => setWizardStep(2)} className="w-full max-w-sm mx-auto bg-brand-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98]">
+                        I've loaded the extension <ArrowRight size={18} />
                       </button>
                     </div>
                   )}
@@ -308,19 +307,19 @@ const Login = ({ onLogin }) => {
                   {/* Step 2: Session Detection */}
                   {wizardStep === 2 && (
                     <div className="animate-fadeIn">
-                      <div className="aspect-video w-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] rounded-3xl border border-[#333] mb-8 flex items-center justify-center shadow-2xl">
-                         <School size={80} className="text-blue-500/40 animate-pulse" />
+                      <div className="aspect-video w-full max-w-sm mx-auto bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] rounded-2xl border border-[#333] mb-6 flex items-center justify-center shadow-xl">
+                         <School size={64} className="text-blue-500/50" />
                       </div>
-                      <h3 className="text-3xl font-extrabold text-white mb-4">Login to UCP Horizon</h3>
-                      <p className="text-gray-400 text-lg mb-10 max-w-xl mx-auto leading-relaxed">
+                      <h3 className="text-2xl font-bold text-white mb-2">Login to UCP Horizon</h3>
+                      <p className="text-gray-400 text-sm mb-6 max-w-md mx-auto leading-relaxed">
                         To securely fetch your data, the extension needs you to be logged into your university portal in another tab.
                       </p>
-                      <div className="flex gap-4 max-w-lg mx-auto">
-                        <a href="https://horizon.ucp.edu.pk/student/dashboard" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#252525] hover:bg-[#333] border border-[#444] text-white py-5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors text-lg">
-                          Open Portal <ExternalLink size={20} />
+                      <div className="flex gap-3 max-w-sm mx-auto">
+                        <a href="https://horizon.ucp.edu.pk/student/dashboard" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#252525] hover:bg-[#333] border border-[#444] text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors">
+                          Open Portal <ExternalLink size={16} />
                         </a>
-                        <button onClick={() => setWizardStep(3)} className="flex-1 bg-brand-blue hover:bg-blue-600 text-white font-bold py-5 rounded-2xl flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-500/20 text-lg">
-                          Next Step <ArrowRight size={20} />
+                        <button onClick={() => setWizardStep(3)} className="flex-1 bg-brand-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-500/20">
+                          Next Step <ArrowRight size={18} />
                         </button>
                       </div>
                     </div>
@@ -328,24 +327,24 @@ const Login = ({ onLogin }) => {
 
                   {/* Step 3: Server Verification (Polling) */}
                   {wizardStep === 3 && (
-                    <div className="animate-fadeIn py-10">
+                    <div className="animate-fadeIn py-6">
                       {verifySuccess ? (
                         <div className="animate-slideUp flex flex-col items-center">
-                          <div className="w-28 h-28 bg-green-500/20 rounded-full flex items-center justify-center mb-8 shadow-lg shadow-green-500/10 border border-green-500/20">
-                            <CheckCircle2 size={56} className="text-green-500" />
+                          <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-green-500/10 border border-green-500/20">
+                            <CheckCircle2 size={40} className="text-green-500" />
                           </div>
-                          <h3 className="text-4xl font-extrabold text-white mb-4">Portal Connected!</h3>
-                          <p className="text-green-400 text-lg">Identity verified. Your dashboard is ready.</p>
+                          <h3 className="text-2xl font-bold text-white mb-3">Portal Connected!</h3>
+                          <p className="text-green-400 text-sm">Identity verified. Your dashboard is ready.</p>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center">
-                          <div className="relative w-40 h-40 flex items-center justify-center mb-10">
+                          <div className="relative w-32 h-32 flex items-center justify-center mb-8">
                              <div className="absolute inset-0 border-4 border-brand-blue/20 rounded-full animate-ping"></div>
-                             <div className="absolute inset-6 border-4 border-brand-blue/40 rounded-full animate-spin"></div>
-                             <Search size={40} className="text-brand-blue relative z-10" />
+                             <div className="absolute inset-4 border-4 border-brand-blue/40 rounded-full animate-spin"></div>
+                             <Search size={32} className="text-brand-blue relative z-10" />
                           </div>
-                          <h3 className="text-3xl font-extrabold text-white mb-4 tracking-tight">Listening for Extension...</h3>
-                          <p className="text-gray-400 text-lg max-w-md mx-auto leading-relaxed">
+                          <h3 className="text-2xl font-bold text-white mb-3 tracking-tight">Listening for Extension...</h3>
+                          <p className="text-gray-400 text-sm max-w-sm mx-auto leading-relaxed">
                             Please open your UCP dashboard and click <strong>Force Sync</strong> in the extension. We will detect your data automatically.
                           </p>
                         </div>
@@ -354,11 +353,11 @@ const Login = ({ onLogin }) => {
                   )}
                 </div>
 
-                {/* universal skip/logout button */}
+                {/* Universal Skip/Logout button */}
                 {!verifySuccess && (
                   <button 
                     onClick={() => onLogin(tempAuth.token, tempAuth.user)}
-                    className="mt-16 text-sm text-gray-500 hover:text-white transition-colors font-medium underline underline-offset-4 decoration-gray-700"
+                    className="mt-6 text-sm text-gray-500 hover:text-white transition-colors font-medium underline underline-offset-4 decoration-gray-700"
                   >
                     I'll complete this later, take me to my dashboard.
                   </button>
