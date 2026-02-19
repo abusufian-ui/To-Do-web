@@ -3,7 +3,7 @@ import {
   CheckSquare, Calendar, StickyNote, BarChart3, Settings, 
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History,
-  GraduationCap, Shield
+  GraduationCap, Shield, Clock 
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
@@ -18,6 +18,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
   ];
 
   const academicsSubItems = [
+    { id: 'Timetable', label: 'Timetable', icon: Clock }, // <-- NEW TIMETABLE TAB
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: History },
   ];
@@ -41,7 +42,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     if (isCashExpanded) setIsCashExpanded(false);
   };
 
-  const isAcademicsActive = ['Grade Book', 'History'].includes(activeTab);
+  const isAcademicsActive = ['Timetable', 'Grade Book', 'History'].includes(activeTab);
   const isCashActive = activeTab.startsWith('Cash');
 
   return (

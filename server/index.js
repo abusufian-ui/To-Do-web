@@ -49,6 +49,7 @@ const Grade = require('./models/Grade');
 const ResultHistory = require('./models/ResultHistory');
 const StudentStats = require('./models/StudentStats');
 const { Transaction, Budget } = require('./models/Transaction');
+const Timetable = require('./models/TimeTable'); // <-- NEW IMPORT
 
 // --- NEW: COURSE MODEL (For Manual/General Courses) ---
 const courseSchema = new mongoose.Schema({
@@ -155,7 +156,8 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
       StudentStats.deleteMany({ userId }),
       Task.deleteMany({ userId }),
       Transaction.deleteMany({ userId }),
-      Budget.deleteMany({ userId })
+      Budget.deleteMany({ userId }),
+      Timetable.deleteMany({ userId }) // <-- CLEANUP ADDED
     ]);
     res.json({ message: "User deleted permanently." });
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -303,7 +305,7 @@ app.put('/api/user/password', auth, async (req, res) => {
 });
 
 app.post('/api/user/link-portal', auth, async (req, res) => {
-  const { portalId } = req.body; // No longer expecting portalPassword!
+  const { portalId } = req.body; 
   try {
     await User.findByIdAndUpdate(req.user.id, {
       portalId: portalId,
@@ -321,12 +323,13 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
       portalId: null,
       portalPassword: null,
       isPortalConnected: false,
-      lastSyncAt: null // Clear sync timestamp on disconnect
+      lastSyncAt: null 
     });
     await Promise.all([
       Grade.deleteMany({ userId: req.user.id }),
       ResultHistory.deleteMany({ userId: req.user.id }),
-      StudentStats.deleteMany({ userId: req.user.id })
+      StudentStats.deleteMany({ userId: req.user.id }),
+      Timetable.deleteMany({ userId: req.user.id }) // <-- CLEANUP ADDED
     ]);
     res.json({ success: true, message: "Portal account removed." });
   } catch (error) { res.status(500).json({ message: "Failed to unlink account." }); }
@@ -348,8 +351,8 @@ app.post('/api/sync-grades', auth, async (req, res) => {
 // --- NEW EXTENSION SYNC ROUTE ---
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
-    // We now expect the scraper to send the portalId it found on the page
-    const { gradesData, historyData, statsData, portalId } = req.body; 
+    // We now expect timetableData in the payload
+    const { gradesData, historyData, statsData, timetableData, portalId } = req.body; 
     const userId = req.user.id;
 
     // Fetch the user to check their current linked status
@@ -361,13 +364,11 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     }
 
     if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
-        // The ID on the screen doesn't match the ID in the database! REJECT.
         return res.status(403).json({ 
             message: `Mismatch! Linked to ${user.portalId}, but found ${portalId}. Please disconnect in settings first.` 
         });
     }
 
-    // If the user has no portalId linked yet, lock it to this new one automatically!
     if (!user.portalId) {
         user.portalId = portalId.toUpperCase();
     }
@@ -405,10 +406,21 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       );
     }
     
-    // --- 5. UPDATE USER STATUS ---
+    // --- 5. SAVE TIMETABLE ---
+    if (timetableData && timetableData.length > 0) {
+      await Timetable.deleteMany({ userId }); // Delete the old schedule
+      for (const classItem of timetableData) {
+        // We drop the fake 'id' created by the scraper so Mongo can generate its own _id
+        const { id, ...classData } = classItem;
+        const newClass = new Timetable({ ...classData, userId, lastUpdated: new Date() });
+        await newClass.save();
+      }
+    }
+
+    // --- 6. UPDATE USER STATUS ---
     user.isPortalConnected = true;
     user.lastSyncAt = new Date();
-    await user.save(); // Save the new timestamp and portalId lock
+    await user.save(); 
 
     res.json({ message: 'Sync complete via Extension!' });
   } catch (error) { 
@@ -417,6 +429,22 @@ app.post('/api/extension-sync', auth, async (req, res) => {
 });
 
 // --- STANDARD DATA GETTERS ---
+
+// NEW: Fetch the timetable for the logged-in user
+app.get('/api/timetable', auth, async (req, res) => {
+  try {
+    const timetable = await Timetable.find({ userId: req.user.id });
+    
+    // We map _id to id so your React frontend loop works perfectly
+    const formattedTimetable = timetable.map(item => ({
+      ...item.toObject(),
+      id: item._id 
+    }));
+    
+    res.json(formattedTimetable);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
 app.get('/api/student-stats', auth, async (req, res) => {
   try {
     const stats = await StudentStats.findOne({ userId: req.user.id });

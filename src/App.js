@@ -15,6 +15,7 @@ import { Heart, ArrowRight, StickyNote } from 'lucide-react';
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
 import MyProfile from './MyProfile';
+import Timetable from './TimeTable'; // <-- NEW IMPORT
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
@@ -480,8 +481,10 @@ function App() {
             </div>
           )}
 
+          {/* RENDERING COMPONENTS BASED ON ACTIVE TAB */}
           {activeTab === 'Tasks' && <TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} />}
           {activeTab === 'Calendar' && <Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} />}
+          {activeTab === 'Timetable' && <Timetable />} {/* <-- NEW COMPONENT CALL */}
           {activeTab === 'Grade Book' && <GradeBook />}
           {activeTab === 'History' && <ResultHistory />}
           {activeTab.startsWith('Cash-') && <CashManager activeTab={activeTab} />}
