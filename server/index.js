@@ -49,7 +49,7 @@ const Grade = require('./models/Grade');
 const ResultHistory = require('./models/ResultHistory');
 const StudentStats = require('./models/StudentStats');
 const { Transaction, Budget } = require('./models/Transaction');
-const Timetable = require('./models/Timetable');
+const Timetable = require('./models/TimeTable');
 
 // --- NEW: COURSE MODEL (For Manual/General Courses) ---
 const courseSchema = new mongoose.Schema({
