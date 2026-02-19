@@ -13,4 +13,4 @@ const timetableSchema = new mongoose.Schema({
   lastUpdated: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('Timetable', timetableSchema);
+module.exports = mongoose.model('TimetableModel', timetableSchema);  
