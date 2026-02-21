@@ -1,7 +1,3 @@
-//if (process.env.NODE_ENV !== 'production') {
-//    require('dotenv').config();
-//  }
-
 require('dotenv').config();
 
 const express = require('express');
@@ -50,6 +46,7 @@ const ResultHistory = require('./models/ResultHistory');
 const StudentStats = require('./models/StudentStats');
 const { Transaction, Budget } = require('./models/Transaction');
 const Timetable = require('./models/TimetableModel');
+const Habit = require('./models/Habit');
 
 // --- NEW: COURSE MODEL (For Manual/General Courses) ---
 const courseSchema = new mongoose.Schema({
@@ -72,7 +69,8 @@ const app = express();
 // --- SECURE CORS CONFIGURATION ---
 app.use(cors({
   origin: [
-    'http://localhost:3000', 
+    'http://localhost:3000',
+    'http://localhost:3001',
     'https://myportalucp.online',
     'https://horizon.ucp.edu.pk' 
   ],
@@ -120,7 +118,7 @@ app.get('/api/admin/system-stats', async (req, res) => {
   }
 });
 
-// 2. GET USERS (Updated to remove password decryption and send lastSyncAt)
+// 2. GET USERS 
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
@@ -132,7 +130,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         isAdmin: user.isAdmin,
         isPortalConnected: user.isPortalConnected,
         portalId: user.portalId,
-        lastSyncAt: user.lastSyncAt, // Send sync timestamp to Admin panel
+        lastSyncAt: user.lastSyncAt, 
         createdAt: user.createdAt
       };
     });
@@ -157,15 +155,66 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
       Task.deleteMany({ userId }),
       Transaction.deleteMany({ userId }),
       Budget.deleteMany({ userId }),
-      Timetable.deleteMany({ userId }) // <-- CLEANUP ADDED
+      Timetable.deleteMany({ userId }),
+      Habit.deleteMany({ userId }) 
     ]);
     res.json({ message: "User deleted permanently." });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- NEW ROUTES: GENERAL COURSES MANAGEMENT ---
+// --- ADMIN SECURITY (PIN) ROUTES ---
+app.post('/api/admin/verify-pin', auth, adminAuth, async (req, res) => {
+  try {
+    const { pin } = req.body;
+    const user = await User.findById(req.user.id);
+    const actualPin = user.adminPin || '0000'; // Fallback to 0000 if not set
+    
+    if (pin === actualPin) return res.json({ success: true });
+    res.status(400).json({ message: "Invalid Security PIN" });
+  } catch (error) { res.status(500).json({ message: "Server error" }); }
+});
 
-// 1. GET Custom Courses
+app.post('/api/admin/request-pin-otp', auth, adminAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    
+    await OTP.findOneAndUpdate({ email: user.email }, { code }, { upsert: true, new: true });
+    
+    await resend.emails.send({
+      from: 'MyPortal <otp@myportalucp.online>',
+      to: user.email,
+      subject: 'Admin Security Alert: PIN Change OTP',
+      html: `
+        <div style="font-family: sans-serif; padding: 20px;">
+          <h2>Security Action Required</h2>
+          <p>You requested to change your Admin Command Center PIN.</p>
+          <p>Your verification code is: <strong style="font-size: 24px; color: #dc2626;">${code}</strong></p>
+          <p>If you did not request this, please ignore this email.</p>
+        </div>
+      `
+    });
+    res.json({ message: "OTP sent to admin email" });
+  } catch (error) { res.status(500).json({ message: "Server error" }); }
+});
+
+app.put('/api/admin/change-pin', auth, adminAuth, async (req, res) => {
+  try {
+    const { otp, newPin } = req.body;
+    const user = await User.findById(req.user.id);
+    
+    const validOTP = await OTP.findOne({ email: user.email, code: otp });
+    if (!validOTP) return res.status(400).json({ message: "Invalid or expired OTP." });
+    
+    user.adminPin = newPin;
+    await user.save();
+    await OTP.deleteOne({ email: user.email }); // Clear OTP after success
+    
+    res.json({ success: true, message: "Security PIN successfully updated." });
+  } catch (error) { res.status(500).json({ message: "Server error" }); }
+});
+
+// --- COURSES MANAGEMENT ---
 app.get('/api/courses', auth, async (req, res) => {
   try {
     const courses = await Course.find({ userId: req.user.id }).sort({ createdAt: 1 });
@@ -173,13 +222,11 @@ app.get('/api/courses', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error fetching courses" }); }
 });
 
-// 2. ADD Custom Course
 app.post('/api/courses', auth, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ message: "Name required" });
 
-    // Check if exists
     const exists = await Course.findOne({ userId: req.user.id, name });
     if (exists) return res.status(400).json({ message: "Course already exists" });
 
@@ -189,7 +236,6 @@ app.post('/api/courses', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error adding course" }); }
 });
 
-// 3. DELETE Custom Course
 app.delete('/api/courses/:id', auth, async (req, res) => {
   try {
     await Course.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
@@ -202,19 +248,12 @@ app.delete('/api/courses/:id', auth, async (req, res) => {
 app.post('/api/send-otp', async (req, res) => {
   const { email } = req.body;
   try {
-    console.log(`[OTP] Request received for: ${email}`);
-    
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "User already registered" });
-    }
+    if (existingUser) return res.status(400).json({ message: "User already registered" });
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
     
-    console.log(`[OTP] Sending email via Resend to: ${email}`);
-
-    // Send the email using Resend's API
     const { data, error } = await resend.emails.send({
       from: 'MyPortal <otp@myportalucp.online>', 
       to: email,
@@ -222,18 +261,10 @@ app.post('/api/send-otp', async (req, res) => {
       html: `<p>Your verification code is: <strong>${code}</strong></p>`
     });
 
-    if (error) {
-      console.error("❌ RESEND API ERROR:", error);
-      return res.status(500).json({ message: "Failed to send email" });
-    }
-
-    console.log("✅ Email sent successfully! ID:", data.id);
+    if (error) return res.status(500).json({ message: "Failed to send email" });
     res.json({ message: "OTP sent successfully" });
 
-  } catch (error) { 
-    console.error("❌ SERVER ERROR:", error); 
-    res.status(500).json({ message: "Server Error" }); 
-  }
+  } catch (error) { res.status(500).json({ message: "Server Error" }); }
 });
 
 app.post('/api/register', async (req, res) => {
@@ -307,29 +338,19 @@ app.put('/api/user/password', auth, async (req, res) => {
 app.post('/api/user/link-portal', auth, async (req, res) => {
   const { portalId } = req.body; 
   try {
-    await User.findByIdAndUpdate(req.user.id, {
-      portalId: portalId,
-      isPortalConnected: true
-    });
+    await User.findByIdAndUpdate(req.user.id, { portalId: portalId, isPortalConnected: true });
     res.json({ success: true, message: "Account linked. Please use the Chrome Extension to sync data." });
-  } catch (error) { 
-    res.status(500).json({ message: "Failed to link account." }); 
-  }
+  } catch (error) { res.status(500).json({ message: "Failed to link account." }); }
 });
 
 app.post('/api/user/unlink-portal', auth, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, {
-      portalId: null,
-      portalPassword: null,
-      isPortalConnected: false,
-      lastSyncAt: null 
-    });
+    await User.findByIdAndUpdate(req.user.id, { portalId: null, portalPassword: null, isPortalConnected: false, lastSyncAt: null });
     await Promise.all([
       Grade.deleteMany({ userId: req.user.id }),
       ResultHistory.deleteMany({ userId: req.user.id }),
       StudentStats.deleteMany({ userId: req.user.id }),
-      Timetable.deleteMany({ userId: req.user.id }) // <-- CLEANUP ADDED
+      Timetable.deleteMany({ userId: req.user.id }) 
     ]);
     res.json({ success: true, message: "Portal account removed." });
   } catch (error) { res.status(500).json({ message: "Failed to unlink account." }); }
@@ -343,105 +364,65 @@ app.get('/api/user/portal-status', auth, async (req, res) => {
 });
 
 app.post('/api/sync-grades', auth, async (req, res) => {
-  try {
-    res.json({ message: 'Sync is now handled via the Chrome Extension.' });
-  } catch (error) { res.status(500).json({ message: error.message || 'Internal Server Error' }); }
+  try { res.json({ message: 'Sync is now handled via the Chrome Extension.' }); } 
+  catch (error) { res.status(500).json({ message: error.message || 'Internal Server Error' }); }
 });
 
-// --- NEW EXTENSION SYNC ROUTE ---
+// --- EXTENSION SYNC ROUTE ---
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
-    // We now expect timetableData in the payload
     const { gradesData, historyData, statsData, timetableData, portalId } = req.body; 
     const userId = req.user.id;
-
-    // Fetch the user to check their current linked status
     const user = await User.findById(userId);
 
-    // --- 1. STRICT IDENTITY LOCK CHECK ---
-    if (!portalId) {
-        return res.status(400).json({ message: "Could not detect Student ID from the UCP portal." });
-    }
+    if (!portalId) return res.status(400).json({ message: "Could not detect Student ID from the UCP portal." });
 
     if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
-        return res.status(403).json({ 
-            message: `Mismatch! Linked to ${user.portalId}, but found ${portalId}. Please disconnect in settings first.` 
-        });
+        return res.status(403).json({ message: `Mismatch! Linked to ${user.portalId}, but found ${portalId}. Please disconnect in settings first.` });
     }
 
-    if (!user.portalId) {
-        user.portalId = portalId.toUpperCase();
-    }
+    if (!user.portalId) user.portalId = portalId.toUpperCase();
 
-    // --- 2. SAVE GRADES ---
     if (gradesData && gradesData.length > 0) {
       await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
-        await Grade.findOneAndUpdate(
-          { courseUrl: grade.courseUrl, userId },
-          { ...grade, userId, lastUpdated: new Date() },
-          { upsert: true, new: true }
-        );
+        await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true, new: true });
       }
     }
 
-    // --- 3. SAVE HISTORY ---
     if (historyData && historyData.length > 0) {
       await ResultHistory.deleteMany({ userId });
       for (const sem of historyData) {
-        await ResultHistory.findOneAndUpdate(
-          { term: sem.term, userId },
-          { ...sem, userId, lastUpdated: new Date() },
-          { upsert: true }
-        );
+        await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true });
       }
     }
 
-    // --- 4. SAVE STATS ---
     if (statsData && statsData.cgpa) {
-      await StudentStats.findOneAndUpdate(
-        { userId },
-        { ...statsData, userId, lastUpdated: new Date() },
-        { upsert: true }
-      );
+      await StudentStats.findOneAndUpdate({ userId }, { ...statsData, userId, lastUpdated: new Date() }, { upsert: true });
     }
     
-    // --- 5. SAVE TIMETABLE ---
     if (timetableData && timetableData.length > 0) {
-      await Timetable.deleteMany({ userId }); // Delete the old schedule
+      await Timetable.deleteMany({ userId }); 
       for (const classItem of timetableData) {
-        // We drop the fake 'id' created by the scraper so Mongo can generate its own _id
         const { id, ...classData } = classItem;
         const newClass = new Timetable({ ...classData, userId, lastUpdated: new Date() });
         await newClass.save();
       }
     }
 
-    // --- 6. UPDATE USER STATUS ---
     user.isPortalConnected = true;
     user.lastSyncAt = new Date();
     await user.save(); 
 
     res.json({ message: 'Sync complete via Extension!' });
-  } catch (error) { 
-    res.status(500).json({ message: error.message || 'Internal Server Error' }); 
-  }
+  } catch (error) { res.status(500).json({ message: error.message || 'Internal Server Error' }); }
 });
 
 // --- STANDARD DATA GETTERS ---
-
-// NEW: Fetch the timetable for the logged-in user
 app.get('/api/timetable', auth, async (req, res) => {
   try {
     const timetable = await Timetable.find({ userId: req.user.id });
-    
-    // We map _id to id so your React frontend loop works perfectly
-    const formattedTimetable = timetable.map(item => ({
-      ...item.toObject(),
-      id: item._id 
-    }));
-    
-    res.json(formattedTimetable);
+    res.json(timetable.map(item => ({ ...item.toObject(), id: item._id })));
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
@@ -466,6 +447,12 @@ app.get('/api/results-history', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+
+// ==========================================
+// UNIVERSAL ENTITY ROUTES (Tasks, Transactions, Habits)
+// ==========================================
+
+// --- TASKS ---
 app.get('/api/tasks', auth, async (req, res) => {
   try {
     const tasks = await Task.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
@@ -475,8 +462,7 @@ app.get('/api/tasks', auth, async (req, res) => {
 
 app.post('/api/tasks', auth, async (req, res) => {
   try {
-    const newTask = new Task({ ...req.body, userId: req.user.id });
-    const savedTask = await newTask.save();
+    const savedTask = await new Task({ ...req.body, userId: req.user.id }).save();
     res.json(savedTask);
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
@@ -488,6 +474,7 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
+// Soft Delete Task
 app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
@@ -495,20 +482,7 @@ app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-app.delete('/api/tasks/:id', auth, async (req, res) => {
-  try {
-    await Task.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    res.json({ message: "Deleted" });
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.get('/api/bin', auth, async (req, res) => {
-  try {
-    const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).sort({ deletedAt: -1 });
-    res.json(tasks);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
+// Restore Task
 app.put('/api/tasks/:id/restore', auth, async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
@@ -516,35 +490,48 @@ app.put('/api/tasks/:id/restore', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-app.delete('/api/bin/empty', auth, async (req, res) => {
+// Hard Delete Task
+app.delete('/api/tasks/:id', auth, async (req, res) => {
   try {
-    await Task.deleteMany({ userId: req.user.id, isDeleted: true });
-    res.json({ message: "Emptied" });
+    await Task.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    res.json({ message: "Deleted" });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-app.put('/api/bin/restore-all', auth, async (req, res) => {
-  try {
-    await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
-    res.json({ message: "Restored" });
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
 
+// --- TRANSACTIONS ---
 app.get('/api/transactions', auth, async (req, res) => {
   try {
-    const transactions = await Transaction.find({ userId: req.user.id }).sort({ date: -1, createdAt: -1 });
+    // Only fetch non-deleted transactions
+    const transactions = await Transaction.find({ userId: req.user.id, isDeleted: false }).sort({ date: -1, createdAt: -1 });
     res.json(transactions);
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
 app.post('/api/transactions', auth, async (req, res) => {
   try {
-    const newT = new Transaction({ ...req.body, userId: req.user.id });
-    const savedT = await newT.save();
+    const savedT = await new Transaction({ ...req.body, userId: req.user.id }).save();
     res.json(savedT);
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
+// Soft Delete Transaction
+app.put('/api/transactions/:id/delete', auth, async (req, res) => {
+  try {
+    const transaction = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+    res.json(transaction);
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+// Restore Transaction
+app.put('/api/transactions/:id/restore', auth, async (req, res) => {
+  try {
+    const transaction = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
+    res.json(transaction);
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+// Hard Delete Transaction
 app.delete('/api/transactions/:id', auth, async (req, res) => {
   try {
     await Transaction.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
@@ -552,6 +539,8 @@ app.delete('/api/transactions/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
+
+// --- BUDGETS ---
 app.get('/api/budgets', auth, async (req, res) => {
   try {
     const budgets = await Budget.find({ userId: req.user.id });
@@ -565,6 +554,113 @@ app.post('/api/budgets', auth, async (req, res) => {
     const budget = await Budget.findOneAndUpdate({ category, userId: req.user.id }, { limit, userId: req.user.id }, { upsert: true, new: true });
     res.json(budget);
   } catch (error) { res.status(500).json({ message: "Error" }); }
+});
+
+
+// --- HABITS ---
+app.get('/api/habits', auth, async (req, res) => {
+  try {
+    // Only fetch non-deleted habits
+    const habits = await Habit.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
+    res.json(habits);
+  } catch (error) { res.status(500).json({ message: "Error fetching habits" }); }
+});
+
+app.post('/api/habits', auth, async (req, res) => {
+  try {
+    const savedHabit = await new Habit({ ...req.body, userId: req.user.id, startDate: new Date() }).save();
+    res.json(savedHabit);
+  } catch (error) { res.status(500).json({ message: "Error creating habit" }); }
+});
+
+// Soft Delete Habit
+app.put('/api/habits/:id/delete', auth, async (req, res) => {
+  try {
+    const habit = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+    res.json(habit);
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+// Restore Habit
+app.put('/api/habits/:id/restore', auth, async (req, res) => {
+  try {
+    const habit = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
+    res.json(habit);
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+// Hard Delete Habit
+app.delete('/api/habits/:id', auth, async (req, res) => {
+  try {
+    await Habit.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ message: "Error deleting habit" }); }
+});
+
+app.put('/api/habits/:id/reset', auth, async (req, res) => {
+  try {
+    const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
+    habit.startDate = new Date(); 
+    await habit.save();
+    res.json(habit);
+  } catch (error) { res.status(500).json({ message: "Error resetting habit" }); }
+});
+
+app.put('/api/habits/:id/cheat', auth, async (req, res) => {
+  try {
+    const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
+    habit.cheatDays.push(new Date());
+    await habit.save();
+    res.json(habit);
+  } catch (error) { res.status(500).json({ message: "Error using allowance" }); }
+});
+
+app.put('/api/habits/:id/checkin', auth, async (req, res) => {
+  try {
+    const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
+    const today = new Date().setHours(0,0,0,0);
+    if (!habit.checkIns.some(d => new Date(d).setHours(0,0,0,0) === today)) {
+      habit.checkIns.push(new Date());
+      if (habit.checkIns.length > habit.longestStreak) {
+        habit.longestStreak = habit.checkIns.length;
+      }
+      await habit.save();
+    }
+    res.json(habit);
+  } catch (error) { res.status(500).json({ message: "Error checking in" }); }
+});
+
+
+// ==========================================
+// UNIVERSAL BIN ROUTES
+// ==========================================
+app.get('/api/bin', auth, async (req, res) => {
+  try {
+    // Gather soft-deleted items across all collections using .lean() for faster JSON serialization
+    const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).lean();
+    const transactions = await Transaction.find({ userId: req.user.id, isDeleted: true }).lean();
+    const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
+    
+    res.json({ tasks, transactions, habits });
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+app.put('/api/bin/restore-all', auth, async (req, res) => {
+  try {
+    await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
+    await Transaction.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
+    await Habit.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
+    res.json({ message: "Restored" });
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+app.delete('/api/bin/empty', auth, async (req, res) => {
+  try {
+    await Task.deleteMany({ userId: req.user.id, isDeleted: true });
+    await Transaction.deleteMany({ userId: req.user.id, isDeleted: true });
+    await Habit.deleteMany({ userId: req.user.id, isDeleted: true });
+    res.json({ message: "Emptied" });
+  } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
 app.get('/', (req, res) => {

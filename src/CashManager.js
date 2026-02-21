@@ -7,9 +7,7 @@ import {
   BarChart3, SlidersHorizontal, LayoutGrid, RotateCcw
 } from 'lucide-react';
 
-
-
-const API_BASE = process.env.REACT_APP_API_URL || '';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // --- 1. CONFIG & HELPERS ---
 
@@ -128,7 +126,7 @@ const TransactionRow = ({ t, onDelete }) => {
 const CashManager = ({ activeTab }) => {
   const [transactions, setTransactions] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showFilterModal, setShowFilterModal] = useState(false); // New State for Filter Modal
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   // Dates
   const currentMonthISO = new Date().toISOString().slice(0, 7);
@@ -205,9 +203,13 @@ const CashManager = ({ activeTab }) => {
     } catch (error) { console.error("Error adding", error); }
   };
 
+  // --- UPDATED FOR SOFT DELETE ---
   const handleDelete = async (id) => {
     try {
-      await fetch(`${API_BASE}/api/transactions/${id}`, { method: 'DELETE', headers: { 'x-auth-token': token } });
+      await fetch(`${API_BASE}/api/transactions/${id}/delete`, { 
+        method: 'PUT', 
+        headers: { 'x-auth-token': token } 
+      });
       setTransactions(transactions.filter(t => t.id !== id));
     } catch (error) { console.error("Error deleting", error); }
   };
@@ -266,7 +268,6 @@ const CashManager = ({ activeTab }) => {
 
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-  const balance = totalIncome - totalExpense;
 
   // --- RENDERERS ---
 
@@ -321,13 +322,11 @@ const CashManager = ({ activeTab }) => {
       return 0;
     });
 
-    // Check if any filter is active
     const activeFiltersCount = (filterType !== 'All' ? 1 : 0) + (filterCategory !== 'All' ? 1 : 0) + (sortOrder !== 'Newest' ? 1 : 0);
 
     return (
       <div className="animate-fadeIn space-y-6">
         <div className="flex flex-col gap-4">
-          {/* Search & Actions Bar */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="relative w-full md:w-64">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
@@ -341,7 +340,6 @@ const CashManager = ({ activeTab }) => {
             </div>
 
             <div className="flex gap-3 w-full md:w-auto">
-              {/* NEW FILTER BUTTON */}
               <button
                 onClick={() => setShowFilterModal(true)}
                 className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-all ${activeFiltersCount > 0 ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-blue border-blue-200 dark:border-blue-800' : 'bg-white dark:bg-[#1E1E1E] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-[#333] hover:bg-gray-50 dark:hover:bg-[#252525]'}`}
@@ -358,7 +356,6 @@ const CashManager = ({ activeTab }) => {
           </div>
         </div>
 
-        {/* List */}
         <div className="space-y-3">
           {processedDocs.map(t => <TransactionRow key={t.id} t={t} onDelete={handleDelete} />)}
           {processedDocs.length === 0 && (
@@ -578,7 +575,7 @@ const CashManager = ({ activeTab }) => {
         </div>
       )}
 
-      {/* --- NEW FILTER MODAL --- */}
+      {/* --- FILTER MODAL --- */}
       {showFilterModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden animate-slideUp flex flex-col max-h-[80vh]">

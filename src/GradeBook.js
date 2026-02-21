@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Book, Clock, ChevronDown, ChevronUp,
+  Clock, ChevronDown, ChevronUp,
   GraduationCap, TrendingUp, AlertCircle, BookOpen
 } from 'lucide-react';
+import UCPLogo from './UCPLogo';
 
-const API_BASE = process.env.REACT_APP_API_URL || '';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // Helper to check if score is below average
 const isBelowAverage = (obtained, average) => {
@@ -124,9 +125,8 @@ const GradeBook = () => {
               {/* Course Header */}
               <div className="p-5 border-b border-gray-100 dark:border-[#2C2C2C] bg-gray-50/50 dark:bg-[#252525] flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-white dark:bg-[#333] border border-gray-200 dark:border-[#444] flex items-center justify-center text-brand-blue shadow-sm">
-                    <Book size={24} />
-                  </div>
+                  {/* UCP Logo without the outer box */}
+                  <UCPLogo className="w-10 h-10 text-brand-blue shrink-0" />
                   <div>
                     <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">{course.courseName}</h3>
                     <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Users, Activity, Search, Trash2,
-  Shield, HardDrive, Cpu, Cloud, AlertTriangle, X
+  Shield, HardDrive, Cpu, AlertTriangle, X,
+  ShieldAlert, Lock, ShieldCheck, Mail, KeyRound, CheckCircle2
 } from 'lucide-react';
 
-const API_BASE = process.env.REACT_APP_API_URL || '';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // --- COMPONENTS ---
 
@@ -56,12 +57,10 @@ const StorageBar = ({ label, used, total, color, percentage }) => {
   );
 };
 
-// 3. User Row Component (Updated for Extension Tracking)
+// 3. User Row Component
 const UserRow = ({ u, onInitiateDelete }) => {
   return (
     <tr className="hover:bg-gray-50 dark:hover:bg-[#1c1c1f] transition-colors group border-b border-gray-100 dark:border-[#27272a]">
-
-      {/* USER IDENTITY */}
       <td className="px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-900 flex items-center justify-center text-gray-700 dark:text-white font-bold text-lg shadow-sm">
@@ -76,8 +75,6 @@ const UserRow = ({ u, onInitiateDelete }) => {
           </div>
         </div>
       </td>
-
-      {/* PORTAL STATUS */}
       <td className="px-6 py-4">
         {u.isPortalConnected ? (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-500 border border-emerald-200 dark:border-emerald-900/30">
@@ -89,8 +86,6 @@ const UserRow = ({ u, onInitiateDelete }) => {
           </span>
         )}
       </td>
-
-      {/* EXTENSION SYNC ACTIVITY */}
       <td className="px-6 py-4">
         {u.isPortalConnected ? (
             <div className="flex flex-col">
@@ -107,8 +102,6 @@ const UserRow = ({ u, onInitiateDelete }) => {
             <span className="text-sm text-gray-500 italic">No data synced</span>
         )}
       </td>
-
-      {/* ACTIONS */}
       <td className="px-6 py-4 text-right">
         {u.email === "ranasuffyan9@gmail.com" ? (
           <span className="text-xs font-bold text-gray-400 dark:text-gray-600 flex items-center justify-end gap-1">
@@ -124,7 +117,6 @@ const UserRow = ({ u, onInitiateDelete }) => {
           </button>
         )}
       </td>
-
     </tr>
   );
 };
@@ -140,23 +132,47 @@ const formatBytes = (bytes) => {
 
 // --- MAIN DASHBOARD ---
 const AdminDashboard = () => {
+  const token = localStorage.getItem('token');
+
+  // --- SECURITY PIN STATE ---
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState(['', '', '', '']);
+  const [pinError, setPinError] = useState(false);
+  const [isPinLoading, setIsPinLoading] = useState(false);
+  
+  const [changePinModal, setChangePinModal] = useState({ isOpen: false, step: 'otp' }); 
+  
+  const [otpInput, setOtpInput] = useState(['', '', '', '', '', '']);
+  const [newPin, setNewPin] = useState(['', '', '', '']);
+  const [modalError, setModalError] = useState('');
+
+  const inputRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
+  const newPinRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
+  const otpRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
+
+  // --- DASHBOARD STATE ---
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-
-  // Modal State
   const [userToDelete, setUserToDelete] = useState(null);
 
-  // Stats State
   const [cpuData, setCpuData] = useState(new Array(20).fill(0));
   const [memoryData, setMemoryData] = useState(new Array(20).fill(0));
   const [realDbSize, setRealDbSize] = useState(0);
   const [totalMemory, setTotalMemory] = useState(1);
   const [systemHealth, setSystemHealth] = useState('Syncing...');
 
+  useEffect(() => {
+    if (isUnlocked) {
+      fetchUsers();
+      fetchRealStats(); 
+      const interval = setInterval(fetchRealStats, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [isUnlocked]);
+
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/api/admin/users`, { headers: { 'x-auth-token': token } });
       const data = await res.json();
       if (Array.isArray(data)) setUsers(data);
@@ -179,29 +195,206 @@ const AdminDashboard = () => {
     } catch (e) { setSystemHealth('Offline'); }
   };
 
-  useEffect(() => {
-    fetchUsers();
-    const interval = setInterval(fetchRealStats, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
   const executeDelete = async () => {
     if (!userToDelete) return;
     try {
-      const token = localStorage.getItem('token');
       await fetch(`${API_BASE}/api/admin/users/${userToDelete}`, {
         method: 'DELETE',
         headers: { 'x-auth-token': token }
       });
       setUsers(users.filter(u => u._id !== userToDelete));
-      setUserToDelete(null); // Close modal
+      setUserToDelete(null); 
     } catch (error) {
       alert("Failed to delete user");
     }
   };
 
-  const filteredUsers = users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
+  // --- PIN LOGIC (4 Digits) ---
+  const handlePinChange = (index, value, refs, stateSetter, stateValue) => {
+    if (!/^\d*$/.test(value)) return; 
+    const newPinState = [...stateValue];
+    newPinState[index] = value;
+    stateSetter(newPinState);
+    setPinError(false);
+    setModalError('');
 
+    if (value && index < 3) {
+      refs[index + 1].current.focus();
+    }
+  };
+
+  const handlePinKeyDown = (index, e, refs, stateSetter, stateValue) => {
+    if (e.key === 'Backspace' && !stateValue[index] && index > 0) {
+      refs[index - 1].current.focus();
+    }
+    if (e.key === 'Enter' && index === 3 && stateValue.every(v => v !== '')) {
+      if (refs === inputRefs) verifyPin(stateValue.join(''));
+    }
+  };
+
+  const verifyPin = async (fullPin) => {
+    setIsPinLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/verify-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({ pin: fullPin })
+      });
+      if (res.ok) {
+        setIsUnlocked(true);
+      } else {
+        setPinError(true);
+        setPinInput(['', '', '', '']);
+        inputRefs[0].current.focus();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsPinLoading(false);
+    }
+  };
+
+  // --- OTP LOGIC (6 Digits) ---
+  const handleOtpChange = (index, value) => {
+    if (!/^\d*$/.test(value)) return;
+    const newOtp = [...otpInput];
+    newOtp[index] = value;
+    setOtpInput(newOtp);
+    setModalError('');
+
+    if (value && index < 5) {
+      otpRefs[index + 1].current.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpInput[index] && index > 0) {
+      otpRefs[index - 1].current.focus();
+    }
+  };
+
+  const handleOtpPaste = (e) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').slice(0, 6).replace(/\D/g, '');
+    if (pastedData) {
+      const newOtp = [...otpInput];
+      for (let i = 0; i < pastedData.length; i++) {
+        if (i < 6) newOtp[i] = pastedData[i];
+      }
+      setOtpInput(newOtp);
+      setModalError('');
+      const nextFocusIndex = Math.min(pastedData.length, 5);
+      if (otpRefs[nextFocusIndex]) otpRefs[nextFocusIndex].current.focus();
+    }
+  };
+
+  // --- CHANGE PIN FLOW ---
+  const requestChangePin = async () => {
+    setModalError('');
+    setOtpInput(['', '', '', '', '', '']);
+    setNewPin(['', '', '', '']);
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/request-pin-otp`, { method: 'POST', headers: { 'x-auth-token': token } });
+      if (res.ok) {
+        setChangePinModal({ isOpen: true, step: 'otp' });
+      } else {
+        setModalError('Failed to send OTP.');
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const verifyOtpAndProceed = async (e) => {
+    e.preventDefault();
+    if (otpInput.join('').length < 6) return setModalError("Please enter the full 6-digit OTP.");
+    setModalError('');
+    setChangePinModal({ isOpen: true, step: 'new_pin' });
+  };
+
+  const confirmNewPin = async () => {
+    const fullNewPin = newPin.join('');
+    if (fullNewPin.length < 4) return setModalError("Please enter all 4 digits.");
+    
+    setIsPinLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/change-pin`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({ otp: otpInput.join(''), newPin: fullNewPin })
+      });
+      if (res.ok) {
+        alert("Security PIN successfully changed!");
+        setChangePinModal({ isOpen: false, step: 'otp' });
+        setOtpInput(['', '', '', '', '', '']);
+        setNewPin(['', '', '', '']);
+      } else {
+        setModalError((await res.json()).message || "Failed to update PIN.");
+      }
+    } catch (err) { console.error(err); }
+    setIsPinLoading(false);
+  };
+
+  // --- RENDER LOCK SCREEN ---
+  if (!isUnlocked) {
+    return (
+      <div className="h-full w-full flex items-center justify-center bg-[#0A0A0A] relative overflow-hidden animate-fadeIn">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-900/20 rounded-full blur-[100px] animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-900/10 rounded-full blur-[100px] animate-pulse delay-1000"></div>
+        
+        <div className={`relative z-10 w-full max-w-sm p-8 rounded-3xl bg-black/40 backdrop-blur-xl border border-[#222] shadow-2xl flex flex-col items-center transition-transform ${pinError ? 'animate-shake border-red-500/50 shadow-red-500/10' : ''}`}>
+          
+          <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mb-6 border border-red-500/20">
+            <ShieldAlert size={36} className="text-red-500" />
+          </div>
+          
+          <h2 className="text-2xl font-black text-white tracking-tight mb-2">Restricted Access</h2>
+          {/* Default PIN Text removed! */}
+          <p className="text-gray-400 text-sm text-center mb-8">Enter your 4-digit security PIN to access the Admin Command Center.</p>
+          
+          <div className="flex gap-4 mb-8">
+            {pinInput.map((digit, i) => (
+              <input
+                key={i}
+                ref={inputRefs[i]}
+                type="password"
+                maxLength={1}
+                value={digit}
+                autoComplete="new-password" // <-- FIX: Stops Chrome Autofill
+                name={`admin-pin-${i}`}
+                onChange={(e) => handlePinChange(i, e.target.value, inputRefs, setPinInput, pinInput)}
+                onKeyDown={(e) => handlePinKeyDown(i, e, inputRefs, setPinInput, pinInput)}
+                className={`w-14 h-16 text-center text-2xl font-black bg-[#121212] border-2 rounded-xl outline-none transition-all text-white
+                  ${digit ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#333] focus:border-red-500/50'}
+                  ${pinError ? 'border-red-600 bg-red-950/20 text-red-500' : ''}
+                `}
+                autoFocus={i === 0}
+              />
+            ))}
+          </div>
+
+          <button 
+            onClick={() => verifyPin(pinInput.join(''))}
+            disabled={pinInput.some(v => v === '') || isPinLoading}
+            className="w-full py-4 rounded-xl font-bold bg-white hover:bg-gray-100 text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-black border-t-transparent rounded-full"></span> : <><Lock size={18}/> Authorize Access</>}
+          </button>
+        </div>
+
+        <style>{`
+          @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+          }
+          .animate-shake { animation: shake 0.4s ease-in-out; }
+        `}</style>
+      </div>
+    );
+  }
+
+  // --- RENDER UNLOCKED DASHBOARD ---
+  const filteredUsers = users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
   const currentCpu = cpuData[cpuData.length - 1] || 0;
   const dbLimitBytes = 512 * 1024 * 1024;
   const dbPercentage = Math.min((realDbSize / dbLimitBytes) * 100, 100);
@@ -209,11 +402,11 @@ const AdminDashboard = () => {
   return (
     <div className="p-8 w-full h-full overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#0c0c0c] text-gray-900 dark:text-white animate-fadeIn pb-24 transition-colors duration-300">
 
-      {/* HEADER */}
+      {/* DASHBOARD HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3 text-gray-900 dark:text-white">
-            <Shield className="text-red-600 fill-red-600/10" size={32} />
+            <ShieldCheck className="text-red-600 fill-red-600/10" size={32} />
             Admin Command Center
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 font-medium flex items-center gap-2">
@@ -221,15 +414,31 @@ const AdminDashboard = () => {
             System Status: <span className={systemHealth === 'Optimal' ? "text-green-600 dark:text-green-500" : "text-red-500"}>{systemHealth}</span>
           </p>
         </div>
-        <div className="relative group w-full md:w-64">
-          <Search className="absolute left-3 top-2.5 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={18} />
-          <input type="text" placeholder="Search students..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full bg-white dark:bg-[#18181b] border border-gray-200 dark:border-[#27272a] rounded-xl pl-10 pr-4 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/20 transition-all shadow-sm" />
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <button 
+            onClick={requestChangePin}
+            className="flex items-center gap-2 bg-white dark:bg-[#18181b] hover:bg-gray-100 dark:hover:bg-[#27272a] border border-gray-200 dark:border-[#27272a] text-gray-700 dark:text-gray-300 px-4 py-2 rounded-xl font-medium transition-colors shadow-sm"
+          >
+            <KeyRound size={16} /> Security Settings
+          </button>
+          
+          <div className="relative group w-full md:w-64">
+            <Search className="absolute left-3 top-2.5 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search students..." 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)} 
+              autoComplete="off" // <-- FIX: Stops Chrome Autofill
+              name="admin-user-search"
+              className="w-full bg-white dark:bg-[#18181b] border border-gray-200 dark:border-[#27272a] rounded-xl pl-10 pr-4 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/20 transition-all shadow-sm" 
+            />
+          </div>
         </div>
       </div>
 
       {/* METRICS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* CPU */}
         <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 relative overflow-hidden shadow-sm dark:shadow-lg transition-colors">
           <div className="flex justify-between items-start mb-4 relative z-10">
             <div>
@@ -243,7 +452,6 @@ const AdminDashboard = () => {
           <div className="absolute bottom-0 left-0 right-0 h-24 opacity-50"><LiveGraph data={cpuData} color="#3b82f6" /></div>
         </div>
 
-        {/* STORAGE */}
         <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 shadow-sm dark:shadow-lg transition-colors">
           <div className="flex justify-between items-start mb-6">
             <div>
@@ -258,7 +466,6 @@ const AdminDashboard = () => {
           <StorageBar label="Server RAM" used={formatBytes((memoryData[memoryData.length - 1] / 100) * totalMemory)} total={formatBytes(totalMemory)} color="bg-gray-400 dark:bg-gray-600" percentage={memoryData[memoryData.length - 1]} />
         </div>
 
-        {/* MEMORY */}
         <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 relative overflow-hidden shadow-sm dark:shadow-lg transition-colors">
           <div className="flex justify-between items-start mb-4 relative z-10">
             <div>
@@ -299,7 +506,93 @@ const AdminDashboard = () => {
         {!loading && filteredUsers.length === 0 && <div className="p-8 text-center text-gray-500">No users found matching "{search}"</div>}
       </div>
 
-      {/* --- CUSTOM PORTAL CONFIRMATION MODAL --- */}
+      {/* --- CHANGE PIN MODAL --- */}
+      {changePinModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#121212] w-full max-w-md rounded-3xl border border-[#333] shadow-2xl overflow-hidden animate-slideUp">
+            
+            <div className="p-6 border-b border-[#222] flex justify-between items-center bg-[#1A1A1A]">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2"><KeyRound size={20} className="text-brand-blue" /> Update Security PIN</h3>
+              <button onClick={() => {
+                setChangePinModal({isOpen: false, step: 'otp'});
+                setOtpInput(['', '', '', '', '', '']);
+                setNewPin(['', '', '', '']);
+              }} className="text-gray-500 hover:text-white transition-colors"><X size={20}/></button>
+            </div>
+
+            {changePinModal.step === 'otp' ? (
+              <form onSubmit={verifyOtpAndProceed} className="p-6 space-y-6">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto bg-blue-500/10 rounded-full flex items-center justify-center mb-4"><Mail size={28} className="text-blue-500"/></div>
+                  <h4 className="text-lg font-bold text-white">Verification Required</h4>
+                  <p className="text-sm text-gray-400 mt-1">We sent a 6-digit OTP to your admin email address.</p>
+                </div>
+                
+                <div>
+                  <div className="flex justify-center gap-2">
+                    {otpInput.map((digit, i) => (
+                      <input
+                        key={`otp-${i}`}
+                        ref={otpRefs[i]}
+                        type="text"
+                        maxLength={1}
+                        value={digit}
+                        autoComplete="off" // <-- FIX: Stops Chrome Autofill
+                        name={`otp-box-${i}`}
+                        onChange={(e) => handleOtpChange(i, e.target.value)}
+                        onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                        onPaste={handleOtpPaste}
+                        className={`w-11 h-14 text-center text-xl font-black bg-[#1A1A1A] border-2 rounded-xl outline-none transition-all text-white
+                          ${digit ? 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.1)]' : 'border-[#333] focus:border-blue-500/50'}
+                        `}
+                        autoFocus={i === 0}
+                      />
+                    ))}
+                  </div>
+                  {modalError && <p className="text-red-500 text-xs text-center font-bold mt-4">{modalError}</p>}
+                </div>
+
+                <button type="submit" className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all">Verify Identity</button>
+              </form>
+            ) : (
+              <div className="p-6 space-y-6 text-center">
+                <div className="w-16 h-16 mx-auto bg-emerald-500/10 rounded-full flex items-center justify-center mb-4"><Lock size={28} className="text-emerald-500"/></div>
+                <h4 className="text-lg font-bold text-white">Set New PIN</h4>
+                <p className="text-sm text-gray-400 mt-1">Enter a new 4-digit code to secure the dashboard.</p>
+                
+                <div className="flex justify-center gap-3 my-4">
+                  {newPin.map((digit, i) => (
+                    <input
+                      key={`newpin-${i}`}
+                      ref={newPinRefs[i]}
+                      type="password"
+                      maxLength={1}
+                      value={digit}
+                      autoComplete="new-password" // <-- FIX: Stops Chrome Autofill
+                      name={`new-admin-pin-${i}`}
+                      onChange={(e) => handlePinChange(i, e.target.value, newPinRefs, setNewPin, newPin)}
+                      onKeyDown={(e) => handlePinKeyDown(i, e, newPinRefs, setNewPin, newPin)}
+                      className={`w-14 h-16 text-center text-2xl font-black bg-[#1A1A1A] border-2 rounded-xl outline-none transition-all text-white ${digit ? 'border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'border-[#333] focus:border-emerald-500/50'}`}
+                      autoFocus={i === 0}
+                    />
+                  ))}
+                </div>
+                {modalError && <p className="text-red-500 text-xs text-center font-bold mt-2">{modalError}</p>}
+
+                <button 
+                  onClick={confirmNewPin} 
+                  disabled={newPin.some(v => v === '') || isPinLoading}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all disabled:opacity-50 flex justify-center items-center"
+                >
+                  {isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></span> : 'Save Security PIN'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- CUSTOM DELETE CONFIRMATION MODAL --- */}
       {userToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] p-6 animate-slideUp relative">

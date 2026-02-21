@@ -15,9 +15,11 @@ import { Heart, ArrowRight, StickyNote } from 'lucide-react';
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
 import MyProfile from './MyProfile';
-import Timetable from './TimeTable'; // <-- NEW IMPORT
+import Timetable from './TimeTable'; 
+import HabitTracker from './HabitTracker';
 
-const API_BASE = process.env.REACT_APP_API_URL || '';
+// Enforcing the correct backend port (5000)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
@@ -59,8 +61,6 @@ function App() {
 
   // --- APP STATE ---
   const [activeTab, setActiveTab] = useState('Welcome');
-  
-  // NEW: Initialize sidebar based on screen size (closed on mobile)
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
@@ -69,13 +69,14 @@ function App() {
 
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [deletedTasks, setDeletedTasks] = useState([]);
+  
+  // NEW: Unified Bin State
+  const [binItems, setBinItems] = useState([]);
 
   const [filters, setFilters] = useState({
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: ''
   });
 
-  // Handle window resize for sidebar
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 768) {
@@ -159,13 +160,20 @@ function App() {
     } catch (error) { console.error("Error fetching tasks:", error); }
   }, [authHeaders, handleLogout]);
 
+  // NEW: Universal Bin Fetcher
   const fetchBin = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/bin`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
-      const formattedBin = data.map(t => ({ ...t, id: t._id }));
-      setDeletedTasks(formattedBin);
+      
+      const formattedBin = [
+        ...(data.tasks || []).map(t => ({ ...t, id: t._id, binType: 'Task', name: t.name, subtitle: t.course })),
+        ...(data.transactions || []).map(t => ({ ...t, id: t._id, binType: 'Transaction', name: t.description || 'Transaction', subtitle: `Rs ${t.amount}` })),
+        ...(data.habits || []).map(h => ({ ...h, id: h._id, binType: 'Habit', name: h.name, subtitle: h.type === 'good' ? 'Good Protocol' : 'Bad Protocol' }))
+      ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+      
+      setBinItems(formattedBin);
     } catch (error) { console.error("Error fetching bin:", error); }
   }, [authHeaders, handleLogout]);
 
@@ -228,46 +236,43 @@ function App() {
     if (!taskToDelete) return;
     try {
       await fetch(`${API_BASE}/api/tasks/${taskToDelete}/delete`, { method: 'PUT', headers: authHeaders });
-      const taskObj = tasks.find(t => t.id === taskToDelete);
-      if (taskObj) {
-        setDeletedTasks([{ ...taskObj, deletedAt: new Date().toISOString() }, ...deletedTasks]);
-        setTasks(prevTasks => prevTasks.filter(t => t.id !== taskToDelete));
-      }
+      fetchTasks();
+      fetchBin(); // Refresh universal bin
       setTaskToDelete(null);
     } catch (error) { console.error("Error deleting task:", error); }
   };
 
-  const restoreTask = async (taskId) => {
+  // --- NEW: UNIVERSAL ACTIONS ---
+  const restoreItem = async (id, type) => {
+    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits' };
     try {
-      await fetch(`${API_BASE}/api/tasks/${taskId}/restore`, { method: 'PUT', headers: authHeaders });
-      const taskToRestore = deletedTasks.find(t => t.id === taskId);
-      if (taskToRestore) {
-        const { deletedAt, ...rest } = taskToRestore;
-        setTasks([rest, ...tasks]);
-        setDeletedTasks(prev => prev.filter(t => t.id !== taskId));
-      }
-    } catch (error) { console.error("Error restoring task:", error); }
+      await fetch(`${API_BASE}/api/${endpoints[type]}/${id}/restore`, { method: 'PUT', headers: authHeaders });
+      fetchBin();
+      if (type === 'Task') fetchTasks();
+    } catch (error) { console.error("Error restoring:", error); }
   };
 
-  const permanentlyDeleteTask = async (taskId) => {
+  const permanentlyDeleteItem = async (id, type) => {
+    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits' };
     try {
-      await fetch(`${API_BASE}/api/tasks/${taskId}`, { method: 'DELETE', headers: authHeaders });
-      setDeletedTasks(prev => prev.filter(t => t.id !== taskId));
+      await fetch(`${API_BASE}/api/${endpoints[type]}/${id}`, { method: 'DELETE', headers: authHeaders });
+      setBinItems(prev => prev.filter(item => item.id !== id));
     } catch (error) { console.error("Error deleting permanently:", error); }
   };
 
-  const restoreAll = async () => {
-    try {
-      await fetch(`${API_BASE}/api/bin/restore-all`, { method: 'PUT', headers: authHeaders });
-      fetchTasks(); fetchBin();
-    } catch (error) { console.error("Error restoring all:", error); }
+  const restoreAllBin = async () => {
+    try { 
+      await fetch(`${API_BASE}/api/bin/restore-all`, { method: 'PUT', headers: authHeaders }); 
+      fetchTasks(); 
+      fetchBin(); 
+    } catch (error) { }
   };
 
-  const deleteAll = async () => {
-    try {
-      await fetch(`${API_BASE}/api/bin/empty`, { method: 'DELETE', headers: authHeaders });
-      setDeletedTasks([]);
-    } catch (error) { console.error("Error emptying bin:", error); }
+  const deleteAllBin = async () => {
+    try { 
+      await fetch(`${API_BASE}/api/bin/empty`, { method: 'DELETE', headers: authHeaders }); 
+      setBinItems([]); 
+    } catch (error) { }
   };
 
   const updateTask = async (id, field, value) => {
@@ -398,9 +403,9 @@ function App() {
     } catch (e) { console.error("Delete course failed", e); }
   };
 
-  // NEW: Navigate logic that auto-closes sidebar on mobile
   const handleNavigate = (tab) => {
     setActiveTab(tab);
+    if (tab === 'Bin') fetchBin(); // Refresh bin dynamically when opened
     if (window.innerWidth < 768) {
       setIsSidebarOpen(false);
     }
@@ -411,7 +416,6 @@ function App() {
   return (
     <div className={`flex h-screen w-full transition-colors duration-300 relative ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
       
-      {/* NEW: Mobile Overlay for Sidebar */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm transition-opacity" 
@@ -424,7 +428,7 @@ function App() {
         setActiveTab={handleNavigate}
         isOpen={isSidebarOpen}
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        binCount={deletedTasks.length}
+        binCount={binItems.length}
         user={user}
       />
 
@@ -481,14 +485,15 @@ function App() {
             </div>
           )}
 
-          {/* RENDERING COMPONENTS BASED ON ACTIVE TAB */}
           {activeTab === 'Tasks' && <TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} />}
           {activeTab === 'Calendar' && <Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} />}
-          {activeTab === 'Timetable' && <Timetable />} {/* <-- NEW COMPONENT CALL */}
+          {activeTab === 'Timetable' && <Timetable />} 
+          {activeTab === 'Habits' && <HabitTracker />} 
           {activeTab === 'Grade Book' && <GradeBook />}
           {activeTab === 'History' && <ResultHistory />}
           {activeTab.startsWith('Cash-') && <CashManager activeTab={activeTab} />}
-          {activeTab === 'Bin' && <Bin deletedTasks={deletedTasks} restoreTask={restoreTask} permanentlyDeleteTask={permanentlyDeleteTask} deleteAll={deleteAll} restoreAll={restoreAll} />}
+          {/* NEW UNIVERSAL BIN CALL */}
+          {activeTab === 'Bin' && <Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} />}
           {activeTab === 'Admin' && <AdminDashboard />}
           {activeTab === 'Profile' && <MyProfile user={user} />}
 

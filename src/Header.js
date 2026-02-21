@@ -124,7 +124,7 @@ const Header = ({
   ].filter(Boolean).length;
 
   return (
-    <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-20">
+    <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-50">
       
       {/* --- LEFT SIDE --- */}
       <div className="flex items-center gap-2 md:gap-4">
@@ -140,7 +140,7 @@ const Header = ({
           <span className="hidden md:inline text-sm font-semibold">Add new</span>
         </button>
 
-        {/* SEARCH BAR (Hidden on very small screens, visible on sm and up) */}
+        {/* SEARCH BAR */}
         <div className="hidden sm:flex items-center gap-2 relative" ref={searchRef}>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -152,6 +152,9 @@ const Header = ({
               onChange={handleSearchChange}
               onFocus={() => filters?.searchQuery && setShowSearchDropdown(true)}
               placeholder="Search tasks..."
+              autoComplete="off" // <-- FIX: Stops Chrome Autofill
+              name="global-portal-search-input"
+              spellCheck="false"
               className="bg-gray-100 dark:bg-dark-surface border border-transparent focus:border-brand-blue text-gray-800 dark:text-white text-sm rounded-full py-2 pl-10 pr-4 w-32 md:w-48 focus:w-48 md:focus:w-64 transition-all outline-none"
             />
           </div>

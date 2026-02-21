@@ -5,7 +5,7 @@ import {
   ChevronLeft, AlertCircle, RefreshCw, Puzzle, ExternalLink, Download, CheckCircle2, Search
 } from 'lucide-react';
 
-const API_BASE = process.env.REACT_APP_API_URL || '';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const features = [
   { icon: School, title: "Academic Excellence", text: "Track your CGPA, grades, and attendance in real-time." },

@@ -4,16 +4,14 @@ const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  isAdmin: { type: Boolean, default: false },
   
-  // Portal Identity (Password removed for security!)
+  // Security PIN for Admin Command Center
+  adminPin: { type: String, default: '0000' }, 
+  
   portalId: { type: String, default: null },
   isPortalConnected: { type: Boolean, default: false },
-  
-  // Extension Tracking
   lastSyncAt: { type: Date, default: null },
-  
-  // Admin Flag
-  isAdmin: { type: Boolean, default: false }, 
   createdAt: { type: Date, default: Date.now }
 });
 

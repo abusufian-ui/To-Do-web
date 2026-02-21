@@ -1,23 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, MapPin, User, CalendarDays } from 'lucide-react';
+import { Clock, MapPin, User, CalendarDays, X, BookOpen } from 'lucide-react';
 
 const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const startHour = 8; // 08:00 AM
-const endHour = 18; // 06:00 PM (Extended for late labs)
+const startHour = 8;  // 08:00 AM
+const endHour = 18; // 06:00 PM
 const totalHours = endHour - startHour;
-const HOUR_HEIGHT = 130; // Increased height significantly for better text spacing
+const HOUR_HEIGHT = 115; // Set to mimic 67% scale compactly
 
-const Timetable = () => {
+// Premium SaaS color themes
+const colorThemes = [
+  { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800/50', text: 'text-blue-900 dark:text-blue-100', icon: 'text-blue-500 dark:text-blue-400', hoverRing: 'hover:ring-blue-300 dark:hover:ring-blue-700/50', accent: 'bg-blue-500' },
+  { bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800/50', text: 'text-emerald-900 dark:text-emerald-100', icon: 'text-emerald-500 dark:text-emerald-400', hoverRing: 'hover:ring-emerald-300 dark:hover:ring-emerald-700/50', accent: 'bg-emerald-500' },
+  { bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-200 dark:border-purple-800/50', text: 'text-purple-900 dark:text-purple-100', icon: 'text-purple-500 dark:text-purple-400', hoverRing: 'hover:ring-purple-300 dark:hover:ring-purple-700/50', accent: 'bg-purple-500' },
+  { bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-800/50', text: 'text-orange-900 dark:text-orange-100', icon: 'text-orange-500 dark:text-orange-400', hoverRing: 'hover:ring-orange-300 dark:hover:ring-orange-700/50', accent: 'bg-orange-500' },
+  { bg: 'bg-rose-50 dark:bg-rose-900/20', border: 'border-rose-200 dark:border-rose-800/50', text: 'text-rose-900 dark:text-rose-100', icon: 'text-rose-500 dark:text-rose-400', hoverRing: 'hover:ring-rose-300 dark:hover:ring-rose-700/50', accent: 'bg-rose-500' },
+  { bg: 'bg-indigo-50 dark:bg-indigo-900/20', border: 'border-indigo-200 dark:border-indigo-800/50', text: 'text-indigo-900 dark:text-indigo-100', icon: 'text-indigo-500 dark:text-indigo-400', hoverRing: 'hover:ring-indigo-300 dark:hover:ring-indigo-700/50', accent: 'bg-indigo-500' },
+];
+
+const TimeTable = () => {
   const [classes, setClasses] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedClass, setSelectedClass] = useState(null);
 
   useEffect(() => {
-    // This fetches your actual synced data from your MongoDB database!
     const fetchTimetable = async () => {
       setIsLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const API_BASE = process.env.REACT_APP_API_URL || '';
+        const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
         const res = await fetch(`${API_BASE}/api/timetable`, {
           headers: { 'x-auth-token': token }
         });
@@ -35,7 +45,6 @@ const Timetable = () => {
     fetchTimetable();
   }, []);
 
-  // Calculates exact pixel placement based on time strings (e.g., "08:50")
   const getPositionStyles = (startTime, endTime) => {
     const [startH, startM] = (startTime || '00:00').split(':').map(Number);
     const [endH, endM] = (endTime || '00:00').split(':').map(Number);
@@ -52,63 +61,72 @@ const Timetable = () => {
     };
   };
 
+  const getTheme = (courseName) => {
+    const index = (courseName?.length || 0) % colorThemes.length;
+    return colorThemes[index];
+  };
+
+  const cleanCourseName = (name) => {
+    return name ? name.replace(/\.{2,}/g, '').trim() : '';
+  };
+
   return (
-    <div className="p-4 md:p-8 h-full flex flex-col bg-gray-50 dark:bg-dark-bg transition-colors duration-300 animate-fadeIn">
+    <div className="h-full w-full flex flex-col bg-white dark:bg-[#121212] transition-colors duration-300 animate-fadeIn">
       
       {/* Header Section */}
-      <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="px-6 py-4 border-b border-gray-200 dark:border-[#2A2A2A] flex justify-between items-center bg-white dark:bg-[#1A1A1A] z-40 shrink-0 shadow-sm relative">
         <div>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 dark:text-white flex items-center gap-3 tracking-tight">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
-              <CalendarDays className="text-blue-600 dark:text-blue-400" size={26} />
+          <h2 className="text-xl md:text-2xl font-extrabold text-gray-900 dark:text-white flex items-center gap-3 tracking-tight">
+            <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-lg shadow-inner">
+              <CalendarDays className="text-blue-600 dark:text-blue-400" size={20} />
             </div>
             Class Schedule
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 font-medium">Live sync from your UCP Horizon Portal</p>
+          <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 font-medium">Live sync from your UCP Horizon Portal</p>
         </div>
         
-        <div className="flex items-center gap-3 bg-white dark:bg-dark-surface p-1.5 rounded-xl shadow-sm border border-gray-200 dark:border-dark-border">
-          <span className="px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm font-bold tracking-wide border border-blue-100 dark:border-blue-800/30">
+        <div className="hidden sm:flex items-center gap-3">
+          <span className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-600/20 dark:to-indigo-600/20 text-blue-700 dark:text-blue-400 rounded-md text-xs font-bold tracking-wide border border-blue-100 dark:border-blue-800/30">
             Spring Semester
           </span>
         </div>
       </div>
 
       {/* Main Grid Container */}
-      <div className="flex-1 overflow-hidden bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl shadow-xl flex flex-col relative">
+      <div className="flex-1 relative flex flex-col overflow-hidden bg-gray-50 dark:bg-[#121212]">
         
-        {/* Loading Overlay */}
         {isLoading && (
-           <div className="absolute inset-0 z-50 bg-white/60 dark:bg-black/60 backdrop-blur-md flex flex-col items-center justify-center">
-             <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600 mb-4"></div>
-             <p className="text-gray-600 dark:text-gray-300 font-medium animate-pulse">Loading your classes...</p>
+           <div className="absolute inset-0 z-50 bg-white/70 dark:bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center">
+             <div className="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600 mb-4"></div>
+             <p className="text-gray-600 dark:text-gray-300 font-bold text-sm">Syncing Schedule...</p>
            </div>
         )}
 
-        {/* Scrollable Area */}
-        <div className="flex-1 overflow-auto custom-scrollbar relative scroll-smooth">
-          <div className="min-w-[1100px] relative">
+        {/* Scrollable Area - Now allows table to fit to page without forcing horizontal scroll on desktops */}
+        <div className="flex-1 overflow-auto custom-scrollbar relative">
+          <div className="min-w-[850px] w-full relative h-full"> 
             
-            {/* Header Row (Days) - Sticky to top */}
-            <div className="grid grid-cols-[80px_repeat(7,1fr)] sticky top-0 z-40 bg-white/90 dark:bg-[#1A1A1A]/90 backdrop-blur-xl border-b border-gray-200 dark:border-[#2C2C2C] shadow-sm">
-              <div className="py-4 px-2 flex items-center justify-center text-[11px] font-black text-gray-400 uppercase tracking-widest border-r border-gray-200 dark:border-[#2C2C2C]">
+            {/* Table Header Row (Days) - Sticky to top */}
+            {/* Shrunk the time column to 60px to give days more room */}
+            <div className="grid grid-cols-[60px_repeat(7,1fr)] sticky top-0 z-30 shadow-sm">
+              <div className="py-2.5 px-1 flex items-center justify-center text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-r border-gray-200 dark:border-[#2A2A2A] sticky left-0 z-40 bg-gray-50 dark:bg-[#1A1A1A]">
                 Time
               </div>
               {daysOfWeek.map(day => (
-                <div key={day} className="py-4 text-center font-bold text-gray-700 dark:text-gray-200 border-r border-gray-200 dark:border-[#2C2C2C] last:border-r-0">
+                <div key={day} className="py-2.5 text-center text-[11px] font-bold text-gray-700 dark:text-gray-200 border-b border-r border-gray-200 dark:border-[#2A2A2A] last:border-r-0 bg-gray-50 dark:bg-[#1A1A1A]">
                   {day}
                 </div>
               ))}
             </div>
 
             {/* Timetable Body Grid */}
-            <div className="grid grid-cols-[80px_repeat(7,1fr)] relative">
+            <div className="grid grid-cols-[60px_repeat(7,1fr)] relative">
               
               {/* Time Column (Y-Axis) */}
-              <div className="flex flex-col border-r border-gray-200 dark:border-[#2C2C2C] bg-gray-50/50 dark:bg-[#141414]">
+              <div className="flex flex-col border-r border-gray-200 dark:border-[#2A2A2A] sticky left-0 z-20 bg-gray-50 dark:bg-[#1A1A1A]">
                 {Array.from({ length: totalHours + 1 }).map((_, i) => (
-                  <div key={i} style={{ height: `${HOUR_HEIGHT}px` }} className="border-b border-gray-200 dark:border-[#2C2C2C] relative">
-                    <span className="absolute -top-2.5 left-0 w-full text-center text-[11px] font-bold text-gray-400 dark:text-gray-500 bg-gray-50/50 dark:bg-[#141414] px-1">
+                  <div key={i} style={{ height: `${HOUR_HEIGHT}px` }} className="border-b border-gray-200 dark:border-[#2A2A2A] relative bg-gray-50 dark:bg-[#1A1A1A]">
+                    <span className="absolute top-1 left-0 w-full text-center text-[10px] font-bold text-gray-500 dark:text-gray-400 px-1">
                       {String(startHour + i).padStart(2, '0')}:00
                     </span>
                   </div>
@@ -117,11 +135,15 @@ const Timetable = () => {
 
               {/* Day Columns containing the classes */}
               {daysOfWeek.map((day) => (
-                <div key={day} className="border-r border-gray-200 dark:border-[#2C2C2C] last:border-r-0 relative group">
+                <div key={day} className="border-r border-gray-200 dark:border-[#222] last:border-r-0 relative group">
                   
-                  {/* Background Grid Lines (Hover effect for columns) */}
-                  {Array.from({ length: totalHours + 1 }).map((_, i) => (
-                    <div key={i} style={{ height: `${HOUR_HEIGHT}px` }} className="border-b border-dashed border-gray-100 dark:border-[#222] transition-colors group-hover:bg-gray-50/50 dark:group-hover:bg-[#1E1E1E]/50"></div>
+                  {/* Background Grid Lines */}
+                  {Array.from({ length: totalHours * 2 }).map((_, i) => (
+                    <div 
+                      key={i} 
+                      style={{ height: `${HOUR_HEIGHT / 2}px` }} 
+                      className={`border-b ${i % 2 === 0 ? 'border-dashed border-gray-200 dark:border-[#1E1E1E]' : 'border-solid border-gray-200 dark:border-[#222]'}`}
+                    ></div>
                   ))}
 
                   {/* Render the Classes */}
@@ -129,43 +151,38 @@ const Timetable = () => {
                     .filter(c => c.day === day)
                     .map(c => {
                       const style = getPositionStyles(c.startTime, c.endTime);
+                      const theme = getTheme(c.courseName);
                       
                       return (
                         <div
                           key={c.id}
-                          className={`absolute w-[94%] left-[3%] rounded-xl shadow-sm border border-white/20 dark:border-white/10 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:z-30 overflow-hidden group/card flex flex-col p-2.5 md:p-3 ${c.color || 'bg-blue-600'}`}
-                          style={{...style, minHeight: '70px'}}
+                          onClick={() => setSelectedClass(c)}
+                          className={`absolute w-[94%] left-[3%] rounded-lg shadow-sm border transition-all duration-200 flex flex-col overflow-hidden cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:z-10 z-0 ring-1 ring-transparent ${theme.hoverRing} ${theme.bg} ${theme.border}`}
+                          style={{...style, minHeight: '45px'}}
                         >
-                          {/* Sleek Gradient Overlay */}
-                          <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                          <div className={`absolute left-0 top-0 bottom-0 w-1 ${theme.accent}`}></div>
                           
-                          <div className="relative z-10 flex flex-col h-full text-white">
-                            
-                            {/* Time Badge */}
-                            <div className="flex justify-between items-start mb-1.5">
-                              <div className="font-bold text-[10px] md:text-[11px] tracking-wider bg-black/25 px-2 py-1 rounded-md backdrop-blur-md inline-flex items-center gap-1.5 shadow-inner">
-                                <Clock size={12} strokeWidth={2.5} />
+                          {/* Tighter padding and text limits for compact view */}
+                          <div className="p-1.5 pl-2.5 flex flex-col h-full overflow-hidden">
+                              <div className={`text-[9px] font-black tracking-widest uppercase flex items-center gap-1 opacity-90 mb-0.5 shrink-0 ${theme.text}`}>
+                                <Clock size={10} strokeWidth={2.5} />
                                 {c.startTime} - {c.endTime}
                               </div>
-                            </div>
-                            
-                            {/* Course Title */}
-                            <h3 className="font-extrabold text-xs md:text-sm leading-snug line-clamp-2 mt-0.5 group-hover/card:line-clamp-none drop-shadow-md mb-2">
-                              {c.courseName}
-                            </h3>
-                            
-                            {/* Metadata */}
-                            <div className="mt-auto space-y-1.5">
-                              <div className="flex items-center gap-1.5 text-[10px] md:text-xs font-semibold opacity-90 line-clamp-1 bg-black/10 rounded px-1.5 py-0.5">
-                                <User size={12} className="shrink-0" />
-                                <span className="truncate">{c.instructor}</span>
+                              
+                              <h4 className={`text-[10px] md:text-[11px] font-bold leading-tight mb-1 flex-1 line-clamp-2 ${theme.text}`}>
+                                {cleanCourseName(c.courseName)}
+                              </h4>
+                              
+                              <div className="flex flex-col gap-0.5 shrink-0">
+                                <div className={`text-[9px] font-semibold flex items-center gap-1 opacity-90 ${theme.text}`}>
+                                  <User size={10} className={`shrink-0 ${theme.icon}`} strokeWidth={2.5} />
+                                  <span className="truncate">{c.instructor}</span>
+                                </div>
+                                <div className={`text-[9px] font-semibold flex items-center gap-1 opacity-90 ${theme.text}`}>
+                                  <MapPin size={10} className={`shrink-0 ${theme.icon}`} strokeWidth={2.5} />
+                                  <span className="truncate">{c.room}</span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1.5 text-[10px] md:text-xs font-semibold opacity-90 bg-black/10 rounded px-1.5 py-0.5">
-                                <MapPin size={12} className="shrink-0" />
-                                <span className="truncate">{c.room}</span>
-                              </div>
-                            </div>
-
                           </div>
                         </div>
                       );
@@ -177,17 +194,83 @@ const Timetable = () => {
         </div>
       </div>
 
-      {/* Global styles for this component's scrollbar */}
+      {/* --- CLASS SUMMARY MODAL --- */}
+      {selectedClass && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setSelectedClass(null)}
+        >
+          <div 
+            className="bg-white dark:bg-[#1A1A1A] w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-[#333] transform transition-all animate-slideUp"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className={`p-5 relative bg-gradient-to-br ${getTheme(selectedClass.courseName).bg}`}>
+              <button 
+                onClick={() => setSelectedClass(null)}
+                className={`absolute top-3 right-3 p-1.5 rounded-full transition-colors bg-white/50 hover:bg-white dark:bg-black/20 dark:hover:bg-black/40 ${getTheme(selectedClass.courseName).text}`}
+              >
+                <X size={18} />
+              </button>
+              
+              <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center bg-white shadow-sm dark:bg-[#2C2C2C] ${getTheme(selectedClass.courseName).text}`}>
+                <BookOpen size={20} />
+              </div>
+              
+              <h3 className={`text-xl font-black leading-tight pr-6 break-words ${getTheme(selectedClass.courseName).text}`}>
+                {cleanCourseName(selectedClass.courseName)}
+              </h3>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
+                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-500"><CalendarDays size={18} /></div>
+                <div>
+                  <p className="text-[9px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">Day</p>
+                  <p className="font-semibold text-sm">{selectedClass.day}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
+                <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-emerald-500"><Clock size={18} /></div>
+                <div>
+                  <p className="text-[9px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">Time</p>
+                  <p className="font-semibold text-sm">{selectedClass.startTime} — {selectedClass.endTime}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
+                <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-purple-500"><User size={18} /></div>
+                <div>
+                  <p className="text-[9px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">Instructor</p>
+                  <p className="font-semibold text-sm">{selectedClass.instructor}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
+                <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-500"><MapPin size={18} /></div>
+                <div>
+                  <p className="text-[9px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">Room / Location</p>
+                  <p className="font-semibold text-sm">{selectedClass.room}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #64748b; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #444; border-color: #121212; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #666; }
+
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(15px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-slideUp { animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       `}</style>
     </div>
   );
 };
 
-export default Timetable;
+export default TimeTable;

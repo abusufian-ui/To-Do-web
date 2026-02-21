@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   CheckCircle2, Calendar as CalendarIcon, Mail, Clock,
-  ChevronDown, ChevronRight, ChevronsUp, ChevronUp,
+  ChevronDown, ChevronRight, ChevronLeft, ChevronsUp, ChevronUp,
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
   X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle,
   CalendarDays, Archive
@@ -15,18 +15,25 @@ const getAbbreviation = (name) => {
 
   if (n === 'event') return 'Event';
 
+  // --- 1. LAB COURSES (Check these first!) ---
+  if (n.includes('artificial intelligence') && (n.includes('lab') || n.includes('laboratory'))) return 'AI Lab';
+  if ((n.includes('computer communication') || n.includes('computer network')) && (n.includes('lab') || n.includes('laboratory'))) return 'CCN Lab';
   if (n.includes('operating system') && (n.includes('lab') || n.includes('laboratory'))) return 'OS Lab';
   if (n.includes('database') && (n.includes('lab') || n.includes('laboratory'))) return 'DB Lab';
-  if (n.includes('computer network') && (n.includes('lab') || n.includes('laboratory'))) return 'CN Lab';
   if (n.includes('object oriented') && (n.includes('lab') || n.includes('laboratory'))) return 'OOP Lab';
   if (n.includes('data structure') && (n.includes('lab') || n.includes('laboratory'))) return 'DSA Lab';
 
+  // --- 2. THEORY COURSES ---
+  if (n.includes('artificial intelligence')) return 'AI';
+  if (n.includes('computer communication') || n.includes('computer network')) return 'CCN';
   if (n.includes('operating system')) return 'OS';
+  if (n.includes('automata')) return 'TAFL';
+  if (n.includes('probability') && n.includes('statistics')) return 'P&S';
+  if (n.includes('volunteers in service')) return 'VIS';
   if (n.includes('differential equation')) return 'DE';
   if (n.includes('software engineering')) return 'SE';
   if (n.includes('design and analysis')) return 'DAA';
   if (n.includes('game development')) return 'GameDev';
-  if (n.includes('artificial intelligence')) return 'AI';
   if (n.includes('linear algebra')) return 'LA';
   if (n.includes('communication skills')) return 'Comm';
   if (n.includes('islamic studies')) return 'Islamiat';
@@ -35,13 +42,18 @@ const getAbbreviation = (name) => {
   if (n.includes('object oriented')) return 'OOP';
   if (n.includes('data structure')) return 'DSA';
   if (n.includes('database')) return 'DB';
-  if (n.includes('computer network')) return 'CN';
 
   if (n.includes('general course') || n.includes('general task')) return 'General';
 
+  // --- 3. FALLBACK FOR UNKNOWN LONG NAMES ---
   if (name.length > 15) {
-    const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for', 'the'];
-    return name.split(' ').filter(word => !ignoredWords.includes(word.toLowerCase())).map(word => word[0]).join('').toUpperCase().substring(0, 5);
+    const ignoredWords = ['and', 'of', 'to', 'in', 'introduction', 'lab', 'for', 'the', '&', '-'];
+    return name.split(' ')
+      .filter(word => !ignoredWords.includes(word.toLowerCase()))
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 5);
   }
 
   return name;
@@ -266,7 +278,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
 
     return (
       <div key={task.id} className="border-b border-gray-200 dark:border-[#2C2C2C]">
-        <div onClick={() => setSelectedTask(task)} className={`group flex items-center py-3 px-0 transition-all cursor-pointer ${isCompleted ? 'bg-gray-50 dark:bg-[#121212] opacity-60' : 'bg-white dark:bg-[#181818] hover:bg-gray-50 dark:hover:bg-[#202020]'}`}>
+        <div onClick={() => setSelectedTask(task)} className={`group flex items-center py-3 px-0 transition-all cursor-pointer ${isCompleted ? 'bg-gray-50 dark:bg-[#121212]' : 'bg-white dark:bg-[#181818] hover:bg-gray-50 dark:hover:bg-[#202020]'}`}>
           <div className={`${COL.name} flex items-center gap-2 text-sm font-medium ${isCompleted ? 'line-through text-gray-500' : 'text-gray-800 dark:text-white'}`}>
             <button onClick={(e) => toggleExpand(e, task.id)} className="text-gray-400 hover:text-brand-blue">
               {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -298,37 +310,71 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                 </button>
               )}
 
+              {/* FIXED: Cascading Flyout Menu now pops to the LEFT to avoid screen edge clipping */}
               {openDropdownId === `${task.id}-course` && (
-                <div className="absolute top-full left-0 mt-1 min-w-[220px] bg-white dark:bg-[#1E1E1E] rounded-md shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-50 overflow-hidden animate-fadeIn max-h-[300px] overflow-y-auto custom-scrollbar-hide">
+                <div className="absolute top-full left-0 mt-1 w-[200px] bg-white dark:bg-[#1E1E1E] rounded-xl shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-[100] animate-fadeIn py-1">
 
+                  {/* 1. EVENT */}
                   <div
                     onClick={() => { updateTask(task.id, 'course', 'Event'); setOpenDropdownId(null); }}
-                    className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-rose-600 dark:text-rose-500 font-medium border-b border-gray-100 dark:border-[#2C2C2C]"
+                    className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-3 text-rose-600 dark:text-rose-500 font-medium"
                   >
                     <CalendarDays size={16} /> <span>Event</span>
                   </div>
 
-                  {uniCourses.length > 0 && (
-                    <>
-                      <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
-                        University Courses
+                  {/* 2. UNI COURSES (Hover to expand left) */}
+                  <div className="group/uni relative">
+                    <div className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-default text-sm flex items-center justify-between text-gray-700 dark:text-gray-200 font-medium border-t border-gray-100 dark:border-[#2C2C2C]">
+                      <div className="flex items-center gap-3">
+                        <UCPLogo className="w-4 h-4 text-blue-600 shrink-0" /> 
+                        <span>University Courses</span>
                       </div>
-                      {uniCourses.map((c) => (
-                        <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                          <UCPLogo className="w-4 h-4 text-blue-600" /> <span className="truncate">{c.name}</span>
-                        </div>
-                      ))}
-                    </>
-                  )}
-
-                  <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1 border-b border-gray-100 dark:border-[#2C2C2C]">
-                    General / Manual
-                  </div>
-                  {generalCourses.length > 0 ? generalCourses.map((c) => (
-                    <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                      <Book size={16} className="text-gray-400" /> <span className="truncate">{c.name}</span>
+                      {/* Using ChevronLeft to indicate it opens left */}
+                      <ChevronLeft size={14} className="text-gray-400" />
                     </div>
-                  )) : <div className="p-3 text-xs text-gray-500">No general courses</div>}
+
+                    {/* UNI SUB-MENU FLYOUT - right-full pops it LEFT, pr-1 builds the hover bridge! */}
+                    <div className="hidden group-hover/uni:block absolute right-full top-0 w-[240px] pr-1 z-[110]">
+                      <div className="bg-white dark:bg-[#1E1E1E] rounded-xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] max-h-[250px] overflow-y-auto custom-scrollbar py-1">
+                        {uniCourses.length > 0 ? uniCourses.map((c) => (
+                          <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-3" title={c.name}>
+                            <UCPLogo className="w-5 h-5 text-blue-600 shrink-0" /> 
+                            {/* Beautiful Abbreviation + Truncation Layout */}
+                            <div className="flex flex-col overflow-hidden w-full">
+                              <span className="font-bold text-xs text-gray-800 dark:text-gray-200 truncate">{getAbbreviation(c.name)}</span>
+                              <span className="text-[10px] text-gray-400 truncate">{c.name}</span>
+                            </div>
+                          </div>
+                        )) : <div className="px-4 py-3 text-xs text-gray-500 italic">No synced courses</div>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. GENERAL COURSES (Hover to expand left) */}
+                  <div className="group/gen relative">
+                    <div className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-default text-sm flex items-center justify-between text-gray-700 dark:text-gray-200 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Book size={16} className="text-gray-400 shrink-0" /> 
+                        <span>General Courses</span>
+                      </div>
+                      <ChevronLeft size={14} className="text-gray-400" />
+                    </div>
+
+                    {/* GENERAL SUB-MENU FLYOUT - right-full pops it LEFT */}
+                    <div className="hidden group-hover/gen:block absolute right-full top-0 w-[240px] pr-1 z-[110]">
+                      <div className="bg-white dark:bg-[#1E1E1E] rounded-xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] max-h-[250px] overflow-y-auto custom-scrollbar py-1">
+                        {generalCourses.length > 0 ? generalCourses.map((c) => (
+                          <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-3" title={c.name}>
+                            <Book size={16} className="text-gray-400 shrink-0" /> 
+                            <div className="flex flex-col overflow-hidden w-full">
+                              <span className="font-bold text-xs text-gray-800 dark:text-gray-200 truncate">{getAbbreviation(c.name)}</span>
+                              <span className="text-[10px] text-gray-400 truncate">{c.name}</span>
+                            </div>
+                          </div>
+                        )) : <div className="px-4 py-3 text-xs text-gray-500 italic">No general courses</div>}
+                      </div>
+                    </div>
+                  </div>
 
                 </div>
               )}
@@ -377,7 +423,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   return (
     <div className="p-4 md:p-8 w-full animate-fadeIn pb-20">
       
-      {/* Active Tasks Table wrapped for Mobile Scroll */}
+      {/* Active Tasks Table - FIXED LAYOUT (lg:overflow-visible prevents cutoffs and scrollbars on desktop) */}
       <div className="mb-10">
         <button onClick={() => setShowActive(!showActive)} className="flex items-center gap-2 mb-4 group focus:outline-none">
           {showActive ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
@@ -385,8 +431,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
           <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{activeTasks.length}</span>
         </button>
         {showActive && (
-          <div className="overflow-x-auto custom-scrollbar pb-2">
-            <div className="min-w-[800px]">
+          <div className="w-full overflow-x-auto lg:overflow-visible pb-32">
+            <div className="min-w-[750px]">
               <div className="flex text-xs text-gray-500 dark:text-[#71717A] border-b border-gray-200 dark:border-[#2C2C2C] pb-2 px-0">
                 <div className={COL.name}>Task Name</div>
                 <div className={COL.status}>Status</div>
@@ -411,8 +457,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
             <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{completedTasks.length}</span>
           </button>
           {showCompleted && (
-            <div className="overflow-x-auto custom-scrollbar pb-2">
-              <div className="min-w-[800px]">
+            <div className="w-full overflow-x-auto lg:overflow-visible pb-32">
+              <div className="min-w-[750px]">
                 {completedTasks.map(task => renderRow(task, true))}
               </div>
             </div>
@@ -435,8 +481,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
               <div className="p-3 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-700 dark:text-yellow-500 text-xs rounded-lg mb-2 flex items-center gap-2">
                 <AlertTriangle size={14} /> These tasks belong to deleted courses or past semesters.
               </div>
-              <div className="overflow-x-auto custom-scrollbar pb-2">
-                <div className="min-w-[800px]">
+              <div className="w-full overflow-x-auto lg:overflow-visible pb-32">
+                <div className="min-w-[750px]">
                   {archivedTasks.map(task => renderRow(task, task.status === 'Completed'))}
                 </div>
               </div>
@@ -447,7 +493,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
-          height: 8px; /* Increased for mobile touch target */
+          height: 6px; /* Reduced so it looks cleaner */
+          width: 6px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
           background: transparent;
