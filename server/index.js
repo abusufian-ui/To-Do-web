@@ -47,15 +47,7 @@ const StudentStats = require('./models/StudentStats');
 const { Transaction, Budget } = require('./models/Transaction');
 const Timetable = require('./models/TimetableModel');
 const Habit = require('./models/Habit');
-
-// --- NEW: COURSE MODEL (For Manual/General Courses) ---
-const courseSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  name: { type: String, required: true },
-  type: { type: String, default: 'general' }, // 'general' or 'manual'
-  createdAt: { type: Date, default: Date.now }
-});
-const Course = mongoose.model('Course', courseSchema);
+const Course = require('./models/Course'); 
 
 const otpSchema = new mongoose.Schema({
   email: { type: String, required: true },
@@ -66,18 +58,33 @@ const OTP = mongoose.model('OTP', otpSchema);
 
 const app = express();
 
-// --- SECURE CORS CONFIGURATION ---
-app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',\
-    'http://localhost:8081',
-    'https://myportalucp.online',
-    'https://horizon.ucp.edu.pk' 
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
-  credentials: true 
-}));
+// --- SECURE CORS CONFIGURATION (BULLETPROOFED) ---
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:8081', 
+  'http://192.168.0.107:8081',
+  'http://192.168.0.102:8081', 
+  'https://myportalucp.online',
+  'https://horizon.ucp.edu.pk',
+'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof' // Your exact dev extension ID
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'], 
+  credentials: true,
+  optionsSuccessStatus: 200 
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // --- DATABASE CONNECTION ---
@@ -157,7 +164,8 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
       Transaction.deleteMany({ userId }),
       Budget.deleteMany({ userId }),
       Timetable.deleteMany({ userId }),
-      Habit.deleteMany({ userId }) 
+      Habit.deleteMany({ userId }),
+      Course.deleteMany({ userId }) 
     ]);
     res.json({ message: "User deleted permanently." });
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -168,7 +176,7 @@ app.post('/api/admin/verify-pin', auth, adminAuth, async (req, res) => {
   try {
     const { pin } = req.body;
     const user = await User.findById(req.user.id);
-    const actualPin = user.adminPin || '0000'; // Fallback to 0000 if not set
+    const actualPin = user.adminPin || '0000'; 
     
     if (pin === actualPin) return res.json({ success: true });
     res.status(400).json({ message: "Invalid Security PIN" });
@@ -178,7 +186,7 @@ app.post('/api/admin/verify-pin', auth, adminAuth, async (req, res) => {
 app.post('/api/admin/request-pin-otp', auth, adminAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); 
     
     await OTP.findOneAndUpdate({ email: user.email }, { code }, { upsert: true, new: true });
     
@@ -209,7 +217,7 @@ app.put('/api/admin/change-pin', auth, adminAuth, async (req, res) => {
     
     user.adminPin = newPin;
     await user.save();
-    await OTP.deleteOne({ email: user.email }); // Clear OTP after success
+    await OTP.deleteOne({ email: user.email }); 
     
     res.json({ success: true, message: "Security PIN successfully updated." });
   } catch (error) { res.status(500).json({ message: "Server error" }); }
@@ -315,6 +323,46 @@ app.get('/api/auth/user', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Server Error" }); }
 });
 
+app.post('/api/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  try {
+    const existingUser = await User.findOne({ email });
+    if (!existingUser) return res.status(400).json({ message: "No account found with that email." });
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
+    
+    const { error } = await resend.emails.send({
+      from: 'MyPortal <otp@myportalucp.online>', 
+      to: email,
+      subject: 'MyPortal Password Reset',
+      html: `<p>Your password reset code is: <strong>${code}</strong></p>`
+    });
+
+    if (error) return res.status(500).json({ message: "Failed to send email" });
+    res.json({ message: "OTP sent successfully" });
+  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  try {
+    const validOTP = await OTP.findOne({ email, code: otp });
+    if (!validOTP) return res.status(400).json({ message: "Invalid or expired OTP" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "User not found" });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+    
+    await OTP.deleteOne({ email }); 
+
+    res.json({ message: "Password updated successfully" });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 app.put('/api/user/profile', auth, async (req, res) => {
   try {
     const { name } = req.body;
@@ -351,7 +399,8 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
       Grade.deleteMany({ userId: req.user.id }),
       ResultHistory.deleteMany({ userId: req.user.id }),
       StudentStats.deleteMany({ userId: req.user.id }),
-      Timetable.deleteMany({ userId: req.user.id }) 
+      Timetable.deleteMany({ userId: req.user.id }),
+      Course.deleteMany({ userId: req.user.id, type: 'university' }) 
     ]);
     res.json({ success: true, message: "Portal account removed." });
   } catch (error) { res.status(500).json({ message: "Failed to unlink account." }); }
@@ -371,52 +420,176 @@ app.post('/api/sync-grades', auth, async (req, res) => {
 
 // --- EXTENSION SYNC ROUTE ---
 app.post('/api/extension-sync', auth, async (req, res) => {
+  console.log("🚀 EXTENSION SYNC HIT");
+console.log("BODY:", JSON.stringify(req.body, null, 2));
   try {
-    const { gradesData, historyData, statsData, timetableData, portalId } = req.body; 
+    const { gradesData, historyData, statsData, timetableData, portalId } = req.body;
     const userId = req.user.id;
     const user = await User.findById(userId);
 
-    if (!portalId) return res.status(400).json({ message: "Could not detect Student ID from the UCP portal." });
+    console.log("========== EXTENSION SYNC START ==========");
+    console.log("Grades:", gradesData?.length || 0);
+    console.log("Timetable:", timetableData?.length || 0);
+
+    if (!portalId) {
+      return res.status(400).json({ message: "Student ID not detected." });
+    }
 
     if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
-        return res.status(403).json({ message: `Mismatch! Linked to ${user.portalId}, but found ${portalId}. Please disconnect in settings first.` });
+      return res.status(403).json({
+        message: `Mismatch! Linked to ${user.portalId}, but found ${portalId}.`
+      });
     }
 
-    if (!user.portalId) user.portalId = portalId.toUpperCase();
+    if (!user.portalId) {
+      user.portalId = portalId.toUpperCase();
+    }
 
+    // ==============================
+    // SAVE GRADES
+    // ==============================
     if (gradesData && gradesData.length > 0) {
       await Grade.deleteMany({ userId });
+
       for (const grade of gradesData) {
-        await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true, new: true });
+        await Grade.findOneAndUpdate(
+          { courseUrl: grade.courseUrl, userId },
+          { ...grade, userId, lastUpdated: new Date() },
+          { upsert: true, new: true }
+        );
       }
     }
 
+    // ==============================
+    // SAVE HISTORY
+    // ==============================
     if (historyData && historyData.length > 0) {
       await ResultHistory.deleteMany({ userId });
+
       for (const sem of historyData) {
-        await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true });
+        await ResultHistory.findOneAndUpdate(
+          { term: sem.term, userId },
+          { ...sem, userId, lastUpdated: new Date() },
+          { upsert: true }
+        );
       }
     }
 
+    // ==============================
+    // SAVE STATS
+    // ==============================
     if (statsData && statsData.cgpa) {
-      await StudentStats.findOneAndUpdate({ userId }, { ...statsData, userId, lastUpdated: new Date() }, { upsert: true });
+      await StudentStats.findOneAndUpdate(
+        { userId },
+        { ...statsData, userId, lastUpdated: new Date() },
+        { upsert: true }
+      );
     }
-    
+
+    // ==============================
+    // SAVE TIMETABLE
+    // ==============================
     if (timetableData && timetableData.length > 0) {
-      await Timetable.deleteMany({ userId }); 
+      await Timetable.deleteMany({ userId });
+
       for (const classItem of timetableData) {
         const { id, ...classData } = classItem;
-        const newClass = new Timetable({ ...classData, userId, lastUpdated: new Date() });
-        await newClass.save();
+        await new Timetable({
+          ...classData,
+          userId,
+          lastUpdated: new Date()
+        }).save();
+      }
+    }
+
+    // ==============================
+    // 🔥 UNIVERSAL COURSE ENGINE
+    // ==============================
+
+    const courseMap = new Map();
+
+    // ---- A. Extract from timetable
+    if (timetableData && timetableData.length > 0) {
+      timetableData.forEach(item => {
+        if (!item.courseName) return;
+
+        if (!courseMap.has(item.courseName)) {
+          courseMap.set(item.courseName, {
+            name: item.courseName,
+            code: item.courseCode || '',
+            color: item.color || '#3498db',
+            instructors: new Set(),
+            rooms: new Set()
+          });
+        }
+
+        const course = courseMap.get(item.courseName);
+
+        if (item.instructor && !item.instructor.includes('Unknown')) {
+          course.instructors.add(item.instructor);
+        }
+
+        if (item.room && !item.room.includes('Unknown')) {
+          course.rooms.add(item.room);
+        }
+      });
+    }
+
+    // ---- B. Extract from grades (FALLBACK FIX)
+    if (gradesData && gradesData.length > 0) {
+      gradesData.forEach(g => {
+        if (!g.courseName) return;
+
+        if (!courseMap.has(g.courseName)) {
+          courseMap.set(g.courseName, {
+            name: g.courseName,
+            code: '',
+            color: '#3498db',
+            instructors: new Set(),
+            rooms: new Set()
+          });
+        }
+      });
+    }
+
+    // ---- C. SAVE COURSES (FORCE UPSERT)
+    console.log("Saving Courses:", courseMap.size);
+
+    for (const [courseName, data] of courseMap.entries()) {
+      try {
+        await Course.findOneAndUpdate(
+          { userId, name: courseName },
+          {
+            $set: {
+              userId,
+              name: data.name,
+              type: 'university',
+              code: data.code || '',
+              color: data.color || '#3498db',
+              instructors: Array.from(data.instructors),
+              rooms: Array.from(data.rooms)
+            }
+          },
+          { upsert: true, new: true }
+        );
+        console.log(`✅ Upserted course: ${data.name}`);
+      } catch (dbError) {
+        console.error(`❌ DB Error saving course [${data.name}]:`, dbError.message);
       }
     }
 
     user.isPortalConnected = true;
     user.lastSyncAt = new Date();
-    await user.save(); 
+    await user.save();
 
-    res.json({ message: 'Sync complete via Extension!' });
-  } catch (error) { res.status(500).json({ message: error.message || 'Internal Server Error' }); }
+    console.log("========== EXTENSION SYNC COMPLETE ==========");
+
+    res.json({ message: "Sync complete with Course persistence!" });
+
+  } catch (error) {
+    console.error("SYNC ERROR:", error);
+    res.status(500).json({ message: error.message });
+  }
 });
 
 // --- STANDARD DATA GETTERS ---
@@ -426,6 +599,7 @@ app.get('/api/timetable', auth, async (req, res) => {
     res.json(timetable.map(item => ({ ...item.toObject(), id: item._id })));
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
+
 
 app.get('/api/student-stats', auth, async (req, res) => {
   try {
@@ -475,7 +649,6 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-// Soft Delete Task
 app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
@@ -483,7 +656,6 @@ app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-// Restore Task
 app.put('/api/tasks/:id/restore', auth, async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
@@ -491,7 +663,6 @@ app.put('/api/tasks/:id/restore', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-// Hard Delete Task
 app.delete('/api/tasks/:id', auth, async (req, res) => {
   try {
     await Task.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
@@ -503,7 +674,6 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
 // --- TRANSACTIONS ---
 app.get('/api/transactions', auth, async (req, res) => {
   try {
-    // Only fetch non-deleted transactions
     const transactions = await Transaction.find({ userId: req.user.id, isDeleted: false }).sort({ date: -1, createdAt: -1 });
     res.json(transactions);
   } catch (error) { res.status(500).json({ message: "Error" }); }
@@ -516,7 +686,6 @@ app.post('/api/transactions', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-// Soft Delete Transaction
 app.put('/api/transactions/:id/delete', auth, async (req, res) => {
   try {
     const transaction = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
@@ -524,7 +693,6 @@ app.put('/api/transactions/:id/delete', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-// Restore Transaction
 app.put('/api/transactions/:id/restore', auth, async (req, res) => {
   try {
     const transaction = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
@@ -532,7 +700,6 @@ app.put('/api/transactions/:id/restore', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-// Hard Delete Transaction
 app.delete('/api/transactions/:id', auth, async (req, res) => {
   try {
     await Transaction.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
@@ -561,7 +728,6 @@ app.post('/api/budgets', auth, async (req, res) => {
 // --- HABITS ---
 app.get('/api/habits', auth, async (req, res) => {
   try {
-    // Only fetch non-deleted habits
     const habits = await Habit.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
     res.json(habits);
   } catch (error) { res.status(500).json({ message: "Error fetching habits" }); }
@@ -574,7 +740,6 @@ app.post('/api/habits', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error creating habit" }); }
 });
 
-// Soft Delete Habit
 app.put('/api/habits/:id/delete', auth, async (req, res) => {
   try {
     const habit = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
@@ -582,7 +747,6 @@ app.put('/api/habits/:id/delete', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-// Restore Habit
 app.put('/api/habits/:id/restore', auth, async (req, res) => {
   try {
     const habit = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
@@ -590,7 +754,6 @@ app.put('/api/habits/:id/restore', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-// Hard Delete Habit
 app.delete('/api/habits/:id', auth, async (req, res) => {
   try {
     await Habit.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
@@ -637,7 +800,6 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
 // ==========================================
 app.get('/api/bin', auth, async (req, res) => {
   try {
-    // Gather soft-deleted items across all collections using .lean() for faster JSON serialization
     const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).lean();
     const transactions = await Transaction.find({ userId: req.user.id, isDeleted: true }).lean();
     const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
