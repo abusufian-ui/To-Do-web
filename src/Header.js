@@ -3,7 +3,7 @@ import {
   Plus, Search, SlidersHorizontal, User, Inbox, Sun, Moon, Filter,
   Book, Mail, Clock, CheckCircle2, Calendar, Menu,
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown, 
-  Settings, LogOut 
+  Settings, LogOut, FileText 
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
@@ -20,25 +20,22 @@ const Header = ({
   tasks = [], 
   onOpenTask,
   onNavigate,
-  onMenuClick 
+  onMenuClick,
+  notes = [],           
+  onAddNoteClick,       
+  onOpenNote            
 }) => {
   // --- STATE MANAGEMENT ---
   const [showFilters, setShowFilters] = useState(false);
-  
-  // Dropdown States for Filters
   const [showCourseList, setShowCourseList] = useState(false); 
   const [showStatusList, setShowStatusList] = useState(false);
   const [showPriorityList, setShowPriorityList] = useState(false);
-  
-  // Other UI States
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [inboxMessage, setInboxMessage] = useState(false);
-
-  // Search States
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
 
-  // --- REFS (For Click Outside Logic) ---
+  // --- REFS ---
   const filterRef = useRef(null);
   const courseDropdownRef = useRef(null);
   const statusDropdownRef = useRef(null);
@@ -59,8 +56,6 @@ const Header = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // --- HANDLERS ---
-
   const handleInboxClick = () => {
     setInboxMessage(true);
     setTimeout(() => setInboxMessage(false), 2000);
@@ -70,16 +65,25 @@ const Header = ({
     setFilters({ ...filters, course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '' });
   };
 
+  // --- SMART SEARCH LOGIC ---
   const handleSearchChange = (e) => {
     const query = e.target.value;
     setFilters({ ...filters, searchQuery: query });
 
     if (query.trim().length > 0) {
-      const results = tasks.filter(task => 
-        task.name.toLowerCase().includes(query.toLowerCase()) || 
-        (task.description && task.description.toLowerCase().includes(query.toLowerCase()))
-      ).slice(0, 6);
-      setSearchResults(results);
+      if (activeTab === 'Notes') {
+        const results = notes.filter(note => 
+          note.title?.toLowerCase().includes(query.toLowerCase()) || 
+          note.content?.toLowerCase().includes(query.toLowerCase())
+        ).slice(0, 6);
+        setSearchResults(results.map(n => ({ ...n, isNoteResult: true })));
+      } else {
+        const results = tasks.filter(task => 
+          task.name.toLowerCase().includes(query.toLowerCase()) || 
+          (task.description && task.description.toLowerCase().includes(query.toLowerCase()))
+        ).slice(0, 6);
+        setSearchResults(results.map(t => ({ ...t, isNoteResult: false })));
+      }
       setShowSearchDropdown(true);
     } else {
       setSearchResults([]);
@@ -88,7 +92,6 @@ const Header = ({
   };
 
   // --- ICON HELPERS ---
-
   const getStatusIcon = (s) => {
     switch(s) {
       case 'New task': return <Mail size={14} className="text-blue-500" />;
@@ -124,23 +127,26 @@ const Header = ({
   ].filter(Boolean).length;
 
   return (
-    <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-50">
+    <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-[100]">
       
       {/* --- LEFT SIDE --- */}
       <div className="flex items-center gap-2 md:gap-4">
         
-        {/* NEW: Mobile Hamburger Menu */}
         <button onClick={onMenuClick} className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors">
           <Menu size={22} />
         </button>
 
-        {/* ADD NEW BUTTON */}
-        <button onClick={onAddClick} className="flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-600 text-white w-9 h-9 md:w-auto md:px-5 md:py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95">
+        <button 
+          onClick={activeTab === 'Notes' ? onAddNoteClick : onAddClick} 
+          className="flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-600 text-white w-9 h-9 md:w-auto md:px-5 md:py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+        >
           <Plus size={18} />
-          <span className="hidden md:inline text-sm font-semibold">Add new</span>
+          <span className="hidden md:inline text-sm font-semibold">
+            {activeTab === 'Notes' ? 'New Note' : 'Add new'}
+          </span>
         </button>
 
-        {/* SEARCH BAR */}
+        {/* SMART SEARCH BAR */}
         <div className="hidden sm:flex items-center gap-2 relative" ref={searchRef}>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -151,36 +157,47 @@ const Header = ({
               value={filters?.searchQuery || ''}
               onChange={handleSearchChange}
               onFocus={() => filters?.searchQuery && setShowSearchDropdown(true)}
-              placeholder="Search tasks..."
-              autoComplete="off" // <-- FIX: Stops Chrome Autofill
+              placeholder={activeTab === 'Notes' ? "Search notes..." : "Search tasks..."}
+              autoComplete="off"
               name="global-portal-search-input"
               spellCheck="false"
               className="bg-gray-100 dark:bg-dark-surface border border-transparent focus:border-brand-blue text-gray-800 dark:text-white text-sm rounded-full py-2 pl-10 pr-4 w-32 md:w-48 focus:w-48 md:focus:w-64 transition-all outline-none"
             />
           </div>
 
-          {/* GOOGLE-STYLE SEARCH RESULTS DROPDOWN */}
+          {/* DYNAMIC SEARCH RESULTS DROPDOWN */}
           {showSearchDropdown && searchResults.length > 0 && (
-            <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn custom-scrollbar max-h-96 overflow-y-auto">
+            <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl overflow-hidden z-[110] animate-fadeIn custom-scrollbar max-h-96 overflow-y-auto">
               <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#252525]">Top Results</div>
-              {searchResults.map((task) => (
+              {searchResults.map((item) => (
                 <div 
-                  key={task.id} 
-                  onClick={() => { onOpenTask(task); setShowSearchDropdown(false); }}
+                  key={item.id || item._id} 
+                  onClick={() => { 
+                    item.isNoteResult ? onOpenNote(item) : onOpenTask(item); 
+                    setShowSearchDropdown(false); 
+                  }}
                   className="px-4 py-3 hover:bg-blue-50 dark:hover:bg-[#2C2C2C] cursor-pointer border-b border-gray-100 dark:border-[#2C2C2C] last:border-0 flex items-start gap-3 group"
                 >
-                  <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${task.status === 'Completed' ? 'bg-green-500' : 'bg-blue-500'}`} />
+                  <div className="mt-1 flex-shrink-0 text-brand-blue">
+                    {item.isNoteResult ? <FileText size={14} /> : <div className={`w-2 h-2 rounded-full ${item.status === 'Completed' ? 'bg-green-500' : 'bg-blue-500'}`} />}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate group-hover:text-brand-blue transition-colors">{task.name}</p>
+                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate group-hover:text-brand-blue transition-colors">
+                      {item.isNoteResult ? item.title : item.name}
+                    </p>
                     <div className="flex items-center justify-between mt-1">
-                      <span className="text-[10px] text-gray-400 truncate max-w-[120px]">{task.course}</span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                        task.priority === 'Critical' ? 'border-red-500/30 text-red-500 bg-red-500/10' : 
-                        task.priority === 'High' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' : 
-                        'border-gray-500/30 text-gray-500 bg-gray-500/10'
-                      }`}>
-                        {task.priority}
+                      <span className="text-[10px] text-gray-400 truncate max-w-[120px]">
+                        {item.isNoteResult ? (courses.find(c => (c.id || c._id) === item.courseId)?.name || 'General') : item.course}
                       </span>
+                      {!item.isNoteResult && (
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                          item.priority === 'Critical' ? 'border-red-500/30 text-red-500 bg-red-500/10' : 
+                          item.priority === 'High' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' : 
+                          'border-gray-500/30 text-gray-500 bg-gray-500/10'
+                        }`}>
+                          {item.priority}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -188,8 +205,8 @@ const Header = ({
             </div>
           )}
           
-          {/* FILTER BUTTON & MENU */}
-          {activeTab === 'Tasks' && (
+          {/* MAIN FILTER MENU POPUP */}
+          {(activeTab === 'Tasks' || activeTab === 'Notes') && (
             <div className="relative" ref={filterRef}>
               <button onClick={() => setShowFilters(!showFilters)} className={`p-2 rounded-full transition-all relative ${showFilters ? 'bg-blue-100 dark:bg-blue-900/30 text-brand-blue' : 'text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-dark-surface'}`}>
                 <SlidersHorizontal size={20} />
@@ -197,15 +214,15 @@ const Header = ({
               </button>
 
               {showFilters && (
-                <div className="absolute top-full left-0 mt-3 w-80 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl p-6 animate-fadeIn z-50 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                <div className="absolute top-full left-0 mt-3 w-80 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl p-6 animate-fadeIn z-[110] max-h-[85vh] overflow-y-auto custom-scrollbar">
                   <div className="flex justify-between items-center mb-5">
-                    <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2"><Filter size={16} className="text-brand-blue" /> Filter Tasks</h3>
+                    <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2"><Filter size={16} className="text-brand-blue" /> Filter {activeTab}</h3>
                     {activeFilterCount > 0 && <button onClick={clearFilters} className="text-[10px] uppercase tracking-wider font-bold text-red-500 hover:underline">Reset</button>}
                   </div>
 
                   <div className="space-y-5">
                     
-                    {/* COURSE DROPDOWN */}
+                    {/* FIXED ACCORDION COURSE DROPDOWN */}
                     <div className="relative" ref={courseDropdownRef}>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Course</label>
                       <button onClick={() => setShowCourseList(!showCourseList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
@@ -214,12 +231,15 @@ const Header = ({
                       </button>
 
                       {showCourseList && (
-                        <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-50 animate-fadeIn">
+                        <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
                           <div onClick={() => { setFilters({...filters, course: 'All'}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-2 text-gray-500"><Book size={14} /> All Courses</div>
-                          <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
+                          <div className="max-h-[160px] overflow-y-auto custom-scrollbar">
                             {courses.map(c => (
                               <div key={c.id || c._id || c.name} onClick={() => { setFilters({...filters, course: c.name}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-[#2C2C2C]">
-                                <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getCourseFilterIcon(c.name)}{c.name}</span>
+                                <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">
+                                  {c.type === 'uni' ? <UCPLogo className="w-4 h-4"/> : <Book size={14} className="text-gray-400"/>}
+                                  {c.name}
+                                </span>
                                 {filters.course === c.name && <CheckCircle2 size={12} className="text-brand-blue" />}
                               </div>
                             ))}
@@ -228,49 +248,52 @@ const Header = ({
                       )}
                     </div>
 
-                    {/* STATUS DROPDOWN */}
-                    <div className="relative" ref={statusDropdownRef}>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Status</label>
-                      <button onClick={() => setShowStatusList(!showStatusList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
-                        <span className="flex items-center gap-2">{getStatusIcon(filters.status)}{filters.status}</span>
-                        <ChevronDown size={14} className={`transition-transform ${showStatusList ? 'rotate-180' : ''}`} />
-                      </button>
+                    {/* FIXED ACCORDION STATUS/PRIORITY DROPDOWNS (ONLY TASKS) */}
+                    {activeTab === 'Tasks' && (
+                      <>
+                        <div className="relative" ref={statusDropdownRef}>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Status</label>
+                          <button onClick={() => setShowStatusList(!showStatusList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
+                            <span className="flex items-center gap-2">{getStatusIcon(filters.status)}{filters.status}</span>
+                            <ChevronDown size={14} className={`transition-transform ${showStatusList ? 'rotate-180' : ''}`} />
+                          </button>
 
-                      {showStatusList && (
-                        <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-50 animate-fadeIn">
-                          {['All', 'New task', 'Scheduled', 'In Progress', 'Completed'].map(status => (
-                            <div key={status} onClick={() => { setFilters({...filters, status}); setShowStatusList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
-                              <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getStatusIcon(status)}{status}</span>
-                              {filters.status === status && <CheckCircle2 size={12} className="text-brand-blue" />}
+                          {showStatusList && (
+                            <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                              {['All', 'New task', 'Scheduled', 'In Progress', 'Completed'].map(status => (
+                                <div key={status} onClick={() => { setFilters({...filters, status}); setShowStatusList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                  <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getStatusIcon(status)}{status}</span>
+                                  {filters.status === status && <CheckCircle2 size={12} className="text-brand-blue" />}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    {/* PRIORITY DROPDOWN */}
-                    <div className="relative" ref={priorityDropdownRef}>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Priority</label>
-                      <button onClick={() => setShowPriorityList(!showPriorityList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
-                        <span className="flex items-center gap-2">{getPriorityIcon(filters.priority)}{filters.priority}</span>
-                        <ChevronDown size={14} className={`transition-transform ${showPriorityList ? 'rotate-180' : ''}`} />
-                      </button>
+                        <div className="relative" ref={priorityDropdownRef}>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Priority</label>
+                          <button onClick={() => setShowPriorityList(!showPriorityList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
+                            <span className="flex items-center gap-2">{getPriorityIcon(filters.priority)}{filters.priority}</span>
+                            <ChevronDown size={14} className={`transition-transform ${showPriorityList ? 'rotate-180' : ''}`} />
+                          </button>
 
-                      {showPriorityList && (
-                        <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-50 animate-fadeIn">
-                          {['All', 'Critical', 'High', 'Medium', 'Low'].map(priority => (
-                            <div key={priority} onClick={() => { setFilters({...filters, priority}); setShowPriorityList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
-                              <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getPriorityIcon(priority)}{priority}</span>
-                              {filters.priority === priority && <CheckCircle2 size={12} className="text-brand-blue" />}
+                          {showPriorityList && (
+                            <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                              {['All', 'Critical', 'High', 'Medium', 'Low'].map(priority => (
+                                <div key={priority} onClick={() => { setFilters({...filters, priority}); setShowPriorityList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                  <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getPriorityIcon(priority)}{priority}</span>
+                                  {filters.priority === priority && <CheckCircle2 size={12} className="text-brand-blue" />}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </>
+                    )}
 
                     {/* DATE RANGE */}
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Due Date Range</label>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Date Range</label>
                       <div className="flex gap-2">
                         <div className="flex-1">
                           <span className="text-[9px] text-gray-400 block mb-1">From</span>

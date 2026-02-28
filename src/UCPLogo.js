@@ -6,12 +6,14 @@ const UCPLogo = ({ className }) => {
       id="Layer_1" 
       data-name="Layer 1" 
       xmlns="http://www.w3.org/2000/svg" 
-      // CHANGED: "Zoomed in" to remove empty space around the logo
       viewBox="200 200 600 600" 
       className={className} 
       fill="currentColor"
+      // Force crisp rendering at small sizes
+      shapeRendering="geometricPrecision"
+      preserveAspectRatio="xMidYMid meet"
     >
-      <title>university-of-central-punjab-Logo</title>
+      <title>UCP Logo</title>
       
       {/* Outer Circle & Text */}
       <path d="M487.083,794.876l-.639-1a4.369,4.369,0,0,1-2.332.745c-1.65-.372-1.605-2.474-1.473-4.071l.125-1.375,1.1-12.461c.39-4.577.665-6.821,3.53-10.431l-.886-.736a4.788,4.788,0,0,1-3.4,1.322c-3.477-.32-6.67-2.271-9.509-4.054a13.563,13.563,0,0,1-9.108,2.262c-.506-.035-1.508-.2-1.508-.2l2.678,6,2.581,5.632s-7.406,6.155-8,12.958c-.346,3.92,2.084,7.042,4.781,9.614l10.253-6.989c.124,3.6,1.268,5.588,3.592,8.213Zm-14.653-15.3,3.77,2.013-.772,8.772-4.966,3.352c-2.138-2.3-4.089-5.029-3.806-8.293.24-2.678,1.934-7.929,2.289-7.751Zm4.648-8.072-.754,8.63-3.556-1.915-3.069-1.659-2.439-5.543-2.067-4.63Z" />

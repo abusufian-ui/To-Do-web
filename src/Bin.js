@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trash2, RefreshCw, AlertTriangle, CheckCircle2, CheckSquare, CreditCard, Activity } from 'lucide-react';
+import { Trash2, RefreshCw, AlertTriangle, CheckCircle2, CheckSquare, CreditCard, Activity, FileText } from 'lucide-react';
 
 const Bin = ({ binItems = [], restoreItem, permanentlyDeleteItem, restoreAll, deleteAll }) => {
   const [confirmation, setConfirmation] = useState({ isOpen: false, type: null, item: null });
@@ -60,11 +60,11 @@ const Bin = ({ binItems = [], restoreItem, permanentlyDeleteItem, restoreAll, de
 
   const config = getModalConfig();
 
-  // Helper to render type-specific UI
   const getBadgeUI = (type) => {
     if(type === 'Task') return { icon: <CheckSquare size={14}/>, color: 'text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-900/30' };
     if(type === 'Transaction') return { icon: <CreditCard size={14}/>, color: 'text-emerald-600 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30' };
     if(type === 'Habit') return { icon: <Activity size={14}/>, color: 'text-rose-600 bg-rose-100 dark:text-rose-400 dark:bg-rose-900/30' };
+    if(type === 'Note') return { icon: <FileText size={14}/>, color: 'text-purple-600 bg-purple-100 dark:text-purple-400 dark:bg-purple-900/30' }; 
     return { icon: null, color: '' };
   };
 

@@ -6,8 +6,12 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const si = require('systeminformation');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
+const Note = require('./models/Note');
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
@@ -18,7 +22,7 @@ const auth = (req, res, next) => {
   const token = req.header('x-auth-token');
   if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
   try {
-    const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
     req.user = decoded;
     next();
   } catch (e) {
@@ -63,11 +67,10 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:8081', 
-  'http://192.168.0.107:8081',
-  'http://192.168.0.102:8081', 
+  'http://192.168.0.100:8081', 
   'https://myportalucp.online',
   'https://horizon.ucp.edu.pk',
-'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof' // Your exact dev extension ID
+  'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof' // Your exact dev extension ID
 ];
 
 const corsOptions = {
@@ -86,6 +89,28 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// --- SERVE UPLOADED FILES STATICALLY ---
+// This allows the frontend to download the files via the URL
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+app.use('/uploads', express.static(uploadDir));
+
+// --- MULTER CONFIGURATION (PRESERVES EXTENSIONS) ---
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+const upload = multer({ storage: storage });
+
 
 // --- DATABASE CONNECTION ---
 const dbLink = process.env.REACT_APP_MONGODB_URI;
@@ -169,6 +194,71 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
     ]);
     res.json({ message: "User deleted permanently." });
   } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// --- NOTES MANAGEMENT ---
+app.post('/api/notes', auth, async (req, res) => {
+  try {
+    const { _id, title, courseId, content, referenceFiles } = req.body;
+    if (_id) { 
+      const updatedNote = await Note.findByIdAndUpdate(_id, { title, courseId, content, referenceFiles }, { new: true });
+      return res.json(updatedNote);
+    }
+    const newNote = new Note({ user: req.user.id, title, courseId, content, referenceFiles });
+    await newNote.save();
+    res.json(newNote);
+  } catch (error) { res.status(500).json({ error: "Server Error" }); }
+});
+
+app.get('/api/notes', auth, async (req, res) => {
+  try {
+    const notes = await Note.find({ user: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
+    res.json(notes);
+  } catch (error) { res.status(500).json({ error: "Server Error" }); }
+});
+
+app.put('/api/notes/:id/delete', auth, async (req, res) => {
+  try {
+    await Note.findByIdAndUpdate(req.params.id, { isDeleted: true, deletedAt: new Date() });
+    res.json({ message: 'Moved to bin' });
+  } catch (error) { res.status(500).json({ error: "Server Error" }); }
+});
+
+app.put('/api/notes/:id/restore', auth, async (req, res) => {
+  try {
+    await Note.findByIdAndUpdate(req.params.id, { isDeleted: false, deletedAt: null });
+    res.json({ message: 'Restored from bin' });
+  } catch (error) { res.status(500).json({ error: "Server Error" }); }
+});
+
+app.delete('/api/notes/:id', auth, async (req, res) => {
+  try {
+    await Note.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Deleted permanently' });
+  } catch (error) { res.status(500).json({ error: "Server Error" }); }
+});
+
+// --- FILE UPLOAD ROUTE ---
+app.post('/api/upload', auth, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Generate the local URL so the frontend can download it
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    const originalName = req.file.originalname;
+
+    res.status(200).json({ 
+      message: 'Upload successful', 
+      url: fileUrl,
+      fileName: originalName
+    });
+
+  } catch (error) {
+    console.error("Upload Error:", error);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
 });
 
 // --- ADMIN SECURITY (PIN) ROUTES ---
@@ -803,8 +893,9 @@ app.get('/api/bin', auth, async (req, res) => {
     const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).lean();
     const transactions = await Transaction.find({ userId: req.user.id, isDeleted: true }).lean();
     const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
+    const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean(); // Added notes to the bin payload
     
-    res.json({ tasks, transactions, habits });
+    res.json({ tasks, transactions, habits, notes });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
@@ -813,6 +904,7 @@ app.put('/api/bin/restore-all', auth, async (req, res) => {
     await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Transaction.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Habit.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
+    await Note.updateMany({ user: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null }); // Added notes restore
     res.json({ message: "Restored" });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
@@ -822,6 +914,7 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
     await Task.deleteMany({ userId: req.user.id, isDeleted: true });
     await Transaction.deleteMany({ userId: req.user.id, isDeleted: true });
     await Habit.deleteMany({ userId: req.user.id, isDeleted: true });
+    await Note.deleteMany({ user: req.user.id, isDeleted: true }); // Added notes empty
     res.json({ message: "Emptied" });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
@@ -831,6 +924,5 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT} at IP 192.168.0.100`));
 module.exports = app;

@@ -11,12 +11,13 @@ import Calendar from './Calendar';
 import GradeBook from './GradeBook';
 import ResultHistory from './ResultHistory';
 import AdminDashboard from './AdminDashboard';
-import { Heart, ArrowRight, StickyNote } from 'lucide-react';
+import { Heart, ArrowRight } from 'lucide-react'; 
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
 import MyProfile from './MyProfile';
 import Timetable from './TimeTable'; 
 import HabitTracker from './HabitTracker';
+import Notes from './Notes';
 
 // Enforcing the correct backend port (5000)
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -70,7 +71,8 @@ function App() {
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState([]);
   
-  // NEW: Unified Bin State
+  const [notes, setNotes] = useState([]); 
+  const [isAddingNewNote, setIsAddingNewNote] = useState(false);
   const [binItems, setBinItems] = useState([]);
 
   const [filters, setFilters] = useState({
@@ -160,7 +162,15 @@ function App() {
     } catch (error) { console.error("Error fetching tasks:", error); }
   }, [authHeaders, handleLogout]);
 
-  // NEW: Universal Bin Fetcher
+  const fetchNotes = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/notes`, { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
+      const data = await res.json();
+      setNotes(data);
+    } catch (error) { console.error("Error fetching notes:", error); }
+  }, [authHeaders, handleLogout]);
+
   const fetchBin = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/bin`, { headers: authHeaders });
@@ -170,7 +180,8 @@ function App() {
       const formattedBin = [
         ...(data.tasks || []).map(t => ({ ...t, id: t._id, binType: 'Task', name: t.name, subtitle: t.course })),
         ...(data.transactions || []).map(t => ({ ...t, id: t._id, binType: 'Transaction', name: t.description || 'Transaction', subtitle: `Rs ${t.amount}` })),
-        ...(data.habits || []).map(h => ({ ...h, id: h._id, binType: 'Habit', name: h.name, subtitle: h.type === 'good' ? 'Good Protocol' : 'Bad Protocol' }))
+        ...(data.habits || []).map(h => ({ ...h, id: h._id, binType: 'Habit', name: h.name, subtitle: h.type === 'good' ? 'Good Protocol' : 'Bad Protocol' })),
+        ...(data.notes || []).map(n => ({ ...n, id: n._id, binType: 'Note', name: n.title, subtitle: n.courseId }))
       ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
       
       setBinItems(formattedBin);
@@ -209,11 +220,11 @@ function App() {
     if (isAuthenticated && token) {
       fetchUser();
       fetchTasks();
+      fetchNotes();
       fetchBin();
       fetchCourses();
     }
-  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchBin, fetchCourses]);
-
+  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchBin, fetchCourses]);
 
   // --- TASK ACTIONS ---
   const handleAddTask = async (newTaskData) => {
@@ -237,23 +248,24 @@ function App() {
     try {
       await fetch(`${API_BASE}/api/tasks/${taskToDelete}/delete`, { method: 'PUT', headers: authHeaders });
       fetchTasks();
-      fetchBin(); // Refresh universal bin
+      fetchBin(); 
       setTaskToDelete(null);
     } catch (error) { console.error("Error deleting task:", error); }
   };
 
-  // --- NEW: UNIVERSAL ACTIONS ---
+  // --- UNIVERSAL ACTIONS ---
   const restoreItem = async (id, type) => {
-    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits' };
+    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits', 'Note': 'notes' };
     try {
       await fetch(`${API_BASE}/api/${endpoints[type]}/${id}/restore`, { method: 'PUT', headers: authHeaders });
       fetchBin();
       if (type === 'Task') fetchTasks();
+      if (type === 'Note') fetchNotes();
     } catch (error) { console.error("Error restoring:", error); }
   };
 
   const permanentlyDeleteItem = async (id, type) => {
-    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits' };
+    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits', 'Note': 'notes' };
     try {
       await fetch(`${API_BASE}/api/${endpoints[type]}/${id}`, { method: 'DELETE', headers: authHeaders });
       setBinItems(prev => prev.filter(item => item.id !== id));
@@ -263,7 +275,8 @@ function App() {
   const restoreAllBin = async () => {
     try { 
       await fetch(`${API_BASE}/api/bin/restore-all`, { method: 'PUT', headers: authHeaders }); 
-      fetchTasks(); 
+      fetchTasks();
+      fetchNotes();
       fetchBin(); 
     } catch (error) { }
   };
@@ -306,6 +319,28 @@ function App() {
       if (filters.priority !== 'All' && task.priority !== filters.priority) return false;
       if (filters.startDate && task.date < filters.startDate) return false;
       if (filters.endDate && task.date > filters.endDate) return false;
+      return true;
+    });
+  };
+
+  // NEW FILTER LOGIC FOR NOTES
+  const getFilteredNotes = () => {
+    return notes.filter(note => {
+      // 1. Check Search Query
+      if (filters.searchQuery) {
+        const query = filters.searchQuery.toLowerCase();
+        const matchesTitle = note.title?.toLowerCase().includes(query) || false;
+        
+        // Strip HTML to search actual text content securely
+        const plainContent = new DOMParser().parseFromString(note.content || '', 'text/html').body.textContent || "";
+        const matchesContent = plainContent.toLowerCase().includes(query);
+        
+        if (!matchesTitle && !matchesContent) return false;
+      }
+      
+      // 2. Check Course Filter
+      if (filters.course !== 'All' && note.courseId !== filters.course) return false;
+      
       return true;
     });
   };
@@ -405,7 +440,7 @@ function App() {
 
   const handleNavigate = (tab) => {
     setActiveTab(tab);
-    if (tab === 'Bin') fetchBin(); // Refresh bin dynamically when opened
+    if (tab === 'Bin') fetchBin(); 
     if (window.innerWidth < 768) {
       setIsSidebarOpen(false);
     }
@@ -447,6 +482,9 @@ function App() {
           onOpenTask={(task) => setViewTask(task)}
           onNavigate={handleNavigate}
           onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          notes={notes}
+          onAddNoteClick={() => setIsAddingNewNote(true)}
+          onOpenNote={(note) => console.log("Open Note from search:", note)} 
         />
         <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide">
 
@@ -467,22 +505,15 @@ function App() {
           )}
 
           {activeTab === 'Notes' && (
-            <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn">
-              <div className="max-w-md bg-white dark:bg-[#1E1E1E] border border-dashed border-gray-300 dark:border-[#333] p-8 md:p-12 rounded-3xl shadow-sm">
-                <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-6 rotate-3">
-                  <StickyNote size={40} />
-                </div>
-                <h2 className="text-xl md:text-2xl font-bold dark:text-white text-gray-900 mb-3 tracking-tight">Notes Module</h2>
-                <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
-                  We're crafting a workspace for your lecture insights and quick thoughts.
-                  This section is currently <strong>under development</strong>.
-                </p>
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 text-xs font-bold uppercase tracking-widest rounded-full border border-gray-200 dark:border-dark-border">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                  Coming Soon
-                </div>
-              </div>
-            </div>
+            <Notes 
+              courses={courses} 
+              notes={getFilteredNotes()} 
+              setNotes={setNotes} 
+              isAddingNew={isAddingNewNote} 
+              setIsAddingNew={setIsAddingNewNote} 
+              fetchNotes={fetchNotes} 
+              fetchBin={fetchBin}     
+            />
           )}
 
           {activeTab === 'Tasks' && <TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} />}
@@ -492,7 +523,6 @@ function App() {
           {activeTab === 'Grade Book' && <GradeBook />}
           {activeTab === 'History' && <ResultHistory />}
           {activeTab.startsWith('Cash-') && <CashManager activeTab={activeTab} />}
-          {/* NEW UNIVERSAL BIN CALL */}
           {activeTab === 'Bin' && <Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} />}
           {activeTab === 'Admin' && <AdminDashboard />}
           {activeTab === 'Profile' && <MyProfile user={user} />}
