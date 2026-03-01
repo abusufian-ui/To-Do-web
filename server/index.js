@@ -67,7 +67,8 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:8081', 
-  'http://192.168.0.100:8081', 
+  'http://192.168.0.100:8081',
+  'http://192.168.0.101:8081',
   'https://myportalucp.online',
   'https://horizon.ucp.edu.pk',
   'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof' // Your exact dev extension ID
