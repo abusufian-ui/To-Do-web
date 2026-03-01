@@ -4,7 +4,8 @@ import {
   PieChart, ArrowUpRight, ArrowDownRight,
   ShoppingBag, Coffee, Car, BookOpen, Zap, Gift, Smartphone,
   AlertCircle, CheckCircle2, X, Banknote, Calendar as CalendarIcon,
-  BarChart3, SlidersHorizontal, LayoutGrid, RotateCcw
+  BarChart3, SlidersHorizontal, LayoutGrid, RotateCcw,
+  Users, ArrowRightLeft, Clock
 } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -125,8 +126,10 @@ const TransactionRow = ({ t, onDelete }) => {
 // --- 4. MAIN COMPONENT ---
 const CashManager = ({ activeTab }) => {
   const [transactions, setTransactions] = useState([]);
+  const [debts, setDebts] = useState([]); // NEW: State for debts
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showDebtModal, setShowDebtModal] = useState(false); // NEW: Debt modal state
 
   // Dates
   const currentMonthISO = new Date().toISOString().slice(0, 7);
@@ -148,6 +151,16 @@ const CashManager = ({ activeTab }) => {
     description: '',
     date: new Date().toISOString().split('T')[0]
   });
+
+  // NEW: Add Debt Form
+  const [newDebt, setNewDebt] = useState({
+    type: 'lent', // lent = they owe me, borrowed = I owe them
+    person: '',
+    amount: '',
+    description: '',
+    dueDate: ''
+  });
+  
   const [errors, setErrors] = useState({});
 
   const [budgets, setBudgets] = useState({});
@@ -158,9 +171,10 @@ const CashManager = ({ activeTab }) => {
     const fetchData = async () => {
       if (!token) return;
       try {
-        const [transRes, budgetRes] = await Promise.all([
+        const [transRes, budgetRes, debtsRes] = await Promise.all([
           fetch(`${API_BASE}/api/transactions`, { headers: { 'x-auth-token': token } }),
-          fetch(`${API_BASE}/api/budgets`, { headers: { 'x-auth-token': token } })
+          fetch(`${API_BASE}/api/budgets`, { headers: { 'x-auth-token': token } }),
+          fetch(`${API_BASE}/api/debts`, { headers: { 'x-auth-token': token } }) // Fetch Debts
         ]);
 
         if (transRes.ok && budgetRes.ok) {
@@ -172,11 +186,17 @@ const CashManager = ({ activeTab }) => {
           budgetData.forEach(b => bObj[b.category] = b.limit);
           setBudgets(bObj);
         }
+
+        if (debtsRes.ok) {
+          const debtsData = await debtsRes.json();
+          setDebts(debtsData.map(d => ({ ...d, id: d._id })));
+        }
       } catch (err) { console.error("Failed to fetch data", err); }
     };
     fetchData();
   }, [token]);
 
+  // --- TRANSACTION HANDLERS ---
   const validateForm = () => {
     const newErrors = {};
     if (!newTrans.amount) newErrors.amount = "Enter amount";
@@ -203,7 +223,6 @@ const CashManager = ({ activeTab }) => {
     } catch (error) { console.error("Error adding", error); }
   };
 
-  // --- UPDATED FOR SOFT DELETE ---
   const handleDelete = async (id) => {
     try {
       await fetch(`${API_BASE}/api/transactions/${id}/delete`, { 
@@ -213,6 +232,49 @@ const CashManager = ({ activeTab }) => {
       setTransactions(transactions.filter(t => t.id !== id));
     } catch (error) { console.error("Error deleting", error); }
   };
+
+  // --- DEBT HANDLERS ---
+  const handleAddDebt = async () => {
+    if (!newDebt.amount || !newDebt.person) return; // Basic validation
+    try {
+      const res = await fetch(`${API_BASE}/api/debts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({ ...newDebt, amount: Number(newDebt.amount) })
+      });
+      if (res.ok) {
+        const savedD = await res.json();
+        setDebts([{ ...savedD, id: savedD._id }, ...debts]);
+        setShowDebtModal(false);
+        setNewDebt({ type: 'lent', person: '', amount: '', description: '', dueDate: '' });
+      }
+    } catch (error) { console.error("Error adding debt", error); }
+  };
+
+  const handleToggleDebtStatus = async (id, currentStatus) => {
+    const newStatus = currentStatus === 'pending' ? 'paid' : 'pending';
+    try {
+      const res = await fetch(`${API_BASE}/api/debts/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        setDebts(debts.map(d => d.id === id ? { ...d, status: newStatus } : d));
+      }
+    } catch (error) { console.error("Error updating debt status", error); }
+  };
+
+  const handleDeleteDebt = async (id) => {
+    try {
+      await fetch(`${API_BASE}/api/debts/${id}/delete`, { 
+        method: 'PUT', 
+        headers: { 'x-auth-token': token } 
+      });
+      setDebts(debts.filter(d => d.id !== id));
+    } catch (error) { console.error("Error deleting debt", error); }
+  };
+
 
   const handleSetBudget = async (category) => {
     try {
@@ -266,8 +328,9 @@ const CashManager = ({ activeTab }) => {
   const monthTotalIncome = filteredTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const monthTotalExpense = filteredTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
 
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+  // Debt Calculations
+  const totalLentPending = debts.filter(d => d.type === 'lent' && d.status === 'pending').reduce((acc, d) => acc + d.amount, 0);
+  const totalBorrowedPending = debts.filter(d => d.type === 'borrowed' && d.status === 'pending').reduce((acc, d) => acc + d.amount, 0);
 
   // --- RENDERERS ---
 
@@ -510,11 +573,127 @@ const CashManager = ({ activeTab }) => {
     </div>
   );
 
+  // --- DEBTS RENDERER ---
+  const renderDebts = () => (
+    <div className="animate-fadeIn space-y-8">
+      
+      {/* Debt Header & Stats */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <ArrowRightLeft className="text-brand-blue" /> IOUs & Loans
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Track money you owe and money owed to you.</p>
+        </div>
+        <button onClick={() => setShowDebtModal(true)} className="flex bg-brand-blue hover:bg-blue-600 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-blue-500/30 transition-all items-center justify-center gap-2">
+          <Plus size={18} /> Add Record
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <StatCard title="Total Owed To Me" amount={totalLentPending} type="income" icon={Wallet} subText="Pending payments only" />
+        <StatCard title="Total I Owe" amount={totalBorrowedPending} type="expense" icon={AlertCircle} subText="Pending payments only" />
+      </div>
+
+      {/* Two Columns: Lent vs Borrowed */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        {/* LENT: Owed To Me */}
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm">
+          <h3 className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mb-4 flex items-center gap-2">
+            <ArrowDownRight size={20} /> Owed To Me
+          </h3>
+          <div className="space-y-4">
+            {debts.filter(d => d.type === 'lent').map(debt => (
+              <div key={debt.id} className={`p-4 rounded-xl border transition-all ${debt.status === 'paid' ? 'bg-gray-50 dark:bg-[#121212] border-gray-100 dark:border-[#2C2C2C] opacity-70' : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#444] shadow-sm'}`}>
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`p-2 rounded-lg ${debt.status === 'paid' ? 'bg-gray-200 dark:bg-[#333] text-gray-500' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500'}`}>
+                      <Users size={16} />
+                    </div>
+                    <div>
+                      <h4 className={`font-bold ${debt.status === 'paid' ? 'text-gray-500 line-through' : 'text-gray-800 dark:text-white'}`}>{debt.person}</h4>
+                      {debt.description && <p className="text-xs text-gray-500">{debt.description}</p>}
+                    </div>
+                  </div>
+                  <span className={`font-bold ${debt.status === 'paid' ? 'text-gray-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                    Rs {Number(debt.amount).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-[#333]">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Clock size={12} /> Due: {debt.dueDate ? new Date(debt.dueDate).toLocaleDateString() : 'No date'}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleToggleDebtStatus(debt.id, debt.status)} className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${debt.status === 'paid' ? 'bg-gray-200 dark:bg-[#333] text-gray-600 dark:text-gray-300' : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100'}`}>
+                      {debt.status === 'paid' ? 'Mark Pending' : 'Mark Paid'}
+                    </button>
+                    <button onClick={() => handleDeleteDebt(debt.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {debts.filter(d => d.type === 'lent').length === 0 && (
+              <p className="text-center text-gray-400 text-sm italic py-6">No one owes you money right now.</p>
+            )}
+          </div>
+        </div>
+
+        {/* BORROWED: I Owe */}
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm">
+          <h3 className="text-lg font-bold text-orange-600 dark:text-orange-400 mb-4 flex items-center gap-2">
+            <ArrowUpRight size={20} /> I Owe
+          </h3>
+          <div className="space-y-4">
+            {debts.filter(d => d.type === 'borrowed').map(debt => (
+              <div key={debt.id} className={`p-4 rounded-xl border transition-all ${debt.status === 'paid' ? 'bg-gray-50 dark:bg-[#121212] border-gray-100 dark:border-[#2C2C2C] opacity-70' : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#444] shadow-sm'}`}>
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`p-2 rounded-lg ${debt.status === 'paid' ? 'bg-gray-200 dark:bg-[#333] text-gray-500' : 'bg-orange-100 dark:bg-orange-900/30 text-orange-500'}`}>
+                      <Users size={16} />
+                    </div>
+                    <div>
+                      <h4 className={`font-bold ${debt.status === 'paid' ? 'text-gray-500 line-through' : 'text-gray-800 dark:text-white'}`}>{debt.person}</h4>
+                      {debt.description && <p className="text-xs text-gray-500">{debt.description}</p>}
+                    </div>
+                  </div>
+                  <span className={`font-bold ${debt.status === 'paid' ? 'text-gray-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                    Rs {Number(debt.amount).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-[#333]">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Clock size={12} /> Due: {debt.dueDate ? new Date(debt.dueDate).toLocaleDateString() : 'No date'}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleToggleDebtStatus(debt.id, debt.status)} className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${debt.status === 'paid' ? 'bg-gray-200 dark:bg-[#333] text-gray-600 dark:text-gray-300' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 hover:bg-orange-100'}`}>
+                      {debt.status === 'paid' ? 'Mark Pending' : 'Mark Paid'}
+                    </button>
+                    <button onClick={() => handleDeleteDebt(debt.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {debts.filter(d => d.type === 'borrowed').length === 0 && (
+              <p className="text-center text-gray-400 text-sm italic py-6">You are debt-free!</p>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeTab) {
       case 'Cash-Transactions': return renderTransactions();
       case 'Cash-Analytics': return renderAnalytics();
       case 'Cash-Budget': return renderBudget();
+      case 'Cash-Debts': return renderDebts(); // NEW TAB HANDLER
       default: return renderOverview();
     }
   };
@@ -523,7 +702,7 @@ const CashManager = ({ activeTab }) => {
     <div className="p-8 max-w-6xl mx-auto pb-24">
       <div className="mb-8">
         <h1 className="text-3xl font-bold dark:text-white text-gray-900">Cash Management</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">Track expenses, manage budgets, and analyze spending.</p>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">Track expenses, manage budgets, analyze spending, and track loans.</p>
       </div>
 
       {renderContent()}
@@ -575,9 +754,53 @@ const CashManager = ({ activeTab }) => {
         </div>
       )}
 
-      {/* --- FILTER MODAL --- */}
+      {/* --- ADD DEBT MODAL --- */}
+      {showDebtModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden animate-slideUp flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-gray-100 dark:border-[#333] flex justify-between items-center shrink-0">
+              <h3 className="font-bold text-lg dark:text-white">Add Debt / Loan</h3>
+              <button onClick={() => setShowDebtModal(false)}><X size={20} className="text-gray-400 hover:text-gray-600" /></button>
+            </div>
+            <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
+              <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl shrink-0">
+                <button onClick={() => setNewDebt({ ...newDebt, type: 'lent' })} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newDebt.type === 'lent' ? 'bg-white dark:bg-[#3E3E3E] text-emerald-500 shadow-sm' : 'text-gray-500'}`}>They Owe Me</button>
+                <button onClick={() => setNewDebt({ ...newDebt, type: 'borrowed' })} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newDebt.type === 'borrowed' ? 'bg-white dark:bg-[#3E3E3E] text-orange-500 shadow-sm' : 'text-gray-500'}`}>I Owe Them</button>
+              </div>
+              
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase">Person's Name</label>
+                <input type="text" value={newDebt.person} onChange={e => setNewDebt({ ...newDebt, person: e.target.value })} className="w-full mt-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white" placeholder="E.g., John Doe" autoFocus />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase">Amount</label>
+                <div className="relative mt-1">
+                  <div className="absolute left-3 top-3 text-gray-400 text-xs font-bold">PKR</div>
+                  <input type="number" value={newDebt.amount} onChange={e => setNewDebt({ ...newDebt, amount: e.target.value })} className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl pl-11 pr-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white" placeholder="0.00" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase">Description (Optional)</label>
+                <input type="text" value={newDebt.description} onChange={e => setNewDebt({ ...newDebt, description: e.target.value })} className="w-full mt-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white" placeholder="Dinner, Movie tickets, etc." />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase">Due Date (Optional)</label>
+                <input type="date" value={newDebt.dueDate} onChange={e => setNewDebt({ ...newDebt, dueDate: e.target.value })} className="w-full mt-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white dark:[color-scheme:dark]" />
+              </div>
+
+              <button onClick={handleAddDebt} className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/30 transition-all mt-4 shrink-0">Save Record</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- FILTER MODAL (Kept identical to original) --- */}
       {showFilterModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          {/* ... (Existing Filter Modal UI remains entirely unchanged) ... */}
           <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden animate-slideUp flex flex-col max-h-[80vh]">
             <div className="p-5 border-b border-gray-100 dark:border-[#333] flex justify-between items-center shrink-0">
               <h3 className="font-bold text-lg dark:text-white flex items-center gap-2"><SlidersHorizontal size={20} /> Filters & Sort</h3>

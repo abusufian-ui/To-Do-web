@@ -12,6 +12,7 @@ const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
 const Note = require('./models/Note');
+const { Transaction, Budget, Debt } = require('./models/Transaction');
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
@@ -48,7 +49,6 @@ const Task = require('./models/Task');
 const Grade = require('./models/Grade');
 const ResultHistory = require('./models/ResultHistory');
 const StudentStats = require('./models/StudentStats');
-const { Transaction, Budget } = require('./models/Transaction');
 const Timetable = require('./models/TimetableModel');
 const Habit = require('./models/Habit');
 const Course = require('./models/Course'); 
@@ -69,6 +69,7 @@ const allowedOrigins = [
   'http://localhost:8081', 
   'http://192.168.0.100:8081',
   'http://192.168.0.101:8081',
+  'http://192.168.0.109:5000',
   'https://myportalucp.online',
   'https://horizon.ucp.edu.pk',
   'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof' // Your exact dev extension ID
@@ -197,18 +198,85 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// --- DEBTS & LOANS ---
+app.get('/api/debts', auth, async (req, res) => {
+  try {
+    const debts = await Debt.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
+    res.json(debts);
+  } catch (error) { res.status(500).json({ message: "Error fetching debts" }); }
+});
+
+app.post('/api/debts', auth, async (req, res) => {
+  try {
+    const savedDebt = await new Debt({ ...req.body, userId: req.user.id }).save();
+    res.json(savedDebt);
+  } catch (error) { res.status(500).json({ message: "Error creating debt" }); }
+});
+
+app.put('/api/debts/:id/status', auth, async (req, res) => {
+  try {
+    const debt = await Debt.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id }, 
+      { status: req.body.status }, 
+      { new: true }
+    );
+    res.json(debt);
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+app.put('/api/debts/:id/delete', auth, async (req, res) => {
+  try {
+    const debt = await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+    res.json(debt);
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+app.put('/api/debts/:id/restore', auth, async (req, res) => {
+  try {
+    const debt = await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
+    res.json(debt);
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+app.delete('/api/debts/:id', auth, async (req, res) => {
+  try {
+    await Debt.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ message: "Error deleting debt" }); }
+});
+
 // --- NOTES MANAGEMENT ---
 app.post('/api/notes', auth, async (req, res) => {
   try {
     const { _id, title, courseId, content, referenceFiles } = req.body;
+    
+    // If updating an existing note
     if (_id) { 
-      const updatedNote = await Note.findByIdAndUpdate(_id, { title, courseId, content, referenceFiles }, { new: true });
+      const updatedNote = await Note.findByIdAndUpdate(
+        _id, 
+        { title, courseId, content, referenceFiles }, 
+        { new: true, runValidators: true } // runValidators ensures the schema rules are checked on update
+      );
       return res.json(updatedNote);
     }
-    const newNote = new Note({ user: req.user.id, title, courseId, content, referenceFiles });
+
+    // If creating a new note
+    const newNote = new Note({ 
+      user: req.user.id, 
+      title, 
+      courseId, 
+      // Fallback space if your editor auto-saves before the user types anything
+      content: content || " ", 
+      referenceFiles 
+    });
+    
     await newNote.save();
     res.json(newNote);
-  } catch (error) { res.status(500).json({ error: "Server Error" }); }
+
+  } catch (error) { 
+    console.error("Note Save Error:", error); // This prints the exact Mongoose error to your server console
+    res.status(500).json({ error: "Server Error", details: error.message }); 
+  }
 });
 
 app.get('/api/notes', auth, async (req, res) => {

@@ -3,7 +3,8 @@ import {
     User, Shield, RefreshCw, BookOpen, HelpCircle, Info,
     CheckCircle2, X, AlertTriangle, Lock,
     Calendar, Wallet, GraduationCap, Layout,
-    Book, Linkedin, Github, Puzzle, School, ExternalLink, Download
+    Book, Linkedin, Github, Puzzle, School, ExternalLink, Download,
+    ChevronDown, FileText, Activity, CheckSquare // Added new icons for the Help Center
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -431,7 +432,8 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                 </div>
             )}
 
-            <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar">
+            {/* Issue #1 Fix: Removed max-h-[400px] and overflow restrictions so the container expands fully downwards */}
+            <div className="space-y-3 pb-8">
                 {filtered.map(c => (
                     <div key={c._id || c.id} className="flex items-center justify-between p-4 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl group hover:border-blue-200 dark:hover:border-blue-900 transition-colors">
                         <div className="flex items-center gap-3">
@@ -503,57 +505,115 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
     );
 };
 
-// --- 5. HELP SECTION ---
-const HelpSection = () => (
-    <div className="animate-fadeIn">
-        <div className="mb-8">
-            <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Help Center</h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">Learn how to maximize your productivity with MyPortal.</p>
+// --- 5. HELP SECTION (NEW INTERACTIVE ACCORDION UI) ---
+const HelpSection = () => {
+    const [expandedId, setExpandedId] = useState(null);
+
+    // Color definitions corresponding to Tailwind classes for safelisting
+    const colorStyles = {
+        blue: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
+        orange: 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
+        purple: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
+        indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400',
+        emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400',
+        rose: 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400',
+    };
+
+    const helpItems = [
+        {
+            id: 'tasks',
+            icon: CheckSquare,
+            color: 'blue',
+            title: 'Tasks & Dashboard',
+            summary: 'Manage daily to-dos and categorize them securely.',
+            content: 'The Dashboard is your central hub for productivity. You can create tasks, assign them to specific university or personal courses, set priority levels, and track your progress. Simply drag and drop tasks across columns to dynamically change their status from "To Do" to "In Progress" or "Completed".'
+        },
+        {
+            id: 'calendar',
+            icon: Calendar,
+            color: 'orange',
+            title: 'Calendar',
+            summary: 'Visualize your academic deadlines and schedule.',
+            content: 'Switch effortlessly between Month, Week, and Day views to stay incredibly organized. All tasks created with due dates will automatically populate your calendar. You can also click directly on any day to quickly generate a new event or deadline without leaving the view.'
+        },
+        {
+            id: 'academics',
+            icon: GraduationCap,
+            color: 'purple',
+            title: 'Academics',
+            summary: 'View your live auto-synced grades and CGPA.',
+            content: 'Once you connect the MyPortal Chrome Extension, it will automatically sync your grades, transcript, and timetable directly from the UCP Horizon portal in the background. Keep an eye on your live CGPA, total earned credits, and detailed semester-wise performance without ever entering data manually.'
+        },
+        {
+            id: 'notes',
+            icon: FileText,
+            color: 'indigo',
+            title: 'Notes',
+            summary: 'A powerful rich-text editor for your study materials.',
+            content: 'Build beautifully formatted documents with our custom-built text engine. Enjoy support for custom sizing, dynamic text alignment, responsive image attachments (which can be dragged to resize), code blocks with intelligent syntax highlighting, and course-specific linking. All notes silently auto-save to the cloud as you type.'
+        },
+        {
+            id: 'cash',
+            icon: Wallet,
+            color: 'emerald',
+            title: 'Cash Manager',
+            summary: 'Track income, daily expenses, and category budgets.',
+            content: 'Take control of your personal finances. Log your incoming funds and daily expenses with ease. You can define hard monthly budget limits for categories (such as Food, Transport, or Entertainment) and the system will provide visual warnings when you are nearing or exceeding your allowed limit.'
+        },
+        {
+            id: 'habits',
+            icon: Activity,
+            color: 'rose',
+            title: 'Habit Tracker',
+            summary: 'Build and maintain positive daily routines.',
+            content: 'Forming disciplined habits is the key to student success. Add routines you wish to build, and simply click "Check-In" each day to grow your active streak. If you need a break, use a "Cheat Day" to protect your streak. Visual progress rings will monitor your consistency over time.'
+        }
+    ];
+
+    return (
+        <div className="animate-fadeIn">
+            <div className="mb-8">
+                <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Help Center</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Expand any module below to learn how to maximize your productivity.</p>
+            </div>
+
+            <div className="grid gap-4">
+                {helpItems.map(item => (
+                    <div key={item.id} className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden transition-all">
+                        <button
+                            onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                            className="w-full text-left p-5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors focus:outline-none"
+                        >
+                            <div className="flex gap-4 items-center">
+                                <div className={`p-3 rounded-lg flex items-center justify-center shrink-0 ${colorStyles[item.color]}`}>
+                                    <item.icon size={20} />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">{item.title}</h4>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">{item.summary}</p>
+                                </div>
+                            </div>
+                            <div className={`text-gray-400 transition-transform duration-300 shrink-0 ml-4 ${expandedId === item.id ? 'rotate-180' : ''}`}>
+                                <ChevronDown size={20} />
+                            </div>
+                        </button>
+                        
+                        {/* Expandable Content Area */}
+                        <div 
+                            className={`overflow-hidden transition-all duration-300 ease-in-out ${expandedId === item.id ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}
+                        >
+                            <div className="p-5 pt-0 border-t border-gray-100 dark:border-[#333] mt-2 bg-gray-50/50 dark:bg-[#1A1A1A]">
+                                <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mt-4">
+                                    {item.content}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
-
-        <div className="grid gap-4">
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4 shadow-sm">
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-brand-blue rounded-lg h-fit"><Layout size={20} /></div>
-                <div>
-                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Dashboard & Tasks</h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Your central hub. Manage daily to-dos, categorize them by course, and track your progress. Drag and drop tasks to change their status.
-                    </p>
-                </div>
-            </div>
-
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4 shadow-sm">
-                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-lg h-fit"><GraduationCap size={20} /></div>
-                <div>
-                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Academics</h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        View your auto-synced grades, GPA, and transcript. This data is fetched seamlessly by your Chrome Extension.
-                    </p>
-                </div>
-            </div>
-
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4 shadow-sm">
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg h-fit"><Wallet size={20} /></div>
-                <div>
-                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Cash Manager</h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Track your income and expenses. Set monthly budgets for categories like Food or Transport to save money effectively.
-                    </p>
-                </div>
-            </div>
-
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-xl border border-gray-200 dark:border-[#333] flex gap-4 shadow-sm">
-                <div className="p-3 bg-orange-50 dark:bg-orange-900/20 text-orange-600 rounded-lg h-fit"><Calendar size={20} /></div>
-                <div>
-                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Calendar</h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Visualize your deadlines and academic schedule. Switch between Month, Week, and Day views to stay organized.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-);
+    );
+};
 
 // --- 6. ABOUT SECTION ---
 const AboutSection = () => (

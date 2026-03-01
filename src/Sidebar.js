@@ -3,8 +3,8 @@ import {
   CheckSquare, Calendar, StickyNote, BarChart3, Settings, 
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History,
-  GraduationCap, Shield, Activity, Clock 
-} from 'lucide-react'; // <-- Clock added here!
+  GraduationCap, Shield, Activity, Clock, ArrowRightLeft 
+} from 'lucide-react'; // <-- ArrowRightLeft added here!
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
   const [isCashExpanded, setIsCashExpanded] = useState(false);
@@ -24,11 +24,13 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'History', label: 'History', icon: History },
   ];
 
+  // 2. CASH MANAGER SUB-ITEMS
   const cashSubItems = [
     { id: 'Cash-Overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'Cash-Transactions', label: 'Transactions', icon: CreditCard },
     { id: 'Cash-Analytics', label: 'Analytics', icon: PieChart },
     { id: 'Cash-Budget', label: 'Budget', icon: PiggyBank },
+    { id: 'Cash-Debts', label: 'Debts & Loans', icon: ArrowRightLeft }, // <-- NEW BUTTON ADDED HERE
   ];
 
   const handleCashClick = () => {

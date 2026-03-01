@@ -19,12 +19,16 @@ const Login = ({ onLogin }) => {
   const [signUpStep, setSignUpStep] = useState(1); 
   const [tempAuth, setTempAuth] = useState(null);
 
+  // Forgot Password State
+  const [forgotPasswordStep, setForgotPasswordStep] = useState(0); // 0: off, 1: email, 2: otp + new pass
+
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const otpInputs = useRef([]);
 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [activeFeature, setActiveFeature] = useState(0);
 
   // Wizard State
@@ -74,16 +78,29 @@ const Login = ({ onLogin }) => {
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
+    setSuccessMsg('');
   };
 
   const toggleMode = () => {
     setIsLogin(!isLogin);
     setError('');
+    setSuccessMsg('');
     setSignUpStep(1);
     setWizardStep(1);
+    setForgotPasswordStep(0);
     setFormData({ name: '', email: '', password: '', confirmPassword: '' });
     setOtpDigits(['', '', '', '', '', '']);
     setTempAuth(null);
+  };
+
+  const resetToLogin = () => {
+    setIsLogin(true);
+    setForgotPasswordStep(0);
+    setSignUpStep(1);
+    setError('');
+    setSuccessMsg('');
+    setOtpDigits(['', '', '', '', '', '']);
+    setFormData({ ...formData, password: '', confirmPassword: '' });
   };
 
   const handleOtpChange = (index, value) => {
@@ -91,15 +108,16 @@ const Login = ({ onLogin }) => {
     const newOtp = [...otpDigits];
     newOtp[index] = value.substring(value.length - 1);
     setOtpDigits(newOtp);
-    if (value && index < 5) otpInputs.current[index + 1].focus();
+    if (value && index < 5) otpInputs.current[index + 1]?.focus();
   };
 
   const handleKeyDown = (index, e) => {
     if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      otpInputs.current[index - 1].focus();
+      otpInputs.current[index - 1]?.focus();
     }
   };
 
+  // --- SIGN UP HANDLERS ---
   const handleInitiateSignUp = async (e) => {
     e.preventDefault();
     if (!formData.email.includes('@')) return setError('Invalid email address.');
@@ -150,6 +168,7 @@ const Login = ({ onLogin }) => {
     finally { setLoading(false); }
   };
 
+  // --- LOGIN HANDLER ---
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -170,7 +189,52 @@ const Login = ({ onLogin }) => {
     finally { setLoading(false); }
   };
 
-  const isExpandedMode = (!isLogin && signUpStep >= 2);
+  // --- FORGOT PASSWORD HANDLERS ---
+  const handleForgotPasswordRequest = async (e) => {
+    e.preventDefault();
+    if (!formData.email.includes('@')) return setError('Please enter a valid email address.');
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotPasswordStep(2);
+      } else {
+        setError(data.message || "Failed to send reset code.");
+      }
+    } catch (err) { setError("Server unreachable."); } 
+    finally { setLoading(false); }
+  };
+
+  const handlePasswordReset = async (e) => {
+    e.preventDefault();
+    const fullOtp = otpDigits.join('');
+    if (fullOtp.length < 6) return setError("Please enter the full 6-digit code.");
+    if (formData.password.length < 6) return setError("New password must be at least 6 characters.");
+
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, otp: fullOtp, newPassword: formData.password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Password reset failed');
+
+      setSuccessMsg("Password reset successfully! You can now sign in.");
+      resetToLogin();
+    } catch (err) { setError(err.message); } 
+    finally { setLoading(false); }
+  };
+
+  const isExpandedMode = (!isLogin && signUpStep >= 2) || forgotPasswordStep === 2;
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#050505] relative overflow-hidden p-4 md:p-8">
@@ -181,7 +245,7 @@ const Login = ({ onLogin }) => {
       <div className="w-full max-w-5xl h-[650px] bg-[#121212] border border-[#252525] rounded-3xl shadow-2xl flex relative overflow-hidden z-10">
 
         {/* LEFT INFO PANEL (Visible only in standard mode) */}
-        <div className={`hidden md:flex absolute top-0 w-1/2 h-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] flex-col justify-between p-12 z-20 transition-all duration-700 ease-in-out ${isLogin ? 'translate-x-full border-l border-[#252525]' : 'translate-x-0 border-r border-[#252525]'} ${isExpandedMode ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
+        <div className={`hidden md:flex absolute top-0 w-1/2 h-full bg-gradient-to-br from-[#1a1a1a] to-[#0c0c0c] flex-col justify-between p-12 z-20 transition-all duration-700 ease-in-out ${isLogin && forgotPasswordStep === 0 ? 'translate-x-full border-l border-[#252525]' : 'translate-x-0 border-r border-[#252525]'} ${isExpandedMode ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
           <div className="flex items-center gap-3">
             <div className="p-2 bg-brand-blue/10 rounded-xl"><GraduationCap className="w-8 h-8 text-brand-blue" /></div>
             <span className="text-xl font-bold text-white tracking-tight">MyPortal</span>
@@ -201,12 +265,12 @@ const Login = ({ onLogin }) => {
           </div>
         </div>
 
-        {/* RIGHT FORM PANEL (Expands for OTP and Wizard) */}
-        <div className={`h-full absolute top-0 bg-[#121212] p-8 md:p-12 flex flex-col justify-center z-10 transition-all duration-700 ease-in-out ${isLogin ? 'translate-x-0 w-full md:w-1/2' : 'md:translate-x-full w-full md:w-1/2'} ${isExpandedMode ? '!w-full !translate-x-0' : ''}`}>
+        {/* RIGHT FORM PANEL */}
+        <div className={`h-full absolute top-0 bg-[#121212] p-8 md:p-12 flex flex-col justify-center z-10 transition-all duration-700 ease-in-out ${isLogin && forgotPasswordStep === 0 ? 'translate-x-0 w-full md:w-1/2' : 'md:translate-x-full w-full md:w-1/2'} ${isExpandedMode ? '!w-full !translate-x-0' : ''}`}>
           <div className={`mx-auto w-full transition-all duration-700 ${isExpandedMode ? 'max-w-4xl' : 'max-w-sm'}`}>
 
-            {/* Standard Headers (OTP/Login only) */}
-            {signUpStep !== 3 && (
+            {/* Standard Headers (OTP/Login only, hiding on Forgot Pass and Wizard) */}
+            {signUpStep !== 3 && forgotPasswordStep === 0 && (
                 <div className={`mb-10 animate-fadeIn ${signUpStep === 2 ? 'flex flex-col items-center text-center' : ''}`}>
                 {!isLogin && signUpStep === 2 && (
                     <button onClick={() => setSignUpStep(1)} className="flex items-center gap-1 text-gray-500 hover:text-white text-sm mb-6 transition-colors group"><ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to details</button>
@@ -221,18 +285,67 @@ const Login = ({ onLogin }) => {
             )}
 
             {error && <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 text-xs font-medium animate-fadeIn"><AlertCircle size={16} /> {error}</div>}
+            {successMsg && <div className="mb-6 p-3 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-3 text-green-400 text-xs font-medium animate-fadeIn"><CheckCircle2 size={16} /> {successMsg}</div>}
 
             {/* LOGIN FORM */}
-            {isLogin && (
+            {isLogin && forgotPasswordStep === 0 && (
               <form onSubmit={handleLoginSubmit} className="space-y-4 animate-fadeIn">
                 <InputGroup icon={Mail} type="email" name="email" placeholder="Email Address" value={formData.email} onChange={handleChange} />
-                <InputGroup icon={Lock} type={showPassword ? "text" : "password"} name="password" placeholder="Password" value={formData.password} onChange={handleChange} togglePass={() => setShowPassword(!showPassword)} />
+                <div>
+                  <InputGroup icon={Lock} type={showPassword ? "text" : "password"} name="password" placeholder="Password" value={formData.password} onChange={handleChange} togglePass={() => setShowPassword(!showPassword)} />
+                  <div className="flex justify-end mt-2">
+                    <button type="button" onClick={() => setForgotPasswordStep(1)} className="text-sm text-brand-blue hover:text-blue-400 hover:underline transition-colors font-medium">Forgot password?</button>
+                  </div>
+                </div>
                 <SubmitButton loading={loading} text="Sign In" />
               </form>
             )}
 
+            {/* FORGOT PASSWORD STEP 1: Request OTP */}
+            {forgotPasswordStep === 1 && (
+              <form onSubmit={handleForgotPasswordRequest} className="space-y-4 animate-fadeIn">
+                <div className="mb-8">
+                  <button type="button" onClick={resetToLogin} className="flex items-center gap-1 text-gray-500 hover:text-white text-sm mb-6 transition-colors group">
+                    <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Login
+                  </button>
+                  <h1 className="text-3xl font-bold text-white mb-2">Reset Password</h1>
+                  <p className="text-gray-500 text-sm">Enter your email to receive a recovery code.</p>
+                </div>
+                <InputGroup icon={Mail} type="email" name="email" placeholder="Email Address" value={formData.email} onChange={handleChange} />
+                <SubmitButton loading={loading} text="Send Recovery Code" icon={ArrowRight} />
+              </form>
+            )}
+
+            {/* FORGOT PASSWORD STEP 2: Verify OTP & Reset Password */}
+            {forgotPasswordStep === 2 && (
+              <form onSubmit={handlePasswordReset} className="space-y-8 animate-fadeIn">
+                <div className="mb-8 text-center flex flex-col items-center">
+                   <button type="button" onClick={() => setForgotPasswordStep(1)} className="flex items-center gap-1 text-gray-500 hover:text-white text-sm mb-6 transition-colors group">
+                    <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back
+                  </button>
+                   <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">Verify & Reset</h1>
+                   <p className="text-gray-500 text-sm md:text-base max-w-sm">Enter the code sent to {formData.email}</p>
+                </div>
+
+                <div className="flex justify-center gap-3 md:gap-5 mb-4">
+                  {otpDigits.map((digit, index) => (
+                    <input
+                      key={index} ref={(el) => (otpInputs.current[index] = el)} type="text" maxLength={1} value={digit}
+                      onChange={(e) => handleOtpChange(index, e.target.value)} onKeyDown={(e) => handleKeyDown(index, e)}
+                      className="w-14 h-16 md:w-20 md:h-24 bg-[#1a1a1a] border border-[#333] focus:border-brand-blue rounded-2xl text-center text-2xl md:text-4xl font-bold text-white outline-none transition-all shadow-inner"
+                    />
+                  ))}
+                </div>
+
+                <div className="max-w-sm mx-auto space-y-4">
+                  <InputGroup icon={Lock} type={showPassword ? "text" : "password"} name="password" placeholder="Enter New Password" value={formData.password} onChange={handleChange} togglePass={() => setShowPassword(!showPassword)} />
+                  <SubmitButton loading={loading} text="Confirm New Password" icon={CheckCircle2} />
+                </div>
+              </form>
+            )}
+
             {/* SIGN UP STEP 1 */}
-            {!isLogin && signUpStep === 1 && (
+            {!isLogin && signUpStep === 1 && forgotPasswordStep === 0 && (
               <form onSubmit={handleInitiateSignUp} className="space-y-4 animate-fadeIn">
                 <InputGroup icon={User} type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleChange} />
                 <InputGroup icon={Mail} type="email" name="email" placeholder="Email Address" value={formData.email} onChange={handleChange} />
@@ -245,7 +358,7 @@ const Login = ({ onLogin }) => {
             )}
 
             {/* SIGN UP STEP 2: OTP */}
-            {!isLogin && signUpStep === 2 && (
+            {!isLogin && signUpStep === 2 && forgotPasswordStep === 0 && (
               <form onSubmit={handleFinalRegister} className="space-y-10 animate-fadeIn">
                 <div className="flex justify-center gap-3 md:gap-5">
                   {otpDigits.map((digit, index) => (
@@ -261,7 +374,7 @@ const Login = ({ onLogin }) => {
             )}
 
             {/* SIGN UP STEP 3: EXTENSION WIZARD (Fixed Sizing) */}
-            {!isLogin && signUpStep === 3 && (
+            {!isLogin && signUpStep === 3 && forgotPasswordStep === 0 && (
               <div className="animate-fadeIn w-full flex flex-col items-center">
                 
                 {/* Wizard Header */}
@@ -366,7 +479,7 @@ const Login = ({ onLogin }) => {
             )}
 
             {/* SIGN IN TOGGLE (Login/Step 1/Step 2 only) */}
-            {signUpStep !== 3 && (
+            {signUpStep !== 3 && forgotPasswordStep === 0 && (
                 <div className="mt-8 text-center pt-6 border-t border-[#252525]">
                 <p className="text-gray-500 text-sm">
                     {isLogin ? "Don't have an account?" : "Already have an account?"}
@@ -383,7 +496,7 @@ const Login = ({ onLogin }) => {
   );
 };
 
-// --- REUSABLE COMPONENTS (preserved) ---
+// --- REUSABLE COMPONENTS ---
 const InputGroup = ({ icon: Icon, type, name, placeholder, value, onChange, togglePass }) => (
   <div className="relative group">
     <div className="absolute left-4 top-4 text-gray-500 group-focus-within:text-brand-blue transition-colors">

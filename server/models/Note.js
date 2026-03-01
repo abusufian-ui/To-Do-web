@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const noteSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  courseId: { type: String, required: true }, // <-- CHANGED TO STRING
+  courseId: { type: String, required: true }, // Fixed: Now expects a single string
   title: { type: String, required: true },
   content: { type: String, required: true },
   referenceFiles: [{ fileName: String, fileUrl: String }],
