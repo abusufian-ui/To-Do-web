@@ -3,7 +3,7 @@ import {
   Plus, Search, SlidersHorizontal, User, Inbox, Sun, Moon, Filter,
   Book, Mail, Clock, CheckCircle2, Calendar, Menu,
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown, 
-  Settings, LogOut, FileText 
+  Settings, LogOut, FileText, X, Image as ImageIcon, Mic, Type
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
@@ -23,7 +23,9 @@ const Header = ({
   onMenuClick,
   notes = [],           
   onAddNoteClick,       
-  onOpenNote            
+  onOpenNote,
+  keynotes = [], 
+  onMarkKeynoteRead            
 }) => {
   // --- STATE MANAGEMENT ---
   const [showFilters, setShowFilters] = useState(false);
@@ -31,7 +33,7 @@ const Header = ({
   const [showStatusList, setShowStatusList] = useState(false);
   const [showPriorityList, setShowPriorityList] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [inboxMessage, setInboxMessage] = useState(false);
+  const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
 
@@ -55,11 +57,6 @@ const Header = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleInboxClick = () => {
-    setInboxMessage(true);
-    setTimeout(() => setInboxMessage(false), 2000);
-  };
 
   const clearFilters = () => {
     setFilters({ ...filters, course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '' });
@@ -126,276 +123,344 @@ const Header = ({
     filters?.startDate !== '', filters?.endDate !== ''
   ].filter(Boolean).length;
 
+  const unreadKeynotes = keynotes.filter(k => !k.isRead);
+
   return (
-    <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-[100]">
-      
-      {/* --- LEFT SIDE --- */}
-      <div className="flex items-center gap-2 md:gap-4">
+    <>
+      <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-[100]">
         
-        <button onClick={onMenuClick} className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors">
-          <Menu size={22} />
-        </button>
-
-        <button 
-          onClick={activeTab === 'Notes' ? onAddNoteClick : onAddClick} 
-          className="flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-600 text-white w-9 h-9 md:w-auto md:px-5 md:py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95"
-        >
-          <Plus size={18} />
-          <span className="hidden md:inline text-sm font-semibold">
-            {activeTab === 'Notes' ? 'New Note' : 'Add new'}
-          </span>
-        </button>
-
-        {/* SMART SEARCH BAR */}
-        <div className="hidden sm:flex items-center gap-2 relative" ref={searchRef}>
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search size={16} className="text-gray-400 group-focus-within:text-brand-blue transition-colors" />
-            </div>
-            <input 
-              type="text"
-              value={filters?.searchQuery || ''}
-              onChange={handleSearchChange}
-              onFocus={() => filters?.searchQuery && setShowSearchDropdown(true)}
-              placeholder={activeTab === 'Notes' ? "Search notes..." : "Search tasks..."}
-              autoComplete="off"
-              name="global-portal-search-input"
-              spellCheck="false"
-              className="bg-gray-100 dark:bg-dark-surface border border-transparent focus:border-brand-blue text-gray-800 dark:text-white text-sm rounded-full py-2 pl-10 pr-4 w-32 md:w-48 focus:w-48 md:focus:w-64 transition-all outline-none"
-            />
-          </div>
-
-          {/* DYNAMIC SEARCH RESULTS DROPDOWN */}
-          {showSearchDropdown && searchResults.length > 0 && (
-            <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl overflow-hidden z-[110] animate-fadeIn custom-scrollbar max-h-96 overflow-y-auto">
-              <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#252525]">Top Results</div>
-              {searchResults.map((item) => (
-                <div 
-                  key={item.id || item._id} 
-                  onClick={() => { 
-                    item.isNoteResult ? onOpenNote(item) : onOpenTask(item); 
-                    setShowSearchDropdown(false); 
-                  }}
-                  className="px-4 py-3 hover:bg-blue-50 dark:hover:bg-[#2C2C2C] cursor-pointer border-b border-gray-100 dark:border-[#2C2C2C] last:border-0 flex items-start gap-3 group"
-                >
-                  <div className="mt-1 flex-shrink-0 text-brand-blue">
-                    {item.isNoteResult ? <FileText size={14} /> : <div className={`w-2 h-2 rounded-full ${item.status === 'Completed' ? 'bg-green-500' : 'bg-blue-500'}`} />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate group-hover:text-brand-blue transition-colors">
-                      {item.isNoteResult ? item.title : item.name}
-                    </p>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-[10px] text-gray-400 truncate max-w-[120px]">
-                        {item.isNoteResult ? (courses.find(c => (c.id || c._id) === item.courseId)?.name || 'General') : item.course}
-                      </span>
-                      {!item.isNoteResult && (
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                          item.priority === 'Critical' ? 'border-red-500/30 text-red-500 bg-red-500/10' : 
-                          item.priority === 'High' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' : 
-                          'border-gray-500/30 text-gray-500 bg-gray-500/10'
-                        }`}>
-                          {item.priority}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        {/* --- LEFT SIDE --- */}
+        <div className="flex items-center gap-2 md:gap-4">
           
-          {/* MAIN FILTER MENU POPUP */}
-          {(activeTab === 'Tasks' || activeTab === 'Notes') && (
-            <div className="relative" ref={filterRef}>
-              <button onClick={() => setShowFilters(!showFilters)} className={`p-2 rounded-full transition-all relative ${showFilters ? 'bg-blue-100 dark:bg-blue-900/30 text-brand-blue' : 'text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-dark-surface'}`}>
-                <SlidersHorizontal size={20} />
-                {activeFilterCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-brand-blue rounded-full border-2 border-white dark:border-dark-bg"></span>}
-              </button>
+          <button onClick={onMenuClick} className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors">
+            <Menu size={22} />
+          </button>
 
-              {showFilters && (
-                <div className="absolute top-full left-0 mt-3 w-80 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl p-6 animate-fadeIn z-[110] max-h-[85vh] overflow-y-auto custom-scrollbar">
-                  <div className="flex justify-between items-center mb-5">
-                    <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2"><Filter size={16} className="text-brand-blue" /> Filter {activeTab}</h3>
-                    {activeFilterCount > 0 && <button onClick={clearFilters} className="text-[10px] uppercase tracking-wider font-bold text-red-500 hover:underline">Reset</button>}
-                  </div>
+          <button 
+            onClick={activeTab === 'Notes' ? onAddNoteClick : onAddClick} 
+            className="flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-600 text-white w-9 h-9 md:w-auto md:px-5 md:py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+          >
+            <Plus size={18} />
+            <span className="hidden md:inline text-sm font-semibold">
+              {activeTab === 'Notes' ? 'New Note' : 'Add new'}
+            </span>
+          </button>
 
-                  <div className="space-y-5">
-                    
-                    {/* FIXED ACCORDION COURSE DROPDOWN */}
-                    <div className="relative" ref={courseDropdownRef}>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Course</label>
-                      <button onClick={() => setShowCourseList(!showCourseList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
-                        <span className="flex items-center gap-2">{getCourseFilterIcon(filters.course)}{filters.course}</span>
-                        <ChevronDown size={14} className={`transition-transform ${showCourseList ? 'rotate-180' : ''}`} />
-                      </button>
+          {/* SMART SEARCH BAR */}
+          <div className="hidden sm:flex items-center gap-2 relative" ref={searchRef}>
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search size={16} className="text-gray-400 group-focus-within:text-brand-blue transition-colors" />
+              </div>
+              <input 
+                type="text"
+                value={filters?.searchQuery || ''}
+                onChange={handleSearchChange}
+                onFocus={() => filters?.searchQuery && setShowSearchDropdown(true)}
+                placeholder={activeTab === 'Notes' ? "Search notes..." : "Search tasks..."}
+                autoComplete="off"
+                name="global-portal-search-input"
+                spellCheck="false"
+                className="bg-gray-100 dark:bg-dark-surface border border-transparent focus:border-brand-blue text-gray-800 dark:text-white text-sm rounded-full py-2 pl-10 pr-4 w-32 md:w-48 focus:w-48 md:focus:w-64 transition-all outline-none"
+              />
+            </div>
 
-                      {showCourseList && (
-                        <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
-                          <div onClick={() => { setFilters({...filters, course: 'All'}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-2 text-gray-500"><Book size={14} /> All Courses</div>
-                          <div className="max-h-[160px] overflow-y-auto custom-scrollbar">
-                            {courses.map(c => (
-                              <div key={c.id || c._id || c.name} onClick={() => { setFilters({...filters, course: c.name}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-[#2C2C2C]">
-                                <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">
-                                  {c.type === 'uni' ? <UCPLogo className="w-4 h-4"/> : <Book size={14} className="text-gray-400"/>}
-                                  {c.name}
-                                </span>
-                                {filters.course === c.name && <CheckCircle2 size={12} className="text-brand-blue" />}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+            {/* DYNAMIC SEARCH RESULTS DROPDOWN */}
+            {showSearchDropdown && searchResults.length > 0 && (
+              <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl overflow-hidden z-[110] animate-fadeIn custom-scrollbar max-h-96 overflow-y-auto">
+                <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#252525]">Top Results</div>
+                {searchResults.map((item) => (
+                  <div 
+                    key={item.id || item._id} 
+                    onClick={() => { 
+                      item.isNoteResult ? onOpenNote(item) : onOpenTask(item); 
+                      setShowSearchDropdown(false); 
+                    }}
+                    className="px-4 py-3 hover:bg-blue-50 dark:hover:bg-[#2C2C2C] cursor-pointer border-b border-gray-100 dark:border-[#2C2C2C] last:border-0 flex items-start gap-3 group"
+                  >
+                    <div className="mt-1 flex-shrink-0 text-brand-blue">
+                      {item.isNoteResult ? <FileText size={14} /> : <div className={`w-2 h-2 rounded-full ${item.status === 'Completed' ? 'bg-green-500' : 'bg-blue-500'}`} />}
                     </div>
-
-                    {/* FIXED ACCORDION STATUS/PRIORITY DROPDOWNS (ONLY TASKS) */}
-                    {activeTab === 'Tasks' && (
-                      <>
-                        <div className="relative" ref={statusDropdownRef}>
-                          <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Status</label>
-                          <button onClick={() => setShowStatusList(!showStatusList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
-                            <span className="flex items-center gap-2">{getStatusIcon(filters.status)}{filters.status}</span>
-                            <ChevronDown size={14} className={`transition-transform ${showStatusList ? 'rotate-180' : ''}`} />
-                          </button>
-
-                          {showStatusList && (
-                            <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
-                              {['All', 'New task', 'Scheduled', 'In Progress', 'Completed'].map(status => (
-                                <div key={status} onClick={() => { setFilters({...filters, status}); setShowStatusList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
-                                  <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getStatusIcon(status)}{status}</span>
-                                  {filters.status === status && <CheckCircle2 size={12} className="text-brand-blue" />}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="relative" ref={priorityDropdownRef}>
-                          <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Priority</label>
-                          <button onClick={() => setShowPriorityList(!showPriorityList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
-                            <span className="flex items-center gap-2">{getPriorityIcon(filters.priority)}{filters.priority}</span>
-                            <ChevronDown size={14} className={`transition-transform ${showPriorityList ? 'rotate-180' : ''}`} />
-                          </button>
-
-                          {showPriorityList && (
-                            <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
-                              {['All', 'Critical', 'High', 'Medium', 'Low'].map(priority => (
-                                <div key={priority} onClick={() => { setFilters({...filters, priority}); setShowPriorityList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
-                                  <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getPriorityIcon(priority)}{priority}</span>
-                                  {filters.priority === priority && <CheckCircle2 size={12} className="text-brand-blue" />}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                    {/* DATE RANGE */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Date Range</label>
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <span className="text-[9px] text-gray-400 block mb-1">From</span>
-                          <input 
-                            type="date" 
-                            value={filters.startDate} 
-                            onChange={(e) => setFilters({...filters, startDate: e.target.value})}
-                            className="w-full bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] rounded-lg p-2 text-xs text-gray-700 dark:text-white outline-none focus:border-brand-blue dark:[color-scheme:dark]"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <span className="text-[9px] text-gray-400 block mb-1">To</span>
-                          <input 
-                            type="date" 
-                            value={filters.endDate} 
-                            onChange={(e) => setFilters({...filters, endDate: e.target.value})}
-                            className="w-full bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] rounded-lg p-2 text-xs text-gray-700 dark:text-white outline-none focus:border-brand-blue dark:[color-scheme:dark]"
-                          />
-                        </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate group-hover:text-brand-blue transition-colors">
+                        {item.isNoteResult ? item.title : item.name}
+                      </p>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[10px] text-gray-400 truncate max-w-[120px]">
+                          {item.isNoteResult ? (courses.find(c => (c.id || c._id) === item.courseId)?.name || 'General') : item.course}
+                        </span>
+                        {!item.isNoteResult && (
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                            item.priority === 'Critical' ? 'border-red-500/30 text-red-500 bg-red-500/10' : 
+                            item.priority === 'High' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' : 
+                            'border-gray-500/30 text-gray-500 bg-gray-500/10'
+                          }`}>
+                            {item.priority}
+                          </span>
+                        )}
                       </div>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* MAIN FILTER MENU POPUP */}
+            {(activeTab === 'Tasks' || activeTab === 'Notes') && (
+              <div className="relative" ref={filterRef}>
+                <button onClick={() => setShowFilters(!showFilters)} className={`p-2 rounded-full transition-all relative ${showFilters ? 'bg-blue-100 dark:bg-blue-900/30 text-brand-blue' : 'text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-dark-surface'}`}>
+                  <SlidersHorizontal size={20} />
+                  {activeFilterCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-brand-blue rounded-full border-2 border-white dark:border-dark-bg"></span>}
+                </button>
 
+                {showFilters && (
+                  <div className="absolute top-full left-0 mt-3 w-80 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl p-6 animate-fadeIn z-[110] max-h-[85vh] overflow-y-auto custom-scrollbar">
+                    <div className="flex justify-between items-center mb-5">
+                      <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2"><Filter size={16} className="text-brand-blue" /> Filter {activeTab}</h3>
+                      {activeFilterCount > 0 && <button onClick={clearFilters} className="text-[10px] uppercase tracking-wider font-bold text-red-500 hover:underline">Reset</button>}
+                    </div>
+
+                    <div className="space-y-5">
+                      
+                      {/* FIXED ACCORDION COURSE DROPDOWN */}
+                      <div className="relative" ref={courseDropdownRef}>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Course</label>
+                        <button onClick={() => setShowCourseList(!showCourseList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
+                          <span className="flex items-center gap-2">{getCourseFilterIcon(filters.course)}{filters.course}</span>
+                          <ChevronDown size={14} className={`transition-transform ${showCourseList ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {showCourseList && (
+                          <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                            <div onClick={() => { setFilters({...filters, course: 'All'}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-2 text-gray-500"><Book size={14} /> All Courses</div>
+                            <div className="max-h-[160px] overflow-y-auto custom-scrollbar">
+                              {courses.map(c => (
+                                <div key={c.id || c._id || c.name} onClick={() => { setFilters({...filters, course: c.name}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-[#2C2C2C]">
+                                  <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">
+                                    {c.type === 'uni' ? <UCPLogo className="w-4 h-4"/> : <Book size={14} className="text-gray-400"/>}
+                                    {c.name}
+                                  </span>
+                                  {filters.course === c.name && <CheckCircle2 size={12} className="text-brand-blue" />}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* FIXED ACCORDION STATUS/PRIORITY DROPDOWNS (ONLY TASKS) */}
+                      {activeTab === 'Tasks' && (
+                        <>
+                          <div className="relative" ref={statusDropdownRef}>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Status</label>
+                            <button onClick={() => setShowStatusList(!showStatusList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
+                              <span className="flex items-center gap-2">{getStatusIcon(filters.status)}{filters.status}</span>
+                              <ChevronDown size={14} className={`transition-transform ${showStatusList ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {showStatusList && (
+                              <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                                {['All', 'New task', 'Scheduled', 'In Progress', 'Completed'].map(status => (
+                                  <div key={status} onClick={() => { setFilters({...filters, status}); setShowStatusList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                    <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getStatusIcon(status)}{status}</span>
+                                    {filters.status === status && <CheckCircle2 size={12} className="text-brand-blue" />}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="relative" ref={priorityDropdownRef}>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Priority</label>
+                            <button onClick={() => setShowPriorityList(!showPriorityList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
+                              <span className="flex items-center gap-2">{getPriorityIcon(filters.priority)}{filters.priority}</span>
+                              <ChevronDown size={14} className={`transition-transform ${showPriorityList ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {showPriorityList && (
+                              <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                                {['All', 'Critical', 'High', 'Medium', 'Low'].map(priority => (
+                                  <div key={priority} onClick={() => { setFilters({...filters, priority}); setShowPriorityList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                    <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getPriorityIcon(priority)}{priority}</span>
+                                    {filters.priority === priority && <CheckCircle2 size={12} className="text-brand-blue" />}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {/* DATE RANGE */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Date Range</label>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <span className="text-[9px] text-gray-400 block mb-1">From</span>
+                            <input 
+                              type="date" 
+                              value={filters.startDate} 
+                              onChange={(e) => setFilters({...filters, startDate: e.target.value})}
+                              className="w-full bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] rounded-lg p-2 text-xs text-gray-700 dark:text-white outline-none focus:border-brand-blue dark:[color-scheme:dark]"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <span className="text-[9px] text-gray-400 block mb-1">To</span>
+                            <input 
+                              type="date" 
+                              value={filters.endDate} 
+                              onChange={(e) => setFilters({...filters, endDate: e.target.value})}
+                              className="w-full bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] rounded-lg p-2 text-xs text-gray-700 dark:text-white outline-none focus:border-brand-blue dark:[color-scheme:dark]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* --- RIGHT SIDE --- */}
+        <div className="flex items-center gap-2 md:gap-4">
+          
+          {/* INBOX BUTTON */}
+          <div className="relative">
+            <button 
+              onClick={() => setIsInboxOpen(true)}
+              className="hidden md:flex items-center gap-2 bg-white dark:bg-dark-surface border border-brand-blue text-brand-blue px-4 py-1.5 rounded-full hover:bg-brand-blue hover:text-white dark:hover:bg-brand-blue dark:hover:shadow-[0_0_15px_rgba(59,130,246,0.4)] transition-all text-xs font-medium shadow-sm"
+            >
+              <Inbox size={14} />
+              <span>Inbox</span>
+              {unreadKeynotes.length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm border-2 border-white dark:border-[#1E1E1E]">
+                  {unreadKeynotes.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* THEME TOGGLE */}
+          <button onClick={toggleTheme} className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface transition-all active:rotate-12">
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+
+          <div className="h-6 w-px bg-gray-200 dark:bg-dark-border"></div>
+
+          {/* --- PROFILE DROPDOWN --- */}
+          <div className="relative" ref={profileDropdownRef}>
+            <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333]">
+              <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase">
+                {user?.name?.charAt(0) || 'U'}
+              </div>
+              <div className="text-left hidden md:block">
+                <p className="text-sm font-bold text-gray-700 dark:text-white leading-none">{user?.name || 'User'}</p>
+                <p className="text-[10px] text-gray-400 font-medium">{user?.isAdmin ? 'Admin' : 'Student'}</p>
+              </div>
+              <ChevronDown size={16} className="text-gray-400 hidden md:block" />
+            </button>
+
+            {isProfileOpen && (
+              <div className="absolute right-0 top-12 w-56 bg-white dark:bg-[#1E1E1E] rounded-xl shadow-2xl border border-gray-100 dark:border-[#333] overflow-hidden animate-slideUp z-50">
+                <div className="p-4 border-b border-gray-100 dark:border-[#333]">
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">Signed in as</p>
+                  <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                </div>
+                <div className="p-2">
+                  <button 
+                    onClick={() => { if(onNavigate) onNavigate('Profile'); setIsProfileOpen(false); }} 
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors"
+                  >
+                    <User size={16} /> My Profile
+                  </button>
+                  <button 
+                    onClick={() => { if(onNavigate) onNavigate('Settings'); setIsProfileOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors"
+                  >
+                    <Settings size={16} /> Account Settings
+                  </button>
+                </div>
+                <div className="p-2 border-t border-gray-100 dark:border-[#333]">
+                  <button onClick={onLogout} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors font-medium">
+                    <LogOut size={16} /> Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* ========================================= */}
+      {/* --- INBOX SLIDE-OUT DRAWER --- */}
+      {/* ========================================= */}
+      {isInboxOpen && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150] animate-fadeIn"
+          onClick={() => setIsInboxOpen(false)}
+        />
+      )}
+
+      <div className={`fixed top-0 right-0 h-full w-full sm:w-96 bg-gray-50 dark:bg-[#121212] shadow-2xl border-l border-gray-200 dark:border-[#2C2C2C] z-[160] transform transition-transform duration-300 ease-in-out flex flex-col ${isInboxOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="p-5 border-b border-gray-200 dark:border-[#2C2C2C] flex justify-between items-center bg-white dark:bg-[#1E1E1E]">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <div className="p-2 bg-brand-blue/10 rounded-xl text-brand-blue"><Inbox size={20} /></div>
+            Inbox Snaps
+          </h2>
+          <button onClick={() => setIsInboxOpen(false)} className="p-2 text-gray-400 hover:text-gray-800 dark:hover:text-white bg-gray-50 dark:bg-[#252525] rounded-full shadow-sm transition-all hover:rotate-90">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
+          {keynotes.length === 0 ? (
+             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 opacity-50">
+               <Inbox size={48} strokeWidth={1} />
+               <p className="text-sm font-medium">No incoming snaps yet.</p>
+             </div>
+          ) : (
+            keynotes.map(note => (
+              <div 
+                key={note._id} 
+                onClick={() => { if(!note.isRead && onMarkKeynoteRead) onMarkKeynoteRead(note._id); }}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer ${!note.isRead ? 'bg-white dark:bg-[#1E1E1E] border-brand-blue/40 shadow-md shadow-blue-500/5' : 'bg-gray-100 dark:bg-[#252525] border-transparent opacity-75'}`}
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{note.courseName}</span>
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400">
+                    {note.type === 'text' && <Type size={12} className="text-blue-500" />}
+                    {note.type === 'image' && <ImageIcon size={12} className="text-pink-500" />}
+                    {note.type === 'audio' && <Mic size={12} className="text-emerald-500" />}
+                    {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })}
                   </div>
                 </div>
-              )}
-            </div>
+                
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-1 truncate">{note.title}</h4>
+                
+                {note.type === 'text' && <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{note.content}</p>}
+                {note.type === 'image' && <div className="h-24 w-full bg-gray-200 dark:bg-[#333] rounded-lg mt-2 overflow-hidden border border-gray-100 dark:border-[#444]"><img src={note.content} alt="snap" className="w-full h-full object-cover" /></div>}
+                {note.type === 'audio' && (
+                  <div className="flex items-center gap-2 mt-2 bg-gray-50 dark:bg-[#181818] p-2 rounded-lg border border-gray-200 dark:border-[#333]">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white"><Mic size={12} /></div>
+                    <div className="h-1 flex-1 bg-gray-200 dark:bg-[#444] rounded-full overflow-hidden"><div className="w-1/3 h-full bg-emerald-500 rounded-full"></div></div>
+                  </div>
+                )}
+              </div>
+            ))
           )}
+        </div>
+
+        <div className="p-5 border-t border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1E1E1E]">
+          <button onClick={() => { setIsInboxOpen(false); if(onNavigate) onNavigate('Keynotes'); }} className="w-full py-3 text-sm font-bold text-white bg-gray-900 dark:bg-brand-blue rounded-xl hover:shadow-lg transition-all">
+            View All Keynotes
+          </button>
         </div>
       </div>
-
-      {/* --- RIGHT SIDE --- */}
-      <div className="flex items-center gap-2 md:gap-4">
-        
-        {/* INBOX BUTTON */}
-        <div className="relative">
-          <button 
-            onClick={handleInboxClick}
-            className="hidden md:flex items-center gap-2 bg-white dark:bg-dark-surface border border-brand-blue text-brand-blue px-4 py-1.5 rounded-full hover:bg-brand-blue hover:text-white dark:hover:bg-brand-blue dark:hover:shadow-[0_0_15px_rgba(59,130,246,0.4)] transition-all text-xs font-medium shadow-sm"
-          >
-            <Inbox size={14} />
-            <span>Inbox</span>
-          </button>
-          
-          {inboxMessage && (
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-gray-900 text-white text-[10px] px-3 py-1 rounded-md shadow-lg whitespace-nowrap animate-fadeIn z-50">
-              Coming Soon!
-              <div className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-900"></div>
-            </div>
-          )}
-        </div>
-
-        {/* THEME TOGGLE */}
-        <button onClick={toggleTheme} className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface transition-all active:rotate-12">
-          {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
-
-        <div className="h-6 w-px bg-gray-200 dark:bg-dark-border"></div>
-
-        {/* --- PROFILE DROPDOWN --- */}
-        <div className="relative" ref={profileDropdownRef}>
-          <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333]">
-            <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase">
-              {user?.name?.charAt(0) || 'U'}
-            </div>
-            <div className="text-left hidden md:block">
-              <p className="text-sm font-bold text-gray-700 dark:text-white leading-none">{user?.name || 'User'}</p>
-              <p className="text-[10px] text-gray-400 font-medium">{user?.isAdmin ? 'Admin' : 'Student'}</p>
-            </div>
-            <ChevronDown size={16} className="text-gray-400 hidden md:block" />
-          </button>
-
-          {isProfileOpen && (
-            <div className="absolute right-0 top-12 w-56 bg-white dark:bg-[#1E1E1E] rounded-xl shadow-2xl border border-gray-100 dark:border-[#333] overflow-hidden animate-slideUp z-50">
-              <div className="p-4 border-b border-gray-100 dark:border-[#333]">
-                <p className="text-sm font-bold text-gray-900 dark:text-white">Signed in as</p>
-                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-              </div>
-              <div className="p-2">
-                <button 
-                  onClick={() => { if(onNavigate) onNavigate('Profile'); setIsProfileOpen(false); }} 
-                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors"
-                >
-                  <User size={16} /> My Profile
-                </button>
-                <button 
-                  onClick={() => { if(onNavigate) onNavigate('Settings'); setIsProfileOpen(false); }}
-                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors"
-                >
-                  <Settings size={16} /> Account Settings
-                </button>
-              </div>
-              <div className="p-2 border-t border-gray-100 dark:border-[#333]">
-                <button onClick={onLogout} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors font-medium">
-                  <LogOut size={16} /> Sign Out
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-      </div>
-    </div>
+    </>
   );
 };
 
