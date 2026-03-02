@@ -11,12 +11,32 @@ const fs = require('fs');
 const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
+
+// --- MODELS ---
+const User = require('./models/User');
+const Task = require('./models/Task');
+const Grade = require('./models/Grade');
+const ResultHistory = require('./models/ResultHistory');
+const StudentStats = require('./models/StudentStats');
+const Timetable = require('./models/TimetableModel');
+const Habit = require('./models/Habit');
+const Course = require('./models/Course');
 const Note = require('./models/Note');
+const Keynote = require('./models/Keynote'); // <-- NEW KEYNOTE MODEL
 const { Transaction, Budget, Debt } = require('./models/Transaction');
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+const otpSchema = new mongoose.Schema({
+  email: { type: String, required: true },
+  code: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now, expires: 300 }
+});
+const OTP = mongoose.model('OTP', otpSchema);
+
+const app = express();
 
 // --- MIDDLEWARE ---
 const auth = (req, res, next) => {
@@ -43,36 +63,15 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-// --- MODELS ---
-const User = require('./models/User');
-const Task = require('./models/Task');
-const Grade = require('./models/Grade');
-const ResultHistory = require('./models/ResultHistory');
-const StudentStats = require('./models/StudentStats');
-const Timetable = require('./models/TimetableModel');
-const Habit = require('./models/Habit');
-const Course = require('./models/Course'); 
-
-const otpSchema = new mongoose.Schema({
-  email: { type: String, required: true },
-  code: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now, expires: 300 }
-});
-const OTP = mongoose.model('OTP', otpSchema);
-
-const app = express();
-
-// --- SECURE CORS CONFIGURATION (BULLETPROOFED) ---
+// --- SECURE CORS CONFIGURATION ---
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:8081', 
-  'http://192.168.0.100:8081',
-  'http://192.168.0.101:8081',
-  'http://192.168.0.109:5000',
+  'http://192.168.0.105:8081',
   'https://myportalucp.online',
   'https://horizon.ucp.edu.pk',
-  'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof' // Your exact dev extension ID
+  'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof'
 ];
 
 const corsOptions = {
@@ -90,44 +89,96 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// --- SERVE UPLOADED FILES STATICALLY ---
-// This allows the frontend to download the files via the URL
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-app.use('/uploads', express.static(uploadDir));
+// ==========================================
+// CLOUDINARY & MULTER CONFIGURATION (NEW)
+// ==========================================
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
-// --- MULTER CONFIGURATION (PRESERVES EXTENSIONS) ---
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-  }
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
-const upload = multer({ storage: storage });
 
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'MyPortal_Keynotes', 
+    resource_type: 'auto', // Natively handles .jpg, .png, and .m4a audio automatically
+    allowed_formats: ['jpg', 'jpeg', 'png', 'm4a', 'mp3', 'wav']
+  },
+});
+
+const upload = multer({ storage: storage });
 
 // --- DATABASE CONNECTION ---
 const dbLink = process.env.REACT_APP_MONGODB_URI;
-
 console.log("🔗 Connecting to MyPortal Database...");
-
 mongoose.connect(dbLink)
   .then(async () => {
     console.log("✅ MongoDB Connected Successfully!");
   })
   .catch(err => console.log(err));
 
-// --- ADMIN ROUTES ---
+// ==========================================
+// CLOUDINARY UPLOAD ROUTE (NEW)
+// ==========================================
+app.post('/api/upload', auth, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    console.log("✅ File secured in Cloudinary:", req.file.path);
 
-// 1. SYSTEM STATS (REAL-TIME DATA)
+    res.status(200).json({ 
+      message: 'Upload successful', 
+      url: req.file.path, // Sends tiny Cloudinary URL back to mobile
+      fileName: req.file.originalname
+    });
+  } catch (error) {
+    console.error("Cloudinary Upload Error:", error);
+    res.status(500).json({ error: 'Failed to upload file to the cloud' });
+  }
+});
+
+// ==========================================
+// KEYNOTES / SNAPS MANAGEMENT (NEW)
+// ==========================================
+app.get('/api/keynotes', auth, async (req, res) => {
+  try {
+    const keynotes = await Keynote.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    res.json(keynotes);
+  } catch (error) { res.status(500).json({ message: "Error fetching keynotes" }); }
+});
+
+app.post('/api/keynotes', auth, async (req, res) => {
+  try {
+    const savedKeynote = await new Keynote({ ...req.body, userId: req.user.id }).save();
+    res.json(savedKeynote);
+  } catch (error) { res.status(500).json({ message: "Error saving keynote" }); }
+});
+
+app.put('/api/keynotes/:id/read', auth, async (req, res) => {
+  try {
+    const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isRead: true }, { new: true });
+    res.json(keynote);
+  } catch (error) { res.status(500).json({ message: "Error updating keynote" }); }
+});
+
+app.delete('/api/keynotes/:id', auth, async (req, res) => {
+  try {
+    await Keynote.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ message: "Error deleting keynote" }); }
+});
+
+
+// --- ADMIN ROUTES ---
 app.get('/api/admin/system-stats', async (req, res) => {
   try {
     const cpuLoad = await si.currentLoad();
@@ -153,7 +204,6 @@ app.get('/api/admin/system-stats', async (req, res) => {
   }
 });
 
-// 2. GET USERS 
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
@@ -173,7 +223,6 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// 3. DELETE USER
 app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
   try {
     const userId = req.params.id;
@@ -192,7 +241,9 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
       Budget.deleteMany({ userId }),
       Timetable.deleteMany({ userId }),
       Habit.deleteMany({ userId }),
-      Course.deleteMany({ userId }) 
+      Course.deleteMany({ userId }),
+      Note.deleteMany({ user: userId }),
+      Keynote.deleteMany({ userId })
     ]);
     res.json({ message: "User deleted permanently." });
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -250,22 +301,19 @@ app.post('/api/notes', auth, async (req, res) => {
   try {
     const { _id, title, courseId, content, referenceFiles } = req.body;
     
-    // If updating an existing note
     if (_id) { 
       const updatedNote = await Note.findByIdAndUpdate(
         _id, 
         { title, courseId, content, referenceFiles }, 
-        { new: true, runValidators: true } // runValidators ensures the schema rules are checked on update
+        { new: true, runValidators: true } 
       );
       return res.json(updatedNote);
     }
 
-    // If creating a new note
     const newNote = new Note({ 
       user: req.user.id, 
       title, 
       courseId, 
-      // Fallback space if your editor auto-saves before the user types anything
       content: content || " ", 
       referenceFiles 
     });
@@ -274,7 +322,7 @@ app.post('/api/notes', auth, async (req, res) => {
     res.json(newNote);
 
   } catch (error) { 
-    console.error("Note Save Error:", error); // This prints the exact Mongoose error to your server console
+    console.error("Note Save Error:", error); 
     res.status(500).json({ error: "Server Error", details: error.message }); 
   }
 });
@@ -305,29 +353,6 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
     await Note.findByIdAndDelete(req.params.id);
     res.json({ message: 'Deleted permanently' });
   } catch (error) { res.status(500).json({ error: "Server Error" }); }
-});
-
-// --- FILE UPLOAD ROUTE ---
-app.post('/api/upload', auth, upload.single('file'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    // Generate the local URL so the frontend can download it
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-    const originalName = req.file.originalname;
-
-    res.status(200).json({ 
-      message: 'Upload successful', 
-      url: fileUrl,
-      fileName: originalName
-    });
-
-  } catch (error) {
-    console.error("Upload Error:", error);
-    res.status(500).json({ error: 'Failed to upload file' });
-  }
 });
 
 // --- ADMIN SECURITY (PIN) ROUTES ---
@@ -410,7 +435,6 @@ app.delete('/api/courses/:id', auth, async (req, res) => {
     res.json({ message: "Course deleted" });
   } catch (error) { res.status(500).json({ message: "Error deleting course" }); }
 });
-
 
 // --- AUTH & USER ROUTES ---
 app.post('/api/send-otp', async (req, res) => {
@@ -572,106 +596,92 @@ app.get('/api/user/portal-status', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error checking status" }); }
 });
 
-app.post('/api/sync-grades', auth, async (req, res) => {
-  try { res.json({ message: 'Sync is now handled via the Chrome Extension.' }); } 
-  catch (error) { res.status(500).json({ message: error.message || 'Internal Server Error' }); }
-});
-
-// --- EXTENSION SYNC ROUTE ---
+// ==========================================
+// EXTENSION SYNC ROUTE (ALL-OR-NOTHING TRANSACTION)
+// ==========================================
 app.post('/api/extension-sync', auth, async (req, res) => {
   console.log("🚀 EXTENSION SYNC HIT");
-console.log("BODY:", JSON.stringify(req.body, null, 2));
+  
+  let session;
+  try {
+    session = await mongoose.startSession();
+    session.startTransaction();
+  } catch (e) {
+    console.warn("⚠️ Warning: MongoDB Transactions not supported on this environment. Running without transaction rollback.");
+    session = null;
+  }
+
   try {
     const { gradesData, historyData, statsData, timetableData, portalId } = req.body;
     const userId = req.user.id;
-    const user = await User.findById(userId);
+    
+    const userQuery = User.findById(userId);
+    if (session) userQuery.session(session);
+    const user = await userQuery;
 
-    console.log("========== EXTENSION SYNC START ==========");
-    console.log("Grades:", gradesData?.length || 0);
-    console.log("Timetable:", timetableData?.length || 0);
-
-    if (!portalId) {
-      return res.status(400).json({ message: "Student ID not detected." });
-    }
+    if (!portalId) throw new Error("Student ID not detected.");
 
     if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
-      return res.status(403).json({
-        message: `Mismatch! Linked to ${user.portalId}, but found ${portalId}.`
-      });
+      throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${portalId}.`);
     }
 
     if (!user.portalId) {
       user.portalId = portalId.toUpperCase();
     }
 
-    // ==============================
-    // SAVE GRADES
-    // ==============================
+    // --- GRADES ---
     if (gradesData && gradesData.length > 0) {
-      await Grade.deleteMany({ userId });
-
+      await Grade.deleteMany({ userId }, { session });
       for (const grade of gradesData) {
         await Grade.findOneAndUpdate(
           { courseUrl: grade.courseUrl, userId },
           { ...grade, userId, lastUpdated: new Date() },
-          { upsert: true, new: true }
+          { upsert: true, new: true, session }
         );
       }
     }
 
-    // ==============================
-    // SAVE HISTORY
-    // ==============================
+    // --- HISTORY ---
     if (historyData && historyData.length > 0) {
-      await ResultHistory.deleteMany({ userId });
-
+      await ResultHistory.deleteMany({ userId }, { session });
       for (const sem of historyData) {
         await ResultHistory.findOneAndUpdate(
           { term: sem.term, userId },
           { ...sem, userId, lastUpdated: new Date() },
-          { upsert: true }
+          { upsert: true, session }
         );
       }
     }
 
-    // ==============================
-    // SAVE STATS
-    // ==============================
+    // --- STATS ---
     if (statsData && statsData.cgpa) {
       await StudentStats.findOneAndUpdate(
         { userId },
         { ...statsData, userId, lastUpdated: new Date() },
-        { upsert: true }
+        { upsert: true, session }
       );
     }
 
-    // ==============================
-    // SAVE TIMETABLE
-    // ==============================
+    // --- TIMETABLE ---
     if (timetableData && timetableData.length > 0) {
-      await Timetable.deleteMany({ userId });
-
+      await Timetable.deleteMany({ userId }, { session });
       for (const classItem of timetableData) {
         const { id, ...classData } = classItem;
-        await new Timetable({
+        const newTimeTable = new Timetable({
           ...classData,
           userId,
           lastUpdated: new Date()
-        }).save();
+        });
+        await newTimeTable.save({ session });
       }
     }
 
-    // ==============================
-    // 🔥 UNIVERSAL COURSE ENGINE
-    // ==============================
-
+    // --- UNIVERSAL COURSE ENGINE ---
     const courseMap = new Map();
 
-    // ---- A. Extract from timetable
     if (timetableData && timetableData.length > 0) {
       timetableData.forEach(item => {
         if (!item.courseName) return;
-
         if (!courseMap.has(item.courseName)) {
           courseMap.set(item.courseName, {
             name: item.courseName,
@@ -681,73 +691,63 @@ console.log("BODY:", JSON.stringify(req.body, null, 2));
             rooms: new Set()
           });
         }
-
         const course = courseMap.get(item.courseName);
-
-        if (item.instructor && !item.instructor.includes('Unknown')) {
-          course.instructors.add(item.instructor);
-        }
-
-        if (item.room && !item.room.includes('Unknown')) {
-          course.rooms.add(item.room);
-        }
+        if (item.instructor && !item.instructor.includes('Unknown')) course.instructors.add(item.instructor);
+        if (item.room && !item.room.includes('Unknown')) course.rooms.add(item.room);
       });
     }
 
-    // ---- B. Extract from grades (FALLBACK FIX)
     if (gradesData && gradesData.length > 0) {
       gradesData.forEach(g => {
         if (!g.courseName) return;
-
         if (!courseMap.has(g.courseName)) {
           courseMap.set(g.courseName, {
-            name: g.courseName,
-            code: '',
-            color: '#3498db',
-            instructors: new Set(),
-            rooms: new Set()
+            name: g.courseName, code: '', color: '#3498db', instructors: new Set(), rooms: new Set()
           });
         }
       });
     }
 
-    // ---- C. SAVE COURSES (FORCE UPSERT)
-    console.log("Saving Courses:", courseMap.size);
-
     for (const [courseName, data] of courseMap.entries()) {
-      try {
-        await Course.findOneAndUpdate(
-          { userId, name: courseName },
-          {
-            $set: {
-              userId,
-              name: data.name,
-              type: 'university',
-              code: data.code || '',
-              color: data.color || '#3498db',
-              instructors: Array.from(data.instructors),
-              rooms: Array.from(data.rooms)
-            }
-          },
-          { upsert: true, new: true }
-        );
-        console.log(`✅ Upserted course: ${data.name}`);
-      } catch (dbError) {
-        console.error(`❌ DB Error saving course [${data.name}]:`, dbError.message);
-      }
+      await Course.findOneAndUpdate(
+        { userId, name: courseName },
+        {
+          $set: {
+            userId,
+            name: data.name,
+            type: 'university',
+            code: data.code || '',
+            color: data.color || '#3498db',
+            instructors: Array.from(data.instructors),
+            rooms: Array.from(data.rooms)
+          }
+        },
+        { upsert: true, new: true, session }
+      );
     }
 
+    // --- SAVE USER ---
     user.isPortalConnected = true;
     user.lastSyncAt = new Date();
-    await user.save();
+    await user.save({ session });
 
-    console.log("========== EXTENSION SYNC COMPLETE ==========");
-
-    res.json({ message: "Sync complete with Course persistence!" });
+    if (session) {
+      await session.commitTransaction();
+      session.endSession();
+    }
+    
+    console.log("✅ EXTENSION SYNC COMPLETE");
+    res.json({ message: "Sync complete securely!" });
 
   } catch (error) {
-    console.error("SYNC ERROR:", error);
-    res.status(500).json({ message: error.message });
+    if (session) {
+      await session.abortTransaction();
+      session.endSession();
+    }
+    
+    console.error("❌ SYNC FAILED:", error.message);
+    const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
+    res.status(statusCode).json({ message: error.message });
   }
 });
 
@@ -758,7 +758,6 @@ app.get('/api/timetable', auth, async (req, res) => {
     res.json(timetable.map(item => ({ ...item.toObject(), id: item._id })));
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
-
 
 app.get('/api/student-stats', auth, async (req, res) => {
   try {
@@ -781,9 +780,8 @@ app.get('/api/results-history', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-
 // ==========================================
-// UNIVERSAL ENTITY ROUTES (Tasks, Transactions, Habits)
+// UNIVERSAL ENTITY ROUTES
 // ==========================================
 
 // --- TASKS ---
@@ -829,7 +827,6 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-
 // --- TRANSACTIONS ---
 app.get('/api/transactions', auth, async (req, res) => {
   try {
@@ -866,7 +863,6 @@ app.delete('/api/transactions/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-
 // --- BUDGETS ---
 app.get('/api/budgets', auth, async (req, res) => {
   try {
@@ -882,7 +878,6 @@ app.post('/api/budgets', auth, async (req, res) => {
     res.json(budget);
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 
 // --- HABITS ---
 app.get('/api/habits', auth, async (req, res) => {
@@ -953,7 +948,6 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error checking in" }); }
 });
 
-
 // ==========================================
 // UNIVERSAL BIN ROUTES
 // ==========================================
@@ -962,7 +956,7 @@ app.get('/api/bin', auth, async (req, res) => {
     const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).lean();
     const transactions = await Transaction.find({ userId: req.user.id, isDeleted: true }).lean();
     const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
-    const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean(); // Added notes to the bin payload
+    const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean(); 
     
     res.json({ tasks, transactions, habits, notes });
   } catch (err) { res.status(500).json({ message: err.message }) }
@@ -973,7 +967,7 @@ app.put('/api/bin/restore-all', auth, async (req, res) => {
     await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Transaction.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Habit.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
-    await Note.updateMany({ user: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null }); // Added notes restore
+    await Note.updateMany({ user: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null }); 
     res.json({ message: "Restored" });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
@@ -983,7 +977,7 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
     await Task.deleteMany({ userId: req.user.id, isDeleted: true });
     await Transaction.deleteMany({ userId: req.user.id, isDeleted: true });
     await Habit.deleteMany({ userId: req.user.id, isDeleted: true });
-    await Note.deleteMany({ user: req.user.id, isDeleted: true }); // Added notes empty
+    await Note.deleteMany({ user: req.user.id, isDeleted: true }); 
     res.json({ message: "Emptied" });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
@@ -993,5 +987,5 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT} at IP 192.168.0.100`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
 module.exports = app;
