@@ -1,21 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react';
+import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import Highlight from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
+import { Node, mergeAttributes } from '@tiptap/core';
+import Editor from '@monaco-editor/react';
 
-// Syntax Highlighting Imports
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import { common, createLowlight } from 'lowlight';
-import 'highlight.js/styles/atom-one-dark.css'; 
-
-import { Paperclip, X, Book, ArrowLeft, ChevronDown, Copy, Trash2, CheckCircle2, Undo2, Redo2, Loader2, Cloud, Highlighter, Bold, Italic, Image as ImageIcon, Code, List, ListOrdered, Quote, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { Paperclip, X, Book, ArrowLeft, ChevronDown, Copy, Trash2, CheckCircle2, Undo2, Redo2, Loader2, Cloud, Highlighter, Bold, Italic, Image as ImageIcon, Code, List, ListOrdered, Quote, AlignLeft, AlignCenter, AlignRight, Maximize2, Minimize2 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
-
-const lowlight = createLowlight(common);
 
 // ==========================================
 // RESIZEOBSERVER ERROR KILLER
@@ -43,50 +38,195 @@ if (typeof window !== 'undefined') {
 // ==========================================
 
 // ==========================================
-// 1. THE CUSTOM CODE BLOCK 
+// 1. THE MONACO CODE BLOCK (INTELLISENSE, FLEXIBLE & THEMED)
 // ==========================================
-const InteractiveCodeBlock = ({ node, updateAttributes, extension, deleteNode }) => {
+const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
   const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+  const [editorTheme, setEditorTheme] = useState('vs-light');
+  const dropdownRef = useRef(null);
+
+  const languages = [
+    { id: 'javascript', label: 'JavaScript / React' },
+    { id: 'python', label: 'Python' },
+    { id: 'cpp', label: 'C++' },
+    { id: 'c', label: 'C' },
+    { id: 'csharp', label: 'C#' },
+    { id: 'html', label: 'HTML' },
+    { id: 'css', label: 'CSS' }
+  ];
+
+  // Sync Monaco theme with your app's Light/Dark mode
+  useEffect(() => {
+    const updateTheme = () => {
+      const isDark = document.documentElement.classList.contains('dark');
+      setEditorTheme(isDark ? 'aesthetic-dark' : 'light');
+    };
+
+    updateTheme(); // Initial check
+    
+    // Watch for class changes on the HTML tag (Tailwind dark mode toggle)
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    
+    return () => observer.disconnect();
+  }, []);
+
+  // Handle closing the custom dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsLangDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(node.textContent);
+    navigator.clipboard.writeText(node.attrs.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Define our custom, colorful dark theme right before Monaco mounts
+  const handleEditorWillMount = (monaco) => {
+    monaco.editor.defineTheme('aesthetic-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'keyword', foreground: 'c678dd' },     // Purple keywords
+        { token: 'string', foreground: '98c379' },      // Green strings
+        { token: 'variable', foreground: 'e06c75' },    // Red/Pink variables
+        { token: 'function', foreground: '61afef' },    // Blue functions
+        { token: 'comment', foreground: '7f848e', fontStyle: 'italic' },
+      ],
+      colors: {
+        'editor.background': '#1A1A1A', // Matches your dark theme background
+        'editor.lineHighlightBackground': '#2C2C2C',
+      }
+    });
+  };
+
+  const currentLangLabel = languages.find(l => l.id === node.attrs.language)?.label || 'JavaScript / React';
+
   return (
-    <NodeViewWrapper className="relative group my-6">
-      <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 flex items-center gap-2 z-10 transition-opacity duration-200">
-        <button 
-          onClick={handleCopy} 
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1e2227] hover:bg-[#3e4451] text-gray-300 hover:text-white rounded-md transition-colors text-xs font-bold font-sans border border-[#3e4451]"
-        >
-          {copied ? <CheckCircle2 size={14} className="text-green-400"/> : <Copy size={14} />} {copied ? 'Copied!' : 'Copy'}
-        </button>
-        <button 
-          onClick={deleteNode} 
-          className="flex items-center justify-center p-1.5 bg-[#1e2227] hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded-md transition-colors border border-[#3e4451] hover:border-red-500/50"
-          title="Delete Code Block"
-        >
-          <Trash2 size={14} />
-        </button>
+    <NodeViewWrapper 
+      className="relative group my-6 rounded-xl border border-gray-200 dark:border-[#333] overflow-hidden shadow-sm flex flex-col transition-all duration-300" 
+      contentEditable="false"
+    >
+      {/* Top Bar: Custom Dropdown & Actions */}
+      <div className="bg-gray-50 dark:bg-[#1A1A1A] flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-[#333]">
+        
+        {/* Modern React Dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
+            className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-brand-blue dark:hover:text-white transition-colors text-xs font-bold px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]"
+          >
+            {currentLangLabel}
+            <ChevronDown size={14} className={`transition-transform ${isLangDropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {isLangDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 py-1 animate-slideUp">
+              {languages.map(lang => (
+                <button
+                  key={lang.id}
+                  onClick={() => {
+                    updateAttributes({ language: lang.id });
+                    setIsLangDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-gray-100 dark:hover:bg-[#333] ${node.attrs.language === lang.id ? 'text-brand-blue font-bold' : 'text-gray-700 dark:text-gray-300'}`}
+                >
+                  {lang.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsExpanded(!isExpanded)} 
+            className="text-gray-500 hover:text-brand-blue dark:text-gray-400 dark:hover:text-white transition-colors flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]"
+          >
+            {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />} 
+            <span className="hidden sm:block">{isExpanded ? 'Collapse' : 'Expand'}</span>
+          </button>
+
+          <div className="w-px h-4 bg-gray-300 dark:bg-[#444] mx-1"></div>
+
+          <button onClick={handleCopy} className="text-gray-500 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-400 transition-colors flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]">
+            {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />} 
+            <span className="hidden sm:block">{copied ? 'Copied' : 'Copy'}</span>
+          </button>
+          
+          <button onClick={deleteNode} className="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]" title="Delete Block">
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
 
-      <pre className="!m-0 rounded-xl bg-[#282c34] p-5 pt-12 shadow-sm font-mono text-sm border border-gray-200 dark:border-[#333]">
-        <NodeViewContent as="code" />
-      </pre>
+      {/* Flexible Height Container */}
+      <div 
+        className={`w-full bg-white dark:bg-[#1A1A1A] pt-2 transition-all duration-300 ease-in-out ${isExpanded ? 'h-[70vh]' : 'h-[250px]'}`} 
+        onKeyDown={e => e.stopPropagation()}
+      >
+        <Editor
+          height="100%"
+          language={node.attrs.language}
+          theme={editorTheme}
+          beforeMount={handleEditorWillMount}
+          defaultValue={node.attrs.code}
+          onChange={(value) => updateAttributes({ code: value })}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            fontFamily: "'Fira Code', 'JetBrains Mono', 'Courier New', monospace",
+            scrollBeyondLastLine: false,
+            padding: { top: 10, bottom: 10 },
+            smoothScrolling: true,
+            cursorBlinking: "smooth",
+            wordWrap: "on",
+            quickSuggestions: true,
+            suggestOnTriggerCharacters: true,
+            parameterHints: { enabled: true }
+          }}
+        />
+      </div>
     </NodeViewWrapper>
   );
 };
 
-const CustomCodeBlockExtension = CodeBlockLowlight.extend({
+const MonacoCodeBlockExtension = Node.create({
+  name: 'monacoCodeBlock',
+  group: 'block',
+  atom: true, 
+  
+  addAttributes() {
+    return {
+      language: { default: 'javascript' },
+      code: { default: '// Start coding with IntelliSense...\n' }
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-monaco-block]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-monaco-block': '' })];
+  },
+
   addNodeView() {
-    return ReactNodeViewRenderer(InteractiveCodeBlock);
+    return ReactNodeViewRenderer(InteractiveMonacoBlock);
   },
 });
 
 // ==========================================
-// 2. THE CUSTOM IMAGE BLOCK (PERFECT CAPTION ALIGNMENT)
+// 2. THE CUSTOM IMAGE BLOCK
 // ==========================================
 const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) => {
   const { src, caption, width, textAlign } = node.attrs;
@@ -121,7 +261,6 @@ const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) 
 
   return (
     <NodeViewWrapper className={`flex flex-col group relative max-w-full my-6 ${alignClass}`}>
-      {/* Container locks exactly to the image's width, forcing the caption to center under it */}
       <div className="flex flex-col" style={{ width: width }}>
         <div className={`relative inline-block ${selected ? 'border-[3px] border-blue-500' : 'border-[3px] border-transparent'}`}>
           <img ref={imgRef} src={src} alt="Note attachment" className="w-full h-auto cursor-pointer" />
@@ -203,7 +342,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false }),
-      CustomCodeBlockExtension.configure({ lowlight }),
+      MonacoCodeBlockExtension,
       CustomImageExtension,
       Underline,
       Highlight.configure({ multicolor: true }),
@@ -238,7 +377,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     },
   });
 
-  // Highlight Toggle Logic (Removes entirely on click)
   const toggleHighlight = () => {
     if (editor.isActive('highlight')) {
       editor.chain().focus().unsetHighlight().run();
@@ -247,7 +385,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     }
   };
 
-  // Vanilla JS Floating Menu Logic
   useEffect(() => {
     const updateMenu = () => {
       if (!editor || !bubbleMenuRef.current) return;
@@ -265,7 +402,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           const menu = bubbleMenuRef.current;
           menu.style.display = 'flex';
           
-          // SMART POSITIONING: Drops below text if too close to toolbar
           let topPos = start.top - 45;
           if (start.top < 120) topPos = start.bottom + 10; 
           
@@ -302,7 +438,8 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('https://to-do-web-01.onrender.com/api/upload', {
+      // UPDATE THIS TO YOUR RENDER URL
+      const response = await fetch('https://YOUR-RENDER-BACKEND-URL.onrender.com/api/upload', {
         method: 'POST',
         headers: { 'x-auth-token': token },
         body: formData
@@ -373,7 +510,8 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     formData.append('file', file);
     try {
       const token = localStorage.getItem('token'); 
-      const response = await fetch('http://localhost:5000/api/upload', { 
+      // UPDATE THIS TO YOUR RENDER URL
+      const response = await fetch('https://YOUR-RENDER-BACKEND-URL.onrender.com/api/upload', { 
         method: 'POST', headers: { 'x-auth-token': token }, body: formData 
       });
       const data = await response.json();
@@ -439,14 +577,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           color: #fde047 !important; 
         }
         
-        .ProseMirror pre {
-          background-color: #282c34 !important;
-          color: #abb2bf !important;
-        }
-        .ProseMirror pre code {
-          color: inherit !important; 
-        }
-
         .ProseMirror blockquote {
           border-left: 3px solid #e5e7eb;
           padding-left: 1rem;
@@ -559,7 +689,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           <button onClick={toggleHighlight} className={`toolbar-btn ${editor.isActive('highlight') ? 'active text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30' : ''}`}><Highlighter size={16}/></button>
           <div className="toolbar-divider"></div>
 
-          {/* SIZES AND FORMAT DROPDOWN */}
           <div className="relative" ref={headingDropdownRef}>
             <button 
               onClick={() => setIsHeadingDropdownOpen(!isHeadingDropdownOpen)}
@@ -607,7 +736,9 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`}><List size={16}/></button>
           <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`}><ListOrdered size={16}/></button>
           <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`}><Quote size={16}/></button>
-          <button onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={`toolbar-btn ${editor.isActive('codeBlock') ? 'active' : ''}`}><Code size={16}/></button>
+          
+          {/* UPDATED CODE BUTTON */}
+          <button onClick={() => editor.chain().focus().insertContent({ type: 'monacoCodeBlock' }).run()} className="toolbar-btn" title="Insert Code Editor"><Code size={16}/></button>
           <div className="toolbar-divider"></div>
 
           <button onClick={imageHandler} className="toolbar-btn"><ImageIcon size={16}/></button>
@@ -660,7 +791,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         </div>
       </div>
 
-      {/* FIXED BUBBLE MENU - PLACED AT THE ROOT TO PREVENT BEING TRAPPED */}
       <div 
         ref={bubbleMenuRef}
         className="fixed z-[9999] hidden items-center gap-1 bg-white dark:bg-[#2C2C2C] shadow-xl rounded-lg border border-gray-200 dark:border-[#444] p-1.5 transition-opacity"
