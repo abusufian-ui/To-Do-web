@@ -439,7 +439,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     try {
       const token = localStorage.getItem('token');
       // UPDATE THIS TO YOUR RENDER URL
-      const response = await fetch('https://YOUR-RENDER-BACKEND-URL.onrender.com/api/upload', {
+      const response = await fetch('https://to-do-web-01.onrender.com/api/upload', {
         method: 'POST',
         headers: { 'x-auth-token': token },
         body: formData
