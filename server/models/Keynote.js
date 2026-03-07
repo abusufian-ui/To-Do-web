@@ -4,9 +4,12 @@ const KeynoteSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   courseName: { type: String, default: 'General' },
   title: { type: String, default: 'Quick Note' },
-  type: { type: String, enum: ['text', 'image', 'audio'], required: true },
-  content: { type: String, required: true }, // Text content OR file URL
-  isRead: { type: Boolean, default: false }, // For the Inbox badge
+  type: { type: String, enum: ['text', 'image', 'audio', 'mixed'], required: true }, 
+  content: { type: String }, 
+  mediaUrls: { type: [String], default: [] }, 
+  isRead: { type: Boolean, default: false },
+  isDeleted: { type: Boolean, default: false }, // <-- ADD THIS
+  deletedAt: { type: Date, default: null },     // <-- ADD THIS
   createdAt: { type: Date, default: Date.now }
 });
 

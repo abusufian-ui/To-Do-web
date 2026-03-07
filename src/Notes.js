@@ -140,8 +140,8 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                           {courses.find(c => (c._id || c.id) === note.courseId)?.name || 'General'}
                         </span>
                         <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 uppercase tracking-wider">
-                          <Clock size={12} /> {new Date(note.createdAt || Date.now()).toLocaleDateString()}
-                        </span>
+  <Clock size={12} /> {new Date(note.createdAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
+</span>
                       </div>
                     </div>
                   </div>

@@ -4,7 +4,7 @@ import {
     CheckCircle2, X, AlertTriangle, Lock,
     Calendar, Wallet, GraduationCap, Layout,
     Book, Linkedin, Github, Puzzle, School, ExternalLink, Download,
-    ChevronDown, FileText, Activity, CheckSquare // Added new icons for the Help Center
+    ChevronDown, FileText, Activity, CheckSquare 
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -393,7 +393,25 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
         }
     };
 
-    const filtered = (courses || []).filter(c => c.type === type);
+    // THE FIX: Strict matching based on your MongoDB data
+    const filtered = (courses || []).filter(c => {
+        const dbType = String(c.type || '').toLowerCase().trim();
+        
+        if (type === 'uni') {
+            // Matches your DB 'university' type (and 'uni' just in case of old data)
+            return dbType === 'university' || dbType === 'uni'; 
+        } else {
+            // Strictly matches your DB 'general' type
+            return dbType === 'general'; 
+        }
+    });
+
+    // THE FIX: Protect the specific General course from rendering a delete button
+    const isProtectedGeneralCourse = (c) => {
+        const name = String(c.name || '').trim().toLowerCase();
+        const id = String(c.id || c._id || '').trim();
+        return id === 'general-task' || name === 'general' || name === 'general course' || name === 'general task';
+    };
 
     return (
         <div className="animate-fadeIn relative">
@@ -432,7 +450,6 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                 </div>
             )}
 
-            {/* Issue #1 Fix: Removed max-h-[400px] and overflow restrictions so the container expands fully downwards */}
             <div className="space-y-3 pb-8">
                 {filtered.map(c => (
                     <div key={c._id || c.id} className="flex items-center justify-between p-4 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl group hover:border-blue-200 dark:hover:border-blue-900 transition-colors">
@@ -446,8 +463,8 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                         {type === 'uni' ? (
                             <span className="text-[10px] bg-gray-100 dark:bg-[#252525] text-gray-500 px-2 py-1 rounded border border-gray-200 dark:border-[#444] flex items-center gap-1"><Lock size={10} /> Synced</span>
                         ) : (
-                            // --- HIDE DELETE BUTTON FOR DEFAULT COURSE ---
-                            (c.id !== 'general-task' && c.name !== 'General Course' && c.name !== 'General Task') && (
+                            // THE FIX: Protect the specific General course from rendering a delete button
+                            !isProtectedGeneralCourse(c) && (
                                 <button onClick={() => initiateDelete(c)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg transition-colors"><X size={20} /></button>
                             )
                         )}

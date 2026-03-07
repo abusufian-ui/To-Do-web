@@ -18,8 +18,11 @@ import MyProfile from './MyProfile';
 import Timetable from './TimeTable'; 
 import HabitTracker from './HabitTracker';
 import Notes from './Notes';
+import Calculator from './Calculator';
+import HyperFocus from './HyperFocus'; 
+import Keynote from './Keynote';
+import AddKeynoteModal from './AddKeynoteModal'; // BRAND NEW IMPORT
 
-// Enforcing the correct backend port (5000)
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function App() {
@@ -65,18 +68,25 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
+  
+  // NEW: Keynote States
+  const [isAddKeynoteOpen, setIsAddKeynoteOpen] = useState(false);
+  const [keynoteToDelete, setKeynoteToDelete] = useState(null); 
+  const [isBatchDeleteKeynotes, setIsBatchDeleteKeynotes] = useState(false);
+  const [keynotesToBatchDelete, setKeynotesToBatchDelete] = useState([]);
+
   const [prefilledDate, setPrefilledDate] = useState('');
   const [viewTask, setViewTask] = useState(null);
 
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState([]);
-  
   const [notes, setNotes] = useState([]); 
+  const [keynotes, setKeynotes] = useState([]); 
   const [isAddingNewNote, setIsAddingNewNote] = useState(false);
   const [binItems, setBinItems] = useState([]);
 
   const [filters, setFilters] = useState({
-    course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: ''
+    course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: '', mediaType: 'All'
   });
 
   useEffect(() => {
@@ -171,6 +181,15 @@ function App() {
     } catch (error) { console.error("Error fetching notes:", error); }
   }, [authHeaders, handleLogout]);
 
+  const fetchKeynotes = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/keynotes`, { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
+      const data = await res.json();
+      setKeynotes(data);
+    } catch (error) { console.error("Error fetching keynotes:", error); }
+  }, [authHeaders, handleLogout]);
+
   const fetchBin = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/bin`, { headers: authHeaders });
@@ -181,7 +200,8 @@ function App() {
         ...(data.tasks || []).map(t => ({ ...t, id: t._id, binType: 'Task', name: t.name, subtitle: t.course })),
         ...(data.transactions || []).map(t => ({ ...t, id: t._id, binType: 'Transaction', name: t.description || 'Transaction', subtitle: `Rs ${t.amount}` })),
         ...(data.habits || []).map(h => ({ ...h, id: h._id, binType: 'Habit', name: h.name, subtitle: h.type === 'good' ? 'Good Protocol' : 'Bad Protocol' })),
-        ...(data.notes || []).map(n => ({ ...n, id: n._id, binType: 'Note', name: n.title, subtitle: n.courseId }))
+        ...(data.notes || []).map(n => ({ ...n, id: n._id, binType: 'Note', name: n.title, subtitle: n.courseId })),
+        ...(data.keynotes || []).map(k => ({ ...k, id: k._id, binType: 'Keynote', name: k.title, subtitle: k.courseName })) // ADDED KEYNOTES
       ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
       
       setBinItems(formattedBin);
@@ -221,10 +241,11 @@ function App() {
       fetchUser();
       fetchTasks();
       fetchNotes();
+      fetchKeynotes();
       fetchBin();
       fetchCourses();
     }
-  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchBin, fetchCourses]);
+  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses]);
 
   // --- TASK ACTIONS ---
   const handleAddTask = async (newTaskData) => {
@@ -253,19 +274,88 @@ function App() {
     } catch (error) { console.error("Error deleting task:", error); }
   };
 
-  // --- UNIVERSAL ACTIONS ---
+  // --- KEYNOTE ACTIONS ---
+  const handleToggleKeynoteRead = async (id, currentStatus) => {
+    try {
+      const endpoint = currentStatus ? 'unread' : 'read';
+      await fetch(`${API_BASE}/api/keynotes/${id}/${endpoint}`, { method: 'PUT', headers: authHeaders });
+      setKeynotes(prev => prev.map(kn => kn._id === id ? { ...kn, isRead: !currentStatus } : kn));
+    } catch (error) { console.error("Failed to toggle read status", error); }
+  };
+
+  const deleteKeynote = (id) => setKeynoteToDelete(id);
+  
+  const executeDeleteKeynote = async () => {
+    if (!keynoteToDelete) return;
+    try {
+      await fetch(`${API_BASE}/api/keynotes/${keynoteToDelete}/delete`, { method: 'PUT', headers: authHeaders });
+      fetchKeynotes();
+      fetchBin();
+      setKeynoteToDelete(null);
+    } catch (err) { console.error("Failed to move to bin", err); }
+  };
+
+  const handleBatchDeleteKeynotes = (ids) => {
+    setKeynotesToBatchDelete(ids);
+    setIsBatchDeleteKeynotes(true);
+  };
+
+  const executeBatchDeleteKeynotes = async () => {
+    if (!keynotesToBatchDelete || keynotesToBatchDelete.length === 0) return;
+    try {
+      for (const id of keynotesToBatchDelete) {
+        await fetch(`${API_BASE}/api/keynotes/${id}/delete`, { method: 'PUT', headers: authHeaders });
+      }
+      fetchKeynotes();
+      fetchBin();
+      setIsBatchDeleteKeynotes(false);
+      setKeynotesToBatchDelete([]);
+    } catch (err) { console.error("Failed to batch move to bin", err); }
+  };
+
+  const handleAddKeynoteSubmit = async (formData) => {
+    try {
+      const uploadRes = await fetch(`${API_BASE}/api/upload`, {
+        method: 'POST',
+        headers: { 'x-auth-token': token },
+        body: formData
+      });
+      if (!uploadRes.ok) throw new Error("Media upload failed");
+      const uploadData = await uploadRes.json();
+      
+      const payload = {
+        title: formData.get('title'),
+        courseName: formData.get('courseName') || 'General',
+        content: formData.get('content') || '',
+        type: formData.get('type') || 'text',
+        mediaUrls: uploadData.urls || []
+      };
+
+      await fetch(`${API_BASE}/api/keynotes`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(payload)
+      });
+      fetchKeynotes();
+    } catch (error) {
+      console.error("Failed to add keynote", error);
+    }
+  };
+
+  // --- UNIVERSAL BIN ACTIONS ---
   const restoreItem = async (id, type) => {
-    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits', 'Note': 'notes' };
+    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits', 'Note': 'notes', 'Keynote': 'keynotes' };
     try {
       await fetch(`${API_BASE}/api/${endpoints[type]}/${id}/restore`, { method: 'PUT', headers: authHeaders });
       fetchBin();
       if (type === 'Task') fetchTasks();
       if (type === 'Note') fetchNotes();
+      if (type === 'Keynote') fetchKeynotes();
     } catch (error) { console.error("Error restoring:", error); }
   };
 
   const permanentlyDeleteItem = async (id, type) => {
-    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits', 'Note': 'notes' };
+    const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits', 'Note': 'notes', 'Keynote': 'keynotes' };
     try {
       await fetch(`${API_BASE}/api/${endpoints[type]}/${id}`, { method: 'DELETE', headers: authHeaders });
       setBinItems(prev => prev.filter(item => item.id !== id));
@@ -277,6 +367,7 @@ function App() {
       await fetch(`${API_BASE}/api/bin/restore-all`, { method: 'PUT', headers: authHeaders }); 
       fetchTasks();
       fetchNotes();
+      fetchKeynotes();
       fetchBin(); 
     } catch (error) { }
   };
@@ -306,6 +397,7 @@ function App() {
 
   const toggleTheme = () => setIsDarkMode(prev => !prev);
 
+  // --- FILTERS ---
   const getFilteredTasks = () => {
     return tasks.filter(task => {
       if (filters.searchQuery) {
@@ -323,24 +415,42 @@ function App() {
     });
   };
 
-  // NEW FILTER LOGIC FOR NOTES
   const getFilteredNotes = () => {
     return notes.filter(note => {
-      // 1. Check Search Query
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase();
         const matchesTitle = note.title?.toLowerCase().includes(query) || false;
-        
-        // Strip HTML to search actual text content securely
         const plainContent = new DOMParser().parseFromString(note.content || '', 'text/html').body.textContent || "";
         const matchesContent = plainContent.toLowerCase().includes(query);
-        
         if (!matchesTitle && !matchesContent) return false;
       }
-      
-      // 2. Check Course Filter
       if (filters.course !== 'All' && note.courseId !== filters.course) return false;
+      return true;
+    });
+  };
+
+  const isAudioUrl = (url) => url?.match(/\.(m4a|mp3|wav|ogg|aac|mp4|3gp)$/i) || url?.includes('video/upload');
+
+  const getFilteredKeynotes = () => {
+    return keynotes.filter(k => {
+      if (filters.searchQuery) {
+        const query = filters.searchQuery.toLowerCase();
+        const matchesTitle = k.title?.toLowerCase().includes(query) || false;
+        const matchesContent = k.content?.toLowerCase().includes(query) || false;
+        if (!matchesTitle && !matchesContent) return false;
+      }
+      if (filters.course !== 'All' && k.courseName !== filters.course) return false;
       
+      if (filters.mediaType === 'Image') {
+         if (!k.mediaUrls?.some(url => !isAudioUrl(url))) return false;
+      }
+      if (filters.mediaType === 'Audio') {
+         if (!k.mediaUrls?.some(url => isAudioUrl(url))) return false;
+      }
+
+      if (filters.startDate && new Date(k.createdAt) < new Date(filters.startDate)) return false;
+      if (filters.endDate && new Date(k.createdAt) > new Date(filters.endDate)) return false;
+
       return true;
     });
   };
@@ -446,6 +556,20 @@ function App() {
     }
   };
 
+  const triggerAddClick = () => {
+    if (activeTab === 'Tasks' || activeTab === 'Calendar') {
+      setPrefilledDate(''); 
+      setIsAddTaskOpen(true);
+    } else if (activeTab === 'Notes') {
+      setIsAddingNewNote(true);
+    } else if (activeTab === 'Keynotes') {
+      setIsAddKeynoteOpen(true);
+    } else {
+      setPrefilledDate(''); 
+      setIsAddTaskOpen(true); // default
+    }
+  };
+
   if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
   return (
@@ -475,7 +599,7 @@ function App() {
           filters={filters}
           setFilters={setFilters}
           courses={courses}
-          onAddClick={() => { setPrefilledDate(''); setIsAddTaskOpen(true); }}
+          onAddClick={triggerAddClick} 
           user={user}
           onLogout={handleLogout}
           tasks={tasks}
@@ -483,13 +607,14 @@ function App() {
           onNavigate={handleNavigate}
           onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
           notes={notes}
-          onAddNoteClick={() => setIsAddingNewNote(true)}
           onOpenNote={(note) => console.log("Open Note from search:", note)} 
+          keynotes={keynotes} 
+          onToggleKeynoteRead={handleToggleKeynoteRead}
         />
-        <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide">
+        <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
 
           {activeTab === 'Welcome' && (
-            <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn">
+            <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn w-full">
               <div className="max-w-2xl">
                 <h1 className="text-3xl md:text-5xl font-bold mb-4 md:mb-6 dark:text-white text-gray-900 tracking-tight">Welcome, {user?.name || 'Student'}</h1>
                 <p className="text-gray-500 dark:text-gray-400 text-base md:text-lg mb-8 md:mb-12">Select a module from the sidebar to manage your academic journey.</p>
@@ -504,61 +629,82 @@ function App() {
             </div>
           )}
 
+          {activeTab === 'Calculator' && <Calculator />}
+          {activeTab === 'HyperFocus' && <HyperFocus />}
+
           {activeTab === 'Notes' && (
-            <Notes 
-              courses={courses} 
-              notes={getFilteredNotes()} 
-              setNotes={setNotes} 
-              isAddingNew={isAddingNewNote} 
-              setIsAddingNew={setIsAddingNewNote} 
-              fetchNotes={fetchNotes} 
-              fetchBin={fetchBin}     
-            />
+            <div className="w-full h-full">
+              <Notes 
+                courses={courses} 
+                notes={getFilteredNotes()} 
+                setNotes={setNotes} 
+                isAddingNew={isAddingNewNote} 
+                setIsAddingNew={setIsAddingNewNote} 
+                fetchNotes={fetchNotes} 
+                fetchBin={fetchBin}     
+              />
+            </div>
           )}
 
-          {activeTab === 'Tasks' && <TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} />}
-          {activeTab === 'Calendar' && <Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} />}
-          {activeTab === 'Timetable' && <Timetable />} 
-          {activeTab === 'Habits' && <HabitTracker />} 
-          {activeTab === 'Grade Book' && <GradeBook />}
-          {activeTab === 'History' && <ResultHistory />}
-          {activeTab.startsWith('Cash-') && <CashManager activeTab={activeTab} />}
-          {activeTab === 'Bin' && <Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} />}
-          {activeTab === 'Admin' && <AdminDashboard />}
-          {activeTab === 'Profile' && <MyProfile user={user} />}
+          {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} /></div>}
+          {activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
+          {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>} 
+          
+          {activeTab === 'Keynotes' && (
+            <div className="w-full h-full">
+              <Keynote 
+                keynotes={getFilteredKeynotes()} 
+                courses={courses} 
+                onToggleRead={handleToggleKeynoteRead} 
+                onDelete={deleteKeynote}
+                onBatchDelete={handleBatchDeleteKeynotes}
+              />
+            </div>
+          )} 
+          
+          {activeTab === 'Habits' && <div className="w-full h-full"><HabitTracker /></div>} 
+          {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
+          {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
+          {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} /></div>}
+          {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
+          {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard /></div>}
+          {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} /></div>}
 
           {activeTab === 'Settings' && (
-            <Settings
-              user={user}
-              idleTimeout={idleTimeout}
-              setIdleTimeout={setIdleTimeout}
-              onManualSync={handleManualSync}
-              onDisconnect={handleDisconnect}
-              onLinkPortal={handleLinkPortal}
-              onUpdateProfile={handleUpdateProfile}
-              onChangePassword={handleChangePassword}
-              courses={courses}
-              addCourse={addCourse}
-              removeCourse={removeCourse}
-            />
+            <div className="w-full h-full">
+              <Settings
+                user={user}
+                idleTimeout={idleTimeout}
+                setIdleTimeout={setIdleTimeout}
+                onManualSync={handleManualSync}
+                onDisconnect={handleDisconnect}
+                onLinkPortal={handleLinkPortal}
+                onUpdateProfile={handleUpdateProfile}
+                onChangePassword={handleChangePassword}
+                courses={courses}
+                addCourse={addCourse}
+                removeCourse={removeCourse}
+              />
+            </div>
           )}
 
         </div>
       </div>
 
       <style>{`
-        .custom-scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .custom-scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
+        .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
+        .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
+      {/* --- MODALS --- */}
       <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} tasks={tasks} />
       <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={courses} onUpdate={updateTask} />
+      <AddKeynoteModal isOpen={isAddKeynoteOpen} onClose={() => setIsAddKeynoteOpen(false)} onSave={handleAddKeynoteSubmit} courses={courses} />
+
       <ConfirmationModal isOpen={!!taskToDelete} onClose={() => setTaskToDelete(null)} onConfirm={executeDelete} title="Move to Bin?" message="Are you sure you want to move this task to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
+      <ConfirmationModal isOpen={!!keynoteToDelete} onClose={() => setKeynoteToDelete(null)} onConfirm={executeDeleteKeynote} title="Move Snap to Bin?" message="Are you sure you want to move this Keynote to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
+      <ConfirmationModal isOpen={isBatchDeleteKeynotes} onClose={() => { setIsBatchDeleteKeynotes(false); setKeynotesToBatchDelete([]); }} onConfirm={executeBatchDeleteKeynotes} title={`Move ${keynotesToBatchDelete.length} Snaps to Bin?`} message="Are you sure you want to move the selected Keynotes to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
+
     </div>
   );
 }

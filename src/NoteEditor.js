@@ -45,6 +45,10 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [editorTheme, setEditorTheme] = useState('vs-light');
+  
+  // NEW: State to track exact height of the code lines
+  const [contentHeight, setContentHeight] = useState(250);
+  
   const dropdownRef = useRef(null);
 
   const languages = [
@@ -109,6 +113,17 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
     });
   };
 
+  // NEW: Hooks into Monaco's size changes to calculate exact required height
+  const handleEditorDidMount = (editor) => {
+    const updateHeight = () => {
+      const height = editor.getContentHeight();
+      setContentHeight(height);
+    };
+    
+    editor.onDidContentSizeChange(updateHeight);
+    updateHeight();
+  };
+
   const currentLangLabel = languages.find(l => l.id === node.attrs.language)?.label || 'JavaScript / React';
 
   return (
@@ -150,7 +165,7 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsExpanded(!isExpanded)} 
-            className="text-gray-500 hover:text-brand-blue dark:text-gray-400 dark:hover:text-white transition-colors flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]"
+            className={`text-gray-500 hover:text-brand-blue dark:text-gray-400 dark:hover:text-white transition-colors flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C] ${isExpanded ? 'bg-blue-100 text-brand-blue dark:bg-blue-900/40 dark:text-blue-400' : ''}`}
           >
             {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />} 
             <span className="hidden sm:block">{isExpanded ? 'Collapse' : 'Expand'}</span>
@@ -169,9 +184,10 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
         </div>
       </div>
 
-      {/* Flexible Height Container */}
+      {/* FIXED: Dynamic Height calculation based on isExpanded flag */}
       <div 
-        className={`w-full bg-white dark:bg-[#1A1A1A] pt-2 transition-all duration-300 ease-in-out ${isExpanded ? 'h-[70vh]' : 'h-[250px]'}`} 
+        className="w-full bg-white dark:bg-[#1A1A1A] pt-2 transition-all duration-300 ease-in-out" 
+        style={{ height: isExpanded ? `${Math.max(250, contentHeight + 30)}px` : '250px' }}
         onKeyDown={e => e.stopPropagation()}
       >
         <Editor
@@ -179,6 +195,7 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
           language={node.attrs.language}
           theme={editorTheme}
           beforeMount={handleEditorWillMount}
+          onMount={handleEditorDidMount}
           defaultValue={node.attrs.code}
           onChange={(value) => updateAttributes({ code: value })}
           options={{
@@ -190,6 +207,11 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
             smoothScrolling: true,
             cursorBlinking: "smooth",
             wordWrap: "on",
+            // Allow mouse wheel to pass through the block to the main window if expanded
+            scrollbar: {
+              alwaysConsumeMouseWheel: !isExpanded, 
+              vertical: isExpanded ? 'hidden' : 'auto'
+            },
             quickSuggestions: true,
             suggestOnTriggerCharacters: true,
             parameterHints: { enabled: true }
