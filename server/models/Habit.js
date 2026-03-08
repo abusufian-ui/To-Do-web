@@ -7,6 +7,7 @@ const habitSchema = new mongoose.Schema({
   
   // --- GOOD HABIT CONFIG ---
   frequency: { type: String, default: 'daily' }, 
+  targetPerDay: { type: Number, default: 1 }, // <-- ADD THIS LINE
   targetPerWeek: { type: Number, default: 7 }, 
   checkIns: [{ type: Date }],
   
@@ -17,8 +18,6 @@ const habitSchema = new mongoose.Schema({
   startDate: { type: Date, default: Date.now }, 
   
   longestStreak: { type: Number, default: 0 },
-  
-  // Notice the comma on the line below!
   createdAt: { type: Date, default: Date.now },
   
   // --- SOFT DELETE FIELDS ---

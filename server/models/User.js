@@ -9,6 +9,10 @@ const UserSchema = new mongoose.Schema({
   // Security PIN for Admin Command Center
   adminPin: { type: String, default: '0000' }, 
   
+  // --- NOTIFICATION PREFERENCES ---
+  pushToken: { type: String, default: null },
+  prayerNotifs: { type: Boolean, default: false }, // <--- ADD THIS
+  
   portalId: { type: String, default: null },
   isPortalConnected: { type: Boolean, default: false },
   lastSyncAt: { type: Date, default: null },

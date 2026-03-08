@@ -1,15 +1,15 @@
 const mongoose = require('mongoose');
 
 const TaskSchema = new mongoose.Schema({
-
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // <--- ADD THIS
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   name: { type: String, required: true },
   description: { type: String, default: '' },
   course: { type: String, default: 'General' },
   date: { type: String, default: '' },
-  
-  // --- ADDED THIS FIELD ---
   time: { type: String, default: null }, 
+  
+  // --- ADDED: Exact ISO Date for the Cron Engine to trigger 15-min alerts ---
+  triggerAt: { type: Date, default: null },
   
   priority: { type: String, default: 'Medium' },
   status: { type: String, default: 'New task' },

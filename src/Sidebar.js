@@ -9,45 +9,64 @@ import {
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
   const [isCashExpanded, setIsCashExpanded] = useState(false);
   const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(false);
+  const [isHabitsExpanded, setIsHabitsExpanded] = useState(false);
 
   // 1. WORK TOOLS
   const menuItems = [
     { name: 'Tasks', icon: CheckSquare },
     { name: 'Calendar', icon: Calendar },
     { name: 'Notes', icon: StickyNote },
-    { name: 'Habits', icon: Activity },
   ];
 
+  // 2. ACADEMICS SUB-ITEMS
   const academicsSubItems = [
     { id: 'Timetable', label: 'Timetable', icon: Clock },
-    { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb }, // <-- NEW
+    { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: History },
   ];
 
-  // 2. CASH MANAGER SUB-ITEMS
+  // 3. CASH MANAGER SUB-ITEMS
   const cashSubItems = [
     { id: 'Cash-Overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'Cash-Transactions', label: 'Transactions', icon: CreditCard },
     { id: 'Cash-Analytics', label: 'Analytics', icon: PieChart },
     { id: 'Cash-Budget', label: 'Budget', icon: PiggyBank },
-    { id: 'Cash-Debts', label: 'Debts & Loans', icon: ArrowRightLeft }, // <-- NEW BUTTON ADDED HERE
+    { id: 'Cash-Debts', label: 'Debts & Loans', icon: ArrowRightLeft },
+  ];
+
+  // 4. HABITS SUB-ITEMS
+  const habitsSubItems = [
+    { id: 'Habits-Overview', label: 'Protocol Overview', icon: LayoutDashboard },
+    { id: 'Habits-Namaz', label: 'Namaz Tracker', icon: Shield },
+    { id: 'Habits-Tracker', label: 'Active Targets', icon: Activity },
+    { id: 'Habits-Analytics', label: 'Analytics Engine', icon: BarChart3 },
   ];
 
   const handleCashClick = () => {
     if (!isOpen) toggleSidebar();
     setIsCashExpanded(!isCashExpanded);
     if (isAcademicsExpanded) setIsAcademicsExpanded(false);
+    if (isHabitsExpanded) setIsHabitsExpanded(false);
   };
 
   const handleAcademicsClick = () => {
     if (!isOpen) toggleSidebar();
     setIsAcademicsExpanded(!isAcademicsExpanded);
     if (isCashExpanded) setIsCashExpanded(false);
+    if (isHabitsExpanded) setIsHabitsExpanded(false);
   };
 
-  const isAcademicsActive = ['Timetable', 'Grade Book', 'History'].includes(activeTab);
+  const handleHabitsClick = () => {
+    if (!isOpen) toggleSidebar();
+    setIsHabitsExpanded(!isHabitsExpanded);
+    if (isCashExpanded) setIsCashExpanded(false);
+    if (isAcademicsExpanded) setIsAcademicsExpanded(false);
+  };
+
+  const isAcademicsActive = ['Timetable', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);
   const isCashActive = activeTab.startsWith('Cash');
+  const isHabitsActive = activeTab.startsWith('Habits');
 
   return (
     <div className={`
@@ -169,6 +188,47 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
                   ${activeTab === sub.id 
                     ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20 font-medium' 
                     : 'text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10'}
+                `}
+              >
+                <sub.icon size={16} />
+                <span>{sub.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* --- HABITS SECTION --- */}
+        <button
+          onClick={handleHabitsClick}
+          className={`
+            w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+            ${isHabitsActive && !isOpen 
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
+            ${!isOpen && 'md:justify-center'}
+          `}
+        >
+          <Activity size={20} strokeWidth={2} />
+          {isOpen && (
+            <>
+              <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Habit Protocol</span>
+              {isHabitsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </>
+          )}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Habit Protocol</div>}
+        </button>
+
+        {isOpen && isHabitsExpanded && (
+          <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
+            {habitsSubItems.map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setActiveTab(sub.id)}
+                className={`
+                  w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
+                  ${activeTab === sub.id 
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20 font-medium' 
+                    : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/10'}
                 `}
               >
                 <sub.icon size={16} />

@@ -208,32 +208,27 @@ function App() {
     } catch (error) { console.error("Error fetching bin:", error); }
   }, [authHeaders, handleLogout]);
 
-  const fetchCourses = useCallback(async () => {
-    const fixedCourses = [{ id: 'general-task', name: 'General Course', type: 'general' }];
-    let uniCourses = [];
-    let customCourses = [];
-
-    try {
-      const res = await fetch(`${API_BASE}/api/grades`, { headers: authHeaders });
-      if (res.ok) {
-        const gradeData = await res.json();
-        uniCourses = (Array.isArray(gradeData) ? gradeData : []).map(g => ({
-          id: g._id, name: g.courseName, type: 'uni'
-        }));
-      }
-    } catch (error) { console.error("Error fetching uni courses:", error); }
+ const fetchCourses = useCallback(async () => {
+    let fetchedCourses = [];
 
     try {
       const res = await fetch(`${API_BASE}/api/courses`, { headers: authHeaders });
       if (res.ok) {
         const customData = await res.json();
-        customCourses = (Array.isArray(customData) ? customData : []).map(c => ({
-          id: c._id, name: c.name, type: 'general'
+        
+        fetchedCourses = (Array.isArray(customData) ? customData : []).map(c => ({
+          id: c._id, 
+          name: c.name, 
+          // Normalize 'university' to 'uni' for the frontend dropdowns
+          type: c.type === 'university' ? 'uni' : 'general' 
         }));
       }
-    } catch (error) { console.error("Error fetching custom courses:", error); }
+    } catch (error) { 
+        console.error("Error fetching courses:", error); 
+    }
 
-    setCourses([...fixedCourses, ...uniCourses, ...customCourses]);
+    // Just set the courses directly from the database now!
+    setCourses(fetchedCourses);
   }, [authHeaders]);
 
   useEffect(() => {
@@ -662,7 +657,7 @@ function App() {
             </div>
           )} 
           
-          {activeTab === 'Habits' && <div className="w-full h-full"><HabitTracker /></div>} 
+          {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
           {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
           {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
           {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} /></div>}

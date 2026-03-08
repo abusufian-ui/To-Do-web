@@ -12,6 +12,10 @@ const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
 
+// --- NEW IMPORTS FOR SERVER NOTIFICATIONS ---
+const { Expo } = require('expo-server-sdk');
+const cron = require('node-cron');
+
 // --- MODELS ---
 const User = require('./models/User');
 const Task = require('./models/Task');
@@ -28,6 +32,7 @@ const { Transaction, Budget, Debt } = require('./models/Transaction');
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
 const resend = new Resend(process.env.RESEND_API_KEY);
+let expo = new Expo(); // Initialize Expo SDK
 
 const otpSchema = new mongoose.Schema({
   email: { type: String, required: true },
@@ -119,7 +124,7 @@ const storage = new CloudinaryStorage({
   params: {
     folder: 'MyPortal_Keynotes', 
     resource_type: 'auto', 
-    allowed_formats: ['jpg', 'jpeg', 'png', 'm4a', 'mp3', 'wav', 'mp4', '3gp', 'webm'] 
+    allowed_formats: ['jpg', 'jpeg', 'png', 'm4a', 'mp3', 'wav', 'mp4', '3gp', 'webm', 'pdf', 'doc', 'docx', 'odt', 'txt', 'xls', 'xlsx', 'ppt', 'pptx'] 
   },
 });
 
@@ -154,7 +159,6 @@ app.post('/api/upload', auth, upload.array('files', 10), (req, res) => {
 // ==========================================
 app.get('/api/keynotes', auth, async (req, res) => {
   try {
-    // Only fetch keynotes that are NOT in the bin
     const keynotes = await Keynote.find({ userId: req.user.id, isDeleted: { $ne: true } }).sort({ createdAt: -1 });
     res.json(keynotes);
   } catch (error) { res.status(500).json({ message: "Error fetching keynotes" }); }
@@ -174,6 +178,33 @@ app.put('/api/keynotes/:id/read', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error updating keynote" }); }
 });
 
+app.put('/api/keynotes/:id', auth, async (req, res) => {
+  try {
+    const { title, content, courseName, mediaUrls, type } = req.body;
+    
+    if (!title || !title.trim()) {
+      return res.status(400).json({ message: "Title is required" });
+    }
+
+    const keynote = await Keynote.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { 
+        title: title.trim(), 
+        content: content?.trim() || "", 
+        courseName: courseName || "General",
+        mediaUrls: mediaUrls || [],  
+        type: type || 'mixed'        
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (!keynote) return res.status(404).json({ message: "Keynote not found" });
+    res.json(keynote);
+  } catch (error) { 
+    res.status(500).json({ message: "Error updating keynote" }); 
+  }
+});
+
 app.put('/api/keynotes/:id/unread', auth, async (req, res) => {
   try {
     const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isRead: false }, { new: true });
@@ -181,7 +212,6 @@ app.put('/api/keynotes/:id/unread', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error updating keynote" }); }
 });
 
-// NEW: Soft Delete to Bin
 app.put('/api/keynotes/:id/delete', auth, async (req, res) => {
   try {
     const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
@@ -189,7 +219,6 @@ app.put('/api/keynotes/:id/delete', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error moving keynote to bin" }); }
 });
 
-// NEW: Restore from Bin
 app.put('/api/keynotes/:id/restore', auth, async (req, res) => {
   try {
     const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
@@ -322,6 +351,43 @@ app.delete('/api/debts/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error deleting debt" }); }
 });
 
+app.post('/api/debts/:id/pay', auth, async (req, res) => {
+  try {
+    const { amount, date } = req.body;
+    const paymentAmount = Number(amount);
+
+    const debt = await Debt.findOne({ _id: req.params.id, userId: req.user.id });
+    
+    if (!debt) return res.status(404).json({ message: "Debt not found" });
+    if (paymentAmount > debt.amount) return res.status(400).json({ message: "Payment exceeds active debt amount" });
+
+    debt.amount -= paymentAmount;
+    if (debt.amount === 0) {
+      debt.status = 'paid';
+    }
+    await debt.save();
+
+    const transactionType = debt.type === 'lent' ? 'income' : 'expense';
+    const transactionCategory = debt.type === 'lent' ? 'Loan Recovery' : 'Debt Payoff';
+    const descPrefix = debt.amount > 0 ? 'Partial Recovery: ' : 'Full Settlement: ';
+
+    const newTransaction = new Transaction({
+      userId: req.user.id,
+      type: transactionType,
+      amount: paymentAmount,
+      category: transactionCategory,
+      description: descPrefix + debt.person,
+      date: date || new Date().toISOString()
+    });
+
+    await newTransaction.save();
+
+    res.json({ success: true, debt, transaction: newTransaction });
+  } catch (error) {
+    res.status(500).json({ message: "Error processing debt payment" });
+  }
+});
+
 // --- NOTES MANAGEMENT ---
 app.post('/api/notes', auth, async (req, res) => {
   try {
@@ -435,9 +501,21 @@ app.put('/api/admin/change-pin', auth, adminAuth, async (req, res) => {
 // --- COURSES MANAGEMENT ---
 app.get('/api/courses', auth, async (req, res) => {
   try {
+    const defaultCourseExists = await Course.findOne({ userId: req.user.id, name: 'General Course' });
+    if (!defaultCourseExists) {
+      const defaultCourse = new Course({ 
+        userId: req.user.id, 
+        name: 'General Course', 
+        type: 'general' 
+      });
+      await defaultCourse.save();
+    }
+
     const courses = await Course.find({ userId: req.user.id }).sort({ createdAt: 1 });
     res.json(courses);
-  } catch (error) { res.status(500).json({ message: "Error fetching courses" }); }
+  } catch (error) { 
+    res.status(500).json({ message: "Error fetching courses" }); 
+  }
 });
 
 app.post('/api/courses', auth, async (req, res) => {
@@ -454,26 +532,21 @@ app.post('/api/courses', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error adding course" }); }
 });
 
-// --- THE FIX: SAFE COURSE DELETION ROUTE ---
 app.delete('/api/courses/:id', auth, async (req, res) => {
   try {
     const courseId = req.params.id;
-    
-    // 1. Find the exact course securely tied to this user
     const course = await Course.findOne({ _id: courseId, userId: req.user.id });
     if (!course) {
       return res.status(404).json({ message: "Course not found." });
     }
 
-    // 2. Prevent deletion of the core 'General' course natively on the backend
-    if (course.name.toLowerCase().includes('general')) {
+    const normalizedName = course.name.toLowerCase().trim();
+    if (normalizedName === 'general' || normalizedName === 'general course' || normalizedName === 'general-task') {
       return res.status(403).json({ message: "The General course is permanent and cannot be deleted." });
     }
 
-    // 3. Delete ONLY this specific single course
     await Course.findByIdAndDelete(courseId);
 
-    // 4. PROTECT DATA: Re-assign orphaned tasks to "General" instead of deleting them!
     await Task.updateMany(
       { userId: req.user.id, course: course.name },
       { $set: { course: "General" } }
@@ -615,6 +688,28 @@ app.put('/api/user/password', auth, async (req, res) => {
     await user.save();
     res.json({ message: "Password updated successfully" });
   } catch (error) { res.status(500).json({ message: "Server Error" }); }
+});
+
+// --- PUSH TOKEN ROUTE ---
+app.post('/api/user/push-token', auth, async (req, res) => {
+  try {
+    const { token } = req.body;
+    await User.findByIdAndUpdate(req.user.id, { pushToken: token });
+    res.json({ success: true, message: "Push token updated" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update push token" });
+  }
+});
+
+// --- PREFERENCES ROUTE ---
+app.put('/api/user/preferences', auth, async (req, res) => {
+  try {
+    const { prayerNotifs } = req.body;
+    await User.findByIdAndUpdate(req.user.id, { prayerNotifs });
+    res.json({ success: true, message: "Preferences updated" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update preferences" });
+  }
 });
 
 app.post('/api/user/link-portal', auth, async (req, res) => {
@@ -948,14 +1043,15 @@ app.put('/api/habits/:id/cheat', auth, async (req, res) => {
 app.put('/api/habits/:id/checkin', auth, async (req, res) => {
   try {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
-    const today = new Date().setHours(0,0,0,0);
-    if (!habit.checkIns.some(d => new Date(d).setHours(0,0,0,0) === today)) {
-      habit.checkIns.push(new Date());
-      if (habit.checkIns.length > habit.longestStreak) {
-        habit.longestStreak = habit.checkIns.length;
-      }
-      await habit.save();
+    
+    habit.checkIns.push(new Date());
+    
+    const uniqueDays = new Set(habit.checkIns.map(d => new Date(d).setHours(0,0,0,0)));
+    if (uniqueDays.size > habit.longestStreak) {
+      habit.longestStreak = uniqueDays.size;
     }
+    
+    await habit.save();
     res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error checking in" }); }
 });
@@ -999,6 +1095,139 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({ message: "API is running 🚀" });
+});
+
+
+// ==========================================
+// 🔔 THE CRON ENGINE (Runs every minute)
+// ==========================================
+const axios = require('axios'); 
+
+let cachedPrayerTimes = null;
+let lastFetchDate = null;
+
+cron.schedule('* * * * *', async () => {
+  // This will log every single minute just so you know the engine is alive
+  // (You can comment this out later if it clutters your Render logs too much)
+  console.log(`[${new Date().toISOString()}] ⏳ Cron Engine Sweeping...`);
+  
+  // ---------------------------------------------------------
+  // ENGINE 1: TASK REMINDERS (15 MINS AHEAD)
+  // ---------------------------------------------------------
+  try {
+    const now = new Date();
+    const targetStart = new Date(now.getTime() + 15 * 60000);
+    const targetEnd = new Date(targetStart.getTime() + 60000);
+
+    const upcomingTasks = await Task.find({
+      completed: false,
+      isDeleted: false,
+      triggerAt: { $gte: targetStart, $lt: targetEnd }
+    }).populate('userId');
+
+    let taskMessages = [];
+
+    for (let task of upcomingTasks) {
+      if (!task.userId) continue;
+      const pushToken = task.userId.pushToken;
+      
+      if (pushToken && Expo.isExpoPushToken(pushToken)) {
+        console.log(`[TASK ENGINE] 🎯 Found upcoming task: "${task.name}" for user ${task.userId.email}`);
+        taskMessages.push({
+          to: pushToken,
+          sound: 'default',
+          title: `Task Reminder: ${task.course || 'General'} 📌`,
+          body: `Starts in 15 mins: ${task.name}`,
+          data: { taskId: task._id, type: 'task' },
+        });
+      }
+    }
+
+    if (taskMessages.length > 0) {
+      console.log(`[TASK ENGINE] 🚀 Dispatching ${taskMessages.length} task notifications to Expo...`);
+      let chunks = expo.chunkPushNotifications(taskMessages);
+      for (let chunk of chunks) {
+        try {
+          let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+          console.log(`[TASK ENGINE] ✅ Successfully sent chunk! Expo Tickets:`, ticketChunk);
+        } catch (error) {
+          console.error(`[TASK ENGINE] ❌ Error sending push chunk:`, error);
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`[TASK ENGINE] ❌ Critical Error:`, error);
+  }
+
+  // ---------------------------------------------------------
+  // ENGINE 2: LIVE PRAYER ALERTS (LAHORE, PKT)
+  // ---------------------------------------------------------
+  try {
+    const nowLahoreStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
+    const lahoreDateObj = new Date(nowLahoreStr);
+    
+    const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+    const currentLahoreTime = lahoreDateObj.toLocaleTimeString("en-US", { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+    if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
+      const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1');
+      const timings = response.data.data.timings;
+      
+      cachedPrayerTimes = {
+        Fajr: timings.Fajr,
+        Dhuhr: timings.Dhuhr,
+        Asr: timings.Asr,
+        Maghrib: timings.Maghrib,
+        Isha: timings.Isha
+      };
+      lastFetchDate = todayStr;
+      console.log(`[PRAYER ENGINE] 🔄 Fetched fresh Lahore Prayer Times for ${todayStr}:`, cachedPrayerTimes);
+    }
+
+    let currentPrayer = null;
+    for (const [prayer, time] of Object.entries(cachedPrayerTimes)) {
+      if (time === currentLahoreTime) {
+        currentPrayer = prayer;
+        break;
+      }
+    }
+
+    if (currentPrayer) {
+      console.log(`[PRAYER ENGINE] ⏰ It is exactly time for ${currentPrayer}! Scanning for opted-in users...`);
+      const prayerUsers = await User.find({ prayerNotifs: true, pushToken: { $ne: null } });
+      let prayerMessages = [];
+
+      for (let user of prayerUsers) {
+        if (Expo.isExpoPushToken(user.pushToken)) {
+          prayerMessages.push({
+            to: user.pushToken,
+            title: `🕌 ${currentPrayer} Prayer Time`,
+            body: `It is time for ${currentPrayer} prayer. Please take a moment to pray.`,
+            categoryId: "smart-alert", 
+            channelId: "prayer-channel-live", 
+            data: { type: 'prayer', eventId: `prayer_${currentPrayer}_${todayStr}` },
+          });
+        }
+      }
+
+      if (prayerMessages.length > 0) {
+        console.log(`[PRAYER ENGINE] 🚀 Dispatching ${currentPrayer} alert to ${prayerMessages.length} users!`);
+        let chunks = expo.chunkPushNotifications(prayerMessages);
+        for (let chunk of chunks) {
+          try {
+            let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+            console.log(`[PRAYER ENGINE] ✅ Successfully sent ${currentPrayer} chunk! Expo Tickets:`, ticketChunk);
+          } catch (error) {
+            console.error(`[PRAYER ENGINE] ❌ Error sending ${currentPrayer} chunk:`, error);
+          }
+        }
+      } else {
+         console.log(`[PRAYER ENGINE] ⚠️ It is time for ${currentPrayer}, but no users have prayer alerts enabled.`);
+      }
+    }
+  } catch (error) {
+    console.error(`[PRAYER ENGINE] ❌ Critical Error:`, error);
+  }
 });
 
 const PORT = process.env.PORT || 5000;
