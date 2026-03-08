@@ -14,6 +14,7 @@ const TaskSchema = new mongoose.Schema({
   priority: { type: String, default: 'Medium' },
   status: { type: String, default: 'New task' },
   completed: { type: Boolean, default: false },
+  acknowledged: { type: Boolean, default: false }, // <--- ADD THIS
   subTasks: [{
     text: String,
     completed: { type: Boolean, default: false }

@@ -82,7 +82,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:8081', 
-  'http://192.168.0.107:8081',
+  'http://192.168.0.111:8081',
   'http://10.133.169.235:8081',
   'https://myportalucp.online',
   'https://horizon.ucp.edu.pk',
@@ -913,6 +913,13 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
+app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => {
+  try {
+    await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
 app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
@@ -1112,54 +1119,81 @@ cron.schedule('* * * * *', async () => {
   console.log(`[${new Date().toISOString()}] ⏳ Cron Engine Sweeping...`);
   
   // ---------------------------------------------------------
-  // ENGINE 1: TASK REMINDERS (15 MINS AHEAD)
-  // ---------------------------------------------------------
-  // ---------------------------------------------------------
-  // ENGINE 1: TASK REMINDERS (15 MINS AHEAD)
+  // ENGINE 1: TASK REMINDERS (MULTI-PHASE)
   // ---------------------------------------------------------
   try {
     const now = new Date();
-    
-    // 👇 ADD THIS EXACT LINE TO FIX THE MILLISECOND BUG 👇
     now.setSeconds(0, 0); 
     
-    const targetStart = new Date(now.getTime() + 15 * 60000);
-    const targetEnd = new Date(targetStart.getTime() + 60000);
+    // Windows for Timed Tasks
+    const target15Start = new Date(now.getTime() + 15 * 60000);
+    const target15End = new Date(target15Start.getTime() + 60000);
+    
+    const targetExactStart = new Date(now.getTime());
+    const targetExactEnd = new Date(now.getTime() + 60000);
 
-    const upcomingTasks = await Task.find({
-      completed: false,
-      isDeleted: false,
-      triggerAt: { $gte: targetStart, $lt: targetEnd }
-    }).populate('userId');
+    // Variables for Date-Only Tasks (9 AM, 12 PM, 3 PM, 7 PM)
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    let taskMessages = [];
+    const orConditions = [];
 
-    for (let task of upcomingTasks) {
-      if (!task.userId) continue;
-      const pushToken = task.userId.pushToken;
-      
-      if (pushToken && Expo.isExpoPushToken(pushToken)) {
-        console.log(`[TASK ENGINE] 🎯 Found upcoming task: "${task.name}" for user ${task.userId.email}`);
-        taskMessages.push({
-          to: pushToken,
-          sound: 'default',
-          title: `Task Reminder: ${task.course || 'General'} 📌`,
-          body: `Starts in 15 mins: ${task.name}`,
-          data: { taskId: task._id, type: 'task' },
-        });
-      }
+    // Condition A: 15 minutes before a scheduled time
+    orConditions.push({ triggerAt: { $gte: target15Start, $lt: target15End } });
+    
+    // Condition B: Exactly AT the scheduled time
+    orConditions.push({ triggerAt: { $gte: targetExactStart, $lt: targetExactEnd } });
+
+    // Condition C: Date-only tasks (Check at 09:00, 12:00, 15:00, 19:00)
+    if (currentMinute === 0 && [9, 12, 15, 19].includes(currentHour)) {
+      orConditions.push({ date: todayStr, time: null });
     }
 
-    if (taskMessages.length > 0) {
-      console.log(`[TASK ENGINE] 🚀 Dispatching ${taskMessages.length} task notifications to Expo...`);
-      let chunks = expo.chunkPushNotifications(taskMessages);
-      for (let chunk of chunks) {
-        try {
-          let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-          console.log(`[TASK ENGINE] ✅ Successfully sent chunk! Expo Tickets:`, ticketChunk);
-        } catch (error) {
-          console.error(`[TASK ENGINE] ❌ Error sending push chunk:`, error);
+    if (orConditions.length > 0) {
+      const upcomingTasks = await Task.find({
+        completed: false,
+        isDeleted: false,
+        acknowledged: false, // CRITICAL: Stop bugging the user if they clicked "Got it!"
+        $or: orConditions
+      }).populate('userId');
+
+      let taskMessages = [];
+
+      for (let task of upcomingTasks) {
+        if (!task.userId || !task.userId.pushToken) continue;
+        const pushToken = task.userId.pushToken;
+        
+        if (Expo.isExpoPushToken(pushToken)) {
+          let bodyText = `Task: ${task.name}`;
+          
+          // Customize message based on the trigger type
+          if (task.time && new Date(task.triggerAt) > now) {
+            bodyText = `Starts in 15 mins: ${task.name}`;
+          } else if (task.time && new Date(task.triggerAt) <= now) {
+            bodyText = `It is time for: ${task.name}`;
+          } else {
+            bodyText = `Daily Reminder: ${task.name}`;
+          }
+
+          console.log(`[TASK ENGINE] 🎯 Found task: "${task.name}" for user ${task.userId.email}`);
+          taskMessages.push({
+            to: pushToken,
+            sound: 'default',
+            categoryId: "smart-alert", // Attaches the "Got it!" button
+            title: `Task Reminder: ${task.course || 'General'} 📌`,
+            body: bodyText,
+            data: { taskId: task._id, type: 'task' },
+          });
         }
+      }
+
+      if (taskMessages.length > 0) {
+        let chunks = expo.chunkPushNotifications(taskMessages);
+        for (let chunk of chunks) await expo.sendPushNotificationsAsync(chunk);
       }
     }
   } catch (error) {
@@ -1188,6 +1222,7 @@ cron.schedule('* * * * *', async () => {
         Isha: timings.Isha
       };
       lastFetchDate = todayStr;
+
       console.log(`[PRAYER ENGINE] 🔄 Fetched fresh Lahore Prayer Times for ${todayStr}:`, cachedPrayerTimes);
     }
 
@@ -1235,7 +1270,92 @@ cron.schedule('* * * * *', async () => {
   } catch (error) {
     console.error(`[PRAYER ENGINE] ❌ Critical Error:`, error);
   }
+  // ---------------------------------------------------------
+  // ENGINE 3: CLASS REMINDERS (BULLETPROOF EDITION)
+  // ---------------------------------------------------------
+  try {
+    // 1. Get exact current time in Lahore
+    const nowPktStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
+    const pktNow = new Date(nowPktStr);
+    
+    // 2. Look exactly 5 minutes into the future
+    const targetTime = new Date(pktNow.getTime() + 5 * 60000);
+    
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const targetDay = days[targetTime.getDay()];
+    const targetHours = targetTime.getHours();
+    const targetMinutes = targetTime.getMinutes();
+
+    // 3. Find classes and catch any Mongoose population cast errors
+    const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => {
+        console.error("[CLASS ENGINE] DB Query Error:", err.message);
+        return [];
+    });
+
+    let classMessages = [];
+
+    for (let cls of todaysClasses) {
+      // 4. Strict null guarding: skip if user was deleted or data is missing
+      if (!cls || !cls.userId || !cls.userId.pushToken || !cls.startTime) continue;
+
+      let classHours = -1;
+      let classMinutes = -1;
+      
+      // 5. Force startTime to be a String to prevent regex crashes
+      const timeString = String(cls.startTime).trim();
+      const timeMatch = timeString.match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
+      
+      if (timeMatch) {
+        classHours = parseInt(timeMatch[1], 10);
+        classMinutes = parseInt(timeMatch[2], 10);
+        const modifier = timeMatch[3];
+        
+        if (modifier) {
+           const isPM = modifier.toLowerCase() === 'pm';
+           if (isPM && classHours < 12) classHours += 12;
+           if (!isPM && classHours === 12) classHours = 0;
+        }
+      }
+
+      // 6. Match exact hour and minute
+      if (classHours === targetHours && classMinutes === targetMinutes) {
+        const pushToken = cls.userId.pushToken;
+        
+        if (Expo.isExpoPushToken(pushToken)) {
+          // Force instructor and room to be Strings before checking .includes()
+          const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) 
+            ? cls.instructor 
+            : "Your teacher";
+          
+          const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) 
+            ? ` (Room: ${cls.room})` 
+            : "";
+          
+          console.log(`[CLASS ENGINE] 🎓 Found class: "${cls.courseName}" for user ${cls.userId.email}`);
+          
+          classMessages.push({
+            to: pushToken,
+            sound: 'default',
+            categoryId: "smart-alert", 
+            title: `Upcoming Class: ${cls.courseName} 📚`,
+            body: `${instructorName} is starting the lecture in 5 mins${roomInfo}`,
+            data: { type: 'class', classId: cls._id },
+          });
+        }
+      }
+    }
+
+    if (classMessages.length > 0) {
+      let chunks = expo.chunkPushNotifications(classMessages);
+      for (let chunk of chunks) await expo.sendPushNotificationsAsync(chunk);
+    }
+
+  } catch (error) {
+    console.error(`[CLASS ENGINE] ❌ Critical Error:`, error.message);
+  }
 });
+
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
