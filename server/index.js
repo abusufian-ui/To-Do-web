@@ -1114,8 +1114,15 @@ cron.schedule('* * * * *', async () => {
   // ---------------------------------------------------------
   // ENGINE 1: TASK REMINDERS (15 MINS AHEAD)
   // ---------------------------------------------------------
+  // ---------------------------------------------------------
+  // ENGINE 1: TASK REMINDERS (15 MINS AHEAD)
+  // ---------------------------------------------------------
   try {
     const now = new Date();
+    
+    // 👇 ADD THIS EXACT LINE TO FIX THE MILLISECOND BUG 👇
+    now.setSeconds(0, 0); 
+    
     const targetStart = new Date(now.getTime() + 15 * 60000);
     const targetEnd = new Date(targetStart.getTime() + 60000);
 

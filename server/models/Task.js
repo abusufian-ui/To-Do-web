@@ -8,8 +8,8 @@ const TaskSchema = new mongoose.Schema({
   date: { type: String, default: '' },
   time: { type: String, default: null }, 
   
-  // --- ADDED: Exact ISO Date for the Cron Engine to trigger 15-min alerts ---
-  triggerAt: { type: Date, default: null },
+  // 👇 ADD THIS MISSING PIECE 👇
+  triggerAt: { type: Date, default: null }, 
   
   priority: { type: String, default: 'Medium' },
   status: { type: String, default: 'New task' },
