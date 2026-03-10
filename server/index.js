@@ -80,8 +80,11 @@ const adminAuth = async (req, res, next) => {
 // --- SECURE CORS CONFIGURATION ---
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://127.0.0.1:3000', // <-- Added 127.0.0.1
   'http://localhost:3001',
+  'http://127.0.0.1:3001', // <-- Added 127.0.0.1
   'http://localhost:8081', 
+  'http://localhost:5000/',
   'http://192.168.0.111:8081',
   'http://10.133.169.235:8081',
   'https://myportalucp.online',
@@ -94,6 +97,8 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
       callback(null, true);
     } else {
+      // THIS WILL NOW PRINT THE EXACT URL THAT GOT BLOCKED IN YOUR TERMINAL
+      console.error(`🚨 CORS BLOCKED THIS ORIGIN: "${origin}"`); 
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -736,7 +741,13 @@ app.post('/api/user/link-portal', auth, async (req, res) => {
 
 app.post('/api/user/unlink-portal', auth, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, { portalId: null, portalPassword: null, isPortalConnected: false, lastSyncAt: null });
+    // 1. Cleaned up the update object to prevent StrictMode crashes
+    await User.findByIdAndUpdate(req.user.id, { 
+        portalId: null, 
+        isPortalConnected: false, 
+        lastSyncAt: null 
+    });
+
     await Promise.all([
       Grade.deleteMany({ userId: req.user.id }),
       ResultHistory.deleteMany({ userId: req.user.id }),
@@ -744,8 +755,13 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
       Timetable.deleteMany({ userId: req.user.id }),
       Course.deleteMany({ userId: req.user.id, type: 'university' }) 
     ]);
+
     res.json({ success: true, message: "Portal account removed." });
-  } catch (error) { res.status(500).json({ message: "Failed to unlink account." }); }
+  } catch (error) { 
+    // 2. This will now log the EXACT reason it crashed in your Node terminal
+    console.error("🚨 UNLINK PORTAL CRASH:", error);
+    res.status(500).json({ message: error.message || "Server crashed while unlinking." }); 
+  }
 });
 
 app.get('/api/user/portal-status', auth, async (req, res) => {
