@@ -3,8 +3,8 @@ import {
   Plus, Search, SlidersHorizontal, User, Inbox, Sun, Moon, Filter,
   Book, Mail, Clock, CheckCircle2, Calendar, Menu,
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown, 
-  Settings, LogOut, FileText, X, Image as ImageIcon, Mic, Type, FileArchive,
-  Calculator as CalculatorIcon, Timer, Download, Maximize2, Trash2, EyeOff
+  Settings, LogOut, FileText, X, Image as ImageIcon, Mic, FileArchive,
+  Timer, Download, Maximize2, Trash2, EyeOff, Activity
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
@@ -25,7 +25,9 @@ const Header = ({
   notes = [],           
   onOpenNote,
   keynotes = [], 
-  onToggleKeynoteRead            
+  onToggleKeynoteRead,
+  hfState,     
+  hfModes 
 }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [showCourseList, setShowCourseList] = useState(false); 
@@ -46,6 +48,8 @@ const Header = ({
   const priorityDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
   const searchRef = useRef(null);
+
+  const isCashTab = activeTab && activeTab.startsWith('Cash');
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -68,7 +72,7 @@ const Header = ({
     const query = e.target.value;
     setFilters({ ...filters, searchQuery: query });
 
-    if (query.trim().length > 0) {
+    if (query.trim().length > 0 && !isCashTab) {
       if (activeTab === 'Notes') {
         const results = notes.filter(note => 
           note?.title?.toLowerCase().includes(query.toLowerCase()) || 
@@ -171,7 +175,6 @@ const Header = ({
     <>
       <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-[100]">
         
-        {/* --- LEFT SIDE --- */}
         <div className="flex items-center gap-2 md:gap-4">
           <button onClick={onMenuClick} className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors">
             <Menu size={22} />
@@ -183,7 +186,7 @@ const Header = ({
           >
             <Plus size={18} />
             <span className="hidden md:inline text-sm font-semibold">
-              {activeTab === 'Notes' ? 'New Note' : activeTab === 'Keynotes' ? 'Add Snap' : 'Add new'}
+              {activeTab === 'Notes' ? 'New Note' : activeTab === 'Keynotes' ? 'Add Snap' : isCashTab ? 'Add Transaction' : 'Add new'}
             </span>
           </button>
 
@@ -196,8 +199,8 @@ const Header = ({
                 type="text"
                 value={filters?.searchQuery || ''}
                 onChange={handleSearchChange}
-                onFocus={() => filters?.searchQuery && setShowSearchDropdown(true)}
-                placeholder={activeTab === 'Notes' || activeTab === 'Keynotes' ? `Search ${activeTab.toLowerCase()}...` : "Search tasks..."}
+                onFocus={() => filters?.searchQuery && !isCashTab && setShowSearchDropdown(true)}
+                placeholder={activeTab === 'Notes' || activeTab === 'Keynotes' ? `Search ${activeTab.toLowerCase()}...` : isCashTab ? 'Search transactions...' : "Search tasks..."}
                 autoComplete="off"
                 name="global-portal-search-input"
                 spellCheck="false"
@@ -205,7 +208,7 @@ const Header = ({
               />
             </div>
 
-            {showSearchDropdown && searchResults.length > 0 && (
+            {showSearchDropdown && searchResults.length > 0 && !isCashTab && (
               <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl overflow-hidden z-[110] animate-fadeIn custom-scrollbar max-h-96 overflow-y-auto">
                 <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#252525]">Top Results</div>
                 {searchResults.map((item, index) => (
@@ -259,7 +262,6 @@ const Header = ({
                     </div>
 
                     <div className="space-y-5">
-                      {/* COURSE FILTER */}
                       <div className="relative" ref={courseDropdownRef}>
                         <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Course</label>
                         <button onClick={() => setShowCourseList(!showCourseList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
@@ -284,7 +286,6 @@ const Header = ({
                         )}
                       </div>
 
-                      {/* KEYNOTE SPECIFIC FILTERS */}
                       {activeTab === 'Keynotes' && (
                         <div className="relative">
                           <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Media Type</label>
@@ -310,7 +311,6 @@ const Header = ({
                         </div>
                       )}
 
-                      {/* TASK SPECIFIC FILTERS */}
                       {activeTab === 'Tasks' && (
                         <>
                           <div className="relative" ref={statusDropdownRef}>
@@ -350,7 +350,6 @@ const Header = ({
                         </>
                       )}
 
-                      {/* --- BRAND NEW DATE RANGE FILTER --- */}
                       <div className="relative pt-2 border-t border-gray-100 dark:border-[#333]">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase mb-3">Date Range</label>
                         <div className="flex items-center gap-3">
@@ -387,20 +386,24 @@ const Header = ({
         <div className="flex items-center gap-2 md:gap-4">
           
           <div className="hidden sm:flex items-center gap-1 border-r border-gray-200 dark:border-[#333] pr-2 mr-1">
-             <button 
-                onClick={() => onNavigate('Calculator')}
-                className={`p-2 rounded-full transition-all ${activeTab === 'Calculator' ? 'text-brand-blue bg-blue-50 dark:bg-blue-900/20' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface'}`}
-                title="CS Calculator"
-              >
-                <CalculatorIcon size={18} />
-              </button>
+              
               <button 
                 onClick={() => onNavigate('HyperFocus')}
-                className={`p-2 rounded-full transition-all ${activeTab === 'HyperFocus' ? 'text-brand-pink bg-pink-50 dark:bg-pink-900/20' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface'}`}
-                title="Hyper Focus"
+                className={`p-2 rounded-full transition-all relative ${
+                  activeTab === 'HyperFocus' ? 'bg-gray-200 dark:bg-dark-surface' : 'hover:bg-gray-100 dark:hover:bg-dark-surface'
+                }`}
+                title="Hyper Focus Automation"
               >
-                <Timer size={18} />
+                {hfState?.isAutomated ? (
+                  <div className="relative flex items-center justify-center">
+                    <Activity size={20} className="animate-pulse" style={{ color: hfModes?.[hfState?.modeId || 'focus']?.color || '#3B82F6' }} />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: hfModes?.[hfState?.modeId || 'focus']?.color || '#3B82F6' }}></span>
+                  </div>
+                ) : (
+                  <Timer size={20} className="text-gray-500 dark:text-gray-400" />
+                )}
               </button>
+
           </div>
 
           <div className="relative">
@@ -410,7 +413,6 @@ const Header = ({
             >
               <Inbox size={14} />
               <span>Inbox</span>
-              {/* --- BIGGER NOTIFICATION BADGE --- */}
               {unreadKeynotes.length > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-md border-[2.5px] border-white dark:border-dark-bg">
                   {unreadKeynotes.length}
@@ -462,7 +464,6 @@ const Header = ({
         />
       )}
 
-      {/* --- INBOX SIDEBAR --- */}
       <div className={`fixed top-0 right-0 h-full w-full sm:w-[400px] bg-gray-50 dark:bg-[#121212] shadow-2xl border-l border-gray-200 dark:border-[#2C2C2C] z-[160] transform transition-transform duration-300 ease-in-out flex flex-col ${isInboxOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="p-5 border-b border-gray-200 dark:border-[#2C2C2C] flex justify-between items-center bg-white dark:bg-[#1E1E1E]">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-3">
@@ -493,7 +494,6 @@ const Header = ({
                       : 'bg-gray-100 dark:bg-[#1c1c24] border-transparent opacity-60 hover:opacity-100'
                   }`}
                 >
-                  {/* Glowing Edge for Unread */}
                   {!note.isRead && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_12px_rgba(59,130,246,0.9)]"></div>}
 
                   <div className="flex justify-between items-start mb-2 gap-2 pl-1">
@@ -519,7 +519,6 @@ const Header = ({
         </div>
       </div>
 
-      {/* --- INBOX PREVIEW MODAL --- */}
       {selectedNote && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-fadeIn">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setSelectedNote(null)}></div>
@@ -548,7 +547,6 @@ const Header = ({
 
               {selectedNote.mediaUrls && selectedNote.mediaUrls.length > 0 && (
                 <div className="space-y-4">
-                  {/* Images */}
                   {selectedNote.mediaUrls.filter(url => !isAudio(url)).length > 0 && (
                      <div className="grid grid-cols-2 gap-3">
                        {selectedNote.mediaUrls.filter(url => !isAudio(url)).map((url, i) => (
@@ -562,7 +560,6 @@ const Header = ({
                      </div>
                   )}
 
-                  {/* Audio */}
                   {selectedNote.mediaUrls.filter(url => isAudio(url)).map((url, i) => (
                     <div key={i} className="flex items-center bg-gray-50 dark:bg-[#252533] p-3 rounded-xl border border-gray-200 dark:border-gray-700/50">
                       <div className="p-2.5 bg-emerald-500/20 rounded-lg mr-4">
@@ -594,7 +591,6 @@ const Header = ({
         </div>
       )}
 
-      {/* --- FULLSCREEN IMAGE PREVIEW --- */}
       {previewImage && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl animate-fadeIn">
           <button onClick={() => setPreviewImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all">

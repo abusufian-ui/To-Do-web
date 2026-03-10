@@ -5,7 +5,7 @@ import {
   ShoppingBag, Coffee, Car, BookOpen, Zap, Gift, Smartphone,
   AlertCircle, CheckCircle2, X, Banknote, Calendar as CalendarIcon,
   BarChart3, SlidersHorizontal, LayoutGrid, RotateCcw,
-  Users, ArrowRightLeft, Clock
+  Users, ArrowRightLeft, Clock, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -19,6 +19,7 @@ const EXPENSE_CATEGORIES = [
   { id: 'education', name: 'Education', icon: BookOpen, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900/30' },
   { id: 'bills', name: 'Bills & Utilities', icon: Zap, color: 'text-yellow-500', bg: 'bg-yellow-100 dark:bg-yellow-900/30' },
   { id: 'entertainment', name: 'Entertainment', icon: Smartphone, color: 'text-indigo-500', bg: 'bg-indigo-100 dark:bg-indigo-900/30' },
+  { id: 'debt_payoff', name: 'Debt Payoff', icon: Wallet, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900/30' },
   { id: 'other', name: 'Other', icon: Gift, color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-800' },
 ];
 
@@ -27,13 +28,14 @@ const INCOME_CATEGORIES = [
   { id: 'freelance', name: 'Freelance', icon: Wallet, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900/30' },
   { id: 'investments', name: 'Investments', icon: TrendingUp, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-900/30' },
   { id: 'gift', name: 'Gifts & Grants', icon: Gift, color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-900/30' },
+  { id: 'loan_recovery', name: 'Loan Recovery', icon: Wallet, color: 'text-emerald-500', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
   { id: 'other_income', name: 'Other Income', icon: Plus, color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-800' },
 ];
 
 const ALL_CATEGORIES = [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES];
 
 const getCategoryConfig = (catName) => {
-  return ALL_CATEGORIES.find(c => c.name === catName) || EXPENSE_CATEGORIES[6];
+  return ALL_CATEGORIES.find(c => c.name === catName) || EXPENSE_CATEGORIES[7];
 };
 
 // --- 2. CHART & STAT COMPONENTS ---
@@ -124,24 +126,34 @@ const TransactionRow = ({ t, onDelete }) => {
 };
 
 // --- 4. MAIN COMPONENT ---
-const CashManager = ({ activeTab }) => {
+const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
   const [transactions, setTransactions] = useState([]);
-  const [debts, setDebts] = useState([]); // NEW: State for debts
+  const [debts, setDebts] = useState([]); 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [showDebtModal, setShowDebtModal] = useState(false); // NEW: Debt modal state
+  const [showDebtModal, setShowDebtModal] = useState(false); 
 
   // Dates
+  const [overviewDate, setOverviewDate] = useState(new Date());
+  const overviewMonthISO = `${overviewDate.getFullYear()}-${String(overviewDate.getMonth() + 1).padStart(2, '0')}`;
+
   const currentMonthISO = new Date().toISOString().slice(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthISO);
 
   const token = localStorage.getItem('token');
 
   // Transaction Filters
-  const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [filterCategory, setFilterCategory] = useState('All');
   const [sortOrder, setSortOrder] = useState('Newest');
+
+  // Sync Header "+" Button
+  useEffect(() => {
+    if (isAddingNew) {
+      setShowAddModal(true);
+      if (setIsAddingNew) setIsAddingNew(false);
+    }
+  }, [isAddingNew, setIsAddingNew]);
 
   // Add Transaction Form
   const [newTrans, setNewTrans] = useState({
@@ -152,9 +164,11 @@ const CashManager = ({ activeTab }) => {
     date: new Date().toISOString().split('T')[0]
   });
 
-  // NEW: Add Debt Form
+  const [selectedDebtId, setSelectedDebtId] = useState('');
+
+  // Add Debt Form
   const [newDebt, setNewDebt] = useState({
-    type: 'lent', // lent = they owe me, borrowed = I owe them
+    type: 'lent', 
     person: '',
     amount: '',
     description: '',
@@ -162,7 +176,6 @@ const CashManager = ({ activeTab }) => {
   });
   
   const [errors, setErrors] = useState({});
-
   const [budgets, setBudgets] = useState({});
   const [editingBudget, setEditingBudget] = useState(null);
   const [budgetInput, setBudgetInput] = useState('');
@@ -174,7 +187,7 @@ const CashManager = ({ activeTab }) => {
         const [transRes, budgetRes, debtsRes] = await Promise.all([
           fetch(`${API_BASE}/api/transactions`, { headers: { 'x-auth-token': token } }),
           fetch(`${API_BASE}/api/budgets`, { headers: { 'x-auth-token': token } }),
-          fetch(`${API_BASE}/api/debts`, { headers: { 'x-auth-token': token } }) // Fetch Debts
+          fetch(`${API_BASE}/api/debts`, { headers: { 'x-auth-token': token } }) 
         ]);
 
         if (transRes.ok && budgetRes.ok) {
@@ -205,13 +218,58 @@ const CashManager = ({ activeTab }) => {
     return Object.keys(newErrors).length === 0;
   };
 
+  const isDebtCategory = newTrans.category === 'Debt Payoff' || newTrans.category === 'Loan Recovery';
+
   const handleAdd = async () => {
     if (!validateForm()) return;
+    
+    // DEBT REPAYMENT INTEGRATION
+    if (isDebtCategory) {
+       if (!selectedDebtId) {
+          setErrors({ ...errors, debt: "Please select a record to link." });
+          return;
+       }
+       try {
+         const payload = {
+            amount: Number(newTrans.amount), 
+            date: newTrans.date,
+            description: newTrans.description,
+            type: newTrans.type,
+            category: newTrans.category
+         };
+
+         const res = await fetch(`${API_BASE}/api/debts/${selectedDebtId}/pay`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+           body: JSON.stringify(payload)
+         });
+         
+         if (res.ok) {
+           const data = await res.json();
+           
+           setTransactions([{ ...data.transaction, id: data.transaction._id }, ...transactions]);
+           setDebts(debts.map(d => d.id === selectedDebtId ? { ...d, amount: data.debt.amount, status: data.debt.status } : d));
+           
+           setShowAddModal(false);
+           setNewTrans({ type: 'expense', amount: '', category: 'Food & Dining', description: '', date: new Date().toISOString().split('T')[0] });
+           setSelectedDebtId('');
+           setErrors({});
+         } else {
+           const errData = await res.json();
+           setErrors({ ...errors, debt: errData.message });
+         }
+       } catch (error) { console.error("Error paying debt", error); }
+       return; 
+    }
+
+    // STANDARD TRANSACTION LOGIC
     try {
+      const payload = { ...newTrans, amount: Number(newTrans.amount) };
+
       const res = await fetch(`${API_BASE}/api/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-        body: JSON.stringify({ ...newTrans, amount: Number(newTrans.amount) })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         const savedT = await res.json();
@@ -235,12 +293,15 @@ const CashManager = ({ activeTab }) => {
 
   // --- DEBT HANDLERS ---
   const handleAddDebt = async () => {
-    if (!newDebt.amount || !newDebt.person) return; // Basic validation
+    if (!newDebt.amount || !newDebt.person) return; 
     try {
+      const payload = { ...newDebt, amount: Number(newDebt.amount) };
+      if (!payload.dueDate) delete payload.dueDate;
+
       const res = await fetch(`${API_BASE}/api/debts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-        body: JSON.stringify({ ...newDebt, amount: Number(newDebt.amount) })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         const savedD = await res.json();
@@ -275,7 +336,6 @@ const CashManager = ({ activeTab }) => {
     } catch (error) { console.error("Error deleting debt", error); }
   };
 
-
   const handleSetBudget = async (category) => {
     try {
       const limit = Number(budgetInput);
@@ -298,8 +358,8 @@ const CashManager = ({ activeTab }) => {
 
   // --- CALCULATION LOGIC ---
   const currentMonthTransactions = useMemo(() => {
-    return transactions.filter(t => t.date.startsWith(currentMonthISO));
-  }, [transactions, currentMonthISO]);
+    return transactions.filter(t => t.date.startsWith(overviewMonthISO));
+  }, [transactions, overviewMonthISO]);
 
   const ovIncome = currentMonthTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const ovExpense = currentMonthTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
@@ -336,24 +396,38 @@ const CashManager = ({ activeTab }) => {
 
   const renderOverview = () => (
     <div className="space-y-8 animate-fadeIn">
-      <div className="flex items-center gap-2">
-        <div className="w-1 h-6 bg-brand-blue rounded-full"></div>
-        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
-          Overview for {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
-        </h3>
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center gap-2">
+          <div className="w-1 h-6 bg-brand-blue rounded-full"></div>
+          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
+            Overview for {overviewDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setOverviewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} 
+            className="p-1.5 rounded-lg border border-gray-200 dark:border-[#333] hover:bg-gray-100 dark:hover:bg-[#2C2C2C] text-gray-500 transition-colors"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button 
+            onClick={() => setOverviewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} 
+            className="p-1.5 rounded-lg border border-gray-200 dark:border-[#333] hover:bg-gray-100 dark:hover:bg-[#2C2C2C] text-gray-500 transition-colors"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="Monthly Balance" amount={ovBalance} type="balance" icon={Wallet} subText="Current month only" />
-        <StatCard title="Monthly Income" amount={ovIncome} type="income" icon={ArrowUpRight} subText="Current month only" />
-        <StatCard title="Monthly Expenses" amount={ovExpense} type="expense" icon={ArrowDownRight} subText="Current month only" />
+        <StatCard title="Monthly Balance" amount={ovBalance} type="balance" icon={Wallet} subText="For selected month" />
+        <StatCard title="Monthly Income" amount={ovIncome} type="income" icon={ArrowUpRight} subText="For selected month" />
+        <StatCard title="Monthly Expenses" amount={ovExpense} type="expense" icon={ArrowDownRight} subText="For selected month" />
       </div>
+      
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-gray-800 dark:text-white">Recent Activity (This Month)</h3>
-          <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 text-sm font-bold text-brand-blue bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-xl hover:bg-blue-100 transition-colors">
-            <Plus size={16} /> Add New
-          </button>
+          <h3 className="text-lg font-bold text-gray-800 dark:text-white">Recent Activity (Selected Month)</h3>
         </div>
         <div className="space-y-3">
           {currentMonthTransactions.slice(0, 5).map(t => <TransactionRow key={t.id} t={t} onDelete={handleDelete} />)}
@@ -365,9 +439,11 @@ const CashManager = ({ activeTab }) => {
 
   const renderTransactions = () => {
     let processedDocs = [...transactions];
+    
+    const queryToUse = filters?.searchQuery || '';
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (queryToUse) {
+      const q = queryToUse.toLowerCase();
       processedDocs = processedDocs.filter(t =>
         t.description.toLowerCase().includes(q) ||
         t.category.toLowerCase().includes(q)
@@ -390,18 +466,7 @@ const CashManager = ({ activeTab }) => {
     return (
       <div className="animate-fadeIn space-y-6">
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="relative w-full md:w-64">
-              <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-              <input
-                type="text"
-                placeholder="Search transactions..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-blue dark:text-white"
-              />
-            </div>
-
+          <div className="flex flex-col md:flex-row justify-end items-center gap-4">
             <div className="flex gap-3 w-full md:w-auto">
               <button
                 onClick={() => setShowFilterModal(true)}
@@ -411,10 +476,6 @@ const CashManager = ({ activeTab }) => {
                 Filters
                 {activeFiltersCount > 0 && <span className="bg-brand-blue text-white text-[10px] px-1.5 py-0.5 rounded-full">{activeFiltersCount}</span>}
               </button>
-
-              <button onClick={() => setShowAddModal(true)} className="flex-1 md:flex-none bg-brand-blue hover:bg-blue-600 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2">
-                <Plus size={18} /> <span className="hidden md:inline">Add</span>
-              </button>
             </div>
           </div>
         </div>
@@ -423,7 +484,7 @@ const CashManager = ({ activeTab }) => {
           {processedDocs.map(t => <TransactionRow key={t.id} t={t} onDelete={handleDelete} />)}
           {processedDocs.length === 0 && (
             <div className="text-center py-12 bg-gray-50 dark:bg-[#1E1E1E] rounded-2xl border border-dashed border-gray-200 dark:border-[#333]">
-              <p className="text-gray-400">No transactions found matching your filters.</p>
+              <p className="text-gray-400">No transactions found matching your filters/search.</p>
               {activeFiltersCount > 0 && (
                 <button onClick={resetFilters} className="mt-2 text-sm text-brand-blue font-bold hover:underline">Clear Filters</button>
               )}
@@ -513,7 +574,7 @@ const CashManager = ({ activeTab }) => {
   const renderBudget = () => (
     <div className="animate-fadeIn space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {EXPENSE_CATEGORIES.filter(c => c.id !== 'other').map(cat => {
+        {EXPENSE_CATEGORIES.filter(c => c.id !== 'other' && c.id !== 'debt_payoff').map(cat => {
           const budget = budgets[cat.name] || 0;
           const spent = transactions
             .filter(t => t.type === 'expense' && t.category === cat.name)
@@ -540,6 +601,7 @@ const CashManager = ({ activeTab }) => {
                     <input
                       type="number"
                       autoFocus
+                      onWheel={(e) => e.target.blur()} // BLOCKS SCROLL QUIRK
                       className="w-20 bg-gray-50 dark:bg-[#2C2C2C] text-gray-900 dark:text-white border border-gray-300 dark:border-[#444] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue"
                       placeholder="Amount"
                       value={budgetInput}
@@ -573,11 +635,8 @@ const CashManager = ({ activeTab }) => {
     </div>
   );
 
-  // --- DEBTS RENDERER ---
   const renderDebts = () => (
     <div className="animate-fadeIn space-y-8">
-      
-      {/* Debt Header & Stats */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -595,9 +654,7 @@ const CashManager = ({ activeTab }) => {
         <StatCard title="Total I Owe" amount={totalBorrowedPending} type="expense" icon={AlertCircle} subText="Pending payments only" />
       </div>
 
-      {/* Two Columns: Lent vs Borrowed */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        
         {/* LENT: Owed To Me */}
         <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm">
           <h3 className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mb-4 flex items-center gap-2">
@@ -693,10 +750,16 @@ const CashManager = ({ activeTab }) => {
       case 'Cash-Transactions': return renderTransactions();
       case 'Cash-Analytics': return renderAnalytics();
       case 'Cash-Budget': return renderBudget();
-      case 'Cash-Debts': return renderDebts(); // NEW TAB HANDLER
+      case 'Cash-Debts': return renderDebts(); 
       default: return renderOverview();
     }
   };
+
+  const eligibleDebts = debts.filter(d => 
+    d.status === 'pending' && 
+    d.type === (newTrans.type === 'income' ? 'lent' : 'borrowed') && 
+    d.amount >= (Number(newTrans.amount) || 0)
+  );
 
   return (
     <div className="p-8 max-w-6xl mx-auto pb-24">
@@ -717,37 +780,80 @@ const CashManager = ({ activeTab }) => {
             </div>
             <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
               <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl shrink-0">
-                <button onClick={() => setNewTrans({ ...newTrans, type: 'expense', category: EXPENSE_CATEGORIES[0].name })} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newTrans.type === 'expense' ? 'bg-white dark:bg-[#3E3E3E] text-red-500 shadow-sm' : 'text-gray-500'}`}>Expense</button>
-                <button onClick={() => setNewTrans({ ...newTrans, type: 'income', category: INCOME_CATEGORIES[0].name })} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newTrans.type === 'income' ? 'bg-white dark:bg-[#3E3E3E] text-emerald-500 shadow-sm' : 'text-gray-500'}`}>Income</button>
+                <button onClick={() => { setNewTrans({ ...newTrans, type: 'expense', category: EXPENSE_CATEGORIES[0].name }); setSelectedDebtId(''); }} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newTrans.type === 'expense' ? 'bg-white dark:bg-[#3E3E3E] text-red-500 shadow-sm' : 'text-gray-500'}`}>Expense</button>
+                <button onClick={() => { setNewTrans({ ...newTrans, type: 'income', category: INCOME_CATEGORIES[0].name }); setSelectedDebtId(''); }} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newTrans.type === 'income' ? 'bg-white dark:bg-[#3E3E3E] text-emerald-500 shadow-sm' : 'text-gray-500'}`}>Income</button>
               </div>
+              
               <div>
                 <label className="text-xs font-bold text-gray-400 uppercase">Amount</label>
                 <div className="relative mt-1">
                   <div className="absolute left-3 top-3 text-gray-400 text-xs font-bold">PKR</div>
-                  <input type="number" value={newTrans.amount} onChange={e => { setNewTrans({ ...newTrans, amount: e.target.value }); setErrors({ ...errors, amount: null }); }} className={`w-full bg-gray-50 dark:bg-[#121212] border rounded-xl pl-11 pr-4 py-2.5 outline-none focus:ring-2 dark:text-white transition-all ${errors.amount ? 'border-red-500 focus:ring-red-200 bg-red-50 dark:bg-red-900/10' : 'border-gray-200 dark:border-[#333] focus:ring-brand-blue'}`} placeholder="0.00" autoFocus />
+                  <input 
+                    type="number" 
+                    value={newTrans.amount} 
+                    onChange={e => { setNewTrans({ ...newTrans, amount: e.target.value }); setErrors({ ...errors, amount: null }); }} 
+                    onWheel={(e) => e.target.blur()} // BLOCKS SCROLL QUIRK
+                    className={`w-full bg-gray-50 dark:bg-[#121212] border rounded-xl pl-11 pr-4 py-2.5 outline-none focus:ring-2 dark:text-white transition-all ${errors.amount ? 'border-red-500 focus:ring-red-200 bg-red-50 dark:bg-red-900/10' : 'border-gray-200 dark:border-[#333] focus:ring-brand-blue'}`} 
+                    placeholder="0.00" 
+                    autoFocus 
+                  />
                 </div>
                 {errors.amount && <p className="text-red-500 text-xs mt-1 font-medium flex items-center gap-1"><AlertCircle size={10} /> {errors.amount}</p>}
               </div>
+              
               <div>
                 <label className="text-xs font-bold text-gray-400 uppercase">Category</label>
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {(newTrans.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
-                    <button key={cat.id} onClick={() => setNewTrans({ ...newTrans, category: cat.name })} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${newTrans.category === cat.name ? (newTrans.type === 'expense' ? 'border-brand-blue bg-blue-50 dark:bg-blue-900/20 text-brand-blue' : 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600') : 'border-gray-100 dark:border-[#333] text-gray-500 hover:bg-gray-50 dark:hover:bg-[#252525]'}`}>
+                    <button 
+                      key={cat.id} 
+                      onClick={() => { setNewTrans({ ...newTrans, category: cat.name }); setSelectedDebtId(''); }} 
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${newTrans.category === cat.name ? (newTrans.type === 'expense' ? 'border-brand-blue bg-blue-50 dark:bg-blue-900/20 text-brand-blue' : 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600') : 'border-gray-100 dark:border-[#333] text-gray-500 hover:bg-gray-50 dark:hover:bg-[#252525]'}`}
+                    >
                       <cat.icon size={18} className="mb-1" />
                       <span className="text-[10px] font-medium truncate w-full text-center">{cat.name}</span>
                     </button>
                   ))}
                 </div>
               </div>
+
+              {isDebtCategory && (
+                <div className="mt-4 p-4 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl animate-fadeIn">
+                  <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">
+                    Link to {newTrans.type === 'income' ? 'Loan Record' : 'Debt Record'}
+                  </label>
+                  {eligibleDebts.length > 0 ? (
+                    <select
+                      value={selectedDebtId}
+                      onChange={(e) => { setSelectedDebtId(e.target.value); setErrors({...errors, debt: null}); }}
+                      className={`w-full bg-white dark:bg-[#1E1E1E] border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 dark:text-white transition-all ${errors.debt ? 'border-red-500 focus:ring-red-200 bg-red-50 dark:bg-red-900/10' : 'border-gray-200 dark:border-[#444] focus:ring-brand-blue'}`}
+                    >
+                      <option value="">-- Select a record --</option>
+                      {eligibleDebts.map(d => (
+                        <option key={d.id} value={d.id}>{d.person} (Balance: Rs {d.amount})</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-xs text-red-500 font-medium flex items-center gap-1.5 mt-1">
+                      <AlertCircle size={14} />
+                      {Number(newTrans.amount) > 0 ? "Amount exceeds active records or none exist." : "No active records found."}
+                    </p>
+                  )}
+                  {errors.debt && <p className="text-red-500 text-xs mt-2 font-medium">{errors.debt}</p>}
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-bold text-gray-400 uppercase">Description</label>
                 <input type="text" value={newTrans.description} onChange={e => { setNewTrans({ ...newTrans, description: e.target.value }); setErrors({ ...errors, description: null }); }} className={`w-full mt-1 bg-gray-50 dark:bg-[#121212] border rounded-xl px-4 py-2.5 outline-none focus:ring-2 dark:text-white transition-all ${errors.description ? 'border-red-500 focus:ring-red-200 bg-red-50 dark:bg-red-900/10' : 'border-gray-200 dark:border-[#333] focus:ring-brand-blue'}`} placeholder="What was this for?" />
                 {errors.description && <p className="text-red-500 text-xs mt-1 font-medium flex items-center gap-1"><AlertCircle size={10} /> {errors.description}</p>}
               </div>
+              
               <div>
                 <label className="text-xs font-bold text-gray-400 uppercase">Date</label>
                 <input type="date" value={newTrans.date} onChange={e => setNewTrans({ ...newTrans, date: e.target.value })} className="w-full mt-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white dark:[color-scheme:dark]" />
               </div>
+              
               <button onClick={handleAdd} className="w-full bg-brand-blue hover:bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/30 transition-all mt-2 shrink-0">Save Transaction</button>
             </div>
           </div>
@@ -770,14 +876,21 @@ const CashManager = ({ activeTab }) => {
               
               <div>
                 <label className="text-xs font-bold text-gray-400 uppercase">Person's Name</label>
-                <input type="text" value={newDebt.person} onChange={e => setNewDebt({ ...newDebt, person: e.target.value })} className="w-full mt-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white" placeholder="E.g., John Doe" autoFocus />
+                <input type="text" value={newDebt.person} onChange={e => setNewDebt({ ...newDebt, person: e.target.value })} className="w-full mt-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white" placeholder="" autoFocus />
               </div>
 
               <div>
                 <label className="text-xs font-bold text-gray-400 uppercase">Amount</label>
                 <div className="relative mt-1">
                   <div className="absolute left-3 top-3 text-gray-400 text-xs font-bold">PKR</div>
-                  <input type="number" value={newDebt.amount} onChange={e => setNewDebt({ ...newDebt, amount: e.target.value })} className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl pl-11 pr-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white" placeholder="0.00" />
+                  <input 
+                    type="number" 
+                    value={newDebt.amount} 
+                    onChange={e => setNewDebt({ ...newDebt, amount: e.target.value })} 
+                    onWheel={(e) => e.target.blur()} // BLOCKS SCROLL QUIRK
+                    className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl pl-11 pr-4 py-2.5 outline-none focus:ring-2 focus:ring-brand-blue dark:text-white" 
+                    placeholder="0.00" 
+                  />
                 </div>
               </div>
 
@@ -797,10 +910,9 @@ const CashManager = ({ activeTab }) => {
         </div>
       )}
 
-      {/* --- FILTER MODAL (Kept identical to original) --- */}
+      {/* --- FILTER MODAL --- */}
       {showFilterModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          {/* ... (Existing Filter Modal UI remains entirely unchanged) ... */}
           <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden animate-slideUp flex flex-col max-h-[80vh]">
             <div className="p-5 border-b border-gray-100 dark:border-[#333] flex justify-between items-center shrink-0">
               <h3 className="font-bold text-lg dark:text-white flex items-center gap-2"><SlidersHorizontal size={20} /> Filters & Sort</h3>
@@ -808,8 +920,6 @@ const CashManager = ({ activeTab }) => {
             </div>
 
             <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
-
-              {/* Filter By Type */}
               <div className="space-y-3">
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Transaction Type</label>
                 <div className="flex gap-2">
@@ -825,7 +935,6 @@ const CashManager = ({ activeTab }) => {
                 </div>
               </div>
 
-              {/* Filter By Category */}
               <div className="space-y-3">
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Category</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -847,7 +956,6 @@ const CashManager = ({ activeTab }) => {
                 </div>
               </div>
 
-              {/* Sort Order */}
               <div className="space-y-3">
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Sort Order</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -862,10 +970,8 @@ const CashManager = ({ activeTab }) => {
                   ))}
                 </div>
               </div>
-
             </div>
 
-            {/* Footer Actions */}
             <div className="p-5 border-t border-gray-100 dark:border-[#333] flex gap-3 shrink-0 bg-gray-50 dark:bg-[#252525]">
               <button
                 onClick={resetFilters}

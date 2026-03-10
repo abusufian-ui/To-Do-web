@@ -1,182 +1,133 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Play, Pause, RotateCcw, Brain, Coffee, Volume2, VolumeX } from 'lucide-react';
+import React from 'react';
+import { Play, Square, Volume2, VolumeX, Sparkles, Activity, FastForward } from 'lucide-react';
 
-const MODES = {
-  FOCUS: { id: 'focus', title: 'Deep Focus', minutes: 25, color: 'text-brand-blue', bg: 'bg-blue-50 dark:bg-blue-900/20', icon: Brain },
-  SHORT_BREAK: { id: 'short_break', title: 'Short Break', minutes: 5, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20', icon: Coffee },
-  LONG_BREAK: { id: 'long_break', title: 'Long Break', minutes: 30, color: 'text-brand-pink', bg: 'bg-pink-50 dark:bg-pink-900/20', icon: Coffee }
-};
-
-const HyperFocus = () => {
-  const [currentMode, setCurrentMode] = useState(MODES.FOCUS);
-  const [timeLeft, setTimeLeft] = useState(MODES.FOCUS.minutes * 60);
-  const [isActive, setIsActive] = useState(false);
-  const [cyclesCompleted, setCyclesCompleted] = useState(0);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-
-  // Use a generic bell sound for notifications
-  const alarmSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-
-  const playAlarm = useCallback(() => {
-    if (soundEnabled) {
-      alarmSound.play().catch(e => console.log("Audio play failed:", e));
-    }
-    if (Notification.permission === 'granted') {
-      new Notification('Hyper Focus Timer', {
-        body: `${currentMode.title} session complete!`,
-        icon: '/favicon.ico'
-      });
-    }
-  }, [soundEnabled, currentMode.title]);
-
-  const handleModeComplete = useCallback(async () => {
-    playAlarm();
-    setIsActive(false);
-
-    // Track the session to backend
-    try {
-      const token = localStorage.getItem('token');
-      await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/focus-sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-        body: JSON.stringify({
-          durationMinutes: currentMode.minutes,
-          type: currentMode.id
-        })
-      });
-    } catch (e) { console.error("Failed to save session"); }
-
-    // Logic for next phase
-    if (currentMode.id === MODES.FOCUS.id) {
-      const newCycles = cyclesCompleted + 1;
-      setCyclesCompleted(newCycles);
-      if (newCycles % 4 === 0) {
-        switchMode(MODES.LONG_BREAK);
-      } else {
-        switchMode(MODES.SHORT_BREAK);
-      }
-    } else {
-      switchMode(MODES.FOCUS);
-    }
-  }, [currentMode, cyclesCompleted, playAlarm]);
-
-  useEffect(() => {
-    let interval = null;
-    if (isActive && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft(time => time - 1);
-      }, 1000);
-    } else if (isActive && timeLeft === 0) {
-      handleModeComplete();
-    }
-    return () => clearInterval(interval);
-  }, [isActive, timeLeft, handleModeComplete]);
-
-  // Request notification permissions on mount
-  useEffect(() => {
-    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  const switchMode = (mode) => {
-    setCurrentMode(mode);
-    setTimeLeft(mode.minutes * 60);
-    setIsActive(false);
-  };
-
-  const toggleTimer = () => setIsActive(!isActive);
+const HyperFocus = ({ hfState, toggleAutomation, setSoundEnabled, hfModes, skipPhase }) => {
   
-  const resetTimer = () => {
-    setIsActive(false);
-    setTimeLeft(currentMode.minutes * 60);
-  };
-
+  // Safely fallback using optional chaining
+  const modeKey = hfState?.modeId || 'focus';
+  const currentMode = hfModes?.[modeKey] || hfModes?.['focus'];
+  
   const formatTime = (seconds) => {
+    if (!seconds) return "00:00";
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const progressPercentage = ((currentMode.minutes * 60 - timeLeft) / (currentMode.minutes * 60)) * 100;
-  const ModeIcon = currentMode.icon;
+  const size = 220; 
+  const center = size / 2;
+  const radius = 100; 
+  const strokeWidth = 8; 
+  const circumference = 2 * Math.PI * radius;
+  const totalPhaseTime = (currentMode?.minutes || 25) * 60;
+  const progressOffset = circumference - ((totalPhaseTime - (hfState?.timeLeft || 0)) / totalPhaseTime) * circumference;
 
   return (
-    <div className="w-full max-w-lg mx-auto p-8 bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-gray-100 dark:border-[#333] mt-10 transition-colors">
+    <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-[#121212] transition-colors relative overflow-y-auto overflow-x-hidden custom-scrollbar">
       
-      {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            Hyper Focus
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Stay productive, block distractions.</p>
-        </div>
+      {hfState?.isAutomated && (
+        <div 
+          className="absolute inset-0 opacity-20 pointer-events-none transition-all duration-1000 ease-in-out"
+          style={{ background: `radial-gradient(circle at center, ${currentMode?.color || '#3B82F6'} 0%, transparent 60%)` }}
+        />
+      )}
+
+      <div className="absolute top-4 sm:top-6 right-4 sm:right-6 z-10">
         <button 
-          onClick={() => setSoundEnabled(!soundEnabled)}
-          className="p-2.5 rounded-full bg-gray-100 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-300 hover:bg-gray-200 transition-colors"
+          onClick={() => setSoundEnabled(!hfState?.soundEnabled)}
+          className="p-2 sm:p-2.5 rounded-full bg-white dark:bg-[#1E1E1E] text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] shadow-sm transition-colors border border-gray-200 dark:border-[#333]"
         >
-          {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+          {hfState?.soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
         </button>
       </div>
 
-      {/* Mode Selectors */}
-      <div className="flex gap-2 mb-8 bg-gray-50 dark:bg-[#121212] p-1.5 rounded-2xl">
-        {Object.values(MODES).map((mode) => (
-          <button
-            key={mode.id}
-            onClick={() => switchMode(mode)}
-            className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all ${currentMode.id === mode.id ? 'bg-white dark:bg-[#2C2C2C] shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-          >
-            {mode.title}
-          </button>
-        ))}
-      </div>
-
-      {/* Main Timer Display */}
-      <div className={`flex flex-col items-center justify-center py-12 rounded-3xl border-2 transition-colors ${currentMode.bg} ${currentMode.border}`}>
-        <ModeIcon size={32} className={`mb-4 ${currentMode.color}`} />
-        <h1 className="text-7xl font-black text-gray-900 dark:text-white tracking-tight tabular-nums">
-          {formatTime(timeLeft)}
+      <div className="text-center mb-6 mt-12 sm:mt-0 z-10">
+        <div className="flex justify-center items-center gap-2 mb-1.5">
+          {hfState?.isAutomated ? <Activity className={`${currentMode?.textClass || 'text-blue-500'} animate-pulse`} size={20} /> : <Sparkles className="text-brand-blue" size={20} />}
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight uppercase">
+          Hyper Focus Engine
         </h1>
-        
-        {/* Simple Progress Bar */}
-        <div className="w-48 h-1.5 bg-gray-200 dark:bg-[#333] rounded-full mt-8 overflow-hidden">
-          <div 
-            className={`h-full transition-all duration-1000 ease-linear ${currentMode.id === 'focus' ? 'bg-brand-blue' : currentMode.id === 'short_break' ? 'bg-emerald-500' : 'bg-brand-pink'}`}
-            style={{ width: `${progressPercentage}%` }}
+        <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium mt-1.5 max-w-sm mx-auto px-4">
+          {hfState?.isAutomated 
+            ? "Automation active. Follow the cycle, ignore the noise." 
+            : "Turn on the engine to begin a fully automated Pomodoro flow."}
+        </p>
+      </div>
+
+      <div className={`relative flex items-center justify-center mb-6 transition-all duration-700 ${hfState?.isAutomated ? (currentMode?.glow || '') : ''} rounded-full`}>
+        <svg width={size} height={size} className="transform -rotate-90">
+          <circle 
+            cx={center} cy={center} r={radius} 
+            stroke="currentColor" strokeWidth={strokeWidth} fill="transparent" 
+            className="text-gray-200 dark:text-[#2C2C2C]" 
           />
+          <circle 
+            cx={center} cy={center} r={radius} 
+            stroke={currentMode?.color || '#3B82F6'} strokeWidth={strokeWidth} fill="transparent" 
+            strokeDasharray={circumference} strokeDashoffset={progressOffset} 
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-linear" 
+          />
+        </svg>
+
+        <div className="absolute flex flex-col items-center justify-center text-center">
+          <h2 className="text-4xl sm:text-5xl font-black tabular-nums text-gray-900 dark:text-white tracking-tighter">
+            {formatTime(hfState?.timeLeft)}
+          </h2>
+          <p className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-widest mt-1 ${currentMode?.textClass || 'text-blue-500'}`}>
+            {currentMode?.title || 'Deep Focus'}
+          </p>
+          <p className="text-[8px] sm:text-[9px] font-medium text-gray-400 mt-1 max-w-[120px] leading-tight px-2">
+            {currentMode?.text || 'Immerse yourself.'}
+          </p>
         </div>
       </div>
 
-      {/* Cycle Tracker */}
-      <div className="flex justify-center items-center gap-3 mt-8">
-        {[1, 2, 3, 4].map((dot) => (
-          <div 
-            key={dot} 
-            className={`w-3 h-3 rounded-full transition-colors ${cyclesCompleted % 4 >= dot || (cyclesCompleted > 0 && cyclesCompleted % 4 === 0) ? 'bg-brand-blue' : 'bg-gray-200 dark:bg-[#333]'}`}
-          />
-        ))}
+      <div className="flex flex-col items-center z-10 mb-8">
+        <div className="flex gap-2.5 sm:gap-3">
+          {[1, 2, 3, 4].map((dot) => {
+            const completed = hfState?.cyclesCompleted || 0;
+            const isCompleted = completed % 4 >= dot || (completed > 0 && completed % 4 === 0);
+            const isCurrent = hfState?.isAutomated && hfState?.modeId === 'focus' && (completed % 4) + 1 === dot;
+            return (
+              <div 
+                key={dot} 
+                className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full transition-all duration-500 
+                  ${isCompleted ? 'bg-brand-blue shadow-[0_0_10px_rgba(59,130,246,0.8)]' : 
+                    isCurrent ? 'bg-brand-blue animate-ping' : 'bg-gray-300 dark:bg-[#333]'}`}
+              />
+            );
+          })}
+        </div>
+        <span className="text-[8px] sm:text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-2.5">
+          Cycle Stage {Math.floor((hfState?.cyclesCompleted || 0) / 4) + 1}
+        </span>
       </div>
-      <p className="text-center text-xs text-gray-400 mt-2 font-bold uppercase tracking-widest">
-        Cycle {Math.floor(cyclesCompleted / 4) + 1}
-      </p>
 
-      {/* Controls */}
-      <div className="flex justify-center items-center gap-4 mt-8">
+      {/* Master Controls Group */}
+      <div className="flex flex-col items-center gap-4 z-10">
         <button 
-          onClick={toggleTimer}
-          className={`flex items-center gap-2 px-8 py-4 rounded-2xl font-bold text-white shadow-xl transition-all active:scale-95 ${isActive ? 'bg-gray-900 hover:bg-gray-800 dark:bg-[#333] dark:hover:bg-[#444]' : 'bg-brand-blue hover:bg-blue-600'}`}
+          onClick={toggleAutomation}
+          className={`flex items-center gap-2 px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-black text-xs sm:text-sm tracking-wider text-white shadow-2xl transition-all hover:scale-105 active:scale-95 ${
+            hfState?.isAutomated 
+              ? 'bg-gray-900 hover:bg-gray-800 dark:bg-[#252525] dark:hover:bg-[#333]' 
+              : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/30'
+          }`}
         >
-          {isActive ? <Pause size={20} /> : <Play size={20} />}
-          {isActive ? 'Pause' : 'Start Focus'}
+          {hfState?.isAutomated ? <Square size={16} className="fill-current" /> : <Play size={16} className="fill-current" />}
+          {hfState?.isAutomated ? 'STOP AUTOMATION' : 'START AUTOMATION'}
         </button>
-        <button 
-          onClick={resetTimer}
-          className="p-4 rounded-2xl bg-gray-100 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#3E3E3E] transition-all active:scale-95"
-        >
-          <RotateCcw size={20} />
-        </button>
+
+        {/* Skip Break Button (Animated Reveal) */}
+        <div className={`transition-all duration-500 ${hfState?.isAutomated && hfState?.modeId === 'short_break' ? 'opacity-100 h-10' : 'opacity-0 h-0 overflow-hidden'}`}>
+          <button 
+            onClick={skipPhase}
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-xs font-bold tracking-wider text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-sm hover:shadow transition-all"
+          >
+            <FastForward size={14} className="fill-current" /> SKIP BREAK
+          </button>
+        </div>
       </div>
 
     </div>

@@ -12,6 +12,8 @@ import Editor from '@monaco-editor/react';
 import { Paperclip, X, Book, ArrowLeft, ChevronDown, Copy, Trash2, CheckCircle2, Undo2, Redo2, Loader2, Cloud, Highlighter, Bold, Italic, Image as ImageIcon, Code, List, ListOrdered, Quote, AlignLeft, AlignCenter, AlignRight, Maximize2, Minimize2 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 // ==========================================
 // RESIZEOBSERVER ERROR KILLER
 // ==========================================
@@ -45,8 +47,6 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [editorTheme, setEditorTheme] = useState('vs-light');
-  
-  // NEW: State to track exact height of the code lines
   const [contentHeight, setContentHeight] = useState(250);
   
   const dropdownRef = useRef(null);
@@ -61,23 +61,17 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
     { id: 'css', label: 'CSS' }
   ];
 
-  // Sync Monaco theme with your app's Light/Dark mode
   useEffect(() => {
     const updateTheme = () => {
       const isDark = document.documentElement.classList.contains('dark');
       setEditorTheme(isDark ? 'aesthetic-dark' : 'light');
     };
-
-    updateTheme(); // Initial check
-    
-    // Watch for class changes on the HTML tag (Tailwind dark mode toggle)
+    updateTheme(); 
     const observer = new MutationObserver(updateTheme);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    
     return () => observer.disconnect();
   }, []);
 
-  // Handle closing the custom dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -94,32 +88,29 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Define our custom, colorful dark theme right before Monaco mounts
   const handleEditorWillMount = (monaco) => {
     monaco.editor.defineTheme('aesthetic-dark', {
       base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: 'keyword', foreground: 'c678dd' },     // Purple keywords
-        { token: 'string', foreground: '98c379' },      // Green strings
-        { token: 'variable', foreground: 'e06c75' },    // Red/Pink variables
-        { token: 'function', foreground: '61afef' },    // Blue functions
+        { token: 'keyword', foreground: 'c678dd' },     
+        { token: 'string', foreground: '98c379' },      
+        { token: 'variable', foreground: 'e06c75' },    
+        { token: 'function', foreground: '61afef' },    
         { token: 'comment', foreground: '7f848e', fontStyle: 'italic' },
       ],
       colors: {
-        'editor.background': '#1A1A1A', // Matches your dark theme background
+        'editor.background': '#1A1A1A', 
         'editor.lineHighlightBackground': '#2C2C2C',
       }
     });
   };
 
-  // NEW: Hooks into Monaco's size changes to calculate exact required height
   const handleEditorDidMount = (editor) => {
     const updateHeight = () => {
       const height = editor.getContentHeight();
       setContentHeight(height);
     };
-    
     editor.onDidContentSizeChange(updateHeight);
     updateHeight();
   };
@@ -127,14 +118,8 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
   const currentLangLabel = languages.find(l => l.id === node.attrs.language)?.label || 'JavaScript / React';
 
   return (
-    <NodeViewWrapper 
-      className="relative group my-6 rounded-xl border border-gray-200 dark:border-[#333] overflow-hidden shadow-sm flex flex-col transition-all duration-300" 
-      contentEditable="false"
-    >
-      {/* Top Bar: Custom Dropdown & Actions */}
+    <NodeViewWrapper className="relative group my-6 rounded-xl border border-gray-200 dark:border-[#333] overflow-hidden shadow-sm flex flex-col transition-all duration-300" contentEditable="false">
       <div className="bg-gray-50 dark:bg-[#1A1A1A] flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-[#333]">
-        
-        {/* Modern React Dropdown */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
@@ -149,10 +134,7 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
               {languages.map(lang => (
                 <button
                   key={lang.id}
-                  onClick={() => {
-                    updateAttributes({ language: lang.id });
-                    setIsLangDropdownOpen(false);
-                  }}
+                  onClick={() => { updateAttributes({ language: lang.id }); setIsLangDropdownOpen(false); }}
                   className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-gray-100 dark:hover:bg-[#333] ${node.attrs.language === lang.id ? 'text-brand-blue font-bold' : 'text-gray-700 dark:text-gray-300'}`}
                 >
                   {lang.label}
@@ -170,21 +152,17 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
             {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />} 
             <span className="hidden sm:block">{isExpanded ? 'Collapse' : 'Expand'}</span>
           </button>
-
           <div className="w-px h-4 bg-gray-300 dark:bg-[#444] mx-1"></div>
-
           <button onClick={handleCopy} className="text-gray-500 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-400 transition-colors flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]">
             {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />} 
             <span className="hidden sm:block">{copied ? 'Copied' : 'Copy'}</span>
           </button>
-          
           <button onClick={deleteNode} className="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]" title="Delete Block">
             <Trash2 size={14} />
           </button>
         </div>
       </div>
 
-      {/* FIXED: Dynamic Height calculation based on isExpanded flag */}
       <div 
         className="w-full bg-white dark:bg-[#1A1A1A] pt-2 transition-all duration-300 ease-in-out" 
         style={{ height: isExpanded ? `${Math.max(250, contentHeight + 30)}px` : '250px' }}
@@ -207,11 +185,7 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
             smoothScrolling: true,
             cursorBlinking: "smooth",
             wordWrap: "on",
-            // Allow mouse wheel to pass through the block to the main window if expanded
-            scrollbar: {
-              alwaysConsumeMouseWheel: !isExpanded, 
-              vertical: isExpanded ? 'hidden' : 'auto'
-            },
+            scrollbar: { alwaysConsumeMouseWheel: !isExpanded, vertical: isExpanded ? 'hidden' : 'auto' },
             quickSuggestions: true,
             suggestOnTriggerCharacters: true,
             parameterHints: { enabled: true }
@@ -226,25 +200,10 @@ const MonacoCodeBlockExtension = Node.create({
   name: 'monacoCodeBlock',
   group: 'block',
   atom: true, 
-  
-  addAttributes() {
-    return {
-      language: { default: 'javascript' },
-      code: { default: '// Start coding with IntelliSense...\n' }
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: 'div[data-monaco-block]' }];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-monaco-block': '' })];
-  },
-
-  addNodeView() {
-    return ReactNodeViewRenderer(InteractiveMonacoBlock);
-  },
+  addAttributes() { return { language: { default: 'javascript' }, code: { default: '// Start coding with IntelliSense...\n' } }; },
+  parseHTML() { return [{ tag: 'div[data-monaco-block]' }]; },
+  renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-monaco-block': '' })]; },
+  addNodeView() { return ReactNodeViewRenderer(InteractiveMonacoBlock); },
 });
 
 // ==========================================
@@ -253,7 +212,6 @@ const MonacoCodeBlockExtension = Node.create({
 const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) => {
   const { src, caption, width, textAlign } = node.attrs;
   const imgRef = useRef(null);
-
   const currentAlign = textAlign || 'center';
   const alignClass = currentAlign === 'center' ? 'items-center' : currentAlign === 'right' ? 'items-end' : 'items-start';
 
@@ -265,10 +223,8 @@ const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) 
     const onMouseMove = (moveEvent) => {
       const currentX = moveEvent.clientX;
       let newWidth;
-      
       if (direction === 'right') newWidth = startWidth + (currentX - startX);
       else newWidth = startWidth - (currentX - startX);
-
       if (newWidth > 150) updateAttributes({ width: `${newWidth}px` });
     };
 
@@ -286,7 +242,6 @@ const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) 
       <div className="flex flex-col" style={{ width: width }}>
         <div className={`relative inline-block ${selected ? 'border-[3px] border-blue-500' : 'border-[3px] border-transparent'}`}>
           <img ref={imgRef} src={src} alt="Note attachment" className="w-full h-auto cursor-pointer" />
-
           {selected && (
             <>
               <div onMouseDown={(e) => handleDragStart(e, 'left')} className="absolute -left-2 -top-2 w-3 h-3 bg-blue-500 border border-white cursor-nwse-resize z-20"></div>
@@ -296,7 +251,6 @@ const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) 
             </>
           )}
         </div>
-        
         <input
           type="text"
           className="w-full mt-2 bg-transparent border-none outline-none text-sm text-center text-gray-500 dark:text-gray-400 font-medium placeholder-gray-300 dark:placeholder-[#555] transition-all focus:text-gray-900 dark:focus:text-gray-200"
@@ -317,10 +271,9 @@ const CustomImageExtension = Image.extend({
       width: { default: '100%' }, 
     };
   },
-  addNodeView() {
-    return ReactNodeViewRenderer(InteractiveImageNode);
-  },
+  addNodeView() { return ReactNodeViewRenderer(InteractiveImageNode); },
 });
+
 // ==========================================
 
 const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete }) => {
@@ -328,6 +281,8 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   const [title, setTitle] = useState(initialNote?.title || '');
   const [courseId, setCourseId] = useState(initialNote?.courseId || '');
   const [referenceFiles, setReferenceFiles] = useState(initialNote?.referenceFiles || []);
+  
+  const [isFullscreen, setIsFullscreen] = useState(false);
   
   const [isCourseDropdownOpen, setIsCourseDropdownOpen] = useState(false);
   const [isAlignDropdownOpen, setIsAlignDropdownOpen] = useState(false); 
@@ -410,7 +365,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   useEffect(() => {
     const updateMenu = () => {
       if (!editor || !bubbleMenuRef.current) return;
-      
       const { view, state } = editor;
       const { selection } = state;
       const isHighlighted = editor.isActive('highlight');
@@ -420,13 +374,10 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         try {
           const start = view.coordsAtPos(selection.from);
           const end = view.coordsAtPos(selection.to);
-          
           const menu = bubbleMenuRef.current;
           menu.style.display = 'flex';
-          
           let topPos = start.top - 45;
           if (start.top < 120) topPos = start.bottom + 10; 
-          
           menu.style.top = `${topPos}px`;
           menu.style.left = `${start.left + (end.left - start.left) / 2}px`;
           menu.style.transform = 'translateX(-50%)';
@@ -456,20 +407,19 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   const uploadImageToBackend = async (file) => {
     setSaveStatus('Uploading image...');
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('files', file);
 
     try {
       const token = localStorage.getItem('token');
-      // UPDATE THIS TO YOUR RENDER URL
-      const response = await fetch('https://to-do-web-01.onrender.com/api/upload', {
+      const response = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
         headers: { 'x-auth-token': token },
         body: formData
       });
       
       const data = await response.json();
-      if (response.ok && data.url && editor) {
-        editor.chain().focus().setImage({ src: data.url, width: '100%' }).setTextAlign('center').run();
+      if (response.ok && data.urls && data.urls.length > 0 && editor) {
+        editor.chain().focus().setImage({ src: data.urls[0], width: '100%' }).setTextAlign('center').run();
         setIsDirty(true);
         setSaveStatus('Unsaved changes');
       } else {
@@ -529,19 +479,40 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     const file = e.target.files[0];
     if (!file) return;
     const formData = new FormData(); 
-    formData.append('file', file);
+    formData.append('files', file); 
+    
     try {
       const token = localStorage.getItem('token'); 
-      // UPDATE THIS TO YOUR RENDER URL
-      const response = await fetch('https://YOUR-RENDER-BACKEND-URL.onrender.com/api/upload', { 
+      const response = await fetch(`${API_BASE}/api/upload`, { 
         method: 'POST', headers: { 'x-auth-token': token }, body: formData 
       });
       const data = await response.json();
-      if (response.ok && data.url) {
-        setReferenceFiles(prev => [...prev, { fileName: data.fileName || file.name, fileUrl: data.url }]);
-        setIsDirty(true); setSaveStatus('Unsaved changes');
+      
+      if (response.ok && data.urls && data.urls.length > 0) {
+        setReferenceFiles(prev => [...prev, { fileName: file.name, fileUrl: data.urls[0] }]);
+        setIsDirty(true); 
+        setSaveStatus('Unsaved changes');
       }
     } catch (error) { console.error('Upload failed', error); }
+  };
+
+  const handleDownload = async (e, url, filename) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename; 
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('Download failed', error);
+      window.open(url, '_blank'); 
+    }
   };
 
   const removeFile = (indexToRemove) => {
@@ -567,7 +538,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-white dark:bg-[#121212] overflow-hidden relative">
+    <div className={`flex flex-col bg-white dark:bg-[#121212] overflow-hidden ${isFullscreen ? 'fixed inset-0 z-[9999]' : 'h-full w-full relative'}`}>
       <style>{`
         /* WORKING TEXT SIZES & HEADINGS FIX */
         .ProseMirror h1 { font-size: 2.25rem !important; font-weight: 800 !important; line-height: 1.2 !important; margin-top: 0.5em; margin-bottom: 0.25em; }
@@ -588,24 +559,10 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           font-style: italic;
         }
 
-        .ProseMirror mark {
-          background-color: #fef08a !important; 
-          color: #111827 !important; 
-          border-radius: 4px;
-          padding: 0 2px;
-        }
-        .dark .ProseMirror mark {
-          background-color: rgba(234, 179, 8, 0.3) !important; 
-          color: #fde047 !important; 
-        }
+        .ProseMirror mark { background-color: #fef08a !important; color: #111827 !important; border-radius: 4px; padding: 0 2px; }
+        .dark .ProseMirror mark { background-color: rgba(234, 179, 8, 0.3) !important; color: #fde047 !important; }
         
-        .ProseMirror blockquote {
-          border-left: 3px solid #e5e7eb;
-          padding-left: 1rem;
-          margin-left: 0;
-          color: #6b7280;
-          font-style: italic;
-        }
+        .ProseMirror blockquote { border-left: 3px solid #e5e7eb; padding-left: 1rem; margin-left: 0; color: #6b7280; font-style: italic; }
         .dark .ProseMirror blockquote { border-left-color: #444; color: #9ca3af; }
         .ProseMirror ul { list-style-type: disc; padding-left: 1.5rem; }
         .ProseMirror ol { list-style-type: decimal; padding-left: 1.5rem; }
@@ -615,9 +572,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           display: flex; flex-wrap: wrap; gap: 4px; align-items: center; position: sticky; top: 0; z-index: 40;
         }
         .dark #custom-toolbar { border-bottom-color: #2C2C2C !important; background-color: #1A1A1A; }
-        .toolbar-btn {
-          padding: 6px; border-radius: 6px; transition: all 0.2s; color: #4b5563; display: flex; align-items: center; justify-content: center;
-        }
+        .toolbar-btn { padding: 6px; border-radius: 6px; transition: all 0.2s; color: #4b5563; display: flex; align-items: center; justify-content: center; }
         .toolbar-btn:hover { background-color: #e5e7eb; color: #111827; }
         .toolbar-btn.active { background-color: #dbeafe; color: #2563eb; }
         .dark .toolbar-btn { color: #d1d5db; }
@@ -641,7 +596,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           />
           
           {saveStatus && (
-            <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
+            <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors hidden md:flex ${
               saveStatus === 'Saving...' ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20' :
               saveStatus === 'Saved to cloud' ? 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20' :
               saveStatus === 'Error saving' ? 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20' :
@@ -655,48 +610,93 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           )}
         </div>
         
-        <div className="relative group shrink-0" ref={dropdownRef}>
-          <button 
-            onClick={() => setIsCourseDropdownOpen(!isCourseDropdownOpen)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-all"
-          >
-            {selectedCourse ? (
-              <>{selectedCourse.type === 'uni' ? <UCPLogo className="w-4 h-4 min-w-[16px] shrink-0" /> : <Book size={16} className="text-gray-400 shrink-0" />}{selectedCourse.name}</>
-            ) : (
-              <><Book size={16} className="text-gray-400 shrink-0" /> Link Course</>
+        <div className="flex items-center gap-2 shrink-0">
+          
+          {/* UPDATED DROPDOWN TRIGGER */}
+          <div className="relative group shrink-0" ref={dropdownRef}>
+            <button 
+              onClick={() => setIsCourseDropdownOpen(!isCourseDropdownOpen)}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-all outline-none focus:ring-2 focus:ring-brand-blue"
+            >
+              <span className="flex items-start gap-2">
+  {selectedCourse ? (
+    <>
+      {selectedCourse.type === 'uni' ? (
+        <UCPLogo className="w-4 h-4 text-blue-500 shrink-0 mt-[2px]" />
+      ) : (
+        <Book size={16} className="text-gray-400 shrink-0 mt-[2px]" />
+      )}
+      {/* We removed 'truncate' and added wrapping classes with a safe max-width */}
+      <span className="text-left whitespace-normal break-words leading-snug max-w-[200px] sm:max-w-[300px]">
+        {selectedCourse.name}
+      </span>
+    </>
+  ) : (
+    <><Book size={16} className="text-gray-400 shrink-0" /> <span>Link Course</span></>
+  )}
+</span>
+              <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${isCourseDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* UPDATED DROPDOWN MENU - MATCHES ADDTASKMODAL UI EXACTLY */}
+            {isCourseDropdownOpen && (
+              <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-[100] animate-fadeIn custom-scrollbar max-h-[350px] overflow-y-auto">
+                
+                {uniCourses.length > 0 && (
+                  <>
+                    <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C]">
+                       University Courses
+                    </div>
+                    {uniCourses.map(c => (
+                      <button 
+                        key={c._id || c.id} 
+                        onClick={() => { setCourseId(c._id || c.id); setIsCourseDropdownOpen(false); setIsDirty(true); setSaveStatus('Unsaved changes'); }} 
+                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-start justify-between gap-2 border-b border-gray-50 dark:border-[#2C2C2C] transition-colors last:border-0"
+                      >
+                        <span className="flex items-start gap-2 text-gray-700 dark:text-gray-200 pr-2">
+                          <UCPLogo className="w-4 h-4 text-blue-500 shrink-0 mt-[2px]" />
+                          <span className="leading-snug whitespace-normal break-words text-left font-medium">{c.name}</span>
+                        </span>
+                        {courseId === (c._id || c.id) && <CheckCircle2 size={16} className="text-brand-blue shrink-0 mt-[2px]" />}
+                      </button>
+                    ))}
+                  </>
+                )}
+                
+                {generalCourses.length > 0 && (
+                  <>
+                    <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C] border-t border-t-gray-100 dark:border-t-[#2C2C2C]">
+                        General / Manual
+                    </div>
+                    {generalCourses.map(c => (
+                      <button 
+                        key={c._id || c.id} 
+                        onClick={() => { setCourseId(c._id || c.id); setIsCourseDropdownOpen(false); setIsDirty(true); setSaveStatus('Unsaved changes'); }} 
+                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-start justify-between gap-2 border-b border-gray-50 dark:border-[#2C2C2C] transition-colors last:border-0"
+                      >
+                        <span className="flex items-start gap-2 text-gray-700 dark:text-gray-200 pr-2">
+                          <Book size={16} className="text-gray-400 shrink-0 mt-[2px]" />
+                          <span className="leading-snug whitespace-normal break-words text-left font-medium">{c.name}</span>
+                        </span>
+                        {courseId === (c._id || c.id) && <CheckCircle2 size={16} className="text-brand-blue shrink-0 mt-[2px]" />}
+                      </button>
+                    ))}
+                  </>
+                )}
+
+              </div>
             )}
-            <ChevronDown size={14} className={`text-gray-400 transition-transform ${isCourseDropdownOpen ? 'rotate-180' : ''}`} />
+          </div>
+
+          <button 
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="p-2 flex items-center justify-center text-gray-500 hover:text-brand-blue bg-gray-50 hover:bg-blue-50 dark:bg-[#1E1E1E] dark:hover:bg-blue-900/20 border border-gray-200 dark:border-[#333] rounded-lg transition-colors"
+            title={isFullscreen ? "Exit Fullscreen" : "Expand Editor"}
+          >
+            {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
 
-          {isCourseDropdownOpen && (
-            <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-2xl z-[100] overflow-hidden animate-slideUp">
-              <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-                {uniCourses.length > 0 && (
-                  <div>
-                    <div className="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase bg-gray-50 dark:bg-[#252525]">University Courses</div>
-                    {uniCourses.map(c => (
-                      <button key={c._id || c.id} onClick={() => { setCourseId(c._id || c.id); setIsCourseDropdownOpen(false); setIsDirty(true); setSaveStatus('Unsaved changes'); }} className="w-full text-left px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] flex items-center gap-3 transition-colors border-b border-gray-100 dark:border-[#2C2C2C] last:border-0 group">
-                        <UCPLogo className="w-4 h-4 min-w-[16px] shrink-0" />
-                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate group-hover:text-brand-blue">{c.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {generalCourses.length > 0 && (
-                  <div>
-                    <div className="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase bg-gray-50 dark:bg-[#252525]">General / Manual</div>
-                    {generalCourses.map(c => (
-                      <button key={c._id || c.id} onClick={() => { setCourseId(c._id || c.id); setIsCourseDropdownOpen(false); setIsDirty(true); setSaveStatus('Unsaved changes'); }} className="w-full text-left px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] flex items-center gap-3 transition-colors border-b border-gray-100 dark:border-[#2C2C2C] last:border-0 group">
-                        <Book size={14} className="text-gray-400 shrink-0 group-hover:text-brand-blue" />
-                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate group-hover:text-brand-blue">{c.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        </div> 
       </div>
 
       {editor && (
@@ -759,7 +759,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`}><ListOrdered size={16}/></button>
           <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`}><Quote size={16}/></button>
           
-          {/* UPDATED CODE BUTTON */}
           <button onClick={() => editor.chain().focus().insertContent({ type: 'monacoCodeBlock' }).run()} className="toolbar-btn" title="Insert Code Editor"><Code size={16}/></button>
           <div className="toolbar-divider"></div>
 
@@ -793,9 +792,9 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
             <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar max-w-[300px]">
               {referenceFiles.map((file, index) => (
                 <div key={index} className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-full text-xs shrink-0">
-                  <a href={file.fileUrl} download={file.fileName} target="_blank" rel="noopener noreferrer" className="truncate max-w-[100px] text-brand-blue font-medium hover:underline">
+                  <button onClick={(e) => handleDownload(e, file.fileUrl, file.fileName)} className="truncate max-w-[100px] text-brand-blue font-medium hover:underline cursor-pointer text-left">
                     {file.fileName}
-                  </a>
+                  </button>
                   <button onClick={() => removeFile(index)} className="text-blue-400 hover:text-red-500"><X size={12} strokeWidth={3} /></button>
                 </div>
               ))}
@@ -839,7 +838,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           </>
         )}
       </div>
-
     </div>
   );
 };

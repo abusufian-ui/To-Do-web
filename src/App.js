@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import TaskTable from './TaskTable';
@@ -11,19 +11,27 @@ import Calendar from './Calendar';
 import GradeBook from './GradeBook';
 import ResultHistory from './ResultHistory';
 import AdminDashboard from './AdminDashboard';
-import { Heart, ArrowRight } from 'lucide-react'; 
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
 import MyProfile from './MyProfile';
 import Timetable from './TimeTable'; 
 import HabitTracker from './HabitTracker';
 import Notes from './Notes';
-import Calculator from './Calculator';
 import HyperFocus from './HyperFocus'; 
 import Keynote from './Keynote';
-import AddKeynoteModal from './AddKeynoteModal'; // BRAND NEW IMPORT
+import AddKeynoteModal from './AddKeynoteModal'; 
+
+// IMPORTING NEW ICONS FOR THE SNACK NOTIFICATION
+import { Heart, ArrowRight, X, Activity, Coffee, FastForward } from 'lucide-react'; 
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+// --- HYPER FOCUS GLOBALS ---
+const HF_MODES = {
+  focus: { id: 'focus', title: 'Deep Focus', text: 'Immerse yourself in the work.', minutes: 25, color: '#3B82F6', textClass: 'text-blue-500', glow: 'shadow-[0_0_60px_rgba(59,130,246,0.3)]' },
+  short_break: { id: 'short_break', title: 'Short Break', text: 'Step away. Breathe. Hydrate.', minutes: 5, color: '#10B981', textClass: 'text-emerald-500', glow: 'shadow-[0_0_60px_rgba(16,185,129,0.3)]' },
+  long_break: { id: 'long_break', title: 'Long Break', text: 'Excellent work. Take a deep rest.', minutes: 30, color: '#EC4899', textClass: 'text-pink-500', glow: 'shadow-[0_0_60px_rgba(236,72,153,0.3)]' }
+};
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
@@ -34,7 +42,6 @@ function App() {
 
   const isAuthenticated = !!token;
 
-  // --- THEME STATE ---
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) return savedTheme === 'dark';
@@ -53,7 +60,6 @@ function App() {
     }
   }, [isDarkMode]);
 
-  // --- TIMEOUT STATE ---
   const [idleTimeout, setIdleTimeout] = useState(() => {
     const saved = localStorage.getItem('idleTimeout');
     return saved ? parseInt(saved, 10) : 300000;
@@ -69,7 +75,6 @@ function App() {
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
   
-  // NEW: Keynote States
   const [isAddKeynoteOpen, setIsAddKeynoteOpen] = useState(false);
   const [keynoteToDelete, setKeynoteToDelete] = useState(null); 
   const [isBatchDeleteKeynotes, setIsBatchDeleteKeynotes] = useState(false);
@@ -83,11 +88,182 @@ function App() {
   const [notes, setNotes] = useState([]); 
   const [keynotes, setKeynotes] = useState([]); 
   const [isAddingNewNote, setIsAddingNewNote] = useState(false);
+  const [isAddingNewTransaction, setIsAddingNewTransaction] = useState(false);
   const [binItems, setBinItems] = useState([]);
-
   const [filters, setFilters] = useState({
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: '', mediaType: 'All'
   });
+
+  // --- NEW IN-APP SNACK NOTIFICATION STATE ---
+  const [toast, setToast] = useState(null);
+
+  // Auto-Dismiss Toast after 8 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const authHeaders = useMemo(() => ({
+    'Content-Type': 'application/json',
+    'x-auth-token': token
+  }), [token]);
+
+  // ==========================================
+  // HYPER FOCUS GLOBAL ENGINE
+  // ==========================================
+  const alarmSoundRef = useRef(typeof window !== 'undefined' ? new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3') : null);
+
+  const [hfState, setHfState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('hfGlobalState');
+      if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return {
+      modeId: 'focus',
+      isAutomated: false,
+      cyclesCompleted: 0,
+      targetEndTime: null,
+      timeLeft: HF_MODES.focus.minutes * 60,
+      soundEnabled: true
+    };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('hfGlobalState', JSON.stringify(hfState));
+  }, [hfState]);
+
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (hfState.isAutomated) {
+      const m = Math.floor(hfState.timeLeft / 60).toString().padStart(2, '0');
+      const s = (hfState.timeLeft % 60).toString().padStart(2, '0');
+      document.title = `(${m}:${s}) ${HF_MODES[hfState.modeId]?.title || 'Focus'}`;
+    } else {
+      document.title = "Student Portal";
+    }
+  }, [hfState.timeLeft, hfState.isAutomated, hfState.modeId]);
+
+  const executePhaseTransition = useCallback(async () => {
+    setHfState(prev => {
+      if (prev.modeId === 'focus' && token) {
+        try {
+          fetch(`${API_BASE}/api/focus-sessions`, {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ durationMinutes: HF_MODES.focus.minutes, type: 'focus' })
+          });
+        } catch (e) {}
+      }
+
+      let nextModeId = 'focus';
+      let newCycles = prev.cyclesCompleted;
+
+      if (prev.modeId === 'focus') {
+        newCycles += 1;
+        nextModeId = (newCycles % 4 === 0) ? 'long_break' : 'short_break';
+      }
+
+      const nextMode = HF_MODES[nextModeId];
+
+      if (prev.soundEnabled && alarmSoundRef.current) {
+        alarmSoundRef.current.currentTime = 0;
+        alarmSoundRef.current.play().catch(e => console.log("Audio failed", e));
+      }
+      
+      let title = 'Hyper Focus';
+      let body = 'Phase complete! Transitioning...';
+      let showSkip = false;
+      
+      if (nextModeId === 'focus') {
+        title = '🔥 Focus Time!';
+        body = 'Time to start, get ready!';
+        showSkip = false;
+      } else if (nextModeId === 'short_break' || nextModeId === 'long_break') {
+        title = '☕ Time to rest';
+        body = 'Great job on the focus session!';
+        showSkip = nextModeId === 'short_break';
+      }
+
+      // External Browser Notification
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(title, { body, icon: '/favicon.ico' });
+      }
+
+      // TRIGGER IN-APP SNACK NOTIFICATION
+      setTimeout(() => {
+        setToast({ id: Date.now(), title, message: body, showSkip, modeId: nextModeId });
+      }, 0);
+
+      return {
+        ...prev,
+        modeId: nextModeId,
+        cyclesCompleted: newCycles,
+        timeLeft: nextMode.minutes * 60,
+        targetEndTime: Date.now() + (nextMode.minutes * 60 * 1000)
+      };
+    });
+  }, [authHeaders, token]);
+
+  useEffect(() => {
+    let interval = null;
+    if (hfState.isAutomated && hfState.targetEndTime) {
+      interval = setInterval(() => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.ceil((hfState.targetEndTime - now) / 1000));
+
+        if (remaining <= 0) {
+          executePhaseTransition();
+        } else {
+          setHfState(prev => ({ ...prev, timeLeft: remaining }));
+        }
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [hfState.isAutomated, hfState.targetEndTime, executePhaseTransition]);
+
+  const toggleAutomation = () => {
+    setHfState(prev => {
+      if (!prev.isAutomated) {
+        return { ...prev, isAutomated: true, targetEndTime: Date.now() + prev.timeLeft * 1000 };
+      } else {
+        setToast(null); // Clear toast on stop
+        return { ...prev, isAutomated: false, targetEndTime: null, modeId: 'focus', timeLeft: HF_MODES.focus.minutes * 60, cyclesCompleted: 0 };
+      }
+    });
+  };
+
+  const skipPhase = () => {
+    setHfState(prev => {
+      if (prev.modeId !== 'short_break') return prev; 
+      
+      if (prev.soundEnabled && alarmSoundRef.current) {
+        alarmSoundRef.current.currentTime = 0;
+        alarmSoundRef.current.play().catch(e => console.log(e));
+      }
+
+      const nextMode = HF_MODES.focus;
+      return {
+        ...prev,
+        modeId: 'focus',
+        timeLeft: nextMode.minutes * 60,
+        targetEndTime: Date.now() + (nextMode.minutes * 60 * 1000)
+      };
+    });
+    setToast(null); // Hide toast when skipping
+  };
+
+  const setSoundEnabled = (val) => {
+    setHfState(prev => ({ ...prev, soundEnabled: val }));
+  };
+  // ==========================================
+
 
   useEffect(() => {
     const handleResize = () => {
@@ -101,12 +277,6 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const authHeaders = useMemo(() => ({
-    'Content-Type': 'application/json',
-    'x-auth-token': token
-  }), [token]);
-
-  // --- AUTH HANDLERS ---
   const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -201,7 +371,7 @@ function App() {
         ...(data.transactions || []).map(t => ({ ...t, id: t._id, binType: 'Transaction', name: t.description || 'Transaction', subtitle: `Rs ${t.amount}` })),
         ...(data.habits || []).map(h => ({ ...h, id: h._id, binType: 'Habit', name: h.name, subtitle: h.type === 'good' ? 'Good Protocol' : 'Bad Protocol' })),
         ...(data.notes || []).map(n => ({ ...n, id: n._id, binType: 'Note', name: n.title, subtitle: n.courseId })),
-        ...(data.keynotes || []).map(k => ({ ...k, id: k._id, binType: 'Keynote', name: k.title, subtitle: k.courseName })) // ADDED KEYNOTES
+        ...(data.keynotes || []).map(k => ({ ...k, id: k._id, binType: 'Keynote', name: k.title, subtitle: k.courseName })) 
       ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
       
       setBinItems(formattedBin);
@@ -210,24 +380,19 @@ function App() {
 
  const fetchCourses = useCallback(async () => {
     let fetchedCourses = [];
-
     try {
       const res = await fetch(`${API_BASE}/api/courses`, { headers: authHeaders });
       if (res.ok) {
         const customData = await res.json();
-        
         fetchedCourses = (Array.isArray(customData) ? customData : []).map(c => ({
           id: c._id, 
           name: c.name, 
-          // Normalize 'university' to 'uni' for the frontend dropdowns
           type: c.type === 'university' ? 'uni' : 'general' 
         }));
       }
     } catch (error) { 
         console.error("Error fetching courses:", error); 
     }
-
-    // Just set the courses directly from the database now!
     setCourses(fetchedCourses);
   }, [authHeaders]);
 
@@ -242,7 +407,6 @@ function App() {
     }
   }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses]);
 
-  // --- TASK ACTIONS ---
   const handleAddTask = async (newTaskData) => {
     try {
       const res = await fetch(`${API_BASE}/api/tasks`, {
@@ -269,7 +433,6 @@ function App() {
     } catch (error) { console.error("Error deleting task:", error); }
   };
 
-  // --- KEYNOTE ACTIONS ---
   const handleToggleKeynoteRead = async (id, currentStatus) => {
     try {
       const endpoint = currentStatus ? 'unread' : 'read';
@@ -337,7 +500,6 @@ function App() {
     }
   };
 
-  // --- UNIVERSAL BIN ACTIONS ---
   const restoreItem = async (id, type) => {
     const endpoints = { 'Task': 'tasks', 'Transaction': 'transactions', 'Habit': 'habits', 'Note': 'notes', 'Keynote': 'keynotes' };
     try {
@@ -392,7 +554,6 @@ function App() {
 
   const toggleTheme = () => setIsDarkMode(prev => !prev);
 
-  // --- FILTERS ---
   const getFilteredTasks = () => {
     return tasks.filter(task => {
       if (filters.searchQuery) {
@@ -450,7 +611,6 @@ function App() {
     });
   };
 
-  // --- SETTINGS ACTIONS ---
   const handleManualSync = async () => {
     try {
       await fetch(`${API_BASE}/api/sync-grades`, { method: 'POST', headers: authHeaders });
@@ -559,9 +719,11 @@ function App() {
       setIsAddingNewNote(true);
     } else if (activeTab === 'Keynotes') {
       setIsAddKeynoteOpen(true);
+    } else if (activeTab && activeTab.startsWith('Cash')) {
+      setIsAddingNewTransaction(true); 
     } else {
       setPrefilledDate(''); 
-      setIsAddTaskOpen(true); // default
+      setIsAddTaskOpen(true); 
     }
   };
 
@@ -586,7 +748,7 @@ function App() {
         user={user}
       />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300 w-full">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300 w-full relative">
         <Header
           activeTab={activeTab}
           isDarkMode={isDarkMode}
@@ -605,6 +767,8 @@ function App() {
           onOpenNote={(note) => console.log("Open Note from search:", note)} 
           keynotes={keynotes} 
           onToggleKeynoteRead={handleToggleKeynoteRead}
+          hfState={hfState} 
+          hfModes={HF_MODES} 
         />
         <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
 
@@ -623,9 +787,18 @@ function App() {
               </div>
             </div>
           )}
-
-          {activeTab === 'Calculator' && <Calculator />}
-          {activeTab === 'HyperFocus' && <HyperFocus />}
+          
+          {activeTab === 'HyperFocus' && (
+            <div className="w-full h-full">
+               <HyperFocus 
+                 hfState={hfState} 
+                 toggleAutomation={toggleAutomation} 
+                 setSoundEnabled={setSoundEnabled} 
+                 hfModes={HF_MODES} 
+                 skipPhase={skipPhase}
+               />
+            </div>
+          )}
 
           {activeTab === 'Notes' && (
             <div className="w-full h-full">
@@ -660,7 +833,17 @@ function App() {
           {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
           {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
           {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
-          {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} /></div>}
+          
+          {activeTab.startsWith('Cash-') && (
+            <div className="w-full h-full">
+              <CashManager 
+                activeTab={activeTab} 
+                isAddingNew={isAddingNewTransaction} 
+                setIsAddingNew={setIsAddingNewTransaction} 
+              />
+            </div>
+          )}
+
           {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
           {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard /></div>}
           {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} /></div>}
@@ -689,6 +872,13 @@ function App() {
       <style>{`
         .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
         .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* IN-APP SNACK NOTIFICATION ANIMATION */
+        .animate-slideInRight { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes slideInRight {
+          0% { transform: translateX(120%); opacity: 0; }
+          100% { transform: translateX(0); opacity: 1; }
+        }
       `}</style>
 
       {/* --- MODALS --- */}
@@ -699,6 +889,33 @@ function App() {
       <ConfirmationModal isOpen={!!taskToDelete} onClose={() => setTaskToDelete(null)} onConfirm={executeDelete} title="Move to Bin?" message="Are you sure you want to move this task to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
       <ConfirmationModal isOpen={!!keynoteToDelete} onClose={() => setKeynoteToDelete(null)} onConfirm={executeDeleteKeynote} title="Move Snap to Bin?" message="Are you sure you want to move this Keynote to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
       <ConfirmationModal isOpen={isBatchDeleteKeynotes} onClose={() => { setIsBatchDeleteKeynotes(false); setKeynotesToBatchDelete([]); }} onConfirm={executeBatchDeleteKeynotes} title={`Move ${keynotesToBatchDelete.length} Snaps to Bin?`} message="Are you sure you want to move the selected Keynotes to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
+
+      {/* --- IN-APP SNACK NOTIFICATION --- */}
+      {toast && (
+        <div className="fixed top-6 right-6 z-[9999] bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-2xl rounded-2xl p-4 w-80 animate-slideInRight">
+          <div className="flex items-start justify-between">
+            <div className="flex gap-3">
+               <div className="mt-0.5">
+                 {toast.modeId === 'focus' ? <Activity className="text-blue-500" size={20} /> : <Coffee className="text-emerald-500" size={20} />}
+               </div>
+               <div>
+                 <h4 className="font-bold text-gray-900 dark:text-white text-sm">{toast.title}</h4>
+                 <p className="text-xs text-gray-500 mt-1">{toast.message}</p>
+               </div>
+            </div>
+            <button onClick={() => setToast(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+          {toast.showSkip && (
+             <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#333] flex justify-end">
+                <button onClick={skipPhase} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors bg-gray-50 dark:bg-[#252525] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#333]">
+                   <FastForward size={12} className="fill-current" /> SKIP BREAK
+                </button>
+             </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

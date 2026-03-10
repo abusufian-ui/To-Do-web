@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import NoteEditor from './NoteEditor';
-import { FileText, Clock, Trash2, CheckSquare } from 'lucide-react';
+import { FileText, Clock, Trash2, CheckSquare, Book } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal'; 
+import UCPLogo from './UCPLogo'; // Imported the UCP Logo
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -114,6 +115,12 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {notes.map(note => {
                 const isSelected = selectedNotes.includes(note._id);
+                
+                // Identify the specific course associated with this note
+                const courseObj = courses.find(c => (c._id || c.id) === note.courseId);
+                const courseName = courseObj?.name || 'General Course';
+                const isUni = courseObj?.type === 'uni';
+
                 return (
                   <div 
                     key={note._id} 
@@ -135,13 +142,22 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                         {getPlainText(note.content) || 'Empty note...'}
                       </p>
                       
-                      <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100 dark:border-[#333]">
-                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1 rounded-md">
-                          {courses.find(c => (c._id || c.id) === note.courseId)?.name || 'General'}
+                      {/* UPDATED FOOTER: Icons added, strict flex boundaries applied */}
+                      {/* UPDATED FOOTER: Multi-line wrapping with bottom alignment */}
+                      <div className="flex items-end justify-between mt-auto pt-4 border-t border-gray-100 dark:border-[#333] gap-2">
+                        
+                        {/* max-w-[75%] ensures it never pushes the date off-screen, forcing a clean wrap */}
+                        <div className="flex items-start gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1.5 rounded-lg min-w-0 max-w-[75%]">
+                          {isUni ? <UCPLogo className="w-3.5 h-3.5 shrink-0 mt-[2px]" /> : <Book size={14} className="shrink-0 mt-[2px]" />}
+                          <span className="whitespace-normal break-words leading-snug text-left">{courseName}</span>
+                        </div>
+                        
+                        {/* mb-1 aligns the date perfectly with the bottom baseline of the text */}
+                        <span className="flex items-center justify-end gap-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider shrink-0 mb-1">
+                          <Clock size={12} className="shrink-0" /> 
+                          {new Date(note.createdAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
                         </span>
-                        <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 uppercase tracking-wider">
-  <Clock size={12} /> {new Date(note.createdAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
-</span>
+                        
                       </div>
                     </div>
                   </div>

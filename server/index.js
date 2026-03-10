@@ -123,8 +123,9 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'MyPortal_Keynotes', 
-    resource_type: 'auto', 
-    allowed_formats: ['jpg', 'jpeg', 'png', 'm4a', 'mp3', 'wav', 'mp4', '3gp', 'webm', 'pdf', 'doc', 'docx', 'odt', 'txt', 'xls', 'xlsx', 'ppt', 'pptx'] 
+    resource_type: 'auto',
+    use_filename: true,    // Tells Cloudinary to keep your original filename + extension
+    unique_filename: true  // Adds a random hash to the end so you don't overwrite files
   },
 });
 
@@ -142,16 +143,26 @@ mongoose.connect(dbLink)
 // ==========================================
 // CLOUDINARY UPLOAD ROUTE
 // ==========================================
-app.post('/api/upload', auth, upload.array('files', 10), (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'No files uploaded' });
+app.post('/api/upload', auth, (req, res) => {
+  // Execute the multer middleware manually so we can catch its errors
+  upload.array('files', 10)(req, res, function (err) {
+    // If Cloudinary or Multer throws an error, catch it here!
+    if (err) {
+      console.error("🚨 Cloudinary Upload Error:", err);
+      return res.status(500).json({ error: "Upload failed", details: err.message });
     }
-    const urls = req.files.map(file => file.path);
-    res.status(200).json({ message: 'Upload successful', urls: urls });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to upload files to the cloud' });
-  }
+
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'No files uploaded' });
+      }
+      // Send the Cloudinary URLs back to the frontend
+      const urls = req.files.map(file => file.path);
+      res.status(200).json({ message: 'Upload successful', urls: urls });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to process files after upload' });
+    }
+  });
 });
 
 // ==========================================
@@ -353,7 +364,8 @@ app.delete('/api/debts/:id', auth, async (req, res) => {
 
 app.post('/api/debts/:id/pay', auth, async (req, res) => {
   try {
-    const { amount, date } = req.body;
+    // 1. Grab all the exact data sent from the React frontend
+    const { amount, date, description, type, category } = req.body;
     const paymentAmount = Number(amount);
 
     const debt = await Debt.findOne({ _id: req.params.id, userId: req.user.id });
@@ -361,30 +373,32 @@ app.post('/api/debts/:id/pay', auth, async (req, res) => {
     if (!debt) return res.status(404).json({ message: "Debt not found" });
     if (paymentAmount > debt.amount) return res.status(400).json({ message: "Payment exceeds active debt amount" });
 
+    // 2. Update the debt balance
     debt.amount -= paymentAmount;
     if (debt.amount === 0) {
       debt.status = 'paid';
     }
     await debt.save();
 
-    const transactionType = debt.type === 'lent' ? 'income' : 'expense';
-    const transactionCategory = debt.type === 'lent' ? 'Loan Recovery' : 'Debt Payoff';
-    const descPrefix = debt.amount > 0 ? 'Partial Recovery: ' : 'Full Settlement: ';
-
+    // 3. Create the transaction using the user's actual description and data!
     const newTransaction = new Transaction({
       userId: req.user.id,
-      type: transactionType,
+      type: type, 
       amount: paymentAmount,
-      category: transactionCategory,
-      description: descPrefix + debt.person,
+      category: category, 
+      description: description || `Payment for: ${debt.person}`,
       date: date || new Date().toISOString()
     });
 
     await newTransaction.save();
 
+    // 4. Send success back to React
     res.json({ success: true, debt, transaction: newTransaction });
+    
   } catch (error) {
-    res.status(500).json({ message: "Error processing debt payment" });
+    // THIS WILL LOG THE EXACT CRASH IN YOUR NODE TERMINAL
+    console.error("🚨 CRASH IN DEBT PAY:", error); 
+    res.status(500).json({ message: error.message || "Server crashed while paying debt" });
   }
 });
 
