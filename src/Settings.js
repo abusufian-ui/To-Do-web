@@ -158,20 +158,31 @@ const PortalSection = ({ user, showToast }) => {
         return () => clearInterval(pollInterval);
     }, [wizardStep, user.isPortalConnected, showToast]);
 
-    const confirmUnlink = async () => {
+const confirmUnlink = async () => {
         setIsUnlinking(true);
         try {
+            const token = localStorage.getItem('token');
             const res = await fetch(`${API_BASE}/api/user/unlink-portal`, {
                 method: 'POST',
-                headers: { 'x-auth-token': localStorage.getItem('token') }
+                headers: { 
+                    'Content-Type': 'application/json', // Added missing header
+                    'x-auth-token': token 
+                }
             });
+            
             if (res.ok) {
                 showToast("Portal disconnected successfully.", "success");
                 setTimeout(() => window.location.reload(), 1500);
             } else {
-                showToast("Failed to disconnect portal.", "error");
+                // Extract the actual error message from your Node backend
+                const errorData = await res.json().catch(() => ({}));
+                console.error("Backend Unlink Error:", errorData);
+                showToast(errorData.message || "Failed to disconnect portal.", "error");
             }
-        } catch (e) { showToast("Server error.", "error"); }
+        } catch (e) { 
+            console.error("Network/Server Catch Error:", e);
+            showToast("Server connection error.", "error"); 
+        }
         setIsUnlinking(false);
         setShowUnlinkConfirm(false);
     };
