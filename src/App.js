@@ -82,6 +82,9 @@ function App() {
 
   const [prefilledDate, setPrefilledDate] = useState('');
   const [viewTask, setViewTask] = useState(null);
+  
+  // --- SERVER MODAL STATE ---
+  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
 
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -704,6 +707,12 @@ function App() {
   };
 
   const handleNavigate = (tab) => {
+    if (tab === 'Server') {
+      if (user?.isAdmin) {
+        setIsServerModalOpen(true);
+      }
+      return; 
+    }
     setActiveTab(tab);
     if (tab === 'Bin') fetchBin(); 
     if (window.innerWidth < 768) {
@@ -889,6 +898,47 @@ function App() {
       <ConfirmationModal isOpen={!!taskToDelete} onClose={() => setTaskToDelete(null)} onConfirm={executeDelete} title="Move to Bin?" message="Are you sure you want to move this task to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
       <ConfirmationModal isOpen={!!keynoteToDelete} onClose={() => setKeynoteToDelete(null)} onConfirm={executeDeleteKeynote} title="Move Snap to Bin?" message="Are you sure you want to move this Keynote to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
       <ConfirmationModal isOpen={isBatchDeleteKeynotes} onClose={() => { setIsBatchDeleteKeynotes(false); setKeynotesToBatchDelete([]); }} onConfirm={executeBatchDeleteKeynotes} title={`Move ${keynotesToBatchDelete.length} Snaps to Bin?`} message="Are you sure you want to move the selected Keynotes to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
+
+      {/* --- SERVER SELECTION MODAL --- */}
+      {isServerModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 w-full max-w-sm shadow-2xl relative border border-gray-200 dark:border-[#333]">
+            <button 
+              onClick={() => setIsServerModalOpen(false)} 
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+            
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Cloud Workspace</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Select the environment you want to connect to.</p>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => { window.open('http://161.118.247.217:8080', '_blank'); setIsServerModalOpen(false); }}
+                className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-brand-blue dark:hover:border-brand-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group"
+              >
+                <div className="text-left">
+                  <div className="font-bold text-gray-900 dark:text-white group-hover:text-brand-blue transition-colors">Admin Workspace</div>
+                  <div className="text-xs text-gray-500">Port 8080</div>
+                </div>
+                <ArrowRight size={18} className="text-gray-400 group-hover:text-brand-blue transition-colors" />
+              </button>
+
+              <button
+                onClick={() => { window.open('http://161.118.247.217:8081', '_blank'); setIsServerModalOpen(false); }}
+                className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all group"
+              >
+                <div className="text-left">
+                  <div className="font-bold text-gray-900 dark:text-white group-hover:text-emerald-500 transition-colors">Hashu's Workspace</div>
+                  <div className="text-xs text-gray-500">Port 8081</div>
+                </div>
+                <ArrowRight size={18} className="text-gray-400 group-hover:text-emerald-500 transition-colors" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- IN-APP SNACK NOTIFICATION --- */}
       {toast && (

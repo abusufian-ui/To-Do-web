@@ -3,7 +3,7 @@ import {
   CheckSquare, Calendar, StickyNote, BarChart3, Settings, 
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History,
-  GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb 
+  GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
@@ -240,20 +240,37 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
 
         {/* --- ADMIN SECTION --- */}
         {user && user.isAdmin && (
-          <button
-            onClick={() => setActiveTab('Admin')}
-            className={`
-              w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
-              ${activeTab === 'Admin' 
-                ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' 
-                : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'}
-              ${!isOpen && 'md:justify-center'}
-            `}
-          >
-            <div className="relative"><Shield size={20} strokeWidth={2} /></div>
-            {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Admin Panel</span>}
-            {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
-          </button>
+          <>
+            <button
+              onClick={() => setActiveTab('Admin')}
+              className={`
+                w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+                ${activeTab === 'Admin' 
+                  ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' 
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'}
+                ${!isOpen && 'md:justify-center'}
+              `}
+            >
+              <div className="relative"><Shield size={20} strokeWidth={2} /></div>
+              {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Admin Panel</span>}
+              {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('Server')}
+              className={`
+                w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+                ${activeTab === 'Server' 
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600'}
+                ${!isOpen && 'md:justify-center'}
+              `}
+            >
+              <div className="relative"><Code2 size={20} strokeWidth={2} /></div>
+              {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Cloud VS Code</span>}
+              {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Cloud VS Code</div>}
+            </button>
+          </>
         )}
 
       </div>
