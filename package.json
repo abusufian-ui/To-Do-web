@@ -32,6 +32,7 @@
     "react-dom": "^19.2.4",
     "react-quill-new": "^3.8.3",
     "react-scripts": "5.0.1",
+    "recharts": "^3.8.0",
     "systeminformation": "^5.30.7",
     "web-vitals": "^2.1.4"
   },

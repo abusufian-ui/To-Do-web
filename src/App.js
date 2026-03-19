@@ -20,6 +20,7 @@ import Notes from './Notes';
 import HyperFocus from './HyperFocus'; 
 import Keynote from './Keynote';
 import AddKeynoteModal from './AddKeynoteModal'; 
+import CoursePortalView from './CoursePortalView';
 
 // IMPORTING NEW ICONS FOR THE SNACK NOTIFICATION
 import { Heart, ArrowRight, X, Activity, Coffee, FastForward } from 'lucide-react'; 
@@ -842,6 +843,13 @@ function App() {
           {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
           {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
           {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
+
+          {/* --- NEW COURSE PORTAL VIEWS --- */}
+          {['Announcements', 'Attendance', 'Submissions'].includes(activeTab) && (
+            <div className="w-full h-full">
+              <CoursePortalView activeTab={activeTab} courses={courses} />
+            </div>
+          )}
           
           {activeTab.startsWith('Cash-') && (
             <div className="w-full h-full">
