@@ -166,9 +166,13 @@ async function scrapeAndSaveUcpData() {
         for (const url of courseLinks) {
             try {
                 const courseName = (courseMap[url] && courseMap[url].name) ? courseMap[url].name : "Unknown Course";
+                
+                // Extract the exact Course ID from the end of the URL
+                const courseId = url.split('/').pop();
+                const baseUrl = 'https://horizon.ucp.edu.pk/student/course';
 
                 // --- 1. ATTENDANCE ---
-                const attUrl = url.replace('/info/', '/attendance/');
+                const attUrl = `${baseUrl}/attendance/${courseId}`;
                 const attRes = await axios.get(attUrl, {
                     headers: { 'Cookie': cookie },
                     maxRedirects: 0,
@@ -185,41 +189,29 @@ async function scrapeAndSaveUcpData() {
                 const parsedAttendance = parseAttendance(attRes.data);
                 await Attendance.findOneAndUpdate(
                     { userId: userId, courseUrl: url },
-                    { 
-                        courseName: courseName,
-                        summary: parsedAttendance.summary,
-                        records: parsedAttendance.records,
-                        lastUpdated: Date.now()
-                    },
+                    { courseName: courseName, summary: parsedAttendance.summary, records: parsedAttendance.records, lastUpdated: Date.now() },
                     { upsert: true }
                 );
 
                 // --- 2. SUBMISSIONS ---
-                const subUrl = url.replace('/info/', '/submission/');
+                const subUrl = `${baseUrl}/submission/${courseId}`;
                 const subRes = await axios.get(subUrl, { headers: { 'Cookie': cookie } });
                 const parsedSubmissions = parseSubmissions(subRes.data);
 
                 await Submission.findOneAndUpdate(
                     { userId: userId, courseUrl: url },
-                    {
-                        courseName: courseName,
-                        tasks: parsedSubmissions,
-                        lastUpdated: Date.now()
-                    },
+                    { courseName: courseName, tasks: parsedSubmissions, lastUpdated: Date.now() },
                     { upsert: true }
                 );
 
                 // --- 3. ANNOUNCEMENTS ---
-                const annRes = await axios.get(url, { headers: { 'Cookie': cookie } });
+                const annUrl = `${baseUrl}/info/${courseId}`;
+                const annRes = await axios.get(annUrl, { headers: { 'Cookie': cookie } });
                 const parsedAnnouncements = parseAnnouncements(annRes.data);
 
                 await Announcement.findOneAndUpdate(
                     { userId: userId, courseUrl: url },
-                    {
-                        courseName: courseName,
-                        news: parsedAnnouncements,
-                        lastUpdated: Date.now()
-                    },
+                    { courseName: courseName, news: parsedAnnouncements, lastUpdated: Date.now() },
                     { upsert: true }
                 );
 
@@ -286,6 +278,51 @@ function parseAttendance(htmlText) {
         records: attendanceRecords
     };
 }
+
+// --- NEW UCP DATA ROUTES FOR REACT FRONTEND ---
+app.get('/api/attendance', auth, async (req, res) => {
+  try {
+    const attendance = await Attendance.find({ userId: req.user.id }).sort({ lastUpdated: -1 });
+    res.json(attendance);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.get('/api/submissions', auth, async (req, res) => {
+  try {
+    const submissions = await Submission.find({ userId: req.user.id }).sort({ lastUpdated: -1 });
+    res.json(submissions);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.get('/api/announcements', auth, async (req, res) => {
+  try {
+    const announcements = await Announcement.find({ userId: req.user.id }).sort({ lastUpdated: -1 });
+    res.json(announcements);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// --- SPECIFIC COURSE DATA FETCHING ---
+app.get('/api/course-records/:courseName', auth, async (req, res) => {
+  try {
+    const courseName = decodeURIComponent(req.params.courseName);
+    const userId = req.user.id;
+
+    // Fetch all three simultaneously using the courseName
+    const [announcements, attendance, submissions] = await Promise.all([
+      Announcement.findOne({ userId, courseName }),
+      Attendance.findOne({ userId, courseName }),
+      Submission.findOne({ userId, courseName })
+    ]);
+
+    res.json({
+      announcements: announcements?.news || [],
+      attendance: attendance || { summary: { conducted: 0, attended: 0 }, records: [] },
+      submissions: submissions?.tasks || []
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching course records" });
+  }
+});
 
 // ==========================================
 // EXTENSION SYNC ROUTE
