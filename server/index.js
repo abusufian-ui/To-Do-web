@@ -195,7 +195,7 @@ async function scrapeAndSaveUcpData() {
                 // --- 2. SUBMISSIONS ---
                 const subUrl = `${baseUrl}/submission/${courseId}`;
                 const subRes = await axios.get(subUrl, { headers: { 'Cookie': cookie } });
-                const parsedSubmissions = parseSubmissions(subRes.data);
+                const parsedSubmissions = parseSubmissions(subRes.data, subUrl);
                 const existingSub = await Submission.findOne({ userId: userId, courseUrl: url });
 
                 if (parsedSubmissions.length > 0 || !existingSub) {
@@ -277,31 +277,33 @@ function parseAnnouncements(htmlText) {
     return announcements;
 }
 
-function parseSubmissions(htmlText) {
+function parseSubmissions(htmlText, currentUrl) {
     const $ = cheerio.load(htmlText);
     const tasks = [];
+    const baseUrl = 'https://horizon.ucp.edu.pk';
     
     $('table.uk-table tbody tr.table-child-row').each((index, element) => {
-        // Grab all columns (td) in this row
         const tds = $(element).find('td');
         
-        // Map columns exactly as they appear on the UCP portal
         const name = tds.eq(1).text().trim() || $(element).find('.rec_submission_title').text().trim();
         let description = tds.eq(2).text().trim() || $(element).find('.rec_submission_description').text().trim();
-        description = description.replace(/\s+/g, ' '); // Clean up extra spaces
+        description = description.replace(/\s+/g, ' '); 
         const startDate = tds.eq(3).text().trim();
         const dueDate = tds.eq(4).text().trim();
         
-        const attachmentLink = tds.eq(5).find('a').attr('href') || null;
-        const uploadLink = tds.eq(6).find('a').attr('href') || null;
+        // Grab the attachment link
+        let attachmentLink = tds.eq(5).find('a').attr('href') || null;
 
-        // BULLETPROOF STATUS CHECK: Look at the exact Action column AND the whole row
+        // Force Absolute URL for the attachment
+        if (attachmentLink && attachmentLink.startsWith('/')) {
+            attachmentLink = baseUrl + attachmentLink;
+        }
+
         const actionText = tds.eq(6).text().trim().toLowerCase();
         const fullRowText = $(element).text().trim().toLowerCase();
         
         let currentStatus = "Pending";
         
-        // If it says "submitted" anywhere in that action cell or row, flag it!
         if (actionText.includes('submitted') || fullRowText.includes('submitted successfully')) {
             currentStatus = "Submitted";
         }
@@ -314,7 +316,7 @@ function parseSubmissions(htmlText) {
                 dueDate, 
                 status: currentStatus,
                 attachmentUrl: attachmentLink, 
-                submissionUrl: uploadLink      
+                submissionUrl: currentUrl      // <-- Always uses the exact page URL!
             });
         }
     });
