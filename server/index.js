@@ -12,9 +12,10 @@ const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
 
-// --- NEW IMPORTS FOR SERVER NOTIFICATIONS ---
+// --- NEW IMPORTS FOR SERVER NOTIFICATIONS & SCRAPING ---
 const { Expo } = require('expo-server-sdk');
 const cron = require('node-cron');
+const cheerio = require('cheerio'); // ADDED FOR BACKGROUND SCRAPING
 
 // --- MODELS ---
 const User = require('./models/User');
@@ -29,6 +30,11 @@ const Note = require('./models/Note');
 const Keynote = require('./models/Keynote');
 const { Transaction, Budget, Debt } = require('./models/Transaction');
 const axios = require('axios');
+
+// --- NEW UCP DATA MODELS ---
+const Attendance = require('./models/Attendance');
+const Submission = require('./models/Submission');
+const Announcement = require('./models/Announcement');
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
@@ -52,63 +58,6 @@ const focusSessionSchema = new mongoose.Schema({
 const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 const app = express();
-
-// --- Cookies ----
-let activeUcpCookie = null;
-let heartbeatInterval = null;
-
-app.post('/api/session/keep-alive', (req, res) => {
-    const { ucpCookie } = req.body;
-    
-    if (!ucpCookie) {
-        return res.status(400).json({ error: "No cookie provided" });
-    }
-
-    activeUcpCookie = ucpCookie;
-    console.log("📥 Received fresh UCP cookies from extension!");
-
-    // Stop any existing heartbeat so we don't spam them with multiple intervals
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-
-    // Start a new heartbeat: Ping UCP every 3.5 minutes (210,000 milliseconds)
-    heartbeatInterval = setInterval(pingUcpDashboard, 210000);
-
-    res.status(200).json({ message: "Heartbeat initiated." });
-});
-
-// The Heartbeat Function
-async function pingUcpDashboard() {
-    if (!activeUcpCookie) return;
-
-    try {
-        console.log("💓 Sending heartbeat ping to UCP...");
-        
-        // Fetch the dashboard using the user's hijacked cookies
-        const response = await axios.get('https://horizon.ucp.edu.pk/student/dashboard', {
-            headers: {
-                'Cookie': activeUcpCookie,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            // Tell axios not to throw an error if UCP redirects us (e.g., if the session died)
-            maxRedirects: 0, 
-            validateStatus: function (status) {
-                return status >= 200 && status < 400; 
-            }
-        });
-
-        if (response.status === 302) {
-            console.warn("💀 UCP Session Expired! The absolute timeout was reached.");
-            clearInterval(heartbeatInterval);
-            activeUcpCookie = null;
-            // TODO: Trigger a push notification/email to you here!
-        } else {
-            console.log("✅ Heartbeat successful. Session is still alive.");
-        }
-
-    } catch (error) {
-        console.error("⚠️ Heartbeat failed to connect:", error.message);
-    }
-}
 
 // --- MIDDLEWARE ---
 const auth = (req, res, next) => {
@@ -135,12 +84,186 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
+// ==========================================
+// BACKGROUND SCRAPER ENGINE & HEARTBEAT
+// ==========================================
+let activeUcpSession = {
+    cookie: null,
+    userId: null,
+    courseLinks: [],
+    courseMap: {}
+};
+let heartbeatInterval = null;
+
+app.post('/api/session/keep-alive', auth, (req, res) => {
+    const { ucpCookie, courseLinks, courseMap } = req.body;
+    
+    if (!ucpCookie) {
+        return res.status(400).json({ error: "No cookie provided" });
+    }
+
+    // Save the session details securely into the server's memory
+    activeUcpSession = {
+        cookie: ucpCookie,
+        userId: req.user.id,
+        courseLinks: courseLinks || [],
+        courseMap: courseMap || {}
+    };
+
+    console.log("📥 Received fresh UCP cookies & links from extension!");
+
+    // Stop any existing heartbeat so we don't spam the server
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+    // Start a new heartbeat: Run the Scraper & Save loop every 3.5 minutes (210,000 milliseconds)
+    // This keeps the session alive AND updates MongoDB continuously
+    scrapeAndSaveUcpData(); // Fire it once immediately
+    heartbeatInterval = setInterval(scrapeAndSaveUcpData, 210000); 
+
+    res.status(200).json({ message: "Heartbeat & Background Scraper initiated." });
+});
+
+// The Master Scrape & Save Loop
+async function scrapeAndSaveUcpData() {
+    if (!activeUcpSession.cookie || !activeUcpSession.userId) return;
+
+    const { cookie, userId, courseLinks, courseMap } = activeUcpSession;
+
+    try {
+        console.log("🚀 Background Scraper: Sweeping active UCP courses...");
+
+        for (const url of courseLinks) {
+            try {
+                // Determine course name from the map (or fallback)
+                const courseName = (courseMap[url] && courseMap[url].name) ? courseMap[url].name : "Unknown Course";
+
+                // --- 1. ATTENDANCE ---
+                const attUrl = url.replace('/info/', '/attendance/');
+                const attRes = await axios.get(attUrl, {
+                    headers: { 'Cookie': cookie },
+                    maxRedirects: 0,
+                    validateStatus: status => status < 400
+                });
+
+                if (attRes.status === 302) {
+                    console.warn("💀 UCP Session Expired! The absolute timeout was reached.");
+                    clearInterval(heartbeatInterval);
+                    activeUcpSession.cookie = null;
+                    return; // Abort loop if logged out
+                }
+
+                const parsedAttendance = parseAttendance(attRes.data);
+                await Attendance.findOneAndUpdate(
+                    { userId: userId, courseUrl: url },
+                    { 
+                        courseName: courseName,
+                        summary: parsedAttendance.summary,
+                        records: parsedAttendance.records,
+                        lastUpdated: Date.now()
+                    },
+                    { upsert: true }
+                );
+
+                // --- 2. SUBMISSIONS ---
+                const subUrl = url.replace('/info/', '/submission/');
+                const subRes = await axios.get(subUrl, { headers: { 'Cookie': cookie } });
+                const parsedSubmissions = parseSubmissions(subRes.data);
+
+                await Submission.findOneAndUpdate(
+                    { userId: userId, courseUrl: url },
+                    {
+                        courseName: courseName,
+                        tasks: parsedSubmissions,
+                        lastUpdated: Date.now()
+                    },
+                    { upsert: true }
+                );
+
+                // --- 3. ANNOUNCEMENTS ---
+                const annRes = await axios.get(url, { headers: { 'Cookie': cookie } });
+                const parsedAnnouncements = parseAnnouncements(annRes.data);
+
+                await Announcement.findOneAndUpdate(
+                    { userId: userId, courseUrl: url },
+                    {
+                        courseName: courseName,
+                        news: parsedAnnouncements,
+                        lastUpdated: Date.now()
+                    },
+                    { upsert: true }
+                );
+
+            } catch (error) {
+                console.error(`⚠️ Failed to scrape data for ${url}:`, error.message);
+            }
+        }
+        
+        console.log("✅ Background sweep complete! Real-time data saved to MongoDB.");
+    } catch (error) {
+        console.error("⚠️ Master Heartbeat failed:", error.message);
+    }
+}
+
+// ==========================================
+// CHEERIO HTML PARSERS
+// ==========================================
+function parseAnnouncements(htmlText) {
+    const $ = cheerio.load(htmlText);
+    const announcements = [];
+    $('table.uk-table tbody tr.table-child-row').each((index, element) => {
+        const subject = $(element).find('td').eq(1).text().trim();
+        const date = $(element).find('td').eq(2).text().trim();
+        let description = $(element).find('td').eq(3).text().trim();
+        description = description.replace(/\s+/g, ' '); 
+        if (subject) {
+            announcements.push({ subject, date, description });
+        }
+    });
+    return announcements;
+}
+
+function parseSubmissions(htmlText) {
+    const $ = cheerio.load(htmlText);
+    const pendingTasks = [];
+    $('table.uk-table tbody tr.table-child-row').each((index, element) => {
+        const name = $(element).find('.rec_submission_title').text().trim();
+        let description = $(element).find('.rec_submission_description').text().trim();
+        description = description.replace(/\s+/g, ' ');
+        const startDate = $(element).find('.rec_submission_date').text().trim();
+        const dueDate = $(element).find('.rec_submission_due_date').text().trim();
+        if (name) {
+            pendingTasks.push({ title: name, description, startDate, dueDate, status: "Pending" });
+        }
+    });
+    return pendingTasks;
+}
+
+function parseAttendance(htmlText) {
+    const $ = cheerio.load(htmlText);
+    const attendanceRecords = [];
+    const totalConducted = $('ul li').eq(0).find('span').text().trim();
+    const totalAttended = $('ul li').eq(1).find('span').text().trim();
+    $('table.uk-table tbody tr').each((index, element) => {
+        const date = $(element).find('td').eq(1).find('span').text().trim();
+        let status = $(element).find('td').eq(2).find('span').text().trim();
+        if (date) {
+            if (status.toLowerCase() === 'leave') status = 'Absent';
+            attendanceRecords.push({ date, status });
+        }
+    });
+    return {
+        summary: { conducted: parseInt(totalConducted) || 0, attended: parseInt(totalAttended) || 0 },
+        records: attendanceRecords
+    };
+}
+
+
 // --- SECURE CORS CONFIGURATION ---
 const allowedOrigins = [
   'http://localhost:3000',
-  'http://127.0.0.1:3000', // <-- Added 127.0.0.1
+  'http://127.0.0.1:3000', 
   'http://localhost:3001',
-  'http://127.0.0.1:3001', // <-- Added 127.0.0.1
+  'http://127.0.0.1:3001', 
   'http://localhost:8081', 
   'http://localhost:5000/',
   'http://192.168.0.111:8081',
@@ -155,7 +278,6 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
       callback(null, true);
     } else {
-      // THIS WILL NOW PRINT THE EXACT URL THAT GOT BLOCKED IN YOUR TERMINAL
       console.error(`🚨 CORS BLOCKED THIS ORIGIN: "${origin}"`); 
       callback(new Error('Not allowed by CORS'));
     }
@@ -187,8 +309,8 @@ const storage = new CloudinaryStorage({
   params: {
     folder: 'MyPortal_Keynotes', 
     resource_type: 'auto',
-    use_filename: true,    // Tells Cloudinary to keep your original filename + extension
-    unique_filename: true  // Adds a random hash to the end so you don't overwrite files
+    use_filename: true,    
+    unique_filename: true  
   },
 });
 
@@ -207,9 +329,7 @@ mongoose.connect(dbLink)
 // CLOUDINARY UPLOAD ROUTE
 // ==========================================
 app.post('/api/upload', auth, (req, res) => {
-  // Execute the multer middleware manually so we can catch its errors
   upload.array('files', 10)(req, res, function (err) {
-    // If Cloudinary or Multer throws an error, catch it here!
     if (err) {
       console.error("🚨 Cloudinary Upload Error:", err);
       return res.status(500).json({ error: "Upload failed", details: err.message });
@@ -219,7 +339,6 @@ app.post('/api/upload', auth, (req, res) => {
       if (!req.files || req.files.length === 0) {
         return res.status(400).json({ error: 'No files uploaded' });
       }
-      // Send the Cloudinary URLs back to the frontend
       const urls = req.files.map(file => file.path);
       res.status(200).json({ message: 'Upload successful', urls: urls });
     } catch (error) {
@@ -372,7 +491,10 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
       Course.deleteMany({ userId }),
       Note.deleteMany({ user: userId }),
       Keynote.deleteMany({ userId }),
-      FocusSession.deleteMany({ userId }) 
+      FocusSession.deleteMany({ userId }),
+      Attendance.deleteMany({ userId }),
+      Submission.deleteMany({ userId }),
+      Announcement.deleteMany({ userId })
     ]);
     res.json({ message: "User deleted permanently." });
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -427,7 +549,6 @@ app.delete('/api/debts/:id', auth, async (req, res) => {
 
 app.post('/api/debts/:id/pay', auth, async (req, res) => {
   try {
-    // 1. Grab all the exact data sent from the React frontend
     const { amount, date, description, type, category } = req.body;
     const paymentAmount = Number(amount);
 
@@ -436,14 +557,12 @@ app.post('/api/debts/:id/pay', auth, async (req, res) => {
     if (!debt) return res.status(404).json({ message: "Debt not found" });
     if (paymentAmount > debt.amount) return res.status(400).json({ message: "Payment exceeds active debt amount" });
 
-    // 2. Update the debt balance
     debt.amount -= paymentAmount;
     if (debt.amount === 0) {
       debt.status = 'paid';
     }
     await debt.save();
 
-    // 3. Create the transaction using the user's actual description and data!
     const newTransaction = new Transaction({
       userId: req.user.id,
       type: type, 
@@ -454,12 +573,9 @@ app.post('/api/debts/:id/pay', auth, async (req, res) => {
     });
 
     await newTransaction.save();
-
-    // 4. Send success back to React
     res.json({ success: true, debt, transaction: newTransaction });
     
   } catch (error) {
-    // THIS WILL LOG THE EXACT CRASH IN YOUR NODE TERMINAL
     console.error("🚨 CRASH IN DEBT PAY:", error); 
     res.status(500).json({ message: error.message || "Server crashed while paying debt" });
   }
@@ -799,7 +915,6 @@ app.post('/api/user/link-portal', auth, async (req, res) => {
 
 app.post('/api/user/unlink-portal', auth, async (req, res) => {
   try {
-    // 1. Cleaned up the update object to prevent StrictMode crashes
     await User.findByIdAndUpdate(req.user.id, { 
         portalId: null, 
         isPortalConnected: false, 
@@ -816,7 +931,6 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
 
     res.json({ success: true, message: "Portal account removed." });
   } catch (error) { 
-    // 2. This will now log the EXACT reason it crashed in your Node terminal
     console.error("🚨 UNLINK PORTAL CRASH:", error);
     res.status(500).json({ message: error.message || "Server crashed while unlinking." }); 
   }
@@ -1192,19 +1306,16 @@ app.get('/', (req, res) => {
   res.json({ message: "API is running 🚀" });
 });
 
-
 // ==========================================
 // 🔔 THE CRON ENGINE (Runs every minute)
 // ==========================================
-const axios = require('axios'); 
 
 let cachedPrayerTimes = null;
 let lastFetchDate = null;
 
 cron.schedule('* * * * *', async () => {
   // This will log every single minute just so you know the engine is alive
-  // (You can comment this out later if it clutters your Render logs too much)
-  console.log(`[${new Date().toISOString()}] ⏳ Cron Engine Sweeping...`);
+  // console.log(`[${new Date().toISOString()}] ⏳ Cron Engine Sweeping...`);
   
   // ---------------------------------------------------------
   // ENGINE 1: TASK REMINDERS (MULTI-PHASE)
@@ -1213,14 +1324,12 @@ cron.schedule('* * * * *', async () => {
     const now = new Date();
     now.setSeconds(0, 0); 
     
-    // Windows for Timed Tasks
     const target15Start = new Date(now.getTime() + 15 * 60000);
     const target15End = new Date(target15Start.getTime() + 60000);
     
     const targetExactStart = new Date(now.getTime());
     const targetExactEnd = new Date(now.getTime() + 60000);
 
-    // Variables for Date-Only Tasks (9 AM, 12 PM, 3 PM, 7 PM)
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
     const yyyy = now.getFullYear();
@@ -1230,13 +1339,9 @@ cron.schedule('* * * * *', async () => {
 
     const orConditions = [];
 
-    // Condition A: 15 minutes before a scheduled time
     orConditions.push({ triggerAt: { $gte: target15Start, $lt: target15End } });
-    
-    // Condition B: Exactly AT the scheduled time
     orConditions.push({ triggerAt: { $gte: targetExactStart, $lt: targetExactEnd } });
 
-    // Condition C: Date-only tasks (Check at 09:00, 12:00, 15:00, 19:00)
     if (currentMinute === 0 && [9, 12, 15, 19].includes(currentHour)) {
       orConditions.push({ date: todayStr, time: null });
     }
@@ -1245,7 +1350,7 @@ cron.schedule('* * * * *', async () => {
       const upcomingTasks = await Task.find({
         completed: false,
         isDeleted: false,
-        acknowledged: false, // CRITICAL: Stop bugging the user if they clicked "Got it!"
+        acknowledged: false,
         $or: orConditions
       }).populate('userId');
 
@@ -1258,7 +1363,6 @@ cron.schedule('* * * * *', async () => {
         if (Expo.isExpoPushToken(pushToken)) {
           let bodyText = `Task: ${task.name}`;
           
-          // Customize message based on the trigger type
           if (task.time && new Date(task.triggerAt) > now) {
             bodyText = `Starts in 15 mins: ${task.name}`;
           } else if (task.time && new Date(task.triggerAt) <= now) {
@@ -1271,7 +1375,7 @@ cron.schedule('* * * * *', async () => {
           taskMessages.push({
             to: pushToken,
             sound: 'default',
-            categoryId: "smart-alert", // Attaches the "Got it!" button
+            categoryId: "smart-alert", 
             title: `Task Reminder: ${task.course || 'General'} 📌`,
             body: bodyText,
             data: { taskId: task._id, type: 'task' },
@@ -1358,15 +1462,14 @@ cron.schedule('* * * * *', async () => {
   } catch (error) {
     console.error(`[PRAYER ENGINE] ❌ Critical Error:`, error);
   }
+
   // ---------------------------------------------------------
   // ENGINE 3: CLASS REMINDERS (BULLETPROOF EDITION)
   // ---------------------------------------------------------
   try {
-    // 1. Get exact current time in Lahore
     const nowPktStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
     const pktNow = new Date(nowPktStr);
     
-    // 2. Look exactly 5 minutes into the future
     const targetTime = new Date(pktNow.getTime() + 5 * 60000);
     
     const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -1374,7 +1477,6 @@ cron.schedule('* * * * *', async () => {
     const targetHours = targetTime.getHours();
     const targetMinutes = targetTime.getMinutes();
 
-    // 3. Find classes and catch any Mongoose population cast errors
     const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => {
         console.error("[CLASS ENGINE] DB Query Error:", err.message);
         return [];
@@ -1383,13 +1485,11 @@ cron.schedule('* * * * *', async () => {
     let classMessages = [];
 
     for (let cls of todaysClasses) {
-      // 4. Strict null guarding: skip if user was deleted or data is missing
       if (!cls || !cls.userId || !cls.userId.pushToken || !cls.startTime) continue;
 
       let classHours = -1;
       let classMinutes = -1;
       
-      // 5. Force startTime to be a String to prevent regex crashes
       const timeString = String(cls.startTime).trim();
       const timeMatch = timeString.match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
       
@@ -1405,12 +1505,10 @@ cron.schedule('* * * * *', async () => {
         }
       }
 
-      // 6. Match exact hour and minute
       if (classHours === targetHours && classMinutes === targetMinutes) {
         const pushToken = cls.userId.pushToken;
         
         if (Expo.isExpoPushToken(pushToken)) {
-          // Force instructor and room to be Strings before checking .includes()
           const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) 
             ? cls.instructor 
             : "Your teacher";
@@ -1442,8 +1540,6 @@ cron.schedule('* * * * *', async () => {
     console.error(`[CLASS ENGINE] ❌ Critical Error:`, error.message);
   }
 });
-
-
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
