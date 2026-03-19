@@ -71,7 +71,8 @@ const CoursePortalView = ({ activeTab, courses }) => {
             className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl text-left shadow-sm hover:border-blue-400 dark:hover:border-gray-500 focus:outline-none transition-colors"
           >
             <div className="flex items-center gap-3 w-full pr-2">
-              <div className="w-6 h-6 shrink-0 flex items-center justify-center self-center">
+              {/* White background circle wrapper for dark mode visibility */}
+              <div className="w-7 h-7 shrink-0 flex items-center justify-center self-center bg-white rounded-full p-0.5 shadow-sm">
                 <UCPLogo />
               </div>
               <span className="font-bold text-sm text-gray-800 dark:text-gray-100 whitespace-normal leading-snug">
@@ -104,8 +105,8 @@ const CoursePortalView = ({ activeTab, courses }) => {
                         : 'text-gray-700 dark:text-gray-300 border-l-4 border-l-transparent'
                     }`}
                   >
-                    {/* Logo forced to center vertically alongside text */}
-                    <div className={`w-6 h-6 shrink-0 flex items-center justify-center self-center transition-opacity ${selectedCourse === course.name ? 'opacity-100' : 'opacity-70'}`}>
+                    {/* White background circle wrapper for dark mode visibility */}
+                    <div className={`w-7 h-7 shrink-0 flex items-center justify-center self-center bg-white rounded-full p-0.5 shadow-sm transition-opacity ${selectedCourse === course.name ? 'opacity-100' : 'opacity-80'}`}>
                       <UCPLogo />
                     </div>
                     {/* Multi-line wrapping for long names */}

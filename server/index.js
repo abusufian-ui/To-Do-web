@@ -166,18 +166,12 @@ async function scrapeAndSaveUcpData() {
         for (const url of courseLinks) {
             try {
                 const courseName = (courseMap[url] && courseMap[url].name) ? courseMap[url].name : "Unknown Course";
-                
-                // Extract the exact Course ID from the end of the URL
                 const courseId = url.split('/').pop();
                 const baseUrl = 'https://horizon.ucp.edu.pk/student/course';
 
                 // --- 1. ATTENDANCE ---
                 const attUrl = `${baseUrl}/attendance/${courseId}`;
-                const attRes = await axios.get(attUrl, {
-                    headers: { 'Cookie': cookie },
-                    maxRedirects: 0,
-                    validateStatus: status => status < 400
-                });
+                const attRes = await axios.get(attUrl, { headers: { 'Cookie': cookie }, maxRedirects: 0, validateStatus: status => status < 400 });
 
                 if (attRes.status === 302) {
                     console.warn("💀 UCP Session Expired! The absolute timeout was reached.");
@@ -187,33 +181,64 @@ async function scrapeAndSaveUcpData() {
                 }
 
                 const parsedAttendance = parseAttendance(attRes.data);
-                await Attendance.findOneAndUpdate(
-                    { userId: userId, courseUrl: url },
-                    { courseName: courseName, summary: parsedAttendance.summary, records: parsedAttendance.records, lastUpdated: Date.now() },
-                    { upsert: true }
-                );
+                const existingAtt = await Attendance.findOne({ userId: userId, courseUrl: url });
+
+                // PROTECT: Only save if we found actual records, OR if the database is completely empty (start of semester)
+                if (parsedAttendance.records.length > 0 || !existingAtt) {
+                    await Attendance.findOneAndUpdate(
+                        { userId: userId, courseUrl: url },
+                        { courseName: courseName, summary: parsedAttendance.summary, records: parsedAttendance.records, lastUpdated: Date.now() },
+                        { upsert: true }
+                    );
+                }
 
                 // --- 2. SUBMISSIONS ---
                 const subUrl = `${baseUrl}/submission/${courseId}`;
                 const subRes = await axios.get(subUrl, { headers: { 'Cookie': cookie } });
                 const parsedSubmissions = parseSubmissions(subRes.data);
+                const existingSub = await Submission.findOne({ userId: userId, courseUrl: url });
 
-                await Submission.findOneAndUpdate(
-                    { userId: userId, courseUrl: url },
-                    { courseName: courseName, tasks: parsedSubmissions, lastUpdated: Date.now() },
-                    { upsert: true }
-                );
+                if (parsedSubmissions.length > 0 || !existingSub) {
+                    let finalTasks = parsedSubmissions;
+                    
+                    // SMART MERGE: Combine old tasks with new tasks without deleting historical ones
+                    if (existingSub && existingSub.tasks && existingSub.tasks.length > 0) {
+                        const taskMap = new Map();
+                        existingSub.tasks.forEach(t => taskMap.set(t.title, t)); // Load old
+                        parsedSubmissions.forEach(t => taskMap.set(t.title, t)); // Merge fresh
+                        finalTasks = Array.from(taskMap.values());
+                    }
+
+                    await Submission.findOneAndUpdate(
+                        { userId: userId, courseUrl: url },
+                        { courseName: courseName, tasks: finalTasks, lastUpdated: Date.now() },
+                        { upsert: true }
+                    );
+                }
 
                 // --- 3. ANNOUNCEMENTS ---
                 const annUrl = `${baseUrl}/info/${courseId}`;
                 const annRes = await axios.get(annUrl, { headers: { 'Cookie': cookie } });
                 const parsedAnnouncements = parseAnnouncements(annRes.data);
+                const existingAnn = await Announcement.findOne({ userId: userId, courseUrl: url });
 
-                await Announcement.findOneAndUpdate(
-                    { userId: userId, courseUrl: url },
-                    { courseName: courseName, news: parsedAnnouncements, lastUpdated: Date.now() },
-                    { upsert: true }
-                );
+                if (parsedAnnouncements.length > 0 || !existingAnn) {
+                    let finalNews = parsedAnnouncements;
+
+                    // SMART MERGE: Combine old news with new news
+                    if (existingAnn && existingAnn.news && existingAnn.news.length > 0) {
+                        const newsMap = new Map();
+                        existingAnn.news.forEach(n => newsMap.set(n.subject + n.date, n)); // Load old
+                        parsedAnnouncements.forEach(n => newsMap.set(n.subject + n.date, n)); // Merge fresh
+                        finalNews = Array.from(newsMap.values());
+                    }
+
+                    await Announcement.findOneAndUpdate(
+                        { userId: userId, courseUrl: url },
+                        { courseName: courseName, news: finalNews, lastUpdated: Date.now() },
+                        { upsert: true }
+                    );
+                }
 
             } catch (error) {
                 console.error(`⚠️ Failed to scrape data for ${url}:`, error.message);
