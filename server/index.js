@@ -232,13 +232,21 @@ async function scrapeAndSaveUcpData() {
 function parseAnnouncements(htmlText) {
     const $ = cheerio.load(htmlText);
     const announcements = [];
-    $('table.uk-table tbody tr.table-child-row').each((index, element) => {
-        const subject = $(element).find('td').eq(1).text().trim();
-        const date = $(element).find('td').eq(2).text().trim();
-        let description = $(element).find('td').eq(3).text().trim();
-        description = description.replace(/\s+/g, ' '); 
-        if (subject) {
-            announcements.push({ subject, date, description });
+    
+    // Relaxed selector: Look at ALL rows in the table body
+    $('table tbody tr').each((index, element) => {
+        const tds = $(element).find('td');
+        
+        // Ensure it's a real data row (at least 4 columns: Sr, Subject, Date, Description)
+        if (tds.length >= 4) {
+            const subject = tds.eq(1).text().trim();
+            const date = tds.eq(2).text().trim();
+            let description = tds.eq(3).text().trim().replace(/\s+/g, ' '); 
+            
+            // Skip header rows if they accidentally get caught
+            if (subject && subject.toLowerCase() !== 'subject') {
+                announcements.push({ subject, date, description });
+            }
         }
     });
     return announcements;
@@ -247,13 +255,17 @@ function parseAnnouncements(htmlText) {
 function parseSubmissions(htmlText) {
     const $ = cheerio.load(htmlText);
     const pendingTasks = [];
-    $('table.uk-table tbody tr.table-child-row').each((index, element) => {
+    
+    // Relaxed selector: Stop looking for .table-child-row, just look for the text classes
+    $('table tbody tr').each((index, element) => {
         const name = $(element).find('.rec_submission_title').text().trim();
-        let description = $(element).find('.rec_submission_description').text().trim();
-        description = description.replace(/\s+/g, ' ');
-        const startDate = $(element).find('.rec_submission_date').text().trim();
-        const dueDate = $(element).find('.rec_submission_due_date').text().trim();
-        if (name) {
+        
+        // Only grab rows that actually contain a submission title
+        if (name) { 
+            let description = $(element).find('.rec_submission_description').text().trim();
+            description = description.replace(/\s+/g, ' ');
+            const startDate = $(element).find('.rec_submission_date').text().trim();
+            const dueDate = $(element).find('.rec_submission_due_date').text().trim();
             pendingTasks.push({ title: name, description, startDate, dueDate, status: "Pending" });
         }
     });
@@ -263,18 +275,28 @@ function parseSubmissions(htmlText) {
 function parseAttendance(htmlText) {
     const $ = cheerio.load(htmlText);
     const attendanceRecords = [];
-    const totalConducted = $('ul li').eq(0).find('span').text().trim();
-    const totalAttended = $('ul li').eq(1).find('span').text().trim();
-    $('table.uk-table tbody tr').each((index, element) => {
-        const date = $(element).find('td').eq(1).find('span').text().trim();
-        let status = $(element).find('td').eq(2).find('span').text().trim();
-        if (date) {
-            if (status.toLowerCase() === 'leave') status = 'Absent';
-            attendanceRecords.push({ date, status });
+    
+    // Grab numbers safely, stripping out text like "Conducted: "
+    const totalConducted = parseInt($('ul li').eq(0).text().replace(/[^0-9]/g, '')) || 0;
+    const totalAttended = parseInt($('ul li').eq(1).text().replace(/[^0-9]/g, '')) || 0;
+
+    $('table tbody tr').each((index, element) => {
+        const tds = $(element).find('td');
+        if (tds.length >= 3) {
+            const date = tds.eq(1).text().trim();
+            let status = tds.eq(2).text().trim();
+            
+            if (date && date.toLowerCase() !== 'date') { // Ignore headers
+                if (status.toLowerCase().includes('leave')) status = 'Absent';
+                else if (status.toLowerCase().includes('absent')) status = 'Absent';
+                else if (status.toLowerCase().includes('present')) status = 'Present';
+                
+                attendanceRecords.push({ date, status });
+            }
         }
     });
     return {
-        summary: { conducted: parseInt(totalConducted) || 0, attended: parseInt(totalAttended) || 0 },
+        summary: { conducted: totalConducted, attended: totalAttended },
         records: attendanceRecords
     };
 }
