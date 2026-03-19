@@ -279,32 +279,53 @@ function parseAnnouncements(htmlText) {
 
 function parseSubmissions(htmlText) {
     const $ = cheerio.load(htmlText);
-    const pendingTasks = [];
+    const tasks = [];
     
-    // Relaxed selector: Stop looking for .table-child-row, just look for the text classes
-    $('table tbody tr').each((index, element) => {
-        const name = $(element).find('.rec_submission_title').text().trim();
+    $('table.uk-table tbody tr.table-child-row').each((index, element) => {
+        // Grab all columns (td) in this row
+        const tds = $(element).find('td');
         
-        // Only grab rows that actually contain a submission title
-        if (name) { 
-            let description = $(element).find('.rec_submission_description').text().trim();
-            description = description.replace(/\s+/g, ' ');
-            const startDate = $(element).find('.rec_submission_date').text().trim();
-            const dueDate = $(element).find('.rec_submission_due_date').text().trim();
-            pendingTasks.push({ title: name, description, startDate, dueDate, status: "Pending" });
+        // Map columns exactly as they appear on the UCP portal
+        const name = tds.eq(1).text().trim() || $(element).find('.rec_submission_title').text().trim();
+        let description = tds.eq(2).text().trim() || $(element).find('.rec_submission_description').text().trim();
+        description = description.replace(/\s+/g, ' '); // Clean up extra spaces
+        const startDate = tds.eq(3).text().trim();
+        const dueDate = tds.eq(4).text().trim();
+        
+        const attachmentLink = tds.eq(5).find('a').attr('href') || null;
+        const uploadLink = tds.eq(6).find('a').attr('href') || null;
+
+        // BULLETPROOF STATUS CHECK: Look at the exact Action column AND the whole row
+        const actionText = tds.eq(6).text().trim().toLowerCase();
+        const fullRowText = $(element).text().trim().toLowerCase();
+        
+        let currentStatus = "Pending";
+        
+        // If it says "submitted" anywhere in that action cell or row, flag it!
+        if (actionText.includes('submitted') || fullRowText.includes('submitted successfully')) {
+            currentStatus = "Submitted";
+        }
+
+        if (name) {
+            tasks.push({ 
+                title: name, 
+                description, 
+                startDate, 
+                dueDate, 
+                status: currentStatus,
+                attachmentUrl: attachmentLink, 
+                submissionUrl: uploadLink      
+            });
         }
     });
-    return pendingTasks;
+    return tasks;
 }
 
 function parseAttendance(htmlText) {
     const $ = cheerio.load(htmlText);
     const attendanceRecords = [];
     
-    // Grab numbers safely, stripping out text like "Conducted: "
-    const totalConducted = parseInt($('ul li').eq(0).text().replace(/[^0-9]/g, '')) || 0;
-    const totalAttended = parseInt($('ul li').eq(1).text().replace(/[^0-9]/g, '')) || 0;
-
+    // 1. Parse all the rows first
     $('table tbody tr').each((index, element) => {
         const tds = $(element).find('td');
         if (tds.length >= 3) {
@@ -320,8 +341,17 @@ function parseAttendance(htmlText) {
             }
         }
     });
+
+    // 2. Calculate the accurate summary directly from the parsed records
+    const totalConducted = attendanceRecords.length;
+    const totalAttended = attendanceRecords.filter(r => r.status === 'Present').length;
+
+    // 3. Return the fully computed object to be saved in MongoDB
     return {
-        summary: { conducted: totalConducted, attended: totalAttended },
+        summary: { 
+            conducted: totalConducted, 
+            attended: totalAttended 
+        },
         records: attendanceRecords
     };
 }

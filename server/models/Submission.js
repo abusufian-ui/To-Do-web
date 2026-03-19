@@ -5,12 +5,14 @@ const submissionSchema = new mongoose.Schema({
     courseUrl: { type: String, required: true },
     courseName: { type: String, required: true },
     tasks: [{
-        title: String,
-        description: String,
-        startDate: String,
-        dueDate: String,
-        status: { type: String, default: 'Pending' }
-    }],
+    title: String,
+    description: String,
+    startDate: String,
+    dueDate: String,
+    status: { type: String, default: 'Pending' },
+    attachmentUrl: String,  // <-- ADD THIS
+    submissionUrl: String   // <-- ADD THIS
+}],
     lastUpdated: { type: Date, default: Date.now }
 });
 
