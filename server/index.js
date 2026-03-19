@@ -59,6 +59,7 @@ const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 const app = express();
 
+
 // --- MIDDLEWARE ---
 const auth = (req, res, next) => {
   const token = req.header('x-auth-token');
@@ -83,6 +84,10 @@ const adminAuth = async (req, res, next) => {
     res.status(500).json({ message: "Server Error" });
   }
 };
+
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ==========================================
 // BACKGROUND SCRAPER ENGINE & HEARTBEAT
