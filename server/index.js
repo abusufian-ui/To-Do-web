@@ -28,6 +28,7 @@ const Course = require('./models/Course');
 const Note = require('./models/Note');
 const Keynote = require('./models/Keynote');
 const { Transaction, Budget, Debt } = require('./models/Transaction');
+const axios = require('axios');
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
@@ -51,6 +52,63 @@ const focusSessionSchema = new mongoose.Schema({
 const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 const app = express();
+
+// --- Cookies ----
+let activeUcpCookie = null;
+let heartbeatInterval = null;
+
+app.post('/api/session/keep-alive', (req, res) => {
+    const { ucpCookie } = req.body;
+    
+    if (!ucpCookie) {
+        return res.status(400).json({ error: "No cookie provided" });
+    }
+
+    activeUcpCookie = ucpCookie;
+    console.log("📥 Received fresh UCP cookies from extension!");
+
+    // Stop any existing heartbeat so we don't spam them with multiple intervals
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+    // Start a new heartbeat: Ping UCP every 3.5 minutes (210,000 milliseconds)
+    heartbeatInterval = setInterval(pingUcpDashboard, 210000);
+
+    res.status(200).json({ message: "Heartbeat initiated." });
+});
+
+// The Heartbeat Function
+async function pingUcpDashboard() {
+    if (!activeUcpCookie) return;
+
+    try {
+        console.log("💓 Sending heartbeat ping to UCP...");
+        
+        // Fetch the dashboard using the user's hijacked cookies
+        const response = await axios.get('https://horizon.ucp.edu.pk/student/dashboard', {
+            headers: {
+                'Cookie': activeUcpCookie,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            // Tell axios not to throw an error if UCP redirects us (e.g., if the session died)
+            maxRedirects: 0, 
+            validateStatus: function (status) {
+                return status >= 200 && status < 400; 
+            }
+        });
+
+        if (response.status === 302) {
+            console.warn("💀 UCP Session Expired! The absolute timeout was reached.");
+            clearInterval(heartbeatInterval);
+            activeUcpCookie = null;
+            // TODO: Trigger a push notification/email to you here!
+        } else {
+            console.log("✅ Heartbeat successful. Session is still alive.");
+        }
+
+    } catch (error) {
+        console.error("⚠️ Heartbeat failed to connect:", error.message);
+    }
+}
 
 // --- MIDDLEWARE ---
 const auth = (req, res, next) => {
