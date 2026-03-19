@@ -15,7 +15,7 @@ const { Resend } = require('resend');
 // --- NEW IMPORTS FOR SERVER NOTIFICATIONS & SCRAPING ---
 const { Expo } = require('expo-server-sdk');
 const cron = require('node-cron');
-const cheerio = require('cheerio'); // ADDED FOR BACKGROUND SCRAPING
+const cheerio = require('cheerio'); 
 
 // --- MODELS ---
 const User = require('./models/User');
@@ -39,7 +39,7 @@ const Announcement = require('./models/Announcement');
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
 const resend = new Resend(process.env.RESEND_API_KEY);
-let expo = new Expo(); // Initialize Expo SDK
+let expo = new Expo(); 
 
 const otpSchema = new mongoose.Schema({
   email: { type: String, required: true },
@@ -58,7 +58,6 @@ const focusSessionSchema = new mongoose.Schema({
 const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 const app = express();
-
 
 // --- MIDDLEWARE ---
 const auth = (req, res, next) => {
@@ -85,12 +84,44 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
+// ==========================================
+// 1. CRITICAL MIDDLEWARE (MUST BE AT TOP)
+// ==========================================
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000', 
+  'http://localhost:3001',
+  'http://127.0.0.1:3001', 
+  'http://localhost:8081', 
+  'http://localhost:5000/',
+  'http://192.168.0.111:8081',
+  'http://10.133.169.235:8081',
+  'https://myportalucp.online',
+  'https://horizon.ucp.edu.pk',
+  'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof'
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
+      callback(null, true);
+    } else {
+      console.error(`🚨 CORS BLOCKED THIS ORIGIN: "${origin}"`); 
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'], 
+  credentials: true,
+  optionsSuccessStatus: 200 
+};
+
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ==========================================
-// BACKGROUND SCRAPER ENGINE & HEARTBEAT
+// 2. BACKGROUND SCRAPER ENGINE & HEARTBEAT
 // ==========================================
 let activeUcpSession = {
     cookie: null,
@@ -120,9 +151,8 @@ app.post('/api/session/keep-alive', auth, (req, res) => {
     // Stop any existing heartbeat so we don't spam the server
     if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-    // Start a new heartbeat: Run the Scraper & Save loop every 3.5 minutes (210,000 milliseconds)
-    // This keeps the session alive AND updates MongoDB continuously
-    scrapeAndSaveUcpData(); // Fire it once immediately
+    // Start a new heartbeat: Run the Scraper & Save loop every 3.5 minutes
+    scrapeAndSaveUcpData(); 
     heartbeatInterval = setInterval(scrapeAndSaveUcpData, 210000); 
 
     res.status(200).json({ message: "Heartbeat & Background Scraper initiated." });
@@ -139,7 +169,6 @@ async function scrapeAndSaveUcpData() {
 
         for (const url of courseLinks) {
             try {
-                // Determine course name from the map (or fallback)
                 const courseName = (courseMap[url] && courseMap[url].name) ? courseMap[url].name : "Unknown Course";
 
                 // --- 1. ATTENDANCE ---
@@ -154,7 +183,7 @@ async function scrapeAndSaveUcpData() {
                     console.warn("💀 UCP Session Expired! The absolute timeout was reached.");
                     clearInterval(heartbeatInterval);
                     activeUcpSession.cookie = null;
-                    return; // Abort loop if logged out
+                    return; 
                 }
 
                 const parsedAttendance = parseAttendance(attRes.data);
@@ -210,7 +239,7 @@ async function scrapeAndSaveUcpData() {
 }
 
 // ==========================================
-// CHEERIO HTML PARSERS
+// 3. CHEERIO HTML PARSERS
 // ==========================================
 function parseAnnouncements(htmlText) {
     const $ = cheerio.load(htmlText);
@@ -261,41 +290,6 @@ function parseAttendance(htmlText) {
         records: attendanceRecords
     };
 }
-
-
-// --- SECURE CORS CONFIGURATION ---
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000', 
-  'http://localhost:3001',
-  'http://127.0.0.1:3001', 
-  'http://localhost:8081', 
-  'http://localhost:5000/',
-  'http://192.168.0.111:8081',
-  'http://10.133.169.235:8081',
-  'https://myportalucp.online',
-  'https://horizon.ucp.edu.pk',
-  'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof'
-];
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
-      callback(null, true);
-    } else {
-      console.error(`🚨 CORS BLOCKED THIS ORIGIN: "${origin}"`); 
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'], 
-  credentials: true,
-  optionsSuccessStatus: 200 
-};
-
-app.use(cors(corsOptions));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ==========================================
 // CLOUDINARY & MULTER CONFIGURATION
@@ -1319,12 +1313,6 @@ let cachedPrayerTimes = null;
 let lastFetchDate = null;
 
 cron.schedule('* * * * *', async () => {
-  // This will log every single minute just so you know the engine is alive
-  // console.log(`[${new Date().toISOString()}] ⏳ Cron Engine Sweeping...`);
-  
-  // ---------------------------------------------------------
-  // ENGINE 1: TASK REMINDERS (MULTI-PHASE)
-  // ---------------------------------------------------------
   try {
     const now = new Date();
     now.setSeconds(0, 0); 
