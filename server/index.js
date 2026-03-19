@@ -59,31 +59,6 @@ const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 const app = express();
 
-// --- MIDDLEWARE ---
-const auth = (req, res, next) => {
-  const token = req.header('x-auth-token');
-  if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
-  try {
-    const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
-    req.user = decoded;
-    next();
-  } catch (e) {
-    res.status(400).json({ message: 'Token is not valid' });
-  }
-};
-
-const adminAuth = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user || !user.isAdmin) {
-      return res.status(403).json({ message: "Access Denied: Admins Only" });
-    }
-    next();
-  } catch (error) {
-    res.status(500).json({ message: "Server Error" });
-  }
-};
-
 // ==========================================
 // 1. CRITICAL MIDDLEWARE (MUST BE AT TOP)
 // ==========================================
@@ -120,6 +95,31 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// --- AUTH MIDDLEWARE ---
+const auth = (req, res, next) => {
+  const token = req.header('x-auth-token');
+  if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
+  try {
+    const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
+    req.user = decoded;
+    next();
+  } catch (e) {
+    res.status(400).json({ message: 'Token is not valid' });
+  }
+};
+
+const adminAuth = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ message: "Access Denied: Admins Only" });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
 // ==========================================
 // 2. BACKGROUND SCRAPER ENGINE & HEARTBEAT
 // ==========================================
@@ -131,14 +131,14 @@ let activeUcpSession = {
 };
 let heartbeatInterval = null;
 
-app.post('/api/session/keep-alive', auth, (req, res) => {
+// BULLETPROOF: express.json() injected directly into route
+app.post('/api/session/keep-alive', express.json(), auth, (req, res) => {
     const { ucpCookie, courseLinks, courseMap } = req.body;
     
     if (!ucpCookie) {
         return res.status(400).json({ error: "No cookie provided" });
     }
 
-    // Save the session details securely into the server's memory
     activeUcpSession = {
         cookie: ucpCookie,
         userId: req.user.id,
@@ -148,17 +148,13 @@ app.post('/api/session/keep-alive', auth, (req, res) => {
 
     console.log("📥 Received fresh UCP cookies & links from extension!");
 
-    // Stop any existing heartbeat so we don't spam the server
     if (heartbeatInterval) clearInterval(heartbeatInterval);
-
-    // Start a new heartbeat: Run the Scraper & Save loop every 3.5 minutes
     scrapeAndSaveUcpData(); 
     heartbeatInterval = setInterval(scrapeAndSaveUcpData, 210000); 
 
     res.status(200).json({ message: "Heartbeat & Background Scraper initiated." });
 });
 
-// The Master Scrape & Save Loop
 async function scrapeAndSaveUcpData() {
     if (!activeUcpSession.cookie || !activeUcpSession.userId) return;
 
@@ -290,6 +286,108 @@ function parseAttendance(htmlText) {
         records: attendanceRecords
     };
 }
+
+// ==========================================
+// EXTENSION SYNC ROUTE
+// ==========================================
+app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
+  let session;
+  try {
+    session = await mongoose.startSession();
+    session.startTransaction();
+  } catch (e) {
+    session = null;
+  }
+
+  try {
+    const { gradesData, historyData, statsData, timetableData, portalId } = req.body;
+    const userId = req.user.id;
+    
+    const userQuery = User.findById(userId);
+    if (session) userQuery.session(session);
+    const user = await userQuery;
+
+    if (!portalId) throw new Error("Student ID not detected.");
+    if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
+      throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${portalId}.`);
+    }
+    if (!user.portalId) user.portalId = portalId.toUpperCase();
+
+    // --- GRADES ---
+    if (gradesData && gradesData.length > 0) {
+      await Grade.deleteMany({ userId }, { session });
+      for (const grade of gradesData) {
+        await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true, new: true, session });
+      }
+    }
+
+    // --- HISTORY ---
+    if (historyData && historyData.length > 0) {
+      await ResultHistory.deleteMany({ userId }, { session });
+      for (const sem of historyData) {
+        await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true, session });
+      }
+    }
+
+    // --- STATS ---
+    if (statsData && statsData.cgpa) {
+      await StudentStats.findOneAndUpdate({ userId }, { ...statsData, userId, lastUpdated: new Date() }, { upsert: true, session });
+    }
+
+    // --- TIMETABLE ---
+    if (timetableData && timetableData.length > 0) {
+      await Timetable.deleteMany({ userId }, { session });
+      for (const classItem of timetableData) {
+        const { id, ...classData } = classItem;
+        const newTimeTable = new Timetable({ ...classData, userId, lastUpdated: new Date() });
+        await newTimeTable.save({ session });
+      }
+    }
+
+    // --- UNIVERSAL COURSE ENGINE ---
+    const courseMap = new Map();
+    if (timetableData && timetableData.length > 0) {
+      timetableData.forEach(item => {
+        if (!item.courseName) return;
+        if (!courseMap.has(item.courseName)) {
+          courseMap.set(item.courseName, { name: item.courseName, code: item.courseCode || '', color: item.color || '#3498db', instructors: new Set(), rooms: new Set() });
+        }
+        const course = courseMap.get(item.courseName);
+        if (item.instructor && !item.instructor.includes('Unknown')) course.instructors.add(item.instructor);
+        if (item.room && !item.room.includes('Unknown')) course.rooms.add(item.room);
+      });
+    }
+
+    if (gradesData && gradesData.length > 0) {
+      gradesData.forEach(g => {
+        if (!g.courseName) return;
+        if (!courseMap.has(g.courseName)) {
+          courseMap.set(g.courseName, { name: g.courseName, code: '', color: '#3498db', instructors: new Set(), rooms: new Set() });
+        }
+      });
+    }
+
+    for (const [courseName, data] of courseMap.entries()) {
+      await Course.findOneAndUpdate(
+        { userId, name: courseName },
+        { $set: { userId, name: data.name, type: 'university', code: data.code || '', color: data.color || '#3498db', instructors: Array.from(data.instructors), rooms: Array.from(data.rooms) } },
+        { upsert: true, new: true, session }
+      );
+    }
+
+    user.isPortalConnected = true;
+    user.lastSyncAt = new Date();
+    await user.save({ session });
+
+    if (session) { await session.commitTransaction(); session.endSession(); }
+    res.json({ message: "Sync complete securely!" });
+
+  } catch (error) {
+    if (session) { await session.abortTransaction(); session.endSession(); }
+    const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
+    res.status(statusCode).json({ message: error.message });
+  }
+});
 
 // ==========================================
 // CLOUDINARY & MULTER CONFIGURATION
@@ -943,108 +1041,8 @@ app.get('/api/user/portal-status', auth, async (req, res) => {
 });
 
 // ==========================================
-// EXTENSION SYNC ROUTE
+// UNIVERSAL DATA GETTERS
 // ==========================================
-app.post('/api/extension-sync', auth, async (req, res) => {
-  let session;
-  try {
-    session = await mongoose.startSession();
-    session.startTransaction();
-  } catch (e) {
-    session = null;
-  }
-
-  try {
-    const { gradesData, historyData, statsData, timetableData, portalId } = req.body;
-    const userId = req.user.id;
-    
-    const userQuery = User.findById(userId);
-    if (session) userQuery.session(session);
-    const user = await userQuery;
-
-    if (!portalId) throw new Error("Student ID not detected.");
-    if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
-      throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${portalId}.`);
-    }
-    if (!user.portalId) user.portalId = portalId.toUpperCase();
-
-    // --- GRADES ---
-    if (gradesData && gradesData.length > 0) {
-      await Grade.deleteMany({ userId }, { session });
-      for (const grade of gradesData) {
-        await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true, new: true, session });
-      }
-    }
-
-    // --- HISTORY ---
-    if (historyData && historyData.length > 0) {
-      await ResultHistory.deleteMany({ userId }, { session });
-      for (const sem of historyData) {
-        await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true, session });
-      }
-    }
-
-    // --- STATS ---
-    if (statsData && statsData.cgpa) {
-      await StudentStats.findOneAndUpdate({ userId }, { ...statsData, userId, lastUpdated: new Date() }, { upsert: true, session });
-    }
-
-    // --- TIMETABLE ---
-    if (timetableData && timetableData.length > 0) {
-      await Timetable.deleteMany({ userId }, { session });
-      for (const classItem of timetableData) {
-        const { id, ...classData } = classItem;
-        const newTimeTable = new Timetable({ ...classData, userId, lastUpdated: new Date() });
-        await newTimeTable.save({ session });
-      }
-    }
-
-    // --- UNIVERSAL COURSE ENGINE ---
-    const courseMap = new Map();
-    if (timetableData && timetableData.length > 0) {
-      timetableData.forEach(item => {
-        if (!item.courseName) return;
-        if (!courseMap.has(item.courseName)) {
-          courseMap.set(item.courseName, { name: item.courseName, code: item.courseCode || '', color: item.color || '#3498db', instructors: new Set(), rooms: new Set() });
-        }
-        const course = courseMap.get(item.courseName);
-        if (item.instructor && !item.instructor.includes('Unknown')) course.instructors.add(item.instructor);
-        if (item.room && !item.room.includes('Unknown')) course.rooms.add(item.room);
-      });
-    }
-
-    if (gradesData && gradesData.length > 0) {
-      gradesData.forEach(g => {
-        if (!g.courseName) return;
-        if (!courseMap.has(g.courseName)) {
-          courseMap.set(g.courseName, { name: g.courseName, code: '', color: '#3498db', instructors: new Set(), rooms: new Set() });
-        }
-      });
-    }
-
-    for (const [courseName, data] of courseMap.entries()) {
-      await Course.findOneAndUpdate(
-        { userId, name: courseName },
-        { $set: { userId, name: data.name, type: 'university', code: data.code || '', color: data.color || '#3498db', instructors: Array.from(data.instructors), rooms: Array.from(data.rooms) } },
-        { upsert: true, new: true, session }
-      );
-    }
-
-    user.isPortalConnected = true;
-    user.lastSyncAt = new Date();
-    await user.save({ session });
-
-    if (session) { await session.commitTransaction(); session.endSession(); }
-    res.json({ message: "Sync complete securely!" });
-
-  } catch (error) {
-    if (session) { await session.abortTransaction(); session.endSession(); }
-    const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
-    res.status(statusCode).json({ message: error.message });
-  }
-});
-
-// --- STANDARD DATA GETTERS ---
 app.get('/api/timetable', auth, async (req, res) => {
   try {
     const timetable = await Timetable.find({ userId: req.user.id });
@@ -1536,4 +1534,3 @@ cron.schedule('* * * * *', async () => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
-module.exports = app;
