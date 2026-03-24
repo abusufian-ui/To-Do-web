@@ -28,6 +28,7 @@ const Habit = require('./models/Habit');
 const Course = require('./models/Course');
 const Note = require('./models/Note');
 const Keynote = require('./models/Keynote');
+const NamazRecord = require('./models/NamazRecord');
 const { Transaction, Budget, Debt } = require('./models/Transaction');
 const axios = require('axios');
 
@@ -66,10 +67,11 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000', 
   'http://localhost:3001',
+  'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
   'http://localhost:5000/',
-  'http://192.168.0.111:8081',
+  'https://192.168.0.106:8081',
   'http://10.133.169.235:8081',
   'https://myportalucp.online',
   'https://horizon.ucp.edu.pk',
@@ -131,7 +133,6 @@ let activeUcpSession = {
 };
 let heartbeatInterval = null;
 
-// BULLETPROOF: express.json() injected directly into route
 app.post('/api/session/keep-alive', express.json(), auth, (req, res) => {
     const { ucpCookie, courseLinks, courseMap } = req.body;
     
@@ -183,7 +184,6 @@ async function scrapeAndSaveUcpData() {
                 const parsedAttendance = parseAttendance(attRes.data);
                 const existingAtt = await Attendance.findOne({ userId: userId, courseUrl: url });
 
-                // PROTECT: Only save if we found actual records, OR if the database is completely empty (start of semester)
                 if (parsedAttendance.records.length > 0 || !existingAtt) {
                     await Attendance.findOneAndUpdate(
                         { userId: userId, courseUrl: url },
@@ -201,11 +201,10 @@ async function scrapeAndSaveUcpData() {
                 if (parsedSubmissions.length > 0 || !existingSub) {
                     let finalTasks = parsedSubmissions;
                     
-                    // SMART MERGE: Combine old tasks with new tasks without deleting historical ones
                     if (existingSub && existingSub.tasks && existingSub.tasks.length > 0) {
                         const taskMap = new Map();
-                        existingSub.tasks.forEach(t => taskMap.set(t.title, t)); // Load old
-                        parsedSubmissions.forEach(t => taskMap.set(t.title, t)); // Merge fresh
+                        existingSub.tasks.forEach(t => taskMap.set(t.title, t));
+                        parsedSubmissions.forEach(t => taskMap.set(t.title, t));
                         finalTasks = Array.from(taskMap.values());
                     }
 
@@ -225,11 +224,10 @@ async function scrapeAndSaveUcpData() {
                 if (parsedAnnouncements.length > 0 || !existingAnn) {
                     let finalNews = parsedAnnouncements;
 
-                    // SMART MERGE: Combine old news with new news
                     if (existingAnn && existingAnn.news && existingAnn.news.length > 0) {
                         const newsMap = new Map();
-                        existingAnn.news.forEach(n => newsMap.set(n.subject + n.date, n)); // Load old
-                        parsedAnnouncements.forEach(n => newsMap.set(n.subject + n.date, n)); // Merge fresh
+                        existingAnn.news.forEach(n => newsMap.set(n.subject + n.date, n)); 
+                        parsedAnnouncements.forEach(n => newsMap.set(n.subject + n.date, n)); 
                         finalNews = Array.from(newsMap.values());
                     }
 
@@ -258,17 +256,13 @@ function parseAnnouncements(htmlText) {
     const $ = cheerio.load(htmlText);
     const announcements = [];
     
-    // Relaxed selector: Look at ALL rows in the table body
     $('table tbody tr').each((index, element) => {
         const tds = $(element).find('td');
-        
-        // Ensure it's a real data row (at least 4 columns: Sr, Subject, Date, Description)
         if (tds.length >= 4) {
             const subject = tds.eq(1).text().trim();
             const date = tds.eq(2).text().trim();
             let description = tds.eq(3).text().trim().replace(/\s+/g, ' '); 
             
-            // Skip header rows if they accidentally get caught
             if (subject && subject.toLowerCase() !== 'subject') {
                 announcements.push({ subject, date, description });
             }
@@ -291,10 +285,8 @@ function parseSubmissions(htmlText, currentUrl) {
         const startDate = tds.eq(3).text().trim();
         const dueDate = tds.eq(4).text().trim();
         
-        // Grab the attachment link
         let attachmentLink = tds.eq(5).find('a').attr('href') || null;
 
-        // Force Absolute URL for the attachment
         if (attachmentLink && attachmentLink.startsWith('/')) {
             attachmentLink = baseUrl + attachmentLink;
         }
@@ -316,7 +308,7 @@ function parseSubmissions(htmlText, currentUrl) {
                 dueDate, 
                 status: currentStatus,
                 attachmentUrl: attachmentLink, 
-                submissionUrl: currentUrl      // <-- Always uses the exact page URL!
+                submissionUrl: currentUrl      
             });
         }
     });
@@ -327,14 +319,13 @@ function parseAttendance(htmlText) {
     const $ = cheerio.load(htmlText);
     const attendanceRecords = [];
     
-    // 1. Parse all the rows first
     $('table tbody tr').each((index, element) => {
         const tds = $(element).find('td');
         if (tds.length >= 3) {
             const date = tds.eq(1).text().trim();
             let status = tds.eq(2).text().trim();
             
-            if (date && date.toLowerCase() !== 'date') { // Ignore headers
+            if (date && date.toLowerCase() !== 'date') { 
                 if (status.toLowerCase().includes('leave')) status = 'Absent';
                 else if (status.toLowerCase().includes('absent')) status = 'Absent';
                 else if (status.toLowerCase().includes('present')) status = 'Present';
@@ -344,16 +335,11 @@ function parseAttendance(htmlText) {
         }
     });
 
-    // 2. Calculate the accurate summary directly from the parsed records
     const totalConducted = attendanceRecords.length;
     const totalAttended = attendanceRecords.filter(r => r.status === 'Present').length;
 
-    // 3. Return the fully computed object to be saved in MongoDB
     return {
-        summary: { 
-            conducted: totalConducted, 
-            attended: totalAttended 
-        },
+        summary: { conducted: totalConducted, attended: totalAttended },
         records: attendanceRecords
     };
 }
@@ -386,7 +372,6 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
     const courseName = decodeURIComponent(req.params.courseName);
     const userId = req.user.id;
 
-    // Fetch all three simultaneously using the courseName
     const [announcements, attendance, submissions] = await Promise.all([
       Announcement.findOne({ userId, courseName }),
       Attendance.findOne({ userId, courseName }),
@@ -1348,6 +1333,7 @@ app.put('/api/habits/:id/reset', auth, async (req, res) => {
   try {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
     habit.startDate = new Date(); 
+    habit.cheatDays = []; // <--- THIS FIXES THE RELAPSE BUG!
     await habit.save();
     res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error resetting habit" }); }
@@ -1376,6 +1362,41 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
     await habit.save();
     res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error checking in" }); }
+});
+
+app.get('/api/namaz/today', auth, async (req, res) => {
+   try {
+       const nowLahoreStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
+       const lahoreDateObj = new Date(nowLahoreStr);
+       const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+
+       let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
+       if (!record) {
+           record = await new NamazRecord({ userId: req.user.id, dateStr: todayStr }).save();
+       }
+       res.json(record);
+   } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+app.post('/api/namaz/offer', auth, async (req, res) => {
+   try {
+       const { prayerName } = req.body;
+       const nowLahoreStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
+       const lahoreDateObj = new Date(nowLahoreStr);
+       const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+
+       let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
+       if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
+
+       if (record.prayers[prayerName] === 'pending') {
+           record.prayers[prayerName] = 'offered';
+       } else if (record.prayers[prayerName] === 'missed' || record.prayers[prayerName] === 'locked') {
+           record.prayers[prayerName] = 'qazah'; 
+       }
+
+       await record.save();
+       res.json(record);
+   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // ==========================================
@@ -1520,6 +1541,7 @@ cron.schedule('* * * * *', async () => {
         Maghrib: timings.Maghrib,
         Isha: timings.Isha
       };
+
       lastFetchDate = todayStr;
 
       console.log(`[PRAYER ENGINE] 🔄 Fetched fresh Lahore Prayer Times for ${todayStr}:`, cachedPrayerTimes);
@@ -1534,36 +1556,49 @@ cron.schedule('* * * * *', async () => {
     }
 
     if (currentPrayer) {
-      console.log(`[PRAYER ENGINE] ⏰ It is exactly time for ${currentPrayer}! Scanning for opted-in users...`);
+      console.log(`[PRAYER ENGINE] ⏰ It is exactly time for ${currentPrayer}! Scanning users...`);
+      
+      const nowLahoreStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
+      const lahoreDateObj = new Date(nowLahoreStr);
+      const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+
       const prayerUsers = await User.find({ prayerNotifs: true, pushToken: { $ne: null } });
       let prayerMessages = [];
 
+      const prayerOrder = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']; 
+      const dbPrayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha']; 
+      const pIndex = prayerOrder.indexOf(currentPrayer.toLowerCase());
+      const dbPrayerName = dbPrayerOrder[pIndex];
+
       for (let user of prayerUsers) {
+        let record = await NamazRecord.findOne({ userId: user._id, dateStr: todayStr });
+        if (!record) record = new NamazRecord({ userId: user._id, dateStr: todayStr });
+
+        if (pIndex > 0) {
+           const prevPrayer = dbPrayerOrder[pIndex - 1];
+           if (record.prayers[prevPrayer] === 'pending') {
+               record.prayers[prevPrayer] = 'missed';
+           }
+        }
+        
+        record.prayers[dbPrayerName] = 'pending';
+        await record.save();
+
         if (Expo.isExpoPushToken(user.pushToken)) {
           prayerMessages.push({
             to: user.pushToken,
             title: `🕌 ${currentPrayer} Prayer Time`,
             body: `It is time for ${currentPrayer} prayer. Please take a moment to pray.`,
-            categoryId: "smart-alert", 
+            categoryId: "prayer-alert", 
             channelId: "prayer-channel-live", 
-            data: { type: 'prayer', eventId: `prayer_${currentPrayer}_${todayStr}` },
+            data: { type: 'prayer', prayerName: dbPrayerName },
           });
         }
       }
 
       if (prayerMessages.length > 0) {
-        console.log(`[PRAYER ENGINE] 🚀 Dispatching ${currentPrayer} alert to ${prayerMessages.length} users!`);
         let chunks = expo.chunkPushNotifications(prayerMessages);
-        for (let chunk of chunks) {
-          try {
-            let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-            console.log(`[PRAYER ENGINE] ✅ Successfully sent ${currentPrayer} chunk! Expo Tickets:`, ticketChunk);
-          } catch (error) {
-            console.error(`[PRAYER ENGINE] ❌ Error sending ${currentPrayer} chunk:`, error);
-          }
-        }
-      } else {
-         console.log(`[PRAYER ENGINE] ⚠️ It is time for ${currentPrayer}, but no users have prayer alerts enabled.`);
+        for (let chunk of chunks) await expo.sendPushNotificationsAsync(chunk);
       }
     }
   } catch (error) {
