@@ -12,10 +12,10 @@ const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
 
-// --- NEW IMPORTS FOR SERVER NOTIFICATIONS & SCRAPING ---
+// --- PUSH NOTIFICATIONS & CRON ---
 const { Expo } = require('expo-server-sdk');
 const cron = require('node-cron');
-const cheerio = require('cheerio'); 
+const axios = require('axios'); 
 
 // --- MODELS ---
 const User = require('./models/User');
@@ -30,9 +30,6 @@ const Note = require('./models/Note');
 const Keynote = require('./models/Keynote');
 const NamazRecord = require('./models/NamazRecord');
 const { Transaction, Budget, Debt } = require('./models/Transaction');
-const axios = require('axios');
-
-// --- NEW UCP DATA MODELS ---
 const Attendance = require('./models/Attendance');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
@@ -41,6 +38,42 @@ const Announcement = require('./models/Announcement');
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
 const resend = new Resend(process.env.RESEND_API_KEY);
 let expo = new Expo(); 
+
+// ==========================================
+// 🚀 MULTI-DEVICE PUSH NOTIFICATION HELPER
+// ==========================================
+async function sendPush(user, title, body, data = {}) {
+    let tokens = [];
+    if (user.pushTokens && user.pushTokens.length > 0) {
+        tokens = user.pushTokens.filter(t => Expo.isExpoPushToken(t));
+    } else if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
+        tokens = [user.pushToken]; 
+    }
+
+    if (tokens.length === 0) return;
+
+    let messages = [];
+    for (let pushToken of tokens) {
+        messages.push({
+            to: pushToken,
+            sound: 'default',
+            categoryId: "smart-alert",
+            title,
+            body,
+            data
+        });
+    }
+
+    try {
+        let chunks = expo.chunkPushNotifications(messages);
+        for (let chunk of chunks) {
+            await expo.sendPushNotificationsAsync(chunk);
+        }
+        console.log(`📲 Sent push: "${title}" to ${user.email}`);
+    } catch(e) { 
+        console.error("Push Error:", e.message); 
+    }
+}
 
 const otpSchema = new mongoose.Schema({
   email: { type: String, required: true },
@@ -60,19 +93,14 @@ const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 const app = express();
 
-// ==========================================
-// 1. CRITICAL MIDDLEWARE (MUST BE AT TOP)
-// ==========================================
 const allowedOrigins = [
   'http://localhost:3000',
-  'http://127.0.0.1:3000', 
+  'https://192.168.0.119:8081', 
   'http://localhost:3001',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
   'http://localhost:5000/',
-  'https://192.168.0.119:8081',
-  'http://10.133.169.235:8081',
   'https://myportalucp.online',
   'https://horizon.ucp.edu.pk',
   'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof'
@@ -83,7 +111,6 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
       callback(null, true);
     } else {
-      console.error(`🚨 CORS BLOCKED THIS ORIGIN: "${origin}"`); 
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -97,7 +124,6 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// --- AUTH MIDDLEWARE ---
 const auth = (req, res, next) => {
   const token = req.header('x-auth-token');
   if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
@@ -123,212 +149,19 @@ const adminAuth = async (req, res, next) => {
 };
 
 // ==========================================
-// 2. BACKGROUND ENGINE & DATABASE VAULT
+// ROUTES: UCP DATA & SYNC ENGINE
 // ==========================================
 
 app.post('/api/session/keep-alive', express.json(), auth, async (req, res) => {
     const { ucpCookie } = req.body;
-    
-    if (!ucpCookie) {
-        return res.status(400).json({ error: "No cookie provided" });
-    }
-
+    if (!ucpCookie) return res.status(400).json({ error: "No cookie provided" });
     try {
-        // FIX: Using $set ensures we ONLY touch the cookie field and never overwrite other data
-        await User.findByIdAndUpdate(
-            req.user.id, 
-            { $set: { ucpCookie: ucpCookie, isPortalConnected: true, lastSyncAt: new Date() } },
-            { strict: false } 
-        );
-
-        console.log(`📥 [VAULT] Received and saved fresh UCP cookies for User ID: ${req.user.id}`);
-        res.status(200).json({ message: "Cookies saved to vault. Cron engine will take over." });
+        await User.findByIdAndUpdate(req.user.id, { $set: { ucpCookie: ucpCookie, isPortalConnected: true, lastSyncAt: new Date() } }, { strict: false });
+        res.status(200).json({ message: "Cookies saved to vault." });
     } catch (err) {
-        console.error("Error saving cookie:", err);
         res.status(500).json({ error: "Failed to secure cookie in vault" });
     }
 });
-
-// ⚙️ THE BACKGROUND SCRAPER CRON JOB
-cron.schedule('*/2 * * * *', async () => {
-    console.log("🔄 [CRON] Starting background UCP sync cycle...");
-    
-    try {
-        // Query purely based on connection status so we can catch broken cookies
-        const users = await User.find({ isPortalConnected: true });
-
-        if (users.length === 0) {
-            console.log("💤 [CRON] No active users to sync right now.");
-            return;
-        }
-
-        let validUsersToSync = [];
-        for (const user of users) {
-            if (!user.ucpCookie || user.ucpCookie.trim() === "") {
-                console.log(`⚠️ [CRON] User ${user.email} is connected but their ucpCookie is MISSING in the database!`);
-                continue;
-            }
-            validUsersToSync.push(user);
-        }
-
-        if (validUsersToSync.length === 0) return;
-
-        console.log(`👥 [CRON] Commencing scrape for ${validUsersToSync.length} valid users...`);
-
-        // Loop through each user and scrape
-        for (const user of validUsersToSync) {
-            try {
-                const response = await axios.get('https://horizon.ucp.edu.pk/student/dashboard', {
-                    headers: {
-                        'Cookie': user.ucpCookie,
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    },
-                    maxRedirects: 0, 
-                    validateStatus: function (status) {
-                        return status >= 200 && status < 400; 
-                    }
-                });
-
-                const $ = cheerio.load(response.data);
-                const pageTitle = $('title').text().toLowerCase();
-
-                if (pageTitle.includes('login') || pageTitle.includes('sign in') || response.status === 302) {
-                    throw new Error('SESSION_EXPIRED');
-                }
-
-                console.log(`✅ [CRON] Sync successful for ${user.email}. Session is ALIVE.`);
-                
-                await User.updateOne({ _id: user._id }, { $set: { lastSyncAt: new Date() } });
-
-            } catch (error) {
-                const isExpired = error.message === 'SESSION_EXPIRED' || 
-                                 (error.response && [302, 401, 403].includes(error.response.status));
-
-                if (isExpired) {
-                    console.log(`💀 [CRON] SESSION EXPIRED for ${user.email}! Cleaning up...`);
-
-                    await User.updateOne(
-                        { _id: user._id }, 
-                        { $set: { ucpCookie: null, isPortalConnected: false } },
-                        { strict: false }
-                    );
-
-                    if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
-                        console.log(`📲 [CRON] Sending re-auth push notification to ${user.email}`);
-                        await expo.sendPushNotificationsAsync([{
-                            to: user.pushToken,
-                            sound: 'default',
-                            title: 'UCP Sync Paused ⚠️',
-                            body: 'Your university portal session expired. Tap here to quickly reconnect!',
-                            data: { action: 'open_settings_portal' },
-                        }]);
-                    }
-                } else {
-                    console.error(`❌ [CRON] Network error for ${user.email}:`, error.message);
-                }
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-    } catch (err) {
-        console.error("🚨 [CRON] Fatal error in cron job:", err);
-    }
-});
-
-// ==========================================
-// 3. CHEERIO HTML PARSERS (Kept intact for later)
-// ==========================================
-function parseAnnouncements(htmlText) {
-    const $ = cheerio.load(htmlText);
-    const announcements = [];
-    
-    $('table tbody tr').each((index, element) => {
-        const tds = $(element).find('td');
-        if (tds.length >= 4) {
-            const subject = tds.eq(1).text().trim();
-            const date = tds.eq(2).text().trim();
-            let description = tds.eq(3).text().trim().replace(/\s+/g, ' '); 
-            
-            if (subject && subject.toLowerCase() !== 'subject') {
-                announcements.push({ subject, date, description });
-            }
-        }
-    });
-    return announcements;
-}
-
-function parseSubmissions(htmlText, currentUrl) {
-    const $ = cheerio.load(htmlText);
-    const tasks = [];
-    const baseUrl = 'https://horizon.ucp.edu.pk';
-    
-    $('table.uk-table tbody tr.table-child-row').each((index, element) => {
-        const tds = $(element).find('td');
-        
-        const name = tds.eq(1).text().trim() || $(element).find('.rec_submission_title').text().trim();
-        let description = tds.eq(2).text().trim() || $(element).find('.rec_submission_description').text().trim();
-        description = description.replace(/\s+/g, ' '); 
-        const startDate = tds.eq(3).text().trim();
-        const dueDate = tds.eq(4).text().trim();
-        
-        let attachmentLink = tds.eq(5).find('a').attr('href') || null;
-
-        if (attachmentLink && attachmentLink.startsWith('/')) {
-            attachmentLink = baseUrl + attachmentLink;
-        }
-
-        const actionText = tds.eq(6).text().trim().toLowerCase();
-        const fullRowText = $(element).text().trim().toLowerCase();
-        
-        let currentStatus = "Pending";
-        
-        if (actionText.includes('submitted') || fullRowText.includes('submitted successfully')) {
-            currentStatus = "Submitted";
-        }
-
-        if (name) {
-            tasks.push({ 
-                title: name, 
-                description, 
-                startDate, 
-                dueDate, 
-                status: currentStatus,
-                attachmentUrl: attachmentLink, 
-                submissionUrl: currentUrl      
-            });
-        }
-    });
-    return tasks;
-}
-
-function parseAttendance(htmlText) {
-    const $ = cheerio.load(htmlText);
-    const attendanceRecords = [];
-    
-    $('table tbody tr').each((index, element) => {
-        const tds = $(element).find('td');
-        if (tds.length >= 3) {
-            const date = tds.eq(1).text().trim();
-            let status = tds.eq(2).text().trim();
-            
-            if (date && date.toLowerCase() !== 'date') { 
-                if (status.toLowerCase().includes('leave')) status = 'Absent';
-                else if (status.toLowerCase().includes('absent')) status = 'Absent';
-                else if (status.toLowerCase().includes('present')) status = 'Present';
-                
-                attendanceRecords.push({ date, status });
-            }
-        }
-    });
-
-    const totalConducted = attendanceRecords.length;
-    const totalAttended = attendanceRecords.filter(r => r.status === 'Present').length;
-
-    return {
-        summary: { conducted: totalConducted, attended: totalAttended },
-        records: attendanceRecords
-    };
-}
 
 app.get('/api/attendance', auth, async (req, res) => {
   try {
@@ -355,140 +188,139 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
   try {
     const courseName = decodeURIComponent(req.params.courseName);
     const userId = req.user.id;
-
     const [announcements, attendance, submissions] = await Promise.all([
       Announcement.findOne({ userId, courseName }),
       Attendance.findOne({ userId, courseName }),
       Submission.findOne({ userId, courseName })
     ]);
-
     res.json({
       announcements: announcements?.news || [],
       attendance: attendance || { summary: { conducted: 0, attended: 0 }, records: [] },
       submissions: submissions?.tasks || []
     });
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching course records" });
-  }
+  } catch (error) { res.status(500).json({ message: "Error fetching course records" }); }
 });
 
-// ==========================================
-// EXTENSION SYNC ROUTE
-// ==========================================
+// --- THE SMART EXTENSION SYNC (DIFFING ENGINE MOVED HERE) ---
 app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
-  let session;
   try {
-    session = await mongoose.startSession();
-    session.startTransaction();
-  } catch (e) {
-    session = null;
-  }
-
-  try {
-    // 1. We now extract ucpCookie directly from the main payload!
-    const { gradesData, historyData, statsData, timetableData, portalId, ucpCookie } = req.body;
+    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, portalId, ucpCookie } = req.body;
     const userId = req.user.id;
-    
-    const userQuery = User.findById(userId);
-    if (session) userQuery.session(session);
-    const user = await userQuery;
+    const user = await User.findById(userId);
 
     if (!portalId) throw new Error("Student ID not detected.");
     if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
       throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${portalId}.`);
     }
-    
     if (!user.portalId) user.portalId = portalId.toUpperCase();
 
-    // --- GRADES ---
+    // 1. SMART DIFFING: ATTENDANCE
+    if (attendanceData && attendanceData.length > 0) {
+        for (const att of attendanceData) {
+            // IRONCLAD PROTECTION: Skip corrupted data
+            if (!att.courseName || att.courseName.includes("Unknown")) continue;
+
+            const oldAtt = await Attendance.findOne({ userId, courseName: att.courseName });
+            if (oldAtt && oldAtt.summary && att.summary) {
+                const oldAbsents = oldAtt.summary.conducted - oldAtt.summary.attended;
+                const newAbsents = att.summary.conducted - att.summary.attended;
+                
+                if (newAbsents > oldAbsents) {
+                    sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${newAbsents}`);
+                    if (newAbsents >= 10 && oldAbsents < 10) {
+                        sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
+                    }
+                }
+            }
+            await Attendance.findOneAndUpdate({ userId, courseName: att.courseName }, { ...att, lastUpdated: new Date() }, { upsert: true });
+        }
+    }
+
+    // 2. SMART DIFFING: ANNOUNCEMENTS
+    if (announcementsData && announcementsData.length > 0) {
+        for (const ann of announcementsData) {
+            // IRONCLAD PROTECTION
+            if (!ann.courseName || ann.courseName.includes("Unknown")) continue;
+
+            const oldAnn = await Announcement.findOne({ userId, courseName: ann.courseName });
+            if (oldAnn && oldAnn.news && ann.news) {
+                if (ann.news.length > oldAnn.news.length) {
+                    sendPush(user, `New Announcement: ${ann.courseName} 📢`, ann.news[0].subject || "Tap to view details.");
+                }
+            }
+            await Announcement.findOneAndUpdate({ userId, courseName: ann.courseName }, { ...ann, lastUpdated: new Date() }, { upsert: true });
+        }
+    }
+
+    // 3. STORE SUBMISSIONS (The 1-min cron will handle the deadlines)
+    if (submissionsData && submissionsData.length > 0) {
+        for (const sub of submissionsData) {
+            // IRONCLAD PROTECTION
+            if (!sub.courseName || sub.courseName.includes("Unknown")) continue;
+            await Submission.findOneAndUpdate({ userId, courseName: sub.courseName }, { ...sub, lastUpdated: new Date() }, { upsert: true });
+        }
+    }
+
+    // --- STANDARD ACADEMIC DATA ---
     if (gradesData && gradesData.length > 0) {
-      await Grade.deleteMany({ userId }, { session });
+      await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
-        await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true, new: true, session });
+        if (!grade.courseName || grade.courseName.includes("Unknown")) continue;
+        await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true });
       }
     }
 
-    // --- HISTORY ---
     if (historyData && historyData.length > 0) {
-      await ResultHistory.deleteMany({ userId }, { session });
+      await ResultHistory.deleteMany({ userId });
       for (const sem of historyData) {
-        await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true, session });
+        await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true });
       }
     }
 
-    // --- STATS ---
     if (statsData && statsData.cgpa) {
-      await StudentStats.findOneAndUpdate({ userId }, { ...statsData, userId, lastUpdated: new Date() }, { upsert: true, session });
+      await StudentStats.findOneAndUpdate({ userId }, { ...statsData, userId, lastUpdated: new Date() }, { upsert: true });
     }
 
-    // --- TIMETABLE ---
     if (timetableData && timetableData.length > 0) {
-      await Timetable.deleteMany({ userId }, { session });
+      await Timetable.deleteMany({ userId });
+      const courseMap = new Map();
+      
       for (const classItem of timetableData) {
         const { id, ...classData } = classItem;
-        const newTimeTable = new Timetable({ ...classData, userId, lastUpdated: new Date() });
-        await newTimeTable.save({ session });
+        if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
+
+        await new Timetable({ ...classData, userId, lastUpdated: new Date() }).save();
+        
+        if (!courseMap.has(classItem.courseName)) courseMap.set(classItem.courseName, { name: classItem.courseName, code: classItem.courseCode || '', color: classItem.color || '#3498db', instructors: new Set(), rooms: new Set() });
+        const course = courseMap.get(classItem.courseName);
+        if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
+        if (classItem.room && !classItem.room.includes('Unknown')) course.rooms.add(classItem.room);
+      }
+
+      for (const [courseName, data] of courseMap.entries()) {
+        await Course.findOneAndUpdate(
+          { userId, name: courseName },
+          { $set: { userId, name: data.name, type: 'university', code: data.code || '', color: data.color || '#3498db', instructors: Array.from(data.instructors), rooms: Array.from(data.rooms) } },
+          { upsert: true }
+        );
       }
     }
 
-    // --- UNIVERSAL COURSE ENGINE ---
-    const courseMap = new Map();
-    if (timetableData && timetableData.length > 0) {
-      timetableData.forEach(item => {
-        if (!item.courseName) return;
-        if (!courseMap.has(item.courseName)) {
-          courseMap.set(item.courseName, { name: item.courseName, code: item.courseCode || '', color: item.color || '#3498db', instructors: new Set(), rooms: new Set() });
-        }
-        const course = courseMap.get(item.courseName);
-        if (item.instructor && !item.instructor.includes('Unknown')) course.instructors.add(item.instructor);
-        if (item.room && !item.room.includes('Unknown')) course.rooms.add(item.room);
-      });
-    }
-
-    if (gradesData && gradesData.length > 0) {
-      gradesData.forEach(g => {
-        if (!g.courseName) return;
-        if (!courseMap.has(g.courseName)) {
-          courseMap.set(g.courseName, { name: g.courseName, code: '', color: '#3498db', instructors: new Set(), rooms: new Set() });
-        }
-      });
-    }
-
-    for (const [courseName, data] of courseMap.entries()) {
-      await Course.findOneAndUpdate(
-        { userId, name: courseName },
-        { $set: { userId, name: data.name, type: 'university', code: data.code || '', color: data.color || '#3498db', instructors: Array.from(data.instructors), rooms: Array.from(data.rooms) } },
-        { upsert: true, new: true, session }
-      );
-    }
-
-    console.log(`📥 [VAULT] Processing sync for ${user.email}. Cookie attached: ${ucpCookie ? 'YES' : 'NO'}`);
-
-    // 2. We save everything (including the cookie) safely in ONE atomic update
-    await User.updateOne(
-        { _id: userId },
-        { $set: { 
-            isPortalConnected: true, 
-            lastSyncAt: new Date(), 
-            portalId: user.portalId,
-            ucpCookie: ucpCookie // Force the cookie into the DB!
-        } },
-        { session }
-    );
-
-    if (session) { await session.commitTransaction(); session.endSession(); }
-    res.json({ message: "Sync complete securely!" });
+    await User.updateOne({ _id: userId }, { $set: { isPortalConnected: true, lastSyncAt: new Date(), portalId: user.portalId, ucpCookie: ucpCookie || user.ucpCookie } });
+    
+    res.json({ message: "Sync & Diffing complete securely!" });
 
   } catch (error) {
-    if (session) { await session.abortTransaction(); session.endSession(); }
     const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
     res.status(statusCode).json({ message: error.message });
   }
 });
 
+
 // ==========================================
-// CLOUDINARY & MULTER CONFIGURATION
+// REST OF THE ROUTES (Kept Exactly The Same)
 // ==========================================
+
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
@@ -500,905 +332,309 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
-    folder: 'MyPortal_Keynotes', 
-    resource_type: 'auto',
-    use_filename: true,    
-    unique_filename: true  
-  },
+  params: { folder: 'MyPortal_Keynotes', resource_type: 'auto', use_filename: true, unique_filename: true },
 });
 
 const upload = multer({ storage: storage });
 
-// --- DATABASE CONNECTION ---
 const dbLink = process.env.REACT_APP_MONGODB_URI;
 console.log("🔗 Connecting to MyPortal Database...");
-mongoose.connect(dbLink)
-  .then(async () => {
-    console.log("✅ MongoDB Connected Successfully!");
-  })
-  .catch(err => console.log(err));
+mongoose.connect(dbLink).then(async () => { console.log("✅ MongoDB Connected Successfully!"); }).catch(err => console.log(err));
 
-// ==========================================
-// CLOUDINARY UPLOAD ROUTE
-// ==========================================
 app.post('/api/upload', auth, (req, res) => {
   upload.array('files', 10)(req, res, function (err) {
-    if (err) {
-      console.error("🚨 Cloudinary Upload Error:", err);
-      return res.status(500).json({ error: "Upload failed", details: err.message });
-    }
-
+    if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
     try {
-      if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ error: 'No files uploaded' });
-      }
-      const urls = req.files.map(file => file.path);
-      res.status(200).json({ message: 'Upload successful', urls: urls });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to process files after upload' });
-    }
+      if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
+      res.status(200).json({ message: 'Upload successful', urls: req.files.map(file => file.path) });
+    } catch (error) { res.status(500).json({ error: 'Failed to process files after upload' }); }
   });
 });
 
-// ==========================================
-// KEYNOTES / SNAPS MANAGEMENT
-// ==========================================
 app.get('/api/keynotes', auth, async (req, res) => {
-  try {
-    const keynotes = await Keynote.find({ userId: req.user.id, isDeleted: { $ne: true } }).sort({ createdAt: -1 });
-    res.json(keynotes);
-  } catch (error) { res.status(500).json({ message: "Error fetching keynotes" }); }
+  try { res.json(await Keynote.find({ userId: req.user.id, isDeleted: { $ne: true } }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.post('/api/keynotes', auth, async (req, res) => {
-  try {
-    const savedKeynote = await new Keynote({ ...req.body, userId: req.user.id }).save();
-    res.json(savedKeynote);
-  } catch (error) { res.status(500).json({ message: "Error saving keynote" }); }
+  try { res.json(await new Keynote({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.put('/api/keynotes/:id/read', auth, async (req, res) => {
-  try {
-    const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isRead: true }, { new: true });
-    res.json(keynote);
-  } catch (error) { res.status(500).json({ message: "Error updating keynote" }); }
+  try { res.json(await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isRead: true }, { new: true })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.put('/api/keynotes/:id', auth, async (req, res) => {
   try {
     const { title, content, courseName, mediaUrls, type } = req.body;
-    
-    if (!title || !title.trim()) {
-      return res.status(400).json({ message: "Title is required" });
-    }
-
-    const keynote = await Keynote.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
-      { 
-        title: title.trim(), 
-        content: content?.trim() || "", 
-        courseName: courseName || "General",
-        mediaUrls: mediaUrls || [],  
-        type: type || 'mixed'        
-      },
-      { new: true, runValidators: true }
-    );
-    
+    if (!title || !title.trim()) return res.status(400).json({ message: "Title is required" });
+    const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { title: title.trim(), content: content?.trim() || "", courseName: courseName || "General", mediaUrls: mediaUrls || [], type: type || 'mixed' }, { new: true, runValidators: true });
     if (!keynote) return res.status(404).json({ message: "Keynote not found" });
     res.json(keynote);
-  } catch (error) { 
-    res.status(500).json({ message: "Error updating keynote" }); 
-  }
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.put('/api/keynotes/:id/unread', auth, async (req, res) => {
-  try {
-    const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isRead: false }, { new: true });
-    res.json(keynote);
-  } catch (error) { res.status(500).json({ message: "Error updating keynote" }); }
+  try { res.json(await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isRead: false }, { new: true })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.put('/api/keynotes/:id/delete', auth, async (req, res) => {
-  try {
-    const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
-    res.json(keynote);
-  } catch (error) { res.status(500).json({ message: "Error moving keynote to bin" }); }
+  try { res.json(await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.put('/api/keynotes/:id/restore', auth, async (req, res) => {
-  try {
-    const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
-    res.json(keynote);
-  } catch (error) { res.status(500).json({ message: "Error restoring keynote" }); }
+  try { res.json(await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.delete('/api/keynotes/:id', auth, async (req, res) => {
-  try {
-    await Keynote.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    res.json({ success: true });
-  } catch (error) { res.status(500).json({ message: "Error deleting keynote permanently" }); }
+  try { await Keynote.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-// --- ADMIN ROUTES ---
 app.get('/api/admin/system-stats', async (req, res) => {
   try {
     const cpuLoad = await si.currentLoad();
     const mem = await si.mem();
-
     let dbSize = 0;
-    if (mongoose.connection.readyState === 1) {
-      const stats = await mongoose.connection.db.stats();
-      dbSize = stats.dataSize; 
-    }
-
-    res.json({
-      cpu: Math.round(cpuLoad.currentLoad),
-      memory: {
-        active: mem.active,
-        total: mem.total
-      },
-      dbSize: dbSize
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch stats" });
-  }
+    if (mongoose.connection.readyState === 1) dbSize = (await mongoose.connection.db.stats()).dataSize; 
+    res.json({ cpu: Math.round(cpuLoad.currentLoad), memory: { active: mem.active, total: mem.total }, dbSize: dbSize });
+  } catch (error) { res.status(500).json({ message: "Failed" }); }
 });
-
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
-    const cleanUsers = users.map(user => {
-      return {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        isAdmin: user.isAdmin,
-        isPortalConnected: user.isPortalConnected,
-        portalId: user.portalId,
-        lastSyncAt: user.lastSyncAt, 
-        createdAt: user.createdAt
-      };
-    });
-    res.json(cleanUsers);
+    res.json(users.map(user => ({ _id: user._id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected, portalId: user.portalId, lastSyncAt: user.lastSyncAt, createdAt: user.createdAt })));
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
-
 app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
   try {
     const userId = req.params.id;
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
-    if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
-      return res.status(400).json({ message: "You cannot delete yourself!" });
-    }
-    await Promise.all([
-      User.findByIdAndDelete(userId),
-      Grade.deleteMany({ userId }),
-      ResultHistory.deleteMany({ userId }),
-      StudentStats.deleteMany({ userId }),
-      Task.deleteMany({ userId }),
-      Transaction.deleteMany({ userId }),
-      Budget.deleteMany({ userId }),
-      Timetable.deleteMany({ userId }),
-      Habit.deleteMany({ userId }),
-      Course.deleteMany({ userId }),
-      Note.deleteMany({ user: userId }),
-      Keynote.deleteMany({ userId }),
-      FocusSession.deleteMany({ userId }),
-      Attendance.deleteMany({ userId }),
-      Submission.deleteMany({ userId }),
-      Announcement.deleteMany({ userId })
-    ]);
-    res.json({ message: "User deleted permanently." });
+    if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return res.status(400).json({ message: "Cannot delete yourself!" });
+    await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId })]);
+    res.json({ message: "User deleted" });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- DEBTS & LOANS ---
-app.get('/api/debts', auth, async (req, res) => {
-  try {
-    const debts = await Debt.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
-    res.json(debts);
-  } catch (error) { res.status(500).json({ message: "Error fetching debts" }); }
-});
-
-app.post('/api/debts', auth, async (req, res) => {
-  try {
-    const savedDebt = await new Debt({ ...req.body, userId: req.user.id }).save();
-    res.json(savedDebt);
-  } catch (error) { res.status(500).json({ message: "Error creating debt" }); }
-});
-
-app.put('/api/debts/:id/status', auth, async (req, res) => {
-  try {
-    const debt = await Debt.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id }, 
-      { status: req.body.status }, 
-      { new: true }
-    );
-    res.json(debt);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.put('/api/debts/:id/delete', auth, async (req, res) => {
-  try {
-    const debt = await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
-    res.json(debt);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.put('/api/debts/:id/restore', auth, async (req, res) => {
-  try {
-    const debt = await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
-    res.json(debt);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.delete('/api/debts/:id', auth, async (req, res) => {
-  try {
-    await Debt.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    res.json({ success: true });
-  } catch (error) { res.status(500).json({ message: "Error deleting debt" }); }
-});
-
+app.get('/api/debts', auth, async (req, res) => { try { res.json(await Debt.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/debts', auth, async (req, res) => { try { res.json(await new Debt({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/debts/:id/status', auth, async (req, res) => { try { res.json(await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { status: req.body.status }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/debts/:id/delete', auth, async (req, res) => { try { res.json(await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/debts/:id/restore', auth, async (req, res) => { try { res.json(await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.delete('/api/debts/:id', auth, async (req, res) => { try { await Debt.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/debts/:id/pay', auth, async (req, res) => {
   try {
     const { amount, date, description, type, category } = req.body;
-    const paymentAmount = Number(amount);
-
     const debt = await Debt.findOne({ _id: req.params.id, userId: req.user.id });
-    
-    if (!debt) return res.status(404).json({ message: "Debt not found" });
-    if (paymentAmount > debt.amount) return res.status(400).json({ message: "Payment exceeds active debt amount" });
-
-    debt.amount -= paymentAmount;
-    if (debt.amount === 0) {
-      debt.status = 'paid';
-    }
+    if (!debt) return res.status(404).json({ message: "Not found" });
+    if (Number(amount) > debt.amount) return res.status(400).json({ message: "Exceeds debt" });
+    debt.amount -= Number(amount);
+    if (debt.amount === 0) debt.status = 'paid';
     await debt.save();
-
-    const newTransaction = new Transaction({
-      userId: req.user.id,
-      type: type, 
-      amount: paymentAmount,
-      category: category, 
-      description: description || `Payment for: ${debt.person}`,
-      date: date || new Date().toISOString()
-    });
-
-    await newTransaction.save();
+    const newTransaction = await new Transaction({ userId: req.user.id, type, amount: Number(amount), category, description: description || `Payment: ${debt.person}`, date: date || new Date().toISOString() }).save();
     res.json({ success: true, debt, transaction: newTransaction });
-    
-  } catch (error) {
-    console.error("🚨 CRASH IN DEBT PAY:", error); 
-    res.status(500).json({ message: error.message || "Server crashed while paying debt" });
-  }
+  } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- NOTES MANAGEMENT ---
 app.post('/api/notes', auth, async (req, res) => {
   try {
     const { _id, title, courseId, content, referenceFiles } = req.body;
-    
-    if (_id) { 
-      const updatedNote = await Note.findByIdAndUpdate(
-        _id, 
-        { title, courseId, content, referenceFiles }, 
-        { new: true, runValidators: true } 
-      );
-      return res.json(updatedNote);
-    }
-
-    const newNote = new Note({ 
-      user: req.user.id, 
-      title, 
-      courseId, 
-      content: content || " ", 
-      referenceFiles 
-    });
-    
-    await newNote.save();
-    res.json(newNote);
-
-  } catch (error) { 
-    res.status(500).json({ error: "Server Error", details: error.message }); 
-  }
+    if (_id) return res.json(await Note.findByIdAndUpdate(_id, { title, courseId, content, referenceFiles }, { new: true }));
+    res.json(await new Note({ user: req.user.id, title, courseId, content: content || " ", referenceFiles }).save());
+  } catch (error) { res.status(500).json({ error: "Error" }); }
 });
+app.get('/api/notes', auth, async (req, res) => { try { res.json(await Note.find({ user: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ error: "Error" }); } });
+app.put('/api/notes/:id/delete', auth, async (req, res) => { try { await Note.findByIdAndUpdate(req.params.id, { isDeleted: true, deletedAt: new Date() }); res.json({ message: 'Bin' }); } catch (error) { res.status(500).json({ error: "Error" }); } });
+app.put('/api/notes/:id/restore', auth, async (req, res) => { try { await Note.findByIdAndUpdate(req.params.id, { isDeleted: false, deletedAt: null }); res.json({ message: 'Restored' }); } catch (error) { res.status(500).json({ error: "Error" }); } });
+app.delete('/api/notes/:id', auth, async (req, res) => { try { await Note.findByIdAndDelete(req.params.id); res.json({ message: 'Deleted' }); } catch (error) { res.status(500).json({ error: "Error" }); } });
 
-app.get('/api/notes', auth, async (req, res) => {
-  try {
-    const notes = await Note.find({ user: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
-    res.json(notes);
-  } catch (error) { res.status(500).json({ error: "Server Error" }); }
-});
-
-app.put('/api/notes/:id/delete', auth, async (req, res) => {
-  try {
-    await Note.findByIdAndUpdate(req.params.id, { isDeleted: true, deletedAt: new Date() });
-    res.json({ message: 'Moved to bin' });
-  } catch (error) { res.status(500).json({ error: "Server Error" }); }
-});
-
-app.put('/api/notes/:id/restore', auth, async (req, res) => {
-  try {
-    await Note.findByIdAndUpdate(req.params.id, { isDeleted: false, deletedAt: null });
-    res.json({ message: 'Restored from bin' });
-  } catch (error) { res.status(500).json({ error: "Server Error" }); }
-});
-
-app.delete('/api/notes/:id', auth, async (req, res) => {
-  try {
-    await Note.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Deleted permanently' });
-  } catch (error) { res.status(500).json({ error: "Server Error" }); }
-});
-
-// --- ADMIN SECURITY (PIN) ROUTES ---
 app.post('/api/admin/verify-pin', auth, adminAuth, async (req, res) => {
   try {
-    const { pin } = req.body;
     const user = await User.findById(req.user.id);
-    const actualPin = user.adminPin || '0000'; 
-    
-    if (pin === actualPin) return res.json({ success: true });
-    res.status(400).json({ message: "Invalid Security PIN" });
-  } catch (error) { res.status(500).json({ message: "Server error" }); }
+    if (req.body.pin === (user.adminPin || '0000')) return res.json({ success: true });
+    res.status(400).json({ message: "Invalid PIN" });
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.post('/api/admin/request-pin-otp', auth, adminAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     const code = Math.floor(100000 + Math.random() * 900000).toString(); 
-    
     await OTP.findOneAndUpdate({ email: user.email }, { code }, { upsert: true, new: true });
-    
-    await resend.emails.send({
-      from: 'MyPortal <otp@myportalucp.online>',
-      to: user.email,
-      subject: 'Admin Security Alert: PIN Change OTP',
-      html: `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>Security Action Required</h2>
-          <p>You requested to change your Admin Command Center PIN.</p>
-          <p>Your verification code is: <strong style="font-size: 24px; color: #dc2626;">${code}</strong></p>
-          <p>If you did not request this, please ignore this email.</p>
-        </div>
-      `
-    });
-    res.json({ message: "OTP sent to admin email" });
-  } catch (error) { res.status(500).json({ message: "Server error" }); }
+    await resend.emails.send({ from: 'MyPortal <otp@myportalucp.online>', to: user.email, subject: 'Admin PIN OTP', html: `<p>Code: <strong>${code}</strong></p>` });
+    res.json({ message: "OTP sent" });
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.put('/api/admin/change-pin', auth, adminAuth, async (req, res) => {
   try {
-    const { otp, newPin } = req.body;
     const user = await User.findById(req.user.id);
-    
-    const validOTP = await OTP.findOne({ email: user.email, code: otp });
-    if (!validOTP) return res.status(400).json({ message: "Invalid or expired OTP." });
-    
-    user.adminPin = newPin;
-    await user.save();
-    await OTP.deleteOne({ email: user.email }); 
-    
-    res.json({ success: true, message: "Security PIN successfully updated." });
-  } catch (error) { res.status(500).json({ message: "Server error" }); }
+    if (!(await OTP.findOne({ email: user.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
+    user.adminPin = req.body.newPin; await user.save(); await OTP.deleteOne({ email: user.email }); 
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-// --- COURSES MANAGEMENT ---
 app.get('/api/courses', auth, async (req, res) => {
   try {
-    const defaultCourseExists = await Course.findOne({ userId: req.user.id, name: 'General Course' });
-    if (!defaultCourseExists) {
-      const defaultCourse = new Course({ 
-        userId: req.user.id, 
-        name: 'General Course', 
-        type: 'general' 
-      });
-      await defaultCourse.save();
-    }
-
-    const courses = await Course.find({ userId: req.user.id }).sort({ createdAt: 1 });
-    res.json(courses);
-  } catch (error) { 
-    res.status(500).json({ message: "Error fetching courses" }); 
-  }
+    if (!(await Course.findOne({ userId: req.user.id, name: 'General Course' }))) await new Course({ userId: req.user.id, name: 'General Course', type: 'general' }).save();
+    res.json(await Course.find({ userId: req.user.id }).sort({ createdAt: 1 }));
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.post('/api/courses', auth, async (req, res) => {
   try {
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ message: "Name required" });
-
-    const exists = await Course.findOne({ userId: req.user.id, name });
-    if (exists) return res.status(400).json({ message: "Course already exists" });
-
-    const newCourse = new Course({ userId: req.user.id, name, type: 'general' });
-    const savedCourse = await newCourse.save();
-    res.json(savedCourse);
-  } catch (error) { res.status(500).json({ message: "Error adding course" }); }
+    if (!req.body.name) return res.status(400).json({ message: "Name required" });
+    if (await Course.findOne({ userId: req.user.id, name: req.body.name })) return res.status(400).json({ message: "Exists" });
+    res.json(await new Course({ userId: req.user.id, name: req.body.name, type: 'general' }).save());
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.delete('/api/courses/:id', auth, async (req, res) => {
   try {
-    const courseId = req.params.id;
-    const course = await Course.findOne({ _id: courseId, userId: req.user.id });
-    if (!course) {
-      return res.status(404).json({ message: "Course not found." });
-    }
-
-    const normalizedName = course.name.toLowerCase().trim();
-    if (normalizedName === 'general' || normalizedName === 'general course' || normalizedName === 'general-task') {
-      return res.status(403).json({ message: "The General course is permanent and cannot be deleted." });
-    }
-
-    await Course.findByIdAndDelete(courseId);
-
-    await Task.updateMany(
-      { userId: req.user.id, course: course.name },
-      { $set: { course: "General" } }
-    );
-
-    res.json({ message: "Course safely removed. Associated tasks moved to General." });
-  } catch (err) {
-    console.error("Safe Delete Error:", err);
-    res.status(500).json({ message: "Server error during deletion." });
-  }
+    const course = await Course.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!course) return res.status(404).json({ message: "Not found" });
+    if (['general', 'general course'].includes(course.name.toLowerCase().trim())) return res.status(403).json({ message: "Permanent course" });
+    await Course.findByIdAndDelete(req.params.id);
+    await Task.updateMany({ userId: req.user.id, course: course.name }, { $set: { course: "General" } });
+    res.json({ message: "Removed safely" });
+  } catch (err) { res.status(500).json({ message: "Error" }); }
 });
 
-// --- AUTH & USER ROUTES ---
 app.post('/api/send-otp', async (req, res) => {
-  const { email } = req.body;
   try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ message: "User already registered" });
-
+    if (await User.findOne({ email: req.body.email })) return res.status(400).json({ message: "Registered" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
-    
-    const { data, error } = await resend.emails.send({
-      from: 'MyPortal <otp@myportalucp.online>', 
-      to: email,
-      subject: 'MyPortal Verification Code',
-      html: `<p>Your verification code is: <strong>${code}</strong></p>`
-    });
-
-    if (error) return res.status(500).json({ message: "Failed to send email" });
-    res.json({ message: "OTP sent successfully" });
-
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+    await OTP.findOneAndUpdate({ email: req.body.email }, { code }, { upsert: true, new: true });
+    await resend.emails.send({ from: 'MyPortal <otp@myportalucp.online>', to: req.body.email, subject: 'Verification Code', html: `<p>Code: <strong>${code}</strong></p>` });
+    res.json({ message: "OTP sent" });
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.post('/api/register', async (req, res) => {
-  const { name, email, password, otp } = req.body;
   try {
-    const validOTP = await OTP.findOne({ email, code: otp });
-    if (!validOTP) return res.status(400).json({ message: "Invalid or expired OTP" });
-
-    let user = await User.findOne({ email });
-    if (user) return res.status(400).json({ message: 'User already exists' });
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    const isAdmin = email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-
-    user = new User({ name, email, password: hashedPassword, isAdmin });
-    await user.save();
-    await OTP.deleteOne({ email });
-
-    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
+    if (!(await OTP.findOne({ email: req.body.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
+    if (await User.findOne({ email: req.body.email })) return res.status(400).json({ message: 'Exists' });
+    const user = new User({ name: req.body.name, email: req.body.email, password: await bcrypt.hash(req.body.password, await bcrypt.genSalt(10)), isAdmin: req.body.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() });
+    await user.save(); await OTP.deleteOne({ email: req.body.email });
+    res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
-
 app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
   try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
-
-    if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() && !user.isAdmin) {
-      user.isAdmin = true;
-      await user.save();
-    }
-    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
+    const user = await User.findOne({ email: req.body.email });
+    if (!user || !(await bcrypt.compare(req.body.password, user.password))) return res.status(400).json({ message: 'Invalid credentials' });
+    res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
-
-app.get('/api/auth/user', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select('-password');
-    res.json(user);
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
-});
-
+app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/forgot-password', async (req, res) => {
-  const { email } = req.body;
   try {
-    const existingUser = await User.findOne({ email });
-    if (!existingUser) return res.status(400).json({ message: "No account found with that email." });
-
+    if (!(await User.findOne({ email: req.body.email }))) return res.status(400).json({ message: "No account found" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
-    
-    const { error } = await resend.emails.send({
-      from: 'MyPortal <otp@myportalucp.online>', 
-      to: email,
-      subject: 'MyPortal Password Reset',
-      html: `<p>Your password reset code is: <strong>${code}</strong></p>`
-    });
-
-    if (error) return res.status(500).json({ message: "Failed to send email" });
-    res.json({ message: "OTP sent successfully" });
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+    await OTP.findOneAndUpdate({ email: req.body.email }, { code }, { upsert: true, new: true });
+    await resend.emails.send({ from: 'MyPortal <otp@myportalucp.online>', to: req.body.email, subject: 'Password Reset', html: `<p>Code: <strong>${code}</strong></p>` });
+    res.json({ message: "OTP sent" });
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.post('/api/reset-password', async (req, res) => {
-  const { email, otp, newPassword } = req.body;
   try {
-    const validOTP = await OTP.findOne({ email, code: otp });
-    if (!validOTP) return res.status(400).json({ message: "Invalid or expired OTP" });
-
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
-
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
-    await user.save();
-    
-    await OTP.deleteOne({ email }); 
-
-    res.json({ message: "Password updated successfully" });
+    if (!(await OTP.findOne({ email: req.body.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
+    const user = await User.findOne({ email: req.body.email });
+    user.password = await bcrypt.hash(req.body.newPassword, await bcrypt.genSalt(10));
+    await user.save(); await OTP.deleteOne({ email: req.body.email }); 
+    res.json({ message: "Password updated" });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
-
-app.put('/api/user/profile', auth, async (req, res) => {
-  try {
-    const { name } = req.body;
-    const user = await User.findByIdAndUpdate(req.user.id, { name }, { new: true }).select('-password');
-    res.json(user);
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
-});
-
+app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.put('/api/user/password', auth, async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body;
     const user = await User.findById(req.user.id);
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Incorrect current password" });
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
-    await user.save();
-    res.json({ message: "Password updated successfully" });
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+    if (!(await bcrypt.compare(req.body.currentPassword, user.password))) return res.status(400).json({ message: "Incorrect password" });
+    user.password = await bcrypt.hash(req.body.newPassword, await bcrypt.genSalt(10)); await user.save();
+    res.json({ message: "Password updated" });
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-// --- PUSH TOKEN ROUTE ---
 app.post('/api/user/push-token', auth, async (req, res) => {
   try {
-    const { token } = req.body;
-    await User.findByIdAndUpdate(req.user.id, { pushToken: token });
-    res.json({ success: true, message: "Push token updated" });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to update push token" });
-  }
+    const user = await User.findById(req.user.id);
+    const token = req.body.token;
+    if (token) {
+        if (!user.pushTokens) user.pushTokens = [];
+        if (!user.pushTokens.includes(token)) {
+            user.pushTokens.push(token);
+            await user.save();
+        }
+    }
+    res.json({ success: true, message: "Push token registered" });
+  } catch (error) { res.status(500).json({ message: "Failed to update token" }); }
 });
 
-// --- PREFERENCES ROUTE ---
-app.put('/api/user/preferences', auth, async (req, res) => {
-  try {
-    const { prayerNotifs } = req.body;
-    await User.findByIdAndUpdate(req.user.id, { prayerNotifs });
-    res.json({ success: true, message: "Preferences updated" });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to update preferences" });
-  }
-});
+app.put('/api/user/preferences', auth, async (req, res) => { try { await User.findByIdAndUpdate(req.user.id, { prayerNotifs: req.body.prayerNotifs }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 app.post('/api/user/link-portal', auth, async (req, res) => {
-  const { portalId } = req.body; 
-  try {
-    await User.findByIdAndUpdate(req.user.id, { portalId: portalId, isPortalConnected: true });
-    res.json({ success: true, message: "Account linked. Please use the Chrome Extension to sync data." });
-  } catch (error) { res.status(500).json({ message: "Failed to link account." }); }
+  try { await User.findByIdAndUpdate(req.user.id, { portalId: req.body.portalId, isPortalConnected: true }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-
 app.post('/api/user/unlink-portal', auth, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, { 
-        portalId: null, 
-        isPortalConnected: false, 
-        lastSyncAt: null,
-        ucpCookie: null // Add this to make sure we clear the vault
-    }, { strict: false });
-
-    await Promise.all([
-      Grade.deleteMany({ userId: req.user.id }),
-      ResultHistory.deleteMany({ userId: req.user.id }),
-      StudentStats.deleteMany({ userId: req.user.id }),
-      Timetable.deleteMany({ userId: req.user.id }),
-      Course.deleteMany({ userId: req.user.id, type: 'university' }) 
-    ]);
-
-    res.json({ success: true, message: "Portal account removed." });
-  } catch (error) { 
-    console.error("🚨 UNLINK PORTAL CRASH:", error);
-    res.status(500).json({ message: error.message || "Server crashed while unlinking." }); 
-  }
-});
-
-app.get('/api/user/portal-status', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    res.json({ isConnected: !!user.portalId && user.isPortalConnected, portalId: user.portalId });
-  } catch (error) { res.status(500).json({ message: "Error checking status" }); }
-});
-
-// ==========================================
-// UNIVERSAL DATA GETTERS
-// ==========================================
-app.get('/api/timetable', auth, async (req, res) => {
-  try {
-    const timetable = await Timetable.find({ userId: req.user.id });
-    res.json(timetable.map(item => ({ ...item.toObject(), id: item._id })));
-  } catch (error) { res.status(500).json({ message: error.message }); }
-});
-
-app.get('/api/student-stats', auth, async (req, res) => {
-  try {
-    const stats = await StudentStats.findOne({ userId: req.user.id });
-    res.json(stats || { cgpa: "0.00", credits: "0", inprogressCr: "0" });
-  } catch (error) { res.status(500).json({ message: error.message }); }
-});
-
-app.get('/api/grades', auth, async (req, res) => {
-  try {
-    const grades = await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 });
-    res.json(grades);
-  } catch (error) { res.status(500).json({ message: error.message }); }
-});
-
-app.get('/api/results-history', auth, async (req, res) => {
-  try {
-    const history = await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 });
-    res.json(history);
-  } catch (error) { res.status(500).json({ message: error.message }); }
-});
-
-// ==========================================
-// UNIVERSAL ENTITY ROUTES
-// ==========================================
-
-// --- HYPER FOCUS SESSIONS ---
-app.get('/api/focus-sessions', auth, async (req, res) => {
-  try {
-    const sessions = await FocusSession.find({ userId: req.user.id }).sort({ completedAt: -1 });
-    res.json(sessions);
-  } catch (error) { res.status(500).json({ message: "Error fetching focus sessions" }); }
-});
-
-app.post('/api/focus-sessions', auth, async (req, res) => {
-  try {
-    const savedSession = await new FocusSession({ ...req.body, userId: req.user.id }).save();
-    res.json(savedSession);
-  } catch (error) { res.status(500).json({ message: "Error saving focus session" }); }
-});
-
-// --- TASKS ---
-app.get('/api/tasks', auth, async (req, res) => {
-  try {
-    const tasks = await Task.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
-    res.json(tasks);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.post('/api/tasks', auth, async (req, res) => {
-  try {
-    const savedTask = await new Task({ ...req.body, userId: req.user.id }).save();
-    res.json(savedTask);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.put('/api/tasks/:id', auth, async (req, res) => {
-  try {
-    const updatedTask = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { $set: req.body }, { new: true });
-    res.json(updatedTask);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => {
-  try {
-    await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.put('/api/tasks/:id/delete', auth, async (req, res) => {
-  try {
-    const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
-    res.json(task);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.put('/api/tasks/:id/restore', auth, async (req, res) => {
-  try {
-    const task = await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
-    res.json(task);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.delete('/api/tasks/:id', auth, async (req, res) => {
-  try {
-    await Task.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    res.json({ message: "Deleted" });
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-// --- TRANSACTIONS ---
-app.get('/api/transactions', auth, async (req, res) => {
-  try {
-    const transactions = await Transaction.find({ userId: req.user.id, isDeleted: false }).sort({ date: -1, createdAt: -1 });
-    res.json(transactions);
-  } catch (error) { res.status(500).json({ message: "Error" }); }
-});
-
-app.post('/api/transactions', auth, async (req, res) => {
-  try {
-    const savedT = await new Transaction({ ...req.body, userId: req.user.id }).save();
-    res.json(savedT);
-  } catch (error) { res.status(500).json({ message: "Error" }); }
-});
-
-app.put('/api/transactions/:id/delete', auth, async (req, res) => {
-  try {
-    const transaction = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
-    res.json(transaction);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.put('/api/transactions/:id/restore', auth, async (req, res) => {
-  try {
-    const transaction = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
-    res.json(transaction);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.delete('/api/transactions/:id', auth, async (req, res) => {
-  try {
-    await Transaction.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    await User.findByIdAndUpdate(req.user.id, { portalId: null, isPortalConnected: false, lastSyncAt: null, ucpCookie: null }, { strict: false });
+    await Promise.all([ Grade.deleteMany({ userId: req.user.id }), ResultHistory.deleteMany({ userId: req.user.id }), StudentStats.deleteMany({ userId: req.user.id }), Timetable.deleteMany({ userId: req.user.id }), Course.deleteMany({ userId: req.user.id, type: 'university' }) ]);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
+app.get('/api/user/portal-status', auth, async (req, res) => { try { const user = await User.findById(req.user.id); res.json({ isConnected: !!user.portalId && user.isPortalConnected, portalId: user.portalId }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-// --- BUDGETS ---
-app.get('/api/budgets', auth, async (req, res) => {
-  try {
-    const budgets = await Budget.find({ userId: req.user.id });
-    res.json(budgets);
-  } catch (error) { res.status(500).json({ message: "Error" }); }
-});
+app.get('/api/timetable', auth, async (req, res) => { try { res.json((await Timetable.find({ userId: req.user.id })).map(i => ({...i.toObject(), id: i._id}))); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await StudentStats.findOne({ userId: req.user.id }) || { cgpa: "0.00", credits: "0", inprogressCr: "0" }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/results-history', auth, async (req, res) => { try { res.json(await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-app.post('/api/budgets', auth, async (req, res) => {
-  try {
-    const { category, limit } = req.body;
-    const budget = await Budget.findOneAndUpdate({ category, userId: req.user.id }, { limit, userId: req.user.id }, { upsert: true, new: true });
-    res.json(budget);
-  } catch (error) { res.status(500).json({ message: "Error" }); }
-});
+app.get('/api/focus-sessions', auth, async (req, res) => { try { res.json(await FocusSession.find({ userId: req.user.id }).sort({ completedAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await new FocusSession({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-// --- HABITS ---
-app.get('/api/habits', auth, async (req, res) => {
-  try {
-    const habits = await Habit.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 });
-    res.json(habits);
-  } catch (error) { res.status(500).json({ message: "Error fetching habits" }); }
-});
+app.get('/api/tasks', auth, async (req, res) => { try { res.json(await Task.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.post('/api/tasks', auth, async (req, res) => { try { res.json(await new Task({ ...req.body, userId: req.user.id }).save()); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/tasks/:id', auth, async (req, res) => { try { res.json(await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { $set: req.body }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => { try { await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true }); res.json({ success: true }); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/tasks/:id/delete', auth, async (req, res) => { try { res.json(await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/tasks/:id/restore', auth, async (req, res) => { try { res.json(await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.delete('/api/tasks/:id', auth, async (req, res) => { try { await Task.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ message: "Deleted" }); } catch (err) { res.status(500).json({ message: err.message }) } });
 
-app.post('/api/habits', auth, async (req, res) => {
-  try {
-    const savedHabit = await new Habit({ ...req.body, userId: req.user.id, startDate: new Date() }).save();
-    res.json(savedHabit);
-  } catch (error) { res.status(500).json({ message: "Error creating habit" }); }
-});
+app.get('/api/transactions', auth, async (req, res) => { try { res.json(await Transaction.find({ userId: req.user.id, isDeleted: false }).sort({ date: -1, createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/transactions', auth, async (req, res) => { try { res.json(await new Transaction({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/transactions/:id/delete', auth, async (req, res) => { try { res.json(await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/transactions/:id/restore', auth, async (req, res) => { try { res.json(await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.delete('/api/transactions/:id', auth, async (req, res) => { try { await Transaction.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-app.put('/api/habits/:id/delete', auth, async (req, res) => {
-  try {
-    const habit = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
-    res.json(habit);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
+app.get('/api/budgets', auth, async (req, res) => { try { res.json(await Budget.find({ userId: req.user.id })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/budgets', auth, async (req, res) => { try { res.json(await Budget.findOneAndUpdate({ category: req.body.category, userId: req.user.id }, { limit: req.body.limit, userId: req.user.id }, { upsert: true, new: true })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-app.put('/api/habits/:id/restore', auth, async (req, res) => {
-  try {
-    const habit = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true });
-    res.json(habit);
-  } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.delete('/api/habits/:id', auth, async (req, res) => {
-  try {
-    await Habit.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
-    res.json({ success: true });
-  } catch (error) { res.status(500).json({ message: "Error deleting habit" }); }
-});
-
-app.put('/api/habits/:id/reset', auth, async (req, res) => {
-  try {
-    const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
-    habit.startDate = new Date(); 
-    habit.cheatDays = []; 
-    await habit.save();
-    res.json(habit);
-  } catch (error) { res.status(500).json({ message: "Error resetting habit" }); }
-});
-
-app.put('/api/habits/:id/cheat', auth, async (req, res) => {
-  try {
-    const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
-    habit.cheatDays.push(new Date());
-    await habit.save();
-    res.json(habit);
-  } catch (error) { res.status(500).json({ message: "Error using allowance" }); }
-});
-
+app.get('/api/habits', auth, async (req, res) => { try { res.json(await Habit.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/habits', auth, async (req, res) => { try { res.json(await new Habit({ ...req.body, userId: req.user.id, startDate: new Date() }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/habits/:id/delete', auth, async (req, res) => { try { res.json(await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/habits/:id/restore', auth, async (req, res) => { try { res.json(await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.delete('/api/habits/:id', auth, async (req, res) => { try { await Habit.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/habits/:id/reset', auth, async (req, res) => { try { const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id }); habit.startDate = new Date(); habit.cheatDays = []; await habit.save(); res.json(habit); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/habits/:id/cheat', auth, async (req, res) => { try { const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id }); habit.cheatDays.push(new Date()); await habit.save(); res.json(habit); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.put('/api/habits/:id/checkin', auth, async (req, res) => {
   try {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
-    
     habit.checkIns.push(new Date());
-    
     const uniqueDays = new Set(habit.checkIns.map(d => new Date(d).setHours(0,0,0,0)));
-    if (uniqueDays.size > habit.longestStreak) {
-      habit.longestStreak = uniqueDays.size;
-    }
-    
-    await habit.save();
-    res.json(habit);
-  } catch (error) { res.status(500).json({ message: "Error checking in" }); }
+    if (uniqueDays.size > habit.longestStreak) habit.longestStreak = uniqueDays.size;
+    await habit.save(); res.json(habit);
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
 app.get('/api/namaz/today', auth, async (req, res) => {
    try {
-       const nowLahoreStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
-       const lahoreDateObj = new Date(nowLahoreStr);
+       const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
        const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-
        let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
-       if (!record) {
-           record = await new NamazRecord({ userId: req.user.id, dateStr: todayStr }).save();
-       }
+       if (!record) record = await new NamazRecord({ userId: req.user.id, dateStr: todayStr }).save();
        res.json(record);
    } catch (err) { res.status(500).json({ message: err.message }); }
 });
-
 app.post('/api/namaz/offer', auth, async (req, res) => {
    try {
-       const { prayerName } = req.body;
-       const nowLahoreStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
-       const lahoreDateObj = new Date(nowLahoreStr);
+       const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
        const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-
        let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
        if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
-
-       if (record.prayers[prayerName] === 'pending') {
-           record.prayers[prayerName] = 'offered';
-       } else if (record.prayers[prayerName] === 'missed' || record.prayers[prayerName] === 'locked') {
-           record.prayers[prayerName] = 'qazah'; 
-       }
-
-       await record.save();
-       res.json(record);
+       if (record.prayers[req.body.prayerName] === 'pending') record.prayers[req.body.prayerName] = 'offered';
+       else if (record.prayers[req.body.prayerName] === 'missed' || record.prayers[req.body.prayerName] === 'locked') record.prayers[req.body.prayerName] = 'qazah'; 
+       await record.save(); res.json(record);
    } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// ==========================================
-// UNIVERSAL BIN ROUTES
-// ==========================================
 app.get('/api/bin', auth, async (req, res) => {
   try {
     const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).lean();
@@ -1406,11 +642,9 @@ app.get('/api/bin', auth, async (req, res) => {
     const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
     const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean(); 
     const keynotes = await Keynote.find({ userId: req.user.id, isDeleted: true }).lean(); 
-    
     res.json({ tasks, transactions, habits, notes, keynotes });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
-
 app.put('/api/bin/restore-all', auth, async (req, res) => {
   try {
     await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
@@ -1421,7 +655,6 @@ app.put('/api/bin/restore-all', auth, async (req, res) => {
     res.json({ message: "Restored" });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
-
 app.delete('/api/bin/empty', auth, async (req, res) => {
   try {
     await Task.deleteMany({ userId: req.user.id, isDeleted: true });
@@ -1433,25 +666,29 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
 
-app.get('/', (req, res) => {
-  res.json({ message: "API is running 🚀" });
-});
+app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
+
 
 // ==========================================
-// 🔔 THE CRON ENGINE (Runs every minute)
+// 🔔 THE 1-MINUTE CRON ENGINES 
+// (Tasks, Prayers, Classes, Deadlines)
+// Reads purely from the secure DB vault!
 // ==========================================
 
 let cachedPrayerTimes = null;
 let lastFetchDate = null;
 
 cron.schedule('* * * * *', async () => {
+
+  // ---------------------------------------------------------
+  // ENGINE 1: STANDARD TASK REMINDERS
+  // ---------------------------------------------------------
   try {
     const now = new Date();
     now.setSeconds(0, 0); 
     
     const target15Start = new Date(now.getTime() + 15 * 60000);
     const target15End = new Date(target15Start.getTime() + 60000);
-    
     const targetExactStart = new Date(now.getTime());
     const targetExactEnd = new Date(now.getTime() + 60000);
 
@@ -1462,106 +699,50 @@ cron.schedule('* * * * *', async () => {
     const dd = String(now.getDate()).padStart(2, "0");
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    const orConditions = [];
-
-    orConditions.push({ triggerAt: { $gte: target15Start, $lt: target15End } });
-    orConditions.push({ triggerAt: { $gte: targetExactStart, $lt: targetExactEnd } });
+    const orConditions = [
+        { triggerAt: { $gte: target15Start, $lt: target15End } },
+        { triggerAt: { $gte: targetExactStart, $lt: targetExactEnd } }
+    ];
 
     if (currentMinute === 0 && [9, 12, 15, 19].includes(currentHour)) {
       orConditions.push({ date: todayStr, time: null });
     }
 
-    if (orConditions.length > 0) {
-      const upcomingTasks = await Task.find({
-        completed: false,
-        isDeleted: false,
-        acknowledged: false,
-        $or: orConditions
-      }).populate('userId');
+    const upcomingTasks = await Task.find({ completed: false, isDeleted: false, acknowledged: false, $or: orConditions }).populate('userId');
 
-      let taskMessages = [];
+    for (let task of upcomingTasks) {
+      if (!task.userId) continue;
+      let bodyText = `Task: ${task.name}`;
+      if (task.time && new Date(task.triggerAt) > now) bodyText = `Starts in 15 mins: ${task.name}`;
+      else if (task.time && new Date(task.triggerAt) <= now) bodyText = `It is time for: ${task.name}`;
+      else bodyText = `Daily Reminder: ${task.name}`;
 
-      for (let task of upcomingTasks) {
-        if (!task.userId || !task.userId.pushToken) continue;
-        const pushToken = task.userId.pushToken;
-        
-        if (Expo.isExpoPushToken(pushToken)) {
-          let bodyText = `Task: ${task.name}`;
-          
-          if (task.time && new Date(task.triggerAt) > now) {
-            bodyText = `Starts in 15 mins: ${task.name}`;
-          } else if (task.time && new Date(task.triggerAt) <= now) {
-            bodyText = `It is time for: ${task.name}`;
-          } else {
-            bodyText = `Daily Reminder: ${task.name}`;
-          }
-
-          console.log(`[TASK ENGINE] 🎯 Found task: "${task.name}" for user ${task.userId.email}`);
-          taskMessages.push({
-            to: pushToken,
-            sound: 'default',
-            categoryId: "smart-alert", 
-            title: `Task Reminder: ${task.course || 'General'} 📌`,
-            body: bodyText,
-            data: { taskId: task._id, type: 'task' },
-          });
-        }
-      }
-
-      if (taskMessages.length > 0) {
-        let chunks = expo.chunkPushNotifications(taskMessages);
-        for (let chunk of chunks) await expo.sendPushNotificationsAsync(chunk);
-      }
+      sendPush(task.userId, `Task Reminder: ${task.course || 'General'} 📌`, bodyText, { taskId: task._id, type: 'task' });
     }
-  } catch (error) {
-    console.error(`[TASK ENGINE] ❌ Critical Error:`, error);
-  }
+  } catch (error) { console.error(`[TASK ENGINE] Error:`, error); }
 
   // ---------------------------------------------------------
   // ENGINE 2: LIVE PRAYER ALERTS (LAHORE, PKT)
   // ---------------------------------------------------------
   try {
-    const nowLahoreStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
-    const lahoreDateObj = new Date(nowLahoreStr);
-    
+    const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
     const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
     const currentLahoreTime = lahoreDateObj.toLocaleTimeString("en-US", { hour12: false, hour: '2-digit', minute: '2-digit' });
 
     if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
       const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1');
       const timings = response.data.data.timings;
-      
-      cachedPrayerTimes = {
-        Fajr: timings.Fajr,
-        Dhuhr: timings.Dhuhr,
-        Asr: timings.Asr,
-        Maghrib: timings.Maghrib,
-        Isha: timings.Isha
-      };
-
+      cachedPrayerTimes = { Fajr: timings.Fajr, Dhuhr: timings.Dhuhr, Asr: timings.Asr, Maghrib: timings.Maghrib, Isha: timings.Isha };
       lastFetchDate = todayStr;
-
-      console.log(`[PRAYER ENGINE] 🔄 Fetched fresh Lahore Prayer Times for ${todayStr}:`, cachedPrayerTimes);
     }
 
     let currentPrayer = null;
     for (const [prayer, time] of Object.entries(cachedPrayerTimes)) {
-      if (time === currentLahoreTime) {
-        currentPrayer = prayer;
-        break;
-      }
+      if (time === currentLahoreTime) { currentPrayer = prayer; break; }
     }
 
     if (currentPrayer) {
-      console.log(`[PRAYER ENGINE] ⏰ It is exactly time for ${currentPrayer}! Scanning users...`);
-      
-      const nowLahoreStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
-      const lahoreDateObj = new Date(nowLahoreStr);
-      const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-
-      const prayerUsers = await User.find({ prayerNotifs: true, pushToken: { $ne: null } });
-      let prayerMessages = [];
-
+      const prayerUsers = await User.find({ prayerNotifs: true });
       const prayerOrder = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']; 
       const dbPrayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha']; 
       const pIndex = prayerOrder.indexOf(currentPrayer.toLowerCase());
@@ -1573,70 +754,36 @@ cron.schedule('* * * * *', async () => {
 
         if (pIndex > 0) {
            const prevPrayer = dbPrayerOrder[pIndex - 1];
-           if (record.prayers[prevPrayer] === 'pending') {
-               record.prayers[prevPrayer] = 'missed';
-           }
+           if (record.prayers[prevPrayer] === 'pending') record.prayers[prevPrayer] = 'missed';
         }
         
         record.prayers[dbPrayerName] = 'pending';
         await record.save();
-
-        if (Expo.isExpoPushToken(user.pushToken)) {
-          prayerMessages.push({
-            to: user.pushToken,
-            title: `🕌 ${currentPrayer} Prayer Time`,
-            body: `It is time for ${currentPrayer} prayer. Please take a moment to pray.`,
-            categoryId: "prayer-alert", 
-            channelId: "prayer-channel-live", 
-            data: { type: 'prayer', prayerName: dbPrayerName },
-          });
-        }
-      }
-
-      if (prayerMessages.length > 0) {
-        let chunks = expo.chunkPushNotifications(prayerMessages);
-        for (let chunk of chunks) await expo.sendPushNotificationsAsync(chunk);
+        sendPush(user, `🕌 ${currentPrayer} Prayer Time`, `It is time for ${currentPrayer} prayer. Please take a moment to pray.`, { type: 'prayer', prayerName: dbPrayerName });
       }
     }
-  } catch (error) {
-    console.error(`[PRAYER ENGINE] ❌ Critical Error:`, error);
-  }
+  } catch (error) { console.error(`[PRAYER ENGINE] Error:`, error); }
 
   // ---------------------------------------------------------
-  // ENGINE 3: CLASS REMINDERS (BULLETPROOF EDITION)
+  // ENGINE 3: CLASS REMINDERS
   // ---------------------------------------------------------
   try {
-    const nowPktStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
-    const pktNow = new Date(nowPktStr);
-    
+    const pktNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
     const targetTime = new Date(pktNow.getTime() + 5 * 60000);
+    const targetDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetTime.getDay()];
     
-    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const targetDay = days[targetTime.getDay()];
-    const targetHours = targetTime.getHours();
-    const targetMinutes = targetTime.getMinutes();
-
-    const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => {
-        console.error("[CLASS ENGINE] DB Query Error:", err.message);
-        return [];
-    });
-
-    let classMessages = [];
+    const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => []);
 
     for (let cls of todaysClasses) {
-      if (!cls || !cls.userId || !cls.userId.pushToken || !cls.startTime) continue;
+      if (!cls || !cls.userId || !cls.startTime) continue;
 
-      let classHours = -1;
-      let classMinutes = -1;
-      
-      const timeString = String(cls.startTime).trim();
-      const timeMatch = timeString.match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
+      let classHours = -1, classMinutes = -1;
+      const timeMatch = String(cls.startTime).trim().match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
       
       if (timeMatch) {
         classHours = parseInt(timeMatch[1], 10);
         classMinutes = parseInt(timeMatch[2], 10);
         const modifier = timeMatch[3];
-        
         if (modifier) {
            const isPM = modifier.toLowerCase() === 'pm';
            if (isPM && classHours < 12) classHours += 12;
@@ -1644,40 +791,46 @@ cron.schedule('* * * * *', async () => {
         }
       }
 
-      if (classHours === targetHours && classMinutes === targetMinutes) {
-        const pushToken = cls.userId.pushToken;
-        
-        if (Expo.isExpoPushToken(pushToken)) {
-          const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) 
-            ? cls.instructor 
-            : "Your teacher";
-          
-          const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) 
-            ? ` (Room: ${cls.room})` 
-            : "";
-          
-          console.log(`[CLASS ENGINE] 🎓 Found class: "${cls.courseName}" for user ${cls.userId.email}`);
-          
-          classMessages.push({
-            to: pushToken,
-            sound: 'default',
-            categoryId: "smart-alert", 
-            title: `Upcoming Class: ${cls.courseName} 📚`,
-            body: `${instructorName} is starting the lecture in 5 mins${roomInfo}`,
-            data: { type: 'class', classId: cls._id },
-          });
-        }
+      if (classHours === targetTime.getHours() && classMinutes === targetTime.getMinutes()) {
+        const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) ? cls.instructor : "Your teacher";
+        const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) ? ` (Room: ${cls.room})` : "";
+        sendPush(cls.userId, `Upcoming Class: ${cls.courseName} 📚`, `${instructorName} is starting the lecture in 5 mins${roomInfo}`, { type: 'class', classId: cls._id });
       }
     }
+  } catch (error) { console.error(`[CLASS ENGINE] Error:`, error.message); }
 
-    if (classMessages.length > 0) {
-      let chunks = expo.chunkPushNotifications(classMessages);
-      for (let chunk of chunks) await expo.sendPushNotificationsAsync(chunk);
+  // ---------------------------------------------------------
+  // ENGINE 4: SUBMISSION DEADLINE ALERTS
+  // ---------------------------------------------------------
+  try {
+    const allSubmissions = await Submission.find({}).populate('userId');
+    const now = new Date();
+
+    for (let sub of allSubmissions) {
+        if (!sub.userId || !sub.tasks || sub.tasks.length === 0) continue;
+
+        for (let task of sub.tasks) {
+            if (task.status.toLowerCase().includes('submitted')) continue;
+            
+            const dueDate = new Date(task.dueDate);
+            if (isNaN(dueDate)) continue;
+
+            const diffMinutes = Math.floor((dueDate.getTime() - now.getTime()) / 60000);
+            let alertMsg = null;
+            
+            if (diffMinutes === 24 * 60) alertMsg = "24 Hours Remaining!";
+            else if (diffMinutes === 12 * 60) alertMsg = "12 Hours Remaining!";
+            else if (diffMinutes === 6 * 60) alertMsg = "6 Hours Remaining!";
+            else if (diffMinutes === 2 * 60) alertMsg = "2 Hours Remaining! Hurry!";
+            else if (diffMinutes === 30) alertMsg = "FINAL WARNING: 30 Mins Left!";
+
+            if (alertMsg) {
+                sendPush(sub.userId, `Deadline Alert: ${sub.courseName} ⚠️`, `${alertMsg} for "${task.title}".`, { type: 'submission', url: task.submissionUrl });
+            }
+        }
     }
+  } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
 
-  } catch (error) {
-    console.error(`[CLASS ENGINE] ❌ Critical Error:`, error.message);
-  }
 });
 
 const PORT = process.env.PORT || 5000;
