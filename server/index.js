@@ -385,7 +385,8 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
   }
 
   try {
-    const { gradesData, historyData, statsData, timetableData, portalId } = req.body;
+    // 1. We now extract ucpCookie directly from the main payload!
+    const { gradesData, historyData, statsData, timetableData, portalId, ucpCookie } = req.body;
     const userId = req.user.id;
     
     const userQuery = User.findById(userId);
@@ -461,10 +462,17 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
       );
     }
 
-    // FIX: Using updateOne to prevent the Mongoose Race Condition that wiped the cookies!
+    console.log(`📥 [VAULT] Processing sync for ${user.email}. Cookie attached: ${ucpCookie ? 'YES' : 'NO'}`);
+
+    // 2. We save everything (including the cookie) safely in ONE atomic update
     await User.updateOne(
         { _id: userId },
-        { $set: { isPortalConnected: true, lastSyncAt: new Date(), portalId: user.portalId } },
+        { $set: { 
+            isPortalConnected: true, 
+            lastSyncAt: new Date(), 
+            portalId: user.portalId,
+            ucpCookie: ucpCookie // Force the cookie into the DB!
+        } },
         { session }
     );
 
