@@ -71,7 +71,7 @@ const allowedOrigins = [
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
   'http://localhost:5000/',
-  'https://192.168.0.106:8081',
+  'https://192.168.0.119:8081',
   'http://10.133.169.235:8081',
   'https://myportalucp.online',
   'https://horizon.ucp.edu.pk',
@@ -123,134 +123,120 @@ const adminAuth = async (req, res, next) => {
 };
 
 // ==========================================
-// 2. BACKGROUND SCRAPER ENGINE & HEARTBEAT
+// 2. BACKGROUND ENGINE & DATABASE VAULT
 // ==========================================
-let activeUcpSession = {
-    cookie: null,
-    userId: null,
-    courseLinks: [],
-    courseMap: {}
-};
-let heartbeatInterval = null;
 
-app.post('/api/session/keep-alive', express.json(), auth, (req, res) => {
-    const { ucpCookie, courseLinks, courseMap } = req.body;
+app.post('/api/session/keep-alive', express.json(), auth, async (req, res) => {
+    const { ucpCookie } = req.body;
     
     if (!ucpCookie) {
         return res.status(400).json({ error: "No cookie provided" });
     }
 
-    activeUcpSession = {
-        cookie: ucpCookie,
-        userId: req.user.id,
-        courseLinks: courseLinks || [],
-        courseMap: courseMap || {}
-    };
+    try {
+        // FIX: Using $set ensures we ONLY touch the cookie field and never overwrite other data
+        await User.findByIdAndUpdate(
+            req.user.id, 
+            { $set: { ucpCookie: ucpCookie, isPortalConnected: true, lastSyncAt: new Date() } },
+            { strict: false } 
+        );
 
-    console.log("📥 Received fresh UCP cookies & links from extension!");
-
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-    scrapeAndSaveUcpData(); 
-    heartbeatInterval = setInterval(scrapeAndSaveUcpData, 210000); 
-
-    res.status(200).json({ message: "Heartbeat & Background Scraper initiated." });
+        console.log(`📥 [VAULT] Received and saved fresh UCP cookies for User ID: ${req.user.id}`);
+        res.status(200).json({ message: "Cookies saved to vault. Cron engine will take over." });
+    } catch (err) {
+        console.error("Error saving cookie:", err);
+        res.status(500).json({ error: "Failed to secure cookie in vault" });
+    }
 });
 
-async function scrapeAndSaveUcpData() {
-    if (!activeUcpSession.cookie || !activeUcpSession.userId) return;
-
-    const { cookie, userId, courseLinks, courseMap } = activeUcpSession;
-
+// ⚙️ THE BACKGROUND SCRAPER CRON JOB
+cron.schedule('*/2 * * * *', async () => {
+    console.log("🔄 [CRON] Starting background UCP sync cycle...");
+    
     try {
-        console.log("🚀 Background Scraper: Sweeping active UCP courses...");
+        // Query purely based on connection status so we can catch broken cookies
+        const users = await User.find({ isPortalConnected: true });
 
-        for (const url of courseLinks) {
+        if (users.length === 0) {
+            console.log("💤 [CRON] No active users to sync right now.");
+            return;
+        }
+
+        let validUsersToSync = [];
+        for (const user of users) {
+            if (!user.ucpCookie || user.ucpCookie.trim() === "") {
+                console.log(`⚠️ [CRON] User ${user.email} is connected but their ucpCookie is MISSING in the database!`);
+                continue;
+            }
+            validUsersToSync.push(user);
+        }
+
+        if (validUsersToSync.length === 0) return;
+
+        console.log(`👥 [CRON] Commencing scrape for ${validUsersToSync.length} valid users...`);
+
+        // Loop through each user and scrape
+        for (const user of validUsersToSync) {
             try {
-                const courseName = (courseMap[url] && courseMap[url].name) ? courseMap[url].name : "Unknown Course";
-                const courseId = url.split('/').pop();
-                const baseUrl = 'https://horizon.ucp.edu.pk/student/course';
-
-                // --- 1. ATTENDANCE ---
-                const attUrl = `${baseUrl}/attendance/${courseId}`;
-                const attRes = await axios.get(attUrl, { headers: { 'Cookie': cookie }, maxRedirects: 0, validateStatus: status => status < 400 });
-
-                if (attRes.status === 302) {
-                    console.warn("💀 UCP Session Expired! The absolute timeout was reached.");
-                    clearInterval(heartbeatInterval);
-                    activeUcpSession.cookie = null;
-                    return; 
-                }
-
-                const parsedAttendance = parseAttendance(attRes.data);
-                const existingAtt = await Attendance.findOne({ userId: userId, courseUrl: url });
-
-                if (parsedAttendance.records.length > 0 || !existingAtt) {
-                    await Attendance.findOneAndUpdate(
-                        { userId: userId, courseUrl: url },
-                        { courseName: courseName, summary: parsedAttendance.summary, records: parsedAttendance.records, lastUpdated: Date.now() },
-                        { upsert: true }
-                    );
-                }
-
-                // --- 2. SUBMISSIONS ---
-                const subUrl = `${baseUrl}/submission/${courseId}`;
-                const subRes = await axios.get(subUrl, { headers: { 'Cookie': cookie } });
-                const parsedSubmissions = parseSubmissions(subRes.data, subUrl);
-                const existingSub = await Submission.findOne({ userId: userId, courseUrl: url });
-
-                if (parsedSubmissions.length > 0 || !existingSub) {
-                    let finalTasks = parsedSubmissions;
-                    
-                    if (existingSub && existingSub.tasks && existingSub.tasks.length > 0) {
-                        const taskMap = new Map();
-                        existingSub.tasks.forEach(t => taskMap.set(t.title, t));
-                        parsedSubmissions.forEach(t => taskMap.set(t.title, t));
-                        finalTasks = Array.from(taskMap.values());
+                const response = await axios.get('https://horizon.ucp.edu.pk/student/dashboard', {
+                    headers: {
+                        'Cookie': user.ucpCookie,
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    },
+                    maxRedirects: 0, 
+                    validateStatus: function (status) {
+                        return status >= 200 && status < 400; 
                     }
+                });
 
-                    await Submission.findOneAndUpdate(
-                        { userId: userId, courseUrl: url },
-                        { courseName: courseName, tasks: finalTasks, lastUpdated: Date.now() },
-                        { upsert: true }
-                    );
+                const $ = cheerio.load(response.data);
+                const pageTitle = $('title').text().toLowerCase();
+
+                if (pageTitle.includes('login') || pageTitle.includes('sign in') || response.status === 302) {
+                    throw new Error('SESSION_EXPIRED');
                 }
 
-                // --- 3. ANNOUNCEMENTS ---
-                const annUrl = `${baseUrl}/info/${courseId}`;
-                const annRes = await axios.get(annUrl, { headers: { 'Cookie': cookie } });
-                const parsedAnnouncements = parseAnnouncements(annRes.data);
-                const existingAnn = await Announcement.findOne({ userId: userId, courseUrl: url });
-
-                if (parsedAnnouncements.length > 0 || !existingAnn) {
-                    let finalNews = parsedAnnouncements;
-
-                    if (existingAnn && existingAnn.news && existingAnn.news.length > 0) {
-                        const newsMap = new Map();
-                        existingAnn.news.forEach(n => newsMap.set(n.subject + n.date, n)); 
-                        parsedAnnouncements.forEach(n => newsMap.set(n.subject + n.date, n)); 
-                        finalNews = Array.from(newsMap.values());
-                    }
-
-                    await Announcement.findOneAndUpdate(
-                        { userId: userId, courseUrl: url },
-                        { courseName: courseName, news: finalNews, lastUpdated: Date.now() },
-                        { upsert: true }
-                    );
-                }
+                console.log(`✅ [CRON] Sync successful for ${user.email}. Session is ALIVE.`);
+                
+                await User.updateOne({ _id: user._id }, { $set: { lastSyncAt: new Date() } });
 
             } catch (error) {
-                console.error(`⚠️ Failed to scrape data for ${url}:`, error.message);
+                const isExpired = error.message === 'SESSION_EXPIRED' || 
+                                 (error.response && [302, 401, 403].includes(error.response.status));
+
+                if (isExpired) {
+                    console.log(`💀 [CRON] SESSION EXPIRED for ${user.email}! Cleaning up...`);
+
+                    await User.updateOne(
+                        { _id: user._id }, 
+                        { $set: { ucpCookie: null, isPortalConnected: false } },
+                        { strict: false }
+                    );
+
+                    if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
+                        console.log(`📲 [CRON] Sending re-auth push notification to ${user.email}`);
+                        await expo.sendPushNotificationsAsync([{
+                            to: user.pushToken,
+                            sound: 'default',
+                            title: 'UCP Sync Paused ⚠️',
+                            body: 'Your university portal session expired. Tap here to quickly reconnect!',
+                            data: { action: 'open_settings_portal' },
+                        }]);
+                    }
+                } else {
+                    console.error(`❌ [CRON] Network error for ${user.email}:`, error.message);
+                }
             }
+            
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
-        
-        console.log("✅ Background sweep complete! Real-time data saved to MongoDB.");
-    } catch (error) {
-        console.error("⚠️ Master Heartbeat failed:", error.message);
+    } catch (err) {
+        console.error("🚨 [CRON] Fatal error in cron job:", err);
     }
-}
+});
 
 // ==========================================
-// 3. CHEERIO HTML PARSERS
+// 3. CHEERIO HTML PARSERS (Kept intact for later)
 // ==========================================
 function parseAnnouncements(htmlText) {
     const $ = cheerio.load(htmlText);
@@ -344,7 +330,6 @@ function parseAttendance(htmlText) {
     };
 }
 
-// --- NEW UCP DATA ROUTES FOR REACT FRONTEND ---
 app.get('/api/attendance', auth, async (req, res) => {
   try {
     const attendance = await Attendance.find({ userId: req.user.id }).sort({ lastUpdated: -1 });
@@ -366,7 +351,6 @@ app.get('/api/announcements', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- SPECIFIC COURSE DATA FETCHING ---
 app.get('/api/course-records/:courseName', auth, async (req, res) => {
   try {
     const courseName = decodeURIComponent(req.params.courseName);
@@ -412,6 +396,7 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
     if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
       throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${portalId}.`);
     }
+    
     if (!user.portalId) user.portalId = portalId.toUpperCase();
 
     // --- GRADES ---
@@ -476,9 +461,12 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
       );
     }
 
-    user.isPortalConnected = true;
-    user.lastSyncAt = new Date();
-    await user.save({ session });
+    // FIX: Using updateOne to prevent the Mongoose Race Condition that wiped the cookies!
+    await User.updateOne(
+        { _id: userId },
+        { $set: { isPortalConnected: true, lastSyncAt: new Date(), portalId: user.portalId } },
+        { session }
+    );
 
     if (session) { await session.commitTransaction(); session.endSession(); }
     res.json({ message: "Sync complete securely!" });
@@ -1009,7 +997,7 @@ app.post('/api/login', async (req, res) => {
       await user.save();
     }
     const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' });
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -1116,8 +1104,9 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
     await User.findByIdAndUpdate(req.user.id, { 
         portalId: null, 
         isPortalConnected: false, 
-        lastSyncAt: null 
-    });
+        lastSyncAt: null,
+        ucpCookie: null // Add this to make sure we clear the vault
+    }, { strict: false });
 
     await Promise.all([
       Grade.deleteMany({ userId: req.user.id }),
@@ -1333,7 +1322,7 @@ app.put('/api/habits/:id/reset', auth, async (req, res) => {
   try {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
     habit.startDate = new Date(); 
-    habit.cheatDays = []; // <--- THIS FIXES THE RELAPSE BUG!
+    habit.cheatDays = []; 
     await habit.save();
     res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error resetting habit" }); }

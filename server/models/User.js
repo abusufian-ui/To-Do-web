@@ -15,6 +15,7 @@ const UserSchema = new mongoose.Schema({
   
   portalId: { type: String, default: null },
   isPortalConnected: { type: Boolean, default: false },
+  ucpCookie: { type: String, default: null },
   lastSyncAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
