@@ -33,11 +33,31 @@ const { Transaction, Budget, Debt } = require('./models/Transaction');
 const Attendance = require('./models/Attendance');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
+const Feedback = require('./models/Feedback'); // <-- FEEDBACK MODEL IMPORTED
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
 const resend = new Resend(process.env.RESEND_API_KEY);
 let expo = new Expo(); 
+
+// ==========================================
+// 🎨 PREMIUM EMAIL HTML TEMPLATE
+// ==========================================
+const generateEmailTemplate = (title, code, message) => `
+  <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f9fafb; padding: 40px 20px; text-align: center;">
+    <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; padding: 40px 30px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); border: 1px solid #f3f4f6;">
+      <h2 style="color: #111827; margin-bottom: 10px; font-size: 24px; font-weight: 800;">${title}</h2>
+      <p style="color: #4b5563; font-size: 15px; margin-bottom: 30px; line-height: 1.5;">${message}</p>
+      
+      <div style="background-color: #eff6ff; border-radius: 12px; padding: 20px; margin-bottom: 30px; border: 1px dashed #bfdbfe;">
+        <span style="font-size: 36px; font-weight: 900; color: #2563eb; letter-spacing: 8px;">${code}</span>
+      </div>
+      
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+      <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">If you didn't request this code, you can safely ignore this email. This verification code expires in 5 minutes.</p>
+    </div>
+  </div>
+`;
 
 // ==========================================
 // 🚀 MULTI-DEVICE PUSH NOTIFICATION HELPER
@@ -95,7 +115,7 @@ const app = express();
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://192.168.0.119:8081', 
+  'http://127.0.0.1:3000', 
   'http://localhost:3001',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
@@ -149,9 +169,37 @@ const adminAuth = async (req, res, next) => {
 };
 
 // ==========================================
+// 🚀 ROUTES: FEEDBACK & SUPPORT
+// ==========================================
+app.post('/api/feedback', auth, async (req, res) => {
+  try {
+    const { subject, description } = req.body;
+    if (!subject || !description) return res.status(400).json({ message: "Subject and description are required." });
+    
+    const newFeedback = new Feedback({ 
+      userId: req.user.id, 
+      subject: subject, 
+      description: description 
+    });
+    
+    await newFeedback.save();
+    res.json({ success: true, message: "Feedback submitted successfully." });
+  } catch (error) { 
+    console.error("Feedback Error:", error);
+    res.status(500).json({ message: "Server Error processing feedback" }); 
+  }
+});
+
+app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
+  try {
+    const feedbacks = await Feedback.find().populate('userId', 'name email').sort({ createdAt: -1 });
+    res.json(feedbacks);
+  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+});
+
+// ==========================================
 // ROUTES: UCP DATA & SYNC ENGINE
 // ==========================================
-
 app.post('/api/session/keep-alive', express.json(), auth, async (req, res) => {
     const { ucpCookie } = req.body;
     if (!ucpCookie) return res.status(400).json({ error: "No cookie provided" });
@@ -201,7 +249,7 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error fetching course records" }); }
 });
 
-// --- THE SMART EXTENSION SYNC (DIFFING ENGINE MOVED HERE) ---
+// --- THE SMART EXTENSION SYNC ---
 app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
   try {
     const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, portalId, ucpCookie } = req.body;
@@ -214,50 +262,55 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
     }
     if (!user.portalId) user.portalId = portalId.toUpperCase();
 
-    // 1. SMART DIFFING: ATTENDANCE
+    // 1. SMART DIFFING & SAFE SAVING: ATTENDANCE
     if (attendanceData && attendanceData.length > 0) {
         for (const att of attendanceData) {
-            // IRONCLAD PROTECTION: Skip corrupted data
-            if (!att.courseName || att.courseName.includes("Unknown")) continue;
+            if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
 
-            const oldAtt = await Attendance.findOne({ userId, courseName: att.courseName });
-            if (oldAtt && oldAtt.summary && att.summary) {
-                const oldAbsents = oldAtt.summary.conducted - oldAtt.summary.attended;
-                const newAbsents = att.summary.conducted - att.summary.attended;
+            if (att.records) {
+                const oldAtt = await Attendance.findOne({ userId, courseUrl: att.courseUrl });
                 
-                if (newAbsents > oldAbsents) {
-                    sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${newAbsents}`);
-                    if (newAbsents >= 10 && oldAbsents < 10) {
-                        sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
+                if (oldAtt && oldAtt.summary && att.summary) {
+                    const oldAbsents = oldAtt.summary.conducted - oldAtt.summary.attended;
+                    const newAbsents = att.summary.conducted - att.summary.attended;
+                    
+                    if (newAbsents > oldAbsents) {
+                        sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${newAbsents}`);
+                        if (newAbsents >= 10 && oldAbsents < 10) {
+                            sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
+                        }
                     }
                 }
+                await Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true });
             }
-            await Attendance.findOneAndUpdate({ userId, courseName: att.courseName }, { ...att, lastUpdated: new Date() }, { upsert: true });
         }
     }
 
-    // 2. SMART DIFFING: ANNOUNCEMENTS
+    // 2. SMART DIFFING & SAFE SAVING: ANNOUNCEMENTS
     if (announcementsData && announcementsData.length > 0) {
         for (const ann of announcementsData) {
-            // IRONCLAD PROTECTION
-            if (!ann.courseName || ann.courseName.includes("Unknown")) continue;
+            if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
 
-            const oldAnn = await Announcement.findOne({ userId, courseName: ann.courseName });
-            if (oldAnn && oldAnn.news && ann.news) {
-                if (ann.news.length > oldAnn.news.length) {
-                    sendPush(user, `New Announcement: ${ann.courseName} 📢`, ann.news[0].subject || "Tap to view details.");
+            if (ann.news) {
+                const oldAnn = await Announcement.findOne({ userId, courseUrl: ann.courseUrl });
+                if (oldAnn && oldAnn.news) {
+                    if (ann.news.length > oldAnn.news.length) {
+                        sendPush(user, `New Announcement: ${ann.courseName} 📢`, ann.news[0].subject || "Tap to view details.");
+                    }
                 }
+                await Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true });
             }
-            await Announcement.findOneAndUpdate({ userId, courseName: ann.courseName }, { ...ann, lastUpdated: new Date() }, { upsert: true });
         }
     }
 
-    // 3. STORE SUBMISSIONS (The 1-min cron will handle the deadlines)
+    // 3. SAFE SAVING: SUBMISSIONS
     if (submissionsData && submissionsData.length > 0) {
         for (const sub of submissionsData) {
-            // IRONCLAD PROTECTION
-            if (!sub.courseName || sub.courseName.includes("Unknown")) continue;
-            await Submission.findOneAndUpdate({ userId, courseName: sub.courseName }, { ...sub, lastUpdated: new Date() }, { upsert: true });
+            if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
+            
+            if (sub.tasks) {
+                await Submission.findOneAndUpdate({ userId, courseUrl: sub.courseUrl }, { ...sub, lastUpdated: new Date() }, { upsert: true });
+            }
         }
     }
 
@@ -265,7 +318,7 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
     if (gradesData && gradesData.length > 0) {
       await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
-        if (!grade.courseName || grade.courseName.includes("Unknown")) continue;
+        if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
         await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true });
       }
     }
@@ -318,7 +371,7 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
 
 
 // ==========================================
-// REST OF THE ROUTES (Kept Exactly The Same)
+// REST OF THE ROUTES
 // ==========================================
 
 const cloudinary = require('cloudinary').v2;
@@ -452,7 +505,12 @@ app.post('/api/admin/request-pin-otp', auth, adminAuth, async (req, res) => {
     const user = await User.findById(req.user.id);
     const code = Math.floor(100000 + Math.random() * 900000).toString(); 
     await OTP.findOneAndUpdate({ email: user.email }, { code }, { upsert: true, new: true });
-    await resend.emails.send({ from: 'MyPortal <otp@myportalucp.online>', to: user.email, subject: 'Admin PIN OTP', html: `<p>Code: <strong>${code}</strong></p>` });
+    await resend.emails.send({ 
+      from: 'MyPortal <otp@myportalucp.online>', 
+      to: user.email, 
+      subject: 'Admin PIN OTP', 
+      html: generateEmailTemplate('Security Alert: PIN Change', code, 'You requested to change your Admin Command Center PIN.')
+    });
     res.json({ message: "OTP sent" });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -494,10 +552,16 @@ app.post('/api/send-otp', async (req, res) => {
     if (await User.findOne({ email: req.body.email })) return res.status(400).json({ message: "Registered" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email: req.body.email }, { code }, { upsert: true, new: true });
-    await resend.emails.send({ from: 'MyPortal <otp@myportalucp.online>', to: req.body.email, subject: 'Verification Code', html: `<p>Code: <strong>${code}</strong></p>` });
+    await resend.emails.send({ 
+      from: 'MyPortal <otp@myportalucp.online>', 
+      to: req.body.email, 
+      subject: 'Welcome to MyPortal', 
+      html: generateEmailTemplate('Welcome to MyPortal', code, 'Please use the following verification code to complete your registration.')
+    });
     res.json({ message: "OTP sent" });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
+
 app.post('/api/register', async (req, res) => {
   try {
     if (!(await OTP.findOne({ email: req.body.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
@@ -507,6 +571,7 @@ app.post('/api/register', async (req, res) => {
     res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
+
 app.post('/api/login', async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
@@ -514,16 +579,24 @@ app.post('/api/login', async (req, res) => {
     res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
+
 app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
+
 app.post('/api/forgot-password', async (req, res) => {
   try {
     if (!(await User.findOne({ email: req.body.email }))) return res.status(400).json({ message: "No account found" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email: req.body.email }, { code }, { upsert: true, new: true });
-    await resend.emails.send({ from: 'MyPortal <otp@myportalucp.online>', to: req.body.email, subject: 'Password Reset', html: `<p>Code: <strong>${code}</strong></p>` });
+    await resend.emails.send({ 
+      from: 'MyPortal <otp@myportalucp.online>', 
+      to: req.body.email, 
+      subject: 'Password Reset', 
+      html: generateEmailTemplate('Password Reset', code, 'You requested a password reset. Use the code below to securely change your password.')
+    });
     res.json({ message: "OTP sent" });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
+
 app.post('/api/reset-password', async (req, res) => {
   try {
     if (!(await OTP.findOne({ email: req.body.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
