@@ -62,7 +62,7 @@ const generateEmailTemplate = (title, code, message) => `
 // ==========================================
 // 🚀 MULTI-DEVICE PUSH NOTIFICATION HELPER
 // ==========================================
-async function sendPush(user, title, body, data = {}) {
+async function sendPush(user, title, body, data = {}, categoryId = "smart-alert", channelId = "default") {
     let tokens = [];
     if (user.pushTokens && user.pushTokens.length > 0) {
         tokens = user.pushTokens.filter(t => Expo.isExpoPushToken(t));
@@ -76,8 +76,9 @@ async function sendPush(user, title, body, data = {}) {
     for (let pushToken of tokens) {
         messages.push({
             to: pushToken,
-            sound: 'default',
-            categoryId: "smart-alert",
+            sound: channelId === "prayer-channel-live" ? 'azan.wav' : 'default', // Map the sound
+            categoryId: categoryId, // Dynamic Category
+            channelId: channelId,   // CRITICAL FOR ANDROID CUSTOM SOUNDS
             title,
             body,
             data
@@ -89,7 +90,7 @@ async function sendPush(user, title, body, data = {}) {
         for (let chunk of chunks) {
             await expo.sendPushNotificationsAsync(chunk);
         }
-        console.log(`📲 Sent push: "${title}" to ${user.email}`);
+        console.log(`📲 Sent push: "${title}" to ${user.email} (Category: ${categoryId})`);
     } catch(e) { 
         console.error("Push Error:", e.message); 
     }
@@ -117,6 +118,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000', 
   'http://localhost:3001',
+  'http://192.168.0.104:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
@@ -256,11 +258,17 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
     const userId = req.user.id;
     const user = await User.findById(userId);
 
-    if (!portalId) throw new Error("Student ID not detected.");
-    if (user.portalId && user.portalId.toUpperCase() !== portalId.toUpperCase()) {
-      throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${portalId}.`);
+    // --- SMART ID BYPASS FOR BACKGROUND ENGINE ---
+    let activePortalId = portalId;
+    if (activePortalId === "BACKGROUND_SYNC" && user.portalId) {
+        activePortalId = user.portalId; // Automatically use the DB-linked ID for background syncs
     }
-    if (!user.portalId) user.portalId = portalId.toUpperCase();
+
+    if (!activePortalId) throw new Error("Student ID not detected.");
+    if (user.portalId && user.portalId.toUpperCase() !== activePortalId.toUpperCase()) {
+      throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${activePortalId}.`);
+    }
+    if (!user.portalId) user.portalId = activePortalId.toUpperCase();
 
     // 1. SMART DIFFING & SAFE SAVING: ATTENDANCE
     if (attendanceData && attendanceData.length > 0) {
@@ -753,39 +761,50 @@ let lastFetchDate = null;
 
 cron.schedule('* * * * *', async () => {
 
-  // ---------------------------------------------------------
-  // ENGINE 1: STANDARD TASK REMINDERS
+// ---------------------------------------------------------
+  // ENGINE 1: STANDARD TASK REMINDERS (Timezone Safe)
   // ---------------------------------------------------------
   try {
     const now = new Date();
-    now.setSeconds(0, 0); 
     
-    const target15Start = new Date(now.getTime() + 15 * 60000);
-    const target15End = new Date(target15Start.getTime() + 60000);
-    const targetExactStart = new Date(now.getTime());
-    const targetExactEnd = new Date(now.getTime() + 60000);
+    // Create UTC boundaries for EXACTLY 15 minutes from right now
+    const target15Start = new Date(now.getTime() + (15 * 60000));
+    target15Start.setSeconds(0, 0); 
+    const target15End = new Date(target15Start.getTime() + 59999); 
 
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    const todayStr = `${yyyy}-${mm}-${dd}`;
+    const targetExactStart = new Date(now.getTime());
+    targetExactStart.setSeconds(0, 0);
+    const targetExactEnd = new Date(targetExactStart.getTime() + 59999);
 
     const orConditions = [
-        { triggerAt: { $gte: target15Start, $lt: target15End } },
-        { triggerAt: { $gte: targetExactStart, $lt: targetExactEnd } }
+        { triggerAt: { $gte: target15Start, $lte: target15End } },
+        { triggerAt: { $gte: targetExactStart, $lte: targetExactEnd } }
     ];
 
+    const currentHour = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" })).getHours();
+    const currentMinute = now.getMinutes();
     if (currentMinute === 0 && [9, 12, 15, 19].includes(currentHour)) {
-      orConditions.push({ date: todayStr, time: null });
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, "0");
+        const dd = String(now.getDate()).padStart(2, "0");
+        orConditions.push({ date: `${yyyy}-${mm}-${dd}`, time: null });
     }
 
-    const upcomingTasks = await Task.find({ completed: false, isDeleted: false, acknowledged: false, $or: orConditions }).populate('userId');
+    const upcomingTasks = await Task.find({ 
+        completed: false, 
+        isDeleted: false, 
+        acknowledged: false, 
+        $or: orConditions 
+    }).populate('userId');
+
+    if (upcomingTasks.length > 0) {
+        console.log(`[CRON] Found ${upcomingTasks.length} tasks ready to fire!`);
+    }
 
     for (let task of upcomingTasks) {
       if (!task.userId) continue;
       let bodyText = `Task: ${task.name}`;
+      
       if (task.time && new Date(task.triggerAt) > now) bodyText = `Starts in 15 mins: ${task.name}`;
       else if (task.time && new Date(task.triggerAt) <= now) bodyText = `It is time for: ${task.name}`;
       else bodyText = `Daily Reminder: ${task.name}`;
@@ -815,6 +834,7 @@ cron.schedule('* * * * *', async () => {
     }
 
     if (currentPrayer) {
+      console.log(`[PRAYER ENGINE] 🕌 Match found! Triggering ${currentPrayer}...`);
       const prayerUsers = await User.find({ prayerNotifs: true });
       const prayerOrder = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']; 
       const dbPrayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha']; 
@@ -832,7 +852,16 @@ cron.schedule('* * * * *', async () => {
         
         record.prayers[dbPrayerName] = 'pending';
         await record.save();
-        sendPush(user, `🕌 ${currentPrayer} Prayer Time`, `It is time for ${currentPrayer} prayer. Please take a moment to pray.`, { type: 'prayer', prayerName: dbPrayerName });
+        
+        // Custom Category and Channel passed down to sendPush
+        sendPush(
+            user, 
+            `🕌 ${currentPrayer} Prayer Time`, 
+            `It is time for ${currentPrayer} prayer. Please take a moment to pray.`, 
+            { type: 'prayer', prayerName: dbPrayerName },
+            "prayer-alert",         
+            "prayer-channel-live"   
+        );
       }
     }
   } catch (error) { console.error(`[PRAYER ENGINE] Error:`, error); }
@@ -845,6 +874,11 @@ cron.schedule('* * * * *', async () => {
     const targetTime = new Date(pktNow.getTime() + 5 * 60000);
     const targetDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetTime.getDay()];
     
+    // 🔥 ADDED LOGGING SO WE CAN SEE WHAT IT WANTS
+    const targetHours = targetTime.getHours();
+    const targetMins = targetTime.getMinutes();
+    // console.log(`[CLASS ENGINE] Looking for classes on ${targetDay} at exactly ${targetHours}:${String(targetMins).padStart(2, '0')}`);
+
     const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => []);
 
     for (let cls of todaysClasses) {
@@ -864,10 +898,19 @@ cron.schedule('* * * * *', async () => {
         }
       }
 
-      if (classHours === targetTime.getHours() && classMinutes === targetTime.getMinutes()) {
+      if (classHours === targetHours && classMinutes === targetMins) {
+        console.log(`[CLASS ENGINE] 🏫 Match found! Alerting user for ${cls.courseName}`);
+        
         const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) ? cls.instructor : "Your teacher";
         const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) ? ` (Room: ${cls.room})` : "";
-        sendPush(cls.userId, `Upcoming Class: ${cls.courseName} 📚`, `${instructorName} is starting the lecture in 5 mins${roomInfo}`, { type: 'class', classId: cls._id });
+        
+        // Using your updated sendPush (defaults to smart-alert category and default sound)
+        sendPush(
+            cls.userId, 
+            `Upcoming Class: ${cls.courseName} 📚`, 
+            `${instructorName} is starting the lecture in 5 mins${roomInfo}`, 
+            { type: 'class', classId: cls._id }
+        );
       }
     }
   } catch (error) { console.error(`[CLASS ENGINE] Error:`, error.message); }
@@ -903,6 +946,55 @@ cron.schedule('* * * * *', async () => {
         }
     }
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
+
+  // ---------------------------------------------------------
+  // ENGINE 5: UCP SESSION WATCHDOG & KEEP-ALIVE
+  // ---------------------------------------------------------
+  try {
+    const connectedUsers = await User.find({ isPortalConnected: true, ucpCookie: { $ne: null } });
+    
+    for (let user of connectedUsers) {
+        try {
+            // 1. Make a stealthy ping to the actual portal dashboard (/web)
+            const response = await axios.get('https://horizon.ucp.edu.pk/web', {
+                headers: { 
+                    'Cookie': user.ucpCookie,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                },
+                maxRedirects: 0, 
+                validateStatus: function (status) { return status >= 200 && status < 500; }
+            });
+
+            // 2. Be highly specific about what an "Expired" page looks like
+            const location = response.headers.location || '';
+            const isRedirectToLogin = (response.status === 302 || response.status === 303) && location.toLowerCase().includes('login');
+            
+            const isHtml = typeof response.data === 'string';
+            // Checking for actual login form elements, not just the word "login"
+            const htmlHasLoginForm = isHtml && (response.data.includes('name="login"') || response.data.includes('Log in to your account'));
+
+            if (isRedirectToLogin || htmlHasLoginForm) {
+console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 💀 Cookie expired for ${user.email}. Triggering alert...`);                
+                // 3. 🔥 HARD DB WIPE: This guarantees the loop stops
+                await User.findByIdAndUpdate(user._id, { 
+                    $set: { isPortalConnected: false, ucpCookie: null } 
+                }, { strict: false });
+
+                sendPush(
+                    user, 
+                    "UCP Session Expired ⚠️", 
+                    "Your university portal session has expired. Tap here to securely log in again.", 
+                    { type: 'session_expired' }
+                );
+            } else {
+                // Optional: Log that the keep-alive worked!
+console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 🟢 Session alive and synced for ${user.email}.`);            }
+        } catch (apiErr) {
+            console.log(`[SESSION ENGINE] UCP Server issue or timeout. Skipping ${user.email}.`);
+        }
+    }
+  } catch (error) { console.error(`[SESSION ENGINE] Error:`, error.message); }
+
 
 });
 
