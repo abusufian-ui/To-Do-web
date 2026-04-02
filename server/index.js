@@ -33,7 +33,7 @@ const { Transaction, Budget, Debt } = require('./models/Transaction');
 const Attendance = require('./models/Attendance');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
-const Feedback = require('./models/Feedback'); // <-- FEEDBACK MODEL IMPORTED
+const Feedback = require('./models/Feedback'); 
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
@@ -76,9 +76,9 @@ async function sendPush(user, title, body, data = {}, categoryId = "smart-alert"
     for (let pushToken of tokens) {
         messages.push({
             to: pushToken,
-            sound: channelId === "prayer-channel-live" ? 'azan.wav' : 'default', // Map the sound
-            categoryId: categoryId, // Dynamic Category
-            channelId: channelId,   // CRITICAL FOR ANDROID CUSTOM SOUNDS
+            sound: channelId === "prayer-channel-live" ? 'azan.wav' : 'default',
+            categoryId: categoryId, 
+            channelId: channelId,   
             title,
             body,
             data
@@ -261,7 +261,7 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
     // --- SMART ID BYPASS FOR BACKGROUND ENGINE ---
     let activePortalId = portalId;
     if (activePortalId === "BACKGROUND_SYNC" && user.portalId) {
-        activePortalId = user.portalId; // Automatically use the DB-linked ID for background syncs
+        activePortalId = user.portalId; 
     }
 
     if (!activePortalId) throw new Error("Student ID not detected.");
@@ -379,36 +379,56 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
 
 
 // ==========================================
-// REST OF THE ROUTES
+// 🚀 LOCAL MEDIA STORAGE CONFIGURATION 🚀
+// (Replacing Cloudinary)
 // ==========================================
 
-const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const uploadDir = '/var/www/student_portal/media/';
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+// Ensure the directory exists when the server starts
+if (!fs.existsSync(uploadDir)){
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir); 
+  },
+  filename: function (req, file, cb) {
+    // Generate a unique file name to prevent overwriting
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
 });
 
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: { folder: 'MyPortal_Keynotes', resource_type: 'auto', use_filename: true, unique_filename: true },
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit to protect 1GB RAM
 });
 
-const upload = multer({ storage: storage });
+// ==========================================
+// REST OF THE ROUTES
+// ==========================================
 
 const dbLink = process.env.REACT_APP_MONGODB_URI;
 console.log("🔗 Connecting to MyPortal Database...");
 mongoose.connect(dbLink).then(async () => { console.log("✅ MongoDB Connected Successfully!"); }).catch(err => console.log(err));
 
+// --- THE UPDATED UPLOAD ROUTE ---
 app.post('/api/upload', auth, (req, res) => {
   upload.array('files', 10)(req, res, function (err) {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
     try {
       if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
-      res.status(200).json({ message: 'Upload successful', urls: req.files.map(file => file.path) });
-    } catch (error) { res.status(500).json({ error: 'Failed to process files after upload' }); }
+      
+      // Build the new URL using your Azure server IP and Nginx route
+      const urls = req.files.map(file => `http://4.188.99.151/media/${file.filename}`);
+      
+      res.status(200).json({ message: 'Upload successful', urls: urls });
+    } catch (error) { 
+      res.status(500).json({ error: 'Failed to process files after upload' }); 
+    }
   });
 });
 
@@ -874,10 +894,8 @@ cron.schedule('* * * * *', async () => {
     const targetTime = new Date(pktNow.getTime() + 5 * 60000);
     const targetDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetTime.getDay()];
     
-    // 🔥 ADDED LOGGING SO WE CAN SEE WHAT IT WANTS
     const targetHours = targetTime.getHours();
     const targetMins = targetTime.getMinutes();
-    // console.log(`[CLASS ENGINE] Looking for classes on ${targetDay} at exactly ${targetHours}:${String(targetMins).padStart(2, '0')}`);
 
     const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => []);
 
@@ -904,7 +922,6 @@ cron.schedule('* * * * *', async () => {
         const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) ? cls.instructor : "Your teacher";
         const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) ? ` (Room: ${cls.room})` : "";
         
-        // Using your updated sendPush (defaults to smart-alert category and default sound)
         sendPush(
             cls.userId, 
             `Upcoming Class: ${cls.courseName} 📚`, 
@@ -955,7 +972,6 @@ cron.schedule('* * * * *', async () => {
     
     for (let user of connectedUsers) {
         try {
-            // 1. Make a stealthy ping to the actual portal dashboard (/web)
             const response = await axios.get('https://horizon.ucp.edu.pk/web', {
                 headers: { 
                     'Cookie': user.ucpCookie,
@@ -965,17 +981,14 @@ cron.schedule('* * * * *', async () => {
                 validateStatus: function (status) { return status >= 200 && status < 500; }
             });
 
-            // 2. Be highly specific about what an "Expired" page looks like
             const location = response.headers.location || '';
             const isRedirectToLogin = (response.status === 302 || response.status === 303) && location.toLowerCase().includes('login');
             
             const isHtml = typeof response.data === 'string';
-            // Checking for actual login form elements, not just the word "login"
             const htmlHasLoginForm = isHtml && (response.data.includes('name="login"') || response.data.includes('Log in to your account'));
 
             if (isRedirectToLogin || htmlHasLoginForm) {
 console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 💀 Cookie expired for ${user.email}. Triggering alert...`);                
-                // 3. 🔥 HARD DB WIPE: This guarantees the loop stops
                 await User.findByIdAndUpdate(user._id, { 
                     $set: { isPortalConnected: false, ucpCookie: null } 
                 }, { strict: false });
@@ -987,14 +1000,12 @@ console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 💀 Cookie e
                     { type: 'session_expired' }
                 );
             } else {
-                // Optional: Log that the keep-alive worked!
 console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 🟢 Session alive and synced for ${user.email}.`);            }
         } catch (apiErr) {
             console.log(`[SESSION ENGINE] UCP Server issue or timeout. Skipping ${user.email}.`);
         }
     }
   } catch (error) { console.error(`[SESSION ENGINE] Error:`, error.message); }
-
 
 });
 
