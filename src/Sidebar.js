@@ -3,13 +3,15 @@ import {
   CheckSquare, Calendar, StickyNote, BarChart3, Settings, 
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History,
-  GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2, Bell, ClipboardCheck, FileUp
+  GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2, Bell, ClipboardCheck, FileUp,
+  Link, Cloud, Globe, Mail // <-- Added new icons for the Links section
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
   const [isCashExpanded, setIsCashExpanded] = useState(false);
   const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(false);
   const [isHabitsExpanded, setIsHabitsExpanded] = useState(false);
+  const [isLinksExpanded, setIsLinksExpanded] = useState(false); // NEW STATE
 
   // 1. WORK TOOLS
   const menuItems = [
@@ -19,11 +21,11 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
   ];
 
   // 2. ACADEMICS SUB-ITEMS
-const academicsSubItems = [
+  const academicsSubItems = [
     { id: 'Timetable', label: 'Timetable', icon: Clock },
-    { id: 'Announcements', label: 'Announcements', icon: Bell },          // NEW
-    { id: 'Attendance', label: 'Attendance', icon: ClipboardCheck },      // NEW
-    { id: 'Submissions', label: 'Submissions', icon: FileUp },            // NEW
+    { id: 'Announcements', label: 'Announcements', icon: Bell },          
+    { id: 'Attendance', label: 'Attendance', icon: ClipboardCheck },      
+    { id: 'Submissions', label: 'Submissions', icon: FileUp },            
     { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: History },
@@ -46,11 +48,19 @@ const academicsSubItems = [
     { id: 'Habits-Analytics', label: 'Analytics Engine', icon: BarChart3 },
   ];
 
+  // 5. EXTERNAL LINKS SUB-ITEMS (NEW)
+  const linksSubItems = [
+    { id: 'Link-Horizon', label: 'Horizon Portal', icon: Globe, url: 'https://horizon.ucp.edu.pk' },
+    { id: 'Link-Email', label: 'Uni Email', icon: Mail, url: 'https://outlook.office.com/mail/' },
+    { id: 'Link-Cloud', label: 'Cloud Workspace', icon: Cloud, url: 'http://20.219.15.106/#/', adminOnly: true },
+  ];
+
   const handleCashClick = () => {
     if (!isOpen) toggleSidebar();
     setIsCashExpanded(!isCashExpanded);
     if (isAcademicsExpanded) setIsAcademicsExpanded(false);
     if (isHabitsExpanded) setIsHabitsExpanded(false);
+    if (isLinksExpanded) setIsLinksExpanded(false);
   };
 
   const handleAcademicsClick = () => {
@@ -58,6 +68,7 @@ const academicsSubItems = [
     setIsAcademicsExpanded(!isAcademicsExpanded);
     if (isCashExpanded) setIsCashExpanded(false);
     if (isHabitsExpanded) setIsHabitsExpanded(false);
+    if (isLinksExpanded) setIsLinksExpanded(false);
   };
 
   const handleHabitsClick = () => {
@@ -65,9 +76,19 @@ const academicsSubItems = [
     setIsHabitsExpanded(!isHabitsExpanded);
     if (isCashExpanded) setIsCashExpanded(false);
     if (isAcademicsExpanded) setIsAcademicsExpanded(false);
+    if (isLinksExpanded) setIsLinksExpanded(false);
   };
 
-const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  const isCashActive = activeTab.startsWith('Cash');
+  const handleLinksClick = () => {
+    if (!isOpen) toggleSidebar();
+    setIsLinksExpanded(!isLinksExpanded);
+    if (isCashExpanded) setIsCashExpanded(false);
+    if (isAcademicsExpanded) setIsAcademicsExpanded(false);
+    if (isHabitsExpanded) setIsHabitsExpanded(false);
+  };
+
+  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
+  const isCashActive = activeTab.startsWith('Cash');
   const isHabitsActive = activeTab.startsWith('Habits');
 
   return (
@@ -240,39 +261,59 @@ const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissi
           </div>
         )}
 
+        {/* --- EXTERNAL LINKS SECTION (NEW) --- */}
+        <button
+          onClick={handleLinksClick}
+          className={`
+            w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+            text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white
+            ${!isOpen && 'md:justify-center'}
+          `}
+        >
+          <Link size={20} strokeWidth={2} />
+          {isOpen && (
+            <>
+              <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Quick Links</span>
+              {isLinksExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </>
+          )}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Quick Links</div>}
+        </button>
+
+        {isOpen && isLinksExpanded && (
+          <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
+            {/* Filter to ensure Admin-Only links only show for Admins */}
+            {linksSubItems.filter(sub => !sub.adminOnly || (user && user.isAdmin)).map((sub) => (
+              <a
+                key={sub.id}
+                href={sub.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10"
+              >
+                <sub.icon size={16} />
+                <span>{sub.label}</span>
+              </a>
+            ))}
+          </div>
+        )}
+
         {/* --- ADMIN SECTION --- */}
         {user && user.isAdmin && (
-          <>
-            <button
-              onClick={() => setActiveTab('Admin')}
-              className={`
-                w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
-                ${activeTab === 'Admin' 
-                  ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' 
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'}
-                ${!isOpen && 'md:justify-center'}
-              `}
-            >
-              <div className="relative"><Shield size={20} strokeWidth={2} /></div>
-              {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Admin Panel</span>}
-              {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('Server')}
-              className={`
-                w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
-                ${activeTab === 'Server' 
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600'}
-                ${!isOpen && 'md:justify-center'}
-              `}
-            >
-              <div className="relative"><Code2 size={20} strokeWidth={2} /></div>
-              {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Cloud VS Code</span>}
-              {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Cloud VS Code</div>}
-            </button>
-          </>
+          <button
+            onClick={() => setActiveTab('Admin')}
+            className={`
+              w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+              ${activeTab === 'Admin' 
+                ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' 
+                : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'}
+              ${!isOpen && 'md:justify-center'}
+            `}
+          >
+            <div className="relative"><Shield size={20} strokeWidth={2} /></div>
+            {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Admin Panel</span>}
+            {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
+          </button>
         )}
 
       </div>
