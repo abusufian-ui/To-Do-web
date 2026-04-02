@@ -124,6 +124,7 @@ const allowedOrigins = [
   'http://localhost:8081', 
   'http://localhost:5000/',
   'https://myportalucp.online',
+  'http://4.188.99.151',
   'https://horizon.ucp.edu.pk',
   'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof'
 ];
