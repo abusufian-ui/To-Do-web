@@ -41,6 +41,33 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 let expo = new Expo(); 
 
 // ==========================================
+// 🕌 ALADHAN API HELPER (Bulletproof caching)
+// ==========================================
+let cachedPrayerTimes = null;
+let lastFetchDate = null;
+
+async function getLahorePrayerTimes(todayStr) {
+    if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
+        try {
+            const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1');
+            const timings = response.data.data.timings;
+            cachedPrayerTimes = { 
+                fajr: timings.Fajr, 
+                zuhr: timings.Dhuhr, 
+                asr: timings.Asr, 
+                maghrib: timings.Maghrib, 
+                isha: timings.Isha 
+            };
+            lastFetchDate = todayStr;
+        } catch (err) {
+            console.error("Failed to fetch Aladhan API:", err.message);
+            return null;
+        }
+    }
+    return cachedPrayerTimes;
+}
+
+// ==========================================
 // 🎨 PREMIUM EMAIL HTML TEMPLATE
 // ==========================================
 const generateEmailTemplate = (title, code, message) => `
@@ -718,13 +745,52 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
 });
 
 app.get('/api/namaz/today', auth, async (req, res) => {
-   try {
-       const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-       const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-       let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
-       if (!record) record = await new NamazRecord({ userId: req.user.id, dateStr: todayStr }).save();
-       res.json(record);
-   } catch (err) { res.status(500).json({ message: err.message }); }
+    try {
+        const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+        const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+        
+        let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
+        if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
+ 
+        // DYNAMIC UNLOCK ENGINE: Check the live clock to unlock prayers
+        const times = await getLahorePrayerTimes(todayStr);
+        if (times) {
+            const currentMins = lahoreDateObj.getHours() * 60 + lahoreDateObj.getMinutes();
+            let modified = false;
+            const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha'];
+ 
+            for (let i = 0; i < prayerOrder.length; i++) {
+                const pName = prayerOrder[i];
+                const [h, m] = times[pName].split(':').map(Number);
+                const pMins = h * 60 + m;
+ 
+                if (currentMins >= pMins) {
+                    // Unlock it!
+                    if (record.prayers[pName] === 'locked') {
+                        record.prayers[pName] = 'pending';
+                        modified = true;
+                    }
+                    
+                    // Mark as missed if the NEXT prayer has started
+                    if (i < prayerOrder.length - 1) {
+                        const nextP = prayerOrder[i+1];
+                        const [nH, nM] = times[nextP].split(':').map(Number);
+                        const nextPMins = nH * 60 + nM;
+                        
+                        if (currentMins >= nextPMins && record.prayers[pName] === 'pending') {
+                            record.prayers[pName] = 'missed';
+                            modified = true;
+                        }
+                    }
+                }
+            }
+            if (modified || record.isNew) await record.save();
+        } else if (record.isNew) {
+            await record.save();
+        }
+ 
+        res.json(record);
+    } catch (err) { res.status(500).json({ message: err.message }); }
 });
 app.post('/api/namaz/offer', auth, async (req, res) => {
    try {
@@ -777,9 +843,6 @@ app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
 // (Tasks, Prayers, Classes, Deadlines)
 // Reads purely from the secure DB vault!
 // ==========================================
-
-let cachedPrayerTimes = null;
-let lastFetchDate = null;
 
 cron.schedule('* * * * *', async () => {
 
@@ -836,55 +899,53 @@ cron.schedule('* * * * *', async () => {
   } catch (error) { console.error(`[TASK ENGINE] Error:`, error); }
 
   // ---------------------------------------------------------
-  // ENGINE 2: LIVE PRAYER ALERTS (LAHORE, PKT)
+  // 🕌 ENGINE 2: LIVE PRAYER ALERTS (Bulletproof HH:mm)
   // ---------------------------------------------------------
   try {
     const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
     const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-    const currentLahoreTime = lahoreDateObj.toLocaleTimeString("en-US", { hour12: false, hour: '2-digit', minute: '2-digit' });
+    
+    // Safely pad single digits so 2:05 PM becomes "14:05" to perfectly match Aladhan API
+    const h = String(lahoreDateObj.getHours()).padStart(2, '0');
+    const m = String(lahoreDateObj.getMinutes()).padStart(2, '0');
+    const currentLahoreTime = `${h}:${m}`;
 
-    if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
-      const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1');
-      const timings = response.data.data.timings;
-      cachedPrayerTimes = { Fajr: timings.Fajr, Dhuhr: timings.Dhuhr, Asr: timings.Asr, Maghrib: timings.Maghrib, Isha: timings.Isha };
-      lastFetchDate = todayStr;
-    }
+    const times = await getLahorePrayerTimes(todayStr);
 
-    let currentPrayer = null;
-    for (const [prayer, time] of Object.entries(cachedPrayerTimes)) {
-      if (time === currentLahoreTime) { currentPrayer = prayer; break; }
-    }
-
-    if (currentPrayer) {
-      console.log(`[PRAYER ENGINE] 🕌 Match found! Triggering ${currentPrayer}...`);
-      const prayerUsers = await User.find({ prayerNotifs: true });
-      const prayerOrder = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']; 
-      const dbPrayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha']; 
-      const pIndex = prayerOrder.indexOf(currentPrayer.toLowerCase());
-      const dbPrayerName = dbPrayerOrder[pIndex];
-
-      for (let user of prayerUsers) {
-        let record = await NamazRecord.findOne({ userId: user._id, dateStr: todayStr });
-        if (!record) record = new NamazRecord({ userId: user._id, dateStr: todayStr });
-
-        if (pIndex > 0) {
-           const prevPrayer = dbPrayerOrder[pIndex - 1];
-           if (record.prayers[prevPrayer] === 'pending') record.prayers[prevPrayer] = 'missed';
+    if (times) {
+        let currentPrayer = null;
+        for (const [prayer, time] of Object.entries(times)) {
+          if (time === currentLahoreTime) { currentPrayer = prayer; break; }
         }
-        
-        record.prayers[dbPrayerName] = 'pending';
-        await record.save();
-        
-        // Custom Category and Channel passed down to sendPush
-        sendPush(
-            user, 
-            `🕌 ${currentPrayer} Prayer Time`, 
-            `It is time for ${currentPrayer} prayer. Please take a moment to pray.`, 
-            { type: 'prayer', prayerName: dbPrayerName },
-            "prayer-alert",         
-            "prayer-channel-live"   
-        );
-      }
+
+        if (currentPrayer) {
+          console.log(`[PRAYER ENGINE] 🕌 Match found! Triggering ${currentPrayer}...`);
+          const prayerUsers = await User.find({ prayerNotifs: true });
+          const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha']; 
+          const pIndex = prayerOrder.indexOf(currentPrayer);
+
+          for (let user of prayerUsers) {
+            let record = await NamazRecord.findOne({ userId: user._id, dateStr: todayStr });
+            if (!record) record = new NamazRecord({ userId: user._id, dateStr: todayStr });
+
+            if (pIndex > 0) {
+               const prevPrayer = prayerOrder[pIndex - 1];
+               if (record.prayers[prevPrayer] === 'pending') record.prayers[prevPrayer] = 'missed';
+            }
+            
+            record.prayers[currentPrayer] = 'pending';
+            await record.save();
+            
+            sendPush(
+                user, 
+                `🕌 ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} Prayer Time`, 
+                `It is time for ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} prayer. Please take a moment to pray.`, 
+                { type: 'prayer', prayerName: currentPrayer },
+                "prayer-alert",         
+                "prayer-channel-live"   
+            );
+          }
+        }
     }
   } catch (error) { console.error(`[PRAYER ENGINE] Error:`, error); }
 
