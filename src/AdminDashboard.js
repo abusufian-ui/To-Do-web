@@ -2,10 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Users, Activity, Search, Trash2,
   Shield, HardDrive, Cpu, AlertTriangle, X,
-  ShieldAlert, Lock, ShieldCheck, Mail, KeyRound, CheckCircle2
+  ShieldAlert, Lock, ShieldCheck, Mail, KeyRound, CheckCircle2, Server
 } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+// --- HELPER (Moved up so components can use it) ---
+const formatBytes = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
 // --- COMPONENTS ---
 
@@ -38,16 +47,18 @@ const LiveGraph = ({ data, color = "#3b82f6" }) => {
 };
 
 // 2. Storage Bar Component
-const StorageBar = ({ label, used, total, color, percentage }) => {
+const StorageBar = ({ label, used, total, color, percentage, icon: Icon }) => {
   const pct = percentage !== undefined ? percentage : Math.min((used / total) * 100, 100);
 
   return (
-    <div className="mb-4">
+    <div className="mb-4 last:mb-0">
       <div className="flex justify-between text-xs mb-1.5">
-        <span className="text-gray-500 dark:text-gray-400 font-medium flex items-center gap-2">{label}</span>
+        <span className="text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+            {Icon && <Icon size={12} className="text-gray-400" />} {label}
+        </span>
         <span className="text-gray-700 dark:text-gray-300 font-bold">{used} <span className="text-gray-400 dark:text-gray-600">/ {total}</span></span>
       </div>
-      <div className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+      <div className="w-full h-2.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-500 ${color}`}
           style={{ width: `${pct}%` }}
@@ -102,6 +113,19 @@ const UserRow = ({ u, onInitiateDelete }) => {
             <span className="text-sm text-gray-500 italic">No data synced</span>
         )}
       </td>
+      
+      {/* 🚨 NEW: PER-USER STORAGE COLUMN */}
+      <td className="px-6 py-4">
+        <div className="flex flex-col">
+            <span className="text-sm font-black text-gray-900 dark:text-white">
+                {formatBytes(u.storageUsed)}
+            </span>
+            <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider font-bold">
+                Local Footprint
+            </span>
+        </div>
+      </td>
+
       <td className="px-6 py-4 text-right">
         {u.email === "ranasuffyan9@gmail.com" ? (
           <span className="text-xs font-bold text-gray-400 dark:text-gray-600 flex items-center justify-end gap-1">
@@ -121,14 +145,6 @@ const UserRow = ({ u, onInitiateDelete }) => {
   );
 };
 
-// --- HELPER ---
-const formatBytes = (bytes) => {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
 
 // --- MAIN DASHBOARD ---
 const AdminDashboard = () => {
@@ -158,8 +174,12 @@ const AdminDashboard = () => {
 
   const [cpuData, setCpuData] = useState(new Array(20).fill(0));
   const [memoryData, setMemoryData] = useState(new Array(20).fill(0));
+  
+  // 🚨 NEW STATES FOR METRICS
   const [realDbSize, setRealDbSize] = useState(0);
   const [totalMemory, setTotalMemory] = useState(1);
+  const [diskData, setDiskData] = useState({ used: 0, total: 30 * 1024 * 1024 * 1024 }); // Default 30GB
+
   const [systemHealth, setSystemHealth] = useState('Syncing...');
 
   useEffect(() => {
@@ -188,8 +208,13 @@ const AdminDashboard = () => {
         setCpuData(prev => [...prev.slice(1), stats.cpu]);
         const memUsagePercent = (stats.memory.active / stats.memory.total) * 100;
         setMemoryData(prev => [...prev.slice(1), memUsagePercent]);
+        
         setTotalMemory(stats.memory.total);
         setRealDbSize(stats.dbSize);
+        
+        // Save Disk State
+        if (stats.disk) setDiskData(stats.disk);
+
         setSystemHealth('Optimal');
       }
     } catch (e) { setSystemHealth('Offline'); }
@@ -348,7 +373,6 @@ const AdminDashboard = () => {
           </div>
           
           <h2 className="text-2xl font-black text-white tracking-tight mb-2">Restricted Access</h2>
-          {/* Default PIN Text removed! */}
           <p className="text-gray-400 text-sm text-center mb-8">Enter your 4-digit security PIN to access the Admin Command Center.</p>
           
           <div className="flex gap-4 mb-8">
@@ -359,7 +383,7 @@ const AdminDashboard = () => {
                 type="password"
                 maxLength={1}
                 value={digit}
-                autoComplete="new-password" // <-- FIX: Stops Chrome Autofill
+                autoComplete="new-password"
                 name={`admin-pin-${i}`}
                 onChange={(e) => handlePinChange(i, e.target.value, inputRefs, setPinInput, pinInput)}
                 onKeyDown={(e) => handlePinKeyDown(i, e, inputRefs, setPinInput, pinInput)}
@@ -396,8 +420,11 @@ const AdminDashboard = () => {
   // --- RENDER UNLOCKED DASHBOARD ---
   const filteredUsers = users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
   const currentCpu = cpuData[cpuData.length - 1] || 0;
+  
+  // Storage Calculations
   const dbLimitBytes = 512 * 1024 * 1024;
   const dbPercentage = Math.min((realDbSize / dbLimitBytes) * 100, 100);
+  const diskPercentage = Math.min((diskData.used / diskData.total) * 100, 100);
 
   return (
     <div className="p-8 w-full h-full overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#0c0c0c] text-gray-900 dark:text-white animate-fadeIn pb-24 transition-colors duration-300">
@@ -429,7 +456,7 @@ const AdminDashboard = () => {
               placeholder="Search students..." 
               value={search} 
               onChange={(e) => setSearch(e.target.value)} 
-              autoComplete="off" // <-- FIX: Stops Chrome Autofill
+              autoComplete="off"
               name="admin-user-search"
               className="w-full bg-white dark:bg-[#18181b] border border-gray-200 dark:border-[#27272a] rounded-xl pl-10 pr-4 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/20 transition-all shadow-sm" 
             />
@@ -439,6 +466,7 @@ const AdminDashboard = () => {
 
       {/* METRICS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* CPU */}
         <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 relative overflow-hidden shadow-sm dark:shadow-lg transition-colors">
           <div className="flex justify-between items-start mb-4 relative z-10">
             <div>
@@ -452,20 +480,22 @@ const AdminDashboard = () => {
           <div className="absolute bottom-0 left-0 right-0 h-24 opacity-50"><LiveGraph data={cpuData} color="#3b82f6" /></div>
         </div>
 
-        <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 shadow-sm dark:shadow-lg transition-colors">
-          <div className="flex justify-between items-start mb-6">
+        {/* 🚨 UPDATED: STORAGE METRICS (Includes Azure VM) */}
+        <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 shadow-sm dark:shadow-lg transition-colors flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
             <div>
-              <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Storage Metrics</p>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1 flex items-center gap-2">
-                {formatBytes(realDbSize)} <span className="text-xs font-normal text-gray-500">Database Size</span>
-              </h3>
+              <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Server Storage</p>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mt-1">Infrastructure Health</h3>
             </div>
             <div className="p-2 bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-500 rounded-lg"><HardDrive size={20} /></div>
           </div>
-          <StorageBar label="MongoDB Data" used={formatBytes(realDbSize)} total="512 MB" color="bg-purple-500 dark:bg-purple-600" percentage={dbPercentage} />
-          <StorageBar label="Server RAM" used={formatBytes((memoryData[memoryData.length - 1] / 100) * totalMemory)} total={formatBytes(totalMemory)} color="bg-gray-400 dark:bg-gray-600" percentage={memoryData[memoryData.length - 1]} />
+          <div className="space-y-1">
+             <StorageBar label="MongoDB Vault" used={formatBytes(realDbSize)} total="512 MB" color="bg-purple-500 dark:bg-purple-600" percentage={dbPercentage} icon={Server} />
+             <StorageBar label="Azure VM Disk (30GB)" used={formatBytes(diskData.used)} total={formatBytes(diskData.total)} color="bg-blue-500 dark:bg-blue-600" percentage={diskPercentage} icon={HardDrive} />
+          </div>
         </div>
 
+        {/* RAM */}
         <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 relative overflow-hidden shadow-sm dark:shadow-lg transition-colors">
           <div className="flex justify-between items-start mb-4 relative z-10">
             <div>
@@ -493,12 +523,13 @@ const AdminDashboard = () => {
                 <th className="px-6 py-4">User Identity</th>
                 <th className="px-6 py-4">Portal Status</th>
                 <th className="px-6 py-4">Last Sync Activity</th>
+                <th className="px-6 py-4">Storage Footprint</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-[#27272a]">
               {loading ? (
-                <tr><td colSpan="4" className="text-center py-8 text-gray-500 animate-pulse">Loading data stream...</td></tr>
+                <tr><td colSpan="5" className="text-center py-8 text-gray-500 animate-pulse">Loading data stream...</td></tr>
               ) : filteredUsers.map((u) => <UserRow key={u._id} u={u} onInitiateDelete={setUserToDelete} />)}
             </tbody>
           </table>
@@ -512,7 +543,7 @@ const AdminDashboard = () => {
           <div className="bg-[#121212] w-full max-w-md rounded-3xl border border-[#333] shadow-2xl overflow-hidden animate-slideUp">
             
             <div className="p-6 border-b border-[#222] flex justify-between items-center bg-[#1A1A1A]">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2"><KeyRound size={20} className="text-brand-blue" /> Update Security PIN</h3>
+              <h3 className="text-xl font-bold text-white flex items-center gap-2"><KeyRound size={20} className="text-blue-500" /> Update Security PIN</h3>
               <button onClick={() => {
                 setChangePinModal({isOpen: false, step: 'otp'});
                 setOtpInput(['', '', '', '', '', '']);
@@ -537,7 +568,7 @@ const AdminDashboard = () => {
                         type="text"
                         maxLength={1}
                         value={digit}
-                        autoComplete="off" // <-- FIX: Stops Chrome Autofill
+                        autoComplete="off"
                         name={`otp-box-${i}`}
                         onChange={(e) => handleOtpChange(i, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(i, e)}
@@ -568,7 +599,7 @@ const AdminDashboard = () => {
                       type="password"
                       maxLength={1}
                       value={digit}
-                      autoComplete="new-password" // <-- FIX: Stops Chrome Autofill
+                      autoComplete="new-password"
                       name={`new-admin-pin-${i}`}
                       onChange={(e) => handlePinChange(i, e.target.value, newPinRefs, setNewPin, newPin)}
                       onKeyDown={(e) => handlePinKeyDown(i, e, newPinRefs, setNewPin, newPin)}

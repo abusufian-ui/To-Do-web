@@ -135,11 +135,10 @@ const GradeBook = () => {
                 {/* Module Header */}
                 <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-gray-100 dark:border-gray-800/50 relative overflow-hidden group">
                   
-                  {/* NEW: Ambient glow replacing the solid blue strip */}
+                  {/* Ambient glow replacing the solid blue strip */}
                   <div className="absolute -top-12 -left-12 w-48 h-48 bg-blue-500/10 dark:bg-blue-600/20 rounded-full blur-[40px] group-hover:bg-blue-500/20 dark:group-hover:bg-blue-500/30 transition-all duration-700 pointer-events-none"></div>
 
                   <div className="flex items-center gap-5 pl-2 relative z-10">
-                    {/* NEW: Unboxed, zoomed-in logo with a soft drop shadow and hover effect */}
                     <UCPLogo className="w-14 h-14 text-blue-600 dark:text-blue-500 shrink-0 drop-shadow-md transform transition-transform duration-500 group-hover:scale-110" />
                     
                     <div>
@@ -157,7 +156,6 @@ const GradeBook = () => {
                         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Total Score</div>
                         <div className="text-2xl font-black text-blue-600 dark:text-blue-400">{totalScore.toFixed(2)}<span className="text-lg text-gray-400">%</span></div>
                       </div>
-                      {/* Mini circular progress indicator */}
                       <div className="relative w-12 h-12">
                         <svg className="w-12 h-12 transform -rotate-90 drop-shadow-sm">
                           <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-gray-200 dark:text-gray-800" />
@@ -175,10 +173,9 @@ const GradeBook = () => {
                     const hasDetails = item.details && item.details.length > 0;
                     const itemName = getAssessmentName(item);
                     const itemScore = parseFloat(item.percentage) || 0;
-                    const weightVal = parseFloat(item.weight) || 0;
                     
-                    // Calculate visual fill based on if they got full marks for that section
-                    const fillPercentage = weightVal > 0 ? Math.min((itemScore / weightVal) * 100, 100) : 0;
+                    // 🚨 FIXED: Directly map the score to the progress bar without dividing by weight.
+                    const fillPercentage = Math.min(itemScore, 100);
 
                     return (
                       <div key={idx} className="mb-2 last:mb-0">
@@ -200,12 +197,13 @@ const GradeBook = () => {
                           <div className="flex-1 w-full flex items-center gap-4">
                             <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                               <div 
-                                className={`h-full rounded-full transition-all duration-700 ${fillPercentage >= 90 ? 'bg-emerald-500' : fillPercentage >= 70 ? 'bg-blue-500' : 'bg-orange-500'}`}
+                                className={`h-full rounded-full transition-all duration-700 ${fillPercentage >= 80 ? 'bg-emerald-500' : fillPercentage >= 50 ? 'bg-blue-500' : 'bg-red-500'}`}
                                 style={{ width: `${fillPercentage}%` }}
                               ></div>
                             </div>
-                            <div className="font-black text-gray-900 dark:text-white w-16 text-right">
-                              {item.percentage}
+                            {/* 🚨 FIXED: Added '%' symbol so it's clear what the number means */}
+                            <div className="font-black text-gray-900 dark:text-white w-20 text-right">
+                              {item.percentage}%
                             </div>
                             <div className="w-6 flex justify-end text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300">
                               {hasDetails && (isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />)}
@@ -213,7 +211,7 @@ const GradeBook = () => {
                           </div>
                         </div>
 
-                        {/* Expandable Child Details - Flattened & Sleek */}
+                        {/* Expandable Child Details */}
                         {isExpanded && hasDetails && (
                           <div className="mt-1 mb-3 ml-4 md:ml-8 pl-4 border-l-2 border-gray-100 dark:border-gray-800 animate-fadeIn overflow-x-auto">
                             <table className="w-full text-xs min-w-[500px]">

@@ -494,15 +494,61 @@ app.get('/api/admin/system-stats', async (req, res) => {
   try {
     const cpuLoad = await si.currentLoad();
     const mem = await si.mem();
+    
+    // 🚨 NEW: Fetch Azure VM Hard Drive Space
+    const disks = await si.fsSize();
+    // Usually the primary partition is mounted at '/' on Linux/Ubuntu VMs
+    const rootDisk = disks.find(d => d.mount === '/') || disks[0] || { size: 30 * 1024 * 1024 * 1024, used: 0 }; 
+    
     let dbSize = 0;
     if (mongoose.connection.readyState === 1) dbSize = (await mongoose.connection.db.stats()).dataSize; 
-    res.json({ cpu: Math.round(cpuLoad.currentLoad), memory: { active: mem.active, total: mem.total }, dbSize: dbSize });
+    
+    res.json({ 
+      cpu: Math.round(cpuLoad.currentLoad), 
+      memory: { active: mem.active, total: mem.total }, 
+      dbSize: dbSize,
+      disk: { total: rootDisk.size, used: rootDisk.used } // Added to response
+    });
   } catch (error) { res.status(500).json({ message: "Failed" }); }
 });
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
-    res.json(users.map(user => ({ _id: user._id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected, portalId: user.portalId, lastSyncAt: user.lastSyncAt, createdAt: user.createdAt })));
+    
+    // 🚨 NEW: Calculate Per-User Storage Footprint
+    const usersWithStorage = await Promise.all(users.map(async (user) => {
+        let storageBytes = 15360; // 15KB base estimate for MongoDB text records
+
+        // Scan local media vault for this user's Keynote uploads
+        const keynotes = await Keynote.find({ userId: user._id });
+        for(let kn of keynotes) {
+            if (kn.mediaUrls && kn.mediaUrls.length > 0) {
+                for(let url of kn.mediaUrls) {
+                    try {
+                        const filename = url.split('/').pop();
+                        const filepath = path.join('/var/www/student_portal/media/', filename);
+                        if (fs.existsSync(filepath)) {
+                            storageBytes += fs.statSync(filepath).size; // Add file size to their total
+                        }
+                    } catch (e) { /* Safely ignore missing files */ }
+                }
+            }
+        }
+
+        return { 
+            _id: user._id, 
+            name: user.name, 
+            email: user.email, 
+            isAdmin: user.isAdmin, 
+            isPortalConnected: user.isPortalConnected, 
+            portalId: user.portalId, 
+            lastSyncAt: user.lastSyncAt, 
+            createdAt: user.createdAt,
+            storageUsed: storageBytes // Added to response
+        };
+    }));
+
+    res.json(usersWithStorage);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
