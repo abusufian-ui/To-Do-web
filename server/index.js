@@ -423,6 +423,10 @@ app.post('/api/upload', auth, (req, res) => {
     try {
       if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
       
+      // THIS IS THE LINE THAT WAS MISSING!
+      // It builds the URLs using your secure API domain so Nginx can find them
+      const urls = req.files.map(file => `https://api.myportalucp.online/media/${file.filename}`);
+      
       res.status(200).json({ message: 'Upload successful', urls: urls });
     } catch (error) { 
       res.status(500).json({ error: 'Failed to process files after upload' }); 
