@@ -283,6 +283,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   const [referenceFiles, setReferenceFiles] = useState(initialNote?.referenceFiles || []);
   
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   
   const [isCourseDropdownOpen, setIsCourseDropdownOpen] = useState(false);
   const [isAlignDropdownOpen, setIsAlignDropdownOpen] = useState(false); 
@@ -467,7 +468,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     }
   }, [editor?.getHTML(), title, courseId, referenceFiles, isDirty, courses, generalCourses, onSave]);
 
-  const handleCopy = () => {
+  const handleCopyText = () => {
     if (editor) {
       navigator.clipboard.writeText(editor.getText());
       setCopied(true);
@@ -475,11 +476,22 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     }
   };
 
+  // =========================================================================
+  // UPDATED: MULTIPLE FILE UPLOADS + ANIMATIONS + ALL FILE FORMATS ALLOWED
+  // =========================================================================
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    
+    setIsUploadingFile(true); // Trigger UI Spinner
+    setSaveStatus(`Uploading ${files.length} attachment(s)...`);
+    
     const formData = new FormData(); 
-    formData.append('files', file); 
+    
+    // Loop through every selected file and add it to the form data
+    files.forEach(file => {
+      formData.append('files', file); 
+    });
     
     try {
       const token = localStorage.getItem('token'); 
@@ -489,30 +501,40 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       const data = await response.json();
       
       if (response.ok && data.urls && data.urls.length > 0) {
-        setReferenceFiles(prev => [...prev, { fileName: file.name, fileUrl: data.urls[0] }]);
+        
+        // Match the URLs back to the original file names
+        const newAttachments = files.map((file, index) => ({
+          fileName: file.name,
+          fileUrl: data.urls[index]
+        }));
+        
+        // Add all new files to the array safely
+        setReferenceFiles(prev => [...prev, ...newAttachments]);
         setIsDirty(true); 
         setSaveStatus('Unsaved changes');
+      } else {
+        setSaveStatus('Error uploading files');
       }
-    } catch (error) { console.error('Upload failed', error); }
+    } catch (error) { 
+      console.error('Upload failed', error); 
+      setSaveStatus('Error uploading files');
+    } finally {
+      setIsUploadingFile(false); // Stop UI Spinner
+      e.target.value = ''; // Reset input
+    }
   };
 
-  const handleDownload = async (e, url, filename) => {
+  // NATIVE DOWNLOAD HANDLER (NO CORS FETCH REQUIRED)
+  const handleDownload = (e, url, filename) => {
     e.preventDefault();
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = filename; 
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-    } catch (error) {
-      console.error('Download failed', error);
-      window.open(url, '_blank'); 
-    }
+    const downloadUrl = url.replace('/media/', '/download/');
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.setAttribute('download', filename || 'attachment');
+    link.setAttribute('target', '_blank');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const removeFile = (indexToRemove) => {
@@ -597,12 +619,12 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           
           {saveStatus && (
             <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors hidden md:flex ${
-              saveStatus === 'Saving...' ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20' :
+              saveStatus.includes('Saving') || saveStatus.includes('Uploading') ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20' :
               saveStatus === 'Saved to cloud' ? 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20' :
-              saveStatus === 'Error saving' ? 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20' :
+              saveStatus.includes('Error') ? 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20' :
               'text-gray-500 bg-gray-100 dark:text-gray-400 dark:bg-[#252525]'
             }`}>
-              {saveStatus === 'Saving...' && <Loader2 size={12} className="animate-spin" />}
+              {(saveStatus.includes('Saving') || saveStatus.includes('Uploading')) && <Loader2 size={12} className="animate-spin" />}
               {saveStatus === 'Saved to cloud' && <Cloud size={12} />}
               {saveStatus === 'Unsaved changes' && <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div>}
               {saveStatus}
@@ -612,33 +634,30 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         
         <div className="flex items-center gap-2 shrink-0">
           
-          {/* UPDATED DROPDOWN TRIGGER */}
           <div className="relative group shrink-0" ref={dropdownRef}>
             <button 
               onClick={() => setIsCourseDropdownOpen(!isCourseDropdownOpen)}
               className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-all outline-none focus:ring-2 focus:ring-brand-blue"
             >
               <span className="flex items-start gap-2">
-  {selectedCourse ? (
-    <>
-      {selectedCourse.type === 'uni' ? (
-        <UCPLogo className="w-4 h-4 text-blue-500 shrink-0 mt-[2px]" />
-      ) : (
-        <Book size={16} className="text-gray-400 shrink-0 mt-[2px]" />
-      )}
-      {/* We removed 'truncate' and added wrapping classes with a safe max-width */}
-      <span className="text-left whitespace-normal break-words leading-snug max-w-[200px] sm:max-w-[300px]">
-        {selectedCourse.name}
-      </span>
-    </>
-  ) : (
-    <><Book size={16} className="text-gray-400 shrink-0" /> <span>Link Course</span></>
-  )}
-</span>
+                {selectedCourse ? (
+                  <>
+                    {selectedCourse.type === 'uni' ? (
+                      <UCPLogo className="w-4 h-4 text-blue-500 shrink-0 mt-[2px]" />
+                    ) : (
+                      <Book size={16} className="text-gray-400 shrink-0 mt-[2px]" />
+                    )}
+                    <span className="text-left whitespace-normal break-words leading-snug max-w-[200px] sm:max-w-[300px]">
+                      {selectedCourse.name}
+                    </span>
+                  </>
+                ) : (
+                  <><Book size={16} className="text-gray-400 shrink-0" /> <span>Link Course</span></>
+                )}
+              </span>
               <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${isCourseDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* UPDATED DROPDOWN MENU - MATCHES ADDTASKMODAL UI EXACTLY */}
             {isCourseDropdownOpen && (
               <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-[100] animate-fadeIn custom-scrollbar max-h-[350px] overflow-y-auto">
                 
@@ -778,7 +797,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
               <span className="text-gray-900 dark:text-gray-200 font-bold">{wordCount}</span> words &nbsp;|&nbsp; <span className="text-gray-900 dark:text-gray-200 font-bold">{charCount}</span> chars
             </div>
             <div className="w-px h-4 bg-gray-300 dark:bg-[#444]"></div>
-            <button onClick={handleCopy} className={`flex items-center gap-1 text-xs font-bold transition-all ${copied ? 'text-green-600' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}>
+            <button onClick={handleCopyText} className={`flex items-center gap-1 text-xs font-bold transition-all ${copied ? 'text-green-600' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}>
               {copied ? <><CheckCircle2 size={14}/> Copied</> : <><Copy size={14}/> Copy</>}
             </button>
             {initialNote && onDelete && (
@@ -800,9 +819,16 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
               ))}
             </div>
 
-            <input type="file" ref={fileInputRef} accept=".pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
-            <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100 dark:bg-[#2C2C2C] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#333] transition-all text-xs font-bold shrink-0">
-              <Paperclip size={14} /> Attach
+            {/* THE NEW, UNRESTRICTED, MULTIPLE FILE INPUT */}
+            <input type="file" ref={fileInputRef} multiple onChange={handleFileUpload} className="hidden" />
+            
+            <button 
+              onClick={() => fileInputRef.current.click()} 
+              disabled={isUploadingFile}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold shrink-0 transition-all ${isUploadingFile ? 'bg-blue-50 text-brand-blue cursor-not-allowed dark:bg-blue-900/20' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#2C2C2C] dark:text-gray-300 dark:hover:bg-[#333]'}`}
+            >
+              {isUploadingFile ? <Loader2 size={14} className="animate-spin text-brand-blue" /> : <Paperclip size={14} />} 
+              {isUploadingFile ? 'Uploading...' : 'Attach'}
             </button>
 
             <button onClick={handleManualSave} disabled={saveStatus === 'Saving...'} className="flex items-center gap-1.5 bg-brand-blue hover:bg-blue-600 disabled:bg-blue-400 text-white font-bold py-2 px-5 rounded-lg transition-all shadow-sm active:scale-95 shrink-0 text-sm">
