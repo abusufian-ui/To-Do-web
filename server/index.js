@@ -423,11 +423,6 @@ app.post('/api/upload', auth, (req, res) => {
     try {
       if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
       
-      // Build the new URL using your Azure server IP and Nginx route
-      <a href="https://api.myportalucp.online/download/your-file.docx" download>
-   Download File
-</a>
-      
       res.status(200).json({ message: 'Upload successful', urls: urls });
     } catch (error) { 
       res.status(500).json({ error: 'Failed to process files after upload' }); 
