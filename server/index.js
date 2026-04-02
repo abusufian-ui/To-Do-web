@@ -450,8 +450,6 @@ app.post('/api/upload', auth, (req, res) => {
     try {
       if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
       
-      // THIS IS THE LINE THAT WAS MISSING!
-      // It builds the URLs using your secure API domain so Nginx can find them
       const urls = req.files.map(file => `https://api.myportalucp.online/media/${file.filename}`);
       
       res.status(200).json({ message: 'Upload successful', urls: urls });
@@ -744,62 +742,87 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
+// ==========================================
+// 🕌 THE SMART NAMAZ UNLOCK ROUTE
+// ==========================================
 app.get('/api/namaz/today', auth, async (req, res) => {
     try {
         const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-        const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+        let todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
         
+        // 1. Get times for today
+        const times = await getLahorePrayerTimes(todayStr);
+        if (!times) return res.status(500).json({ message: "API Error" });
+
+        const currentMins = lahoreDateObj.getHours() * 60 + lahoreDateObj.getMinutes();
+        const [fajrH, fajrM] = times.fajr.split(':').map(Number);
+        const fajrMins = fajrH * 60 + fajrM;
+
+        // 2. MIDNIGHT FIX: If it's before Fajr (e.g., 2 AM), the "current" Islamic day is yesterday.
+        if (currentMins < fajrMins) {
+            const yesterday = new Date(lahoreDateObj);
+            yesterday.setDate(yesterday.getDate() - 1);
+            todayStr = `${yesterday.getDate()}-${yesterday.getMonth() + 1}-${yesterday.getFullYear()}`;
+        }
+
         let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
         if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
- 
-        // DYNAMIC UNLOCK ENGINE: Check the live clock to unlock prayers
-        const times = await getLahorePrayerTimes(todayStr);
-        if (times) {
-            const currentMins = lahoreDateObj.getHours() * 60 + lahoreDateObj.getMinutes();
-            let modified = false;
-            const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha'];
- 
-            for (let i = 0; i < prayerOrder.length; i++) {
-                const pName = prayerOrder[i];
-                const [h, m] = times[pName].split(':').map(Number);
-                const pMins = h * 60 + m;
- 
-                if (currentMins >= pMins) {
-                    // Unlock it!
-                    if (record.prayers[pName] === 'locked') {
-                        record.prayers[pName] = 'pending';
+
+        let modified = false;
+        const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha'];
+
+        for (let i = 0; i < prayerOrder.length; i++) {
+            const pName = prayerOrder[i];
+            const [h, m] = times[pName].split(':').map(Number);
+            const pMins = h * 60 + m;
+
+            // Is the prayer active? 
+            // Active if current time is >= prayer time, OR if it's Isha and we are past midnight (currentMins < fajrMins)
+            let isPastPrayerTime = currentMins >= pMins || (pName === 'isha' && currentMins < fajrMins);
+
+            if (isPastPrayerTime) {
+                if (record.prayers[pName] === 'locked') {
+                    record.prayers[pName] = 'pending';
+                    modified = true;
+                }
+                
+                // Mark previous prayers as missed if we entered a new prayer time
+                if (i > 0) {
+                    const prevP = prayerOrder[i-1];
+                    if (record.prayers[prevP] === 'pending') {
+                        record.prayers[prevP] = 'missed';
                         modified = true;
-                    }
-                    
-                    // Mark as missed if the NEXT prayer has started
-                    if (i < prayerOrder.length - 1) {
-                        const nextP = prayerOrder[i+1];
-                        const [nH, nM] = times[nextP].split(':').map(Number);
-                        const nextPMins = nH * 60 + nM;
-                        
-                        if (currentMins >= nextPMins && record.prayers[pName] === 'pending') {
-                            record.prayers[pName] = 'missed';
-                            modified = true;
-                        }
                     }
                 }
             }
-            if (modified || record.isNew) await record.save();
-        } else if (record.isNew) {
-            await record.save();
         }
- 
+
+        if (modified || record.isNew) await record.save();
         res.json(record);
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
+
 app.post('/api/namaz/offer', auth, async (req, res) => {
    try {
        const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-       const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+       let todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+       
+       const times = await getLahorePrayerTimes(todayStr);
+       const currentMins = lahoreDateObj.getHours() * 60 + lahoreDateObj.getMinutes();
+       const [fajrH, fajrM] = times.fajr.split(':').map(Number);
+       
+       if (currentMins < (fajrH * 60 + fajrM)) {
+            const yesterday = new Date(lahoreDateObj);
+            yesterday.setDate(yesterday.getDate() - 1);
+            todayStr = `${yesterday.getDate()}-${yesterday.getMonth() + 1}-${yesterday.getFullYear()}`;
+       }
+
        let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
        if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
+       
        if (record.prayers[req.body.prayerName] === 'pending') record.prayers[req.body.prayerName] = 'offered';
        else if (record.prayers[req.body.prayerName] === 'missed' || record.prayers[req.body.prayerName] === 'locked') record.prayers[req.body.prayerName] = 'qazah'; 
+       
        await record.save(); res.json(record);
    } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -840,19 +863,16 @@ app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
 
 // ==========================================
 // 🔔 THE 1-MINUTE CRON ENGINES 
-// (Tasks, Prayers, Classes, Deadlines)
-// Reads purely from the secure DB vault!
 // ==========================================
 
 cron.schedule('* * * * *', async () => {
 
-// ---------------------------------------------------------
-  // ENGINE 1: STANDARD TASK REMINDERS (Timezone Safe)
+  // ---------------------------------------------------------
+  // ENGINE 1: STANDARD TASK REMINDERS
   // ---------------------------------------------------------
   try {
     const now = new Date();
     
-    // Create UTC boundaries for EXACTLY 15 minutes from right now
     const target15Start = new Date(now.getTime() + (15 * 60000));
     target15Start.setSeconds(0, 0); 
     const target15End = new Date(target15Start.getTime() + 59999); 
@@ -1069,7 +1089,6 @@ console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 🟢 Session 
         }
     }
   } catch (error) { console.error(`[SESSION ENGINE] Error:`, error.message); }
-
 });
 
 const PORT = process.env.PORT || 5000;
