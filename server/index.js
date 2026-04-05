@@ -674,8 +674,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 // --- NEW: Microsoft SSO Login Route ---
-// POST /api/sso-login
-router.post('/sso-login', async (req, res) => {
+app.post('/api/sso-login', async (req, res) => {
     const { email, name } = req.body;
     
     if (!email || !name) {
