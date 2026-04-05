@@ -12,6 +12,10 @@ const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
 
+// 🚨 NEW: IMPORT HTTP AND SOCKET.IO
+const http = require('http');
+const { Server } = require('socket.io');
+
 // --- PUSH NOTIFICATIONS & CRON ---
 const { Expo } = require('expo-server-sdk');
 const cron = require('node-cron');
@@ -140,6 +144,19 @@ const focusSessionSchema = new mongoose.Schema({
 const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 const app = express();
+
+// 🚨 NEW: WRAP APP IN HTTP SERVER & ATTACH WEBSOCKETS
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Allow mobile & web portal to connect
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  }
+});
+
+io.on('connection', (socket) => {
+    // Silently handle connections
+});
 
 const allowedOrigins = [
   'http://localhost:3000',
@@ -441,7 +458,30 @@ const upload = multer({
 
 const dbLink = process.env.REACT_APP_MONGODB_URI;
 console.log("🔗 Connecting to MyPortal Database...");
-mongoose.connect(dbLink).then(async () => { console.log("✅ MongoDB Connected Successfully!"); }).catch(err => console.log(err));
+
+// 🚨 NEW: CONNECT TO MONGODB AND ACTIVATE CHANGE STREAMS
+mongoose.connect(dbLink).then(async () => { 
+    console.log("✅ MongoDB Connected Successfully!"); 
+
+    try {
+        // These are the models that should trigger a frontend refresh when modified
+        const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course];
+        
+        modelsToWatch.forEach(model => {
+            if (model.watch) {
+                const changeStream = model.watch();
+                changeStream.on('change', (change) => {
+                    // Blast the update signal to the frontend (Web & Mobile)
+                    io.emit('live_db_update'); 
+                });
+            }
+        });
+        console.log("🟢 Database Live Sync Watchdogs Active!");
+    } catch (err) {
+        console.log("⚠️ MongoDB Change Streams require a Replica Set (Active by default on MongoDB Atlas).");
+    }
+
+}).catch(err => console.log(err));
 
 // --- THE UPDATED UPLOAD ROUTE ---
 app.post('/api/upload', auth, (req, res) => {
@@ -1092,50 +1132,8 @@ cron.schedule('* * * * *', async () => {
         }
     }
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
-
-//   // ---------------------------------------------------------
-//   // ENGINE 5: UCP SESSION WATCHDOG & KEEP-ALIVE
-//   // ---------------------------------------------------------
-//   try {
-//     const connectedUsers = await User.find({ isPortalConnected: true, ucpCookie: { $ne: null } });
-    
-//     for (let user of connectedUsers) {
-//         try {
-//             const response = await axios.get('https://horizon.ucp.edu.pk/web', {
-//                 headers: { 
-//                     'Cookie': user.ucpCookie,
-//                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-//                 },
-//                 maxRedirects: 0, 
-//                 validateStatus: function (status) { return status >= 200 && status < 500; }
-//             });
-
-//             const location = response.headers.location || '';
-//             const isRedirectToLogin = (response.status === 302 || response.status === 303) && location.toLowerCase().includes('login');
-            
-//             const isHtml = typeof response.data === 'string';
-//             const htmlHasLoginForm = isHtml && (response.data.includes('name="login"') || response.data.includes('Log in to your account'));
-
-//             if (isRedirectToLogin || htmlHasLoginForm) {
-// console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 💀 Cookie expired for ${user.email}. Triggering alert...`);                
-//                 await User.findByIdAndUpdate(user._id, { 
-//                     $set: { isPortalConnected: false, ucpCookie: null } 
-//                 }, { strict: false });
-
-//                 sendPush(
-//                     user, 
-//                     "UCP Session Expired ⚠️", 
-//                     "Your university portal session has expired. Tap here to securely log in again.", 
-//                     { type: 'session_expired' }
-//                 );
-//             } else {
-// console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 🟢 Session alive and synced for ${user.email}.`);            }
-//         } catch (apiErr) {
-//             console.log(`[SESSION ENGINE] UCP Server issue or timeout. Skipping ${user.email}.`);
-//         }
-//     }
-//   } catch (error) { console.error(`[SESSION ENGINE] Error:`, error.message); }
 });
 
+// 🚨 NEW: LAUNCH THE COMBINED HTTP/WEBSOCKET SERVER
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));
