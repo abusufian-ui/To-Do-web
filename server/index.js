@@ -673,6 +673,57 @@ app.post('/api/register', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+// --- NEW: Microsoft SSO Login Route ---
+// POST /api/sso-login
+router.post('/sso-login', async (req, res) => {
+    const { email, name } = req.body;
+    
+    if (!email || !name) {
+        return res.status(400).json({ message: "Invalid SSO credentials provided." });
+    }
+
+    try {
+        // 1. Check if the user already exists in the database
+        let user = await User.findOne({ email });
+        
+        // 2. If this is their first time logging in via Microsoft, Auto-Create their account!
+        if (!user) {
+            const bcrypt = require('bcryptjs');
+            // Generate an unbreakable random password since they use SSO
+            const randomSecurePassword = await bcrypt.hash(email + process.env.JWT_SECRET, 10); 
+            
+            user = new User({
+                name: name,
+                email: email,
+                password: randomSecurePassword, 
+                isPortalConnected: true,
+                isAdmin: false 
+            });
+            await user.save();
+        } else {
+            // If they exist but haven't connected their portal yet, update it
+            if (!user.isPortalConnected) {
+                user.isPortalConnected = true;
+                await user.save();
+            }
+        }
+
+        // 3. Issue their JWT Token so the mobile app logs them in
+        const jwt = require('jsonwebtoken');
+        const token = jwt.sign(
+            { id: user._id }, 
+            process.env.JWT_SECRET, // Make sure this matches your .env
+            { expiresIn: '30d' }
+        );
+        
+        res.status(200).json({ token, message: "SSO Login Successful" });
+        
+    } catch (err) {
+        console.error("SSO Registration Error:", err);
+        res.status(500).json({ message: "Server error during SSO authentication." });
+    }
+});
+
 app.post('/api/login', async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
