@@ -145,7 +145,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000', 
   'http://localhost:3001',
-  'http://192.168.0.104:8081',
+  'http://192.168.0.105:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
@@ -1093,48 +1093,48 @@ cron.schedule('* * * * *', async () => {
     }
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
 
-  // ---------------------------------------------------------
-  // ENGINE 5: UCP SESSION WATCHDOG & KEEP-ALIVE
-  // ---------------------------------------------------------
-  try {
-    const connectedUsers = await User.find({ isPortalConnected: true, ucpCookie: { $ne: null } });
+//   // ---------------------------------------------------------
+//   // ENGINE 5: UCP SESSION WATCHDOG & KEEP-ALIVE
+//   // ---------------------------------------------------------
+//   try {
+//     const connectedUsers = await User.find({ isPortalConnected: true, ucpCookie: { $ne: null } });
     
-    for (let user of connectedUsers) {
-        try {
-            const response = await axios.get('https://horizon.ucp.edu.pk/web', {
-                headers: { 
-                    'Cookie': user.ucpCookie,
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                },
-                maxRedirects: 0, 
-                validateStatus: function (status) { return status >= 200 && status < 500; }
-            });
+//     for (let user of connectedUsers) {
+//         try {
+//             const response = await axios.get('https://horizon.ucp.edu.pk/web', {
+//                 headers: { 
+//                     'Cookie': user.ucpCookie,
+//                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+//                 },
+//                 maxRedirects: 0, 
+//                 validateStatus: function (status) { return status >= 200 && status < 500; }
+//             });
 
-            const location = response.headers.location || '';
-            const isRedirectToLogin = (response.status === 302 || response.status === 303) && location.toLowerCase().includes('login');
+//             const location = response.headers.location || '';
+//             const isRedirectToLogin = (response.status === 302 || response.status === 303) && location.toLowerCase().includes('login');
             
-            const isHtml = typeof response.data === 'string';
-            const htmlHasLoginForm = isHtml && (response.data.includes('name="login"') || response.data.includes('Log in to your account'));
+//             const isHtml = typeof response.data === 'string';
+//             const htmlHasLoginForm = isHtml && (response.data.includes('name="login"') || response.data.includes('Log in to your account'));
 
-            if (isRedirectToLogin || htmlHasLoginForm) {
-console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 💀 Cookie expired for ${user.email}. Triggering alert...`);                
-                await User.findByIdAndUpdate(user._id, { 
-                    $set: { isPortalConnected: false, ucpCookie: null } 
-                }, { strict: false });
+//             if (isRedirectToLogin || htmlHasLoginForm) {
+// console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 💀 Cookie expired for ${user.email}. Triggering alert...`);                
+//                 await User.findByIdAndUpdate(user._id, { 
+//                     $set: { isPortalConnected: false, ucpCookie: null } 
+//                 }, { strict: false });
 
-                sendPush(
-                    user, 
-                    "UCP Session Expired ⚠️", 
-                    "Your university portal session has expired. Tap here to securely log in again.", 
-                    { type: 'session_expired' }
-                );
-            } else {
-console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 🟢 Session alive and synced for ${user.email}.`);            }
-        } catch (apiErr) {
-            console.log(`[SESSION ENGINE] UCP Server issue or timeout. Skipping ${user.email}.`);
-        }
-    }
-  } catch (error) { console.error(`[SESSION ENGINE] Error:`, error.message); }
+//                 sendPush(
+//                     user, 
+//                     "UCP Session Expired ⚠️", 
+//                     "Your university portal session has expired. Tap here to securely log in again.", 
+//                     { type: 'session_expired' }
+//                 );
+//             } else {
+// console.log(`[${new Date().toLocaleTimeString()}] [SESSION ENGINE] 🟢 Session alive and synced for ${user.email}.`);            }
+//         } catch (apiErr) {
+//             console.log(`[SESSION ENGINE] UCP Server issue or timeout. Skipping ${user.email}.`);
+//         }
+//     }
+//   } catch (error) { console.error(`[SESSION ENGINE] Error:`, error.message); }
 });
 
 const PORT = process.env.PORT || 5000;
