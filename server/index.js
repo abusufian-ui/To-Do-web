@@ -145,7 +145,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000', 
   'http://localhost:3001',
-  'http://192.168.0.105:8081',
+  'http://192.168.0.104:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
@@ -671,56 +671,6 @@ app.post('/api/register', async (req, res) => {
     await user.save(); await OTP.deleteOne({ email: req.body.email });
     res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
-});
-
-// --- NEW: Microsoft SSO Login Route ---
-app.post('/api/sso-login', async (req, res) => {
-    const { email, name } = req.body;
-    
-    if (!email || !name) {
-        return res.status(400).json({ message: "Invalid SSO credentials provided." });
-    }
-
-    try {
-        // 1. Check if the user already exists in the database
-        let user = await User.findOne({ email });
-        
-        // 2. If this is their first time logging in via Microsoft, Auto-Create their account!
-        if (!user) {
-            const bcrypt = require('bcryptjs');
-            // Generate an unbreakable random password since they use SSO
-            const randomSecurePassword = await bcrypt.hash(email + process.env.JWT_SECRET, 10); 
-            
-            user = new User({
-                name: name,
-                email: email,
-                password: randomSecurePassword, 
-                isPortalConnected: true,
-                isAdmin: false 
-            });
-            await user.save();
-        } else {
-            // If they exist but haven't connected their portal yet, update it
-            if (!user.isPortalConnected) {
-                user.isPortalConnected = true;
-                await user.save();
-            }
-        }
-
-        // 3. Issue their JWT Token so the mobile app logs them in
-        const jwt = require('jsonwebtoken');
-        const token = jwt.sign(
-            { id: user._id }, 
-            process.env.JWT_SECRET, // Make sure this matches your .env
-            { expiresIn: '30d' }
-        );
-        
-        res.status(200).json({ token, message: "SSO Login Successful" });
-        
-    } catch (err) {
-        console.error("SSO Registration Error:", err);
-        res.status(500).json({ message: "Server error during SSO authentication." });
-    }
 });
 
 app.post('/api/login', async (req, res) => {
