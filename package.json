@@ -34,6 +34,7 @@
     "react-quill-new": "^3.8.3",
     "react-scripts": "5.0.1",
     "recharts": "^3.8.0",
+    "socket.io-client": "^4.8.3",
     "systeminformation": "^5.30.7",
     "web-vitals": "^2.1.4"
   },

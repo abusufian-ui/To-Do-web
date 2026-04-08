@@ -38,6 +38,7 @@ const Attendance = require('./models/Attendance');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
 const Feedback = require('./models/Feedback'); 
+const Assessment = require('./models/Assessment'); // NEW: Assessment Model
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
@@ -162,7 +163,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000', 
   'http://localhost:3001',
-  'http://192.168.0.104:8081',
+  'http://192.168.0.109:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
@@ -269,6 +270,51 @@ app.get('/api/submissions', auth, async (req, res) => {
   try {
     const submissions = await Submission.find({ userId: req.user.id }).sort({ lastUpdated: -1 });
     res.json(submissions);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// --- NEW ASSESSMENTS ROUTES ---
+app.get('/api/assessments', auth, async (req, res) => {
+  try {
+    const assessments = await Assessment.find({ userId: req.user.id }).sort({ dueDate: 1 });
+    res.json(assessments);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.post('/api/assessments', auth, async (req, res) => {
+  try {
+    const newAssessment = new Assessment({ ...req.body, userId: req.user.id });
+    await newAssessment.save();
+    res.json(newAssessment);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.put('/api/assessments/:id/status', auth, async (req, res) => {
+  try {
+    const updated = await Assessment.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { status: req.body.status },
+      { new: true }
+    );
+    res.json(updated);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.put('/api/assessments/:id', auth, async (req, res) => {
+  try {
+    const updated = await Assessment.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { $set: req.body },
+      { new: true }
+    );
+    res.json(updated);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.delete('/api/assessments/:id', auth, async (req, res) => {
+  try {
+    await Assessment.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    res.json({ success: true });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
@@ -464,8 +510,8 @@ mongoose.connect(dbLink).then(async () => {
     console.log("✅ MongoDB Connected Successfully!"); 
 
     try {
-        // These are the models that should trigger a frontend refresh when modified
-        const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course];
+        // Added Assessment to Watchdogs
+        const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment];
         
         modelsToWatch.forEach(model => {
             if (model.watch) {
@@ -597,7 +643,7 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return res.status(400).json({ message: "Cannot delete yourself!" });
-    await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId })]);
+    await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId }), Assessment.deleteMany({ userId })]);
     res.json({ message: "User deleted" });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });

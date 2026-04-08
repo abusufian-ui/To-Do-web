@@ -4,14 +4,14 @@ import {
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History,
   GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2, Bell, ClipboardCheck, FileUp,
-  Link, Cloud, Globe, Mail // <-- Added new icons for the Links section
+  Link, Cloud, Globe, Mail, Target // <-- Added Target here for Assessments
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
   const [isCashExpanded, setIsCashExpanded] = useState(false);
   const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(false);
   const [isHabitsExpanded, setIsHabitsExpanded] = useState(false);
-  const [isLinksExpanded, setIsLinksExpanded] = useState(false); // NEW STATE
+  const [isLinksExpanded, setIsLinksExpanded] = useState(false); 
 
   // 1. WORK TOOLS
   const menuItems = [
@@ -25,7 +25,8 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Timetable', label: 'Timetable', icon: Clock },
     { id: 'Announcements', label: 'Announcements', icon: Bell },          
     { id: 'Attendance', label: 'Attendance', icon: ClipboardCheck },      
-    { id: 'Submissions', label: 'Submissions', icon: FileUp },            
+    { id: 'Submissions', label: 'Submissions', icon: FileUp },
+    { id: 'Assessments', label: 'Assessments', icon: Target }, // <-- NEW ADDITION            
     { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: History },
@@ -48,7 +49,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Habits-Analytics', label: 'Analytics Engine', icon: BarChart3 },
   ];
 
-  // 5. EXTERNAL LINKS SUB-ITEMS (NEW)
+  // 5. EXTERNAL LINKS SUB-ITEMS 
   const linksSubItems = [
     { id: 'Link-Horizon', label: 'Horizon Portal', icon: Globe, url: 'https://horizon.ucp.edu.pk' },
     { id: 'Link-Email', label: 'Uni Email', icon: Mail, url: 'https://outlook.office.com/mail/' },
@@ -87,7 +88,8 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     if (isHabitsExpanded) setIsHabitsExpanded(false);
   };
 
-  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
+  // UPDATED: Added 'Assessments' to the active check
+  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Assessments', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
   const isCashActive = activeTab.startsWith('Cash');
   const isHabitsActive = activeTab.startsWith('Habits');
 
@@ -261,7 +263,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           </div>
         )}
 
-        {/* --- EXTERNAL LINKS SECTION (NEW) --- */}
+        {/* --- EXTERNAL LINKS SECTION --- */}
         <button
           onClick={handleLinksClick}
           className={`
@@ -282,7 +284,6 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
 
         {isOpen && isLinksExpanded && (
           <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
-            {/* Filter to ensure Admin-Only links only show for Admins */}
             {linksSubItems.filter(sub => !sub.adminOnly || (user && user.isAdmin)).map((sub) => (
               <a
                 key={sub.id}

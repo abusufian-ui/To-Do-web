@@ -21,6 +21,10 @@ import HyperFocus from './HyperFocus';
 import Keynote from './Keynote';
 import AddKeynoteModal from './AddKeynoteModal'; 
 import CoursePortalView from './CoursePortalView';
+import Assessments from './Assessments';
+
+// 🚀 IMPORT THE NEW LIVE SYNC HOOK
+import useLiveSync from './hooks/useLiveSync'; 
 
 // IMPORTING NEW ICONS FOR THE SNACK NOTIFICATION
 import { Heart, ArrowRight, X, Activity, Coffee, FastForward } from 'lucide-react'; 
@@ -50,14 +54,17 @@ function App() {
     return false;
   });
 
+  // --- DARK MODE & ROOT BODY FIX ---
   useEffect(() => {
     const root = document.documentElement;
     if (isDarkMode) {
       root.classList.add('dark');
       localStorage.setItem('theme', 'dark');
+      document.body.style.backgroundColor = '#121212'; // Prevents white flash at bottom
     } else {
       root.classList.remove('dark');
       localStorage.setItem('theme', 'light');
+      document.body.style.backgroundColor = '#f9fafb';
     }
   }, [isDarkMode]);
 
@@ -81,10 +88,14 @@ function App() {
   const [isBatchDeleteKeynotes, setIsBatchDeleteKeynotes] = useState(false);
   const [keynotesToBatchDelete, setKeynotesToBatchDelete] = useState([]);
 
+  // --- ASSESSMENTS STATE ---
+  const [assessments, setAssessments] = useState([]);
+  const [addAssessmentTrigger, setAddAssessmentTrigger] = useState(0);
+  const [viewAssessment, setViewAssessment] = useState(null);
+
   const [prefilledDate, setPrefilledDate] = useState('');
   const [viewTask, setViewTask] = useState(null);
   
-  // --- SERVER MODAL STATE ---
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
 
   const [courses, setCourses] = useState([]);
@@ -95,13 +106,11 @@ function App() {
   const [isAddingNewTransaction, setIsAddingNewTransaction] = useState(false);
   const [binItems, setBinItems] = useState([]);
   const [filters, setFilters] = useState({
-    course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: '', mediaType: 'All'
+    course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: '', mediaType: 'All', source: 'All'
   });
 
-  // --- NEW IN-APP SNACK NOTIFICATION STATE ---
   const [toast, setToast] = useState(null);
 
-  // Auto-Dismiss Toast after 8 seconds
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 8000);
@@ -124,19 +133,10 @@ function App() {
       const saved = localStorage.getItem('hfGlobalState');
       if (saved) return JSON.parse(saved);
     } catch(e) {}
-    return {
-      modeId: 'focus',
-      isAutomated: false,
-      cyclesCompleted: 0,
-      targetEndTime: null,
-      timeLeft: HF_MODES.focus.minutes * 60,
-      soundEnabled: true
-    };
+    return { modeId: 'focus', isAutomated: false, cyclesCompleted: 0, targetEndTime: null, timeLeft: HF_MODES.focus.minutes * 60, soundEnabled: true };
   });
 
-  useEffect(() => {
-    localStorage.setItem('hfGlobalState', JSON.stringify(hfState));
-  }, [hfState]);
+  useEffect(() => { localStorage.setItem('hfGlobalState', JSON.stringify(hfState)); }, [hfState]);
 
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
@@ -149,21 +149,13 @@ function App() {
       const m = Math.floor(hfState.timeLeft / 60).toString().padStart(2, '0');
       const s = (hfState.timeLeft % 60).toString().padStart(2, '0');
       document.title = `(${m}:${s}) ${HF_MODES[hfState.modeId]?.title || 'Focus'}`;
-    } else {
-      document.title = "Student Portal";
-    }
+    } else { document.title = "Student Portal"; }
   }, [hfState.timeLeft, hfState.isAutomated, hfState.modeId]);
 
   const executePhaseTransition = useCallback(async () => {
     setHfState(prev => {
       if (prev.modeId === 'focus' && token) {
-        try {
-          fetch(`${API_BASE}/api/focus-sessions`, {
-            method: 'POST',
-            headers: authHeaders,
-            body: JSON.stringify({ durationMinutes: HF_MODES.focus.minutes, type: 'focus' })
-          });
-        } catch (e) {}
+        try { fetch(`${API_BASE}/api/focus-sessions`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ durationMinutes: HF_MODES.focus.minutes, type: 'focus' }) }); } catch (e) {}
       }
 
       let nextModeId = 'focus';
@@ -186,32 +178,18 @@ function App() {
       let showSkip = false;
       
       if (nextModeId === 'focus') {
-        title = '🔥 Focus Time!';
-        body = 'Time to start, get ready!';
-        showSkip = false;
+        title = '🔥 Focus Time!'; body = 'Time to start, get ready!'; showSkip = false;
       } else if (nextModeId === 'short_break' || nextModeId === 'long_break') {
-        title = '☕ Time to rest';
-        body = 'Great job on the focus session!';
-        showSkip = nextModeId === 'short_break';
+        title = '☕ Time to rest'; body = 'Great job on the focus session!'; showSkip = nextModeId === 'short_break';
       }
 
-      // External Browser Notification
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(title, { body, icon: '/favicon.ico' });
       }
 
-      // TRIGGER IN-APP SNACK NOTIFICATION
-      setTimeout(() => {
-        setToast({ id: Date.now(), title, message: body, showSkip, modeId: nextModeId });
-      }, 0);
+      setTimeout(() => { setToast({ id: Date.now(), title, message: body, showSkip, modeId: nextModeId }); }, 0);
 
-      return {
-        ...prev,
-        modeId: nextModeId,
-        cyclesCompleted: newCycles,
-        timeLeft: nextMode.minutes * 60,
-        targetEndTime: Date.now() + (nextMode.minutes * 60 * 1000)
-      };
+      return { ...prev, modeId: nextModeId, cyclesCompleted: newCycles, timeLeft: nextMode.minutes * 60, targetEndTime: Date.now() + (nextMode.minutes * 60 * 1000) };
     });
   }, [authHeaders, token]);
 
@@ -221,12 +199,8 @@ function App() {
       interval = setInterval(() => {
         const now = Date.now();
         const remaining = Math.max(0, Math.ceil((hfState.targetEndTime - now) / 1000));
-
-        if (remaining <= 0) {
-          executePhaseTransition();
-        } else {
-          setHfState(prev => ({ ...prev, timeLeft: remaining }));
-        }
+        if (remaining <= 0) executePhaseTransition();
+        else setHfState(prev => ({ ...prev, timeLeft: remaining }));
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -234,10 +208,9 @@ function App() {
 
   const toggleAutomation = () => {
     setHfState(prev => {
-      if (!prev.isAutomated) {
-        return { ...prev, isAutomated: true, targetEndTime: Date.now() + prev.timeLeft * 1000 };
-      } else {
-        setToast(null); // Clear toast on stop
+      if (!prev.isAutomated) return { ...prev, isAutomated: true, targetEndTime: Date.now() + prev.timeLeft * 1000 };
+      else {
+        setToast(null); 
         return { ...prev, isAutomated: false, targetEndTime: null, modeId: 'focus', timeLeft: HF_MODES.focus.minutes * 60, cyclesCompleted: 0 };
       }
     });
@@ -246,81 +219,45 @@ function App() {
   const skipPhase = () => {
     setHfState(prev => {
       if (prev.modeId !== 'short_break') return prev; 
-      
-      if (prev.soundEnabled && alarmSoundRef.current) {
-        alarmSoundRef.current.currentTime = 0;
-        alarmSoundRef.current.play().catch(e => console.log(e));
-      }
-
+      if (prev.soundEnabled && alarmSoundRef.current) { alarmSoundRef.current.currentTime = 0; alarmSoundRef.current.play().catch(e => console.log(e)); }
       const nextMode = HF_MODES.focus;
-      return {
-        ...prev,
-        modeId: 'focus',
-        timeLeft: nextMode.minutes * 60,
-        targetEndTime: Date.now() + (nextMode.minutes * 60 * 1000)
-      };
+      return { ...prev, modeId: 'focus', timeLeft: nextMode.minutes * 60, targetEndTime: Date.now() + (nextMode.minutes * 60 * 1000) };
     });
-    setToast(null); // Hide toast when skipping
+    setToast(null); 
   };
 
-  const setSoundEnabled = (val) => {
-    setHfState(prev => ({ ...prev, soundEnabled: val }));
-  };
-  // ==========================================
-
+  const setSoundEnabled = (val) => setHfState(prev => ({ ...prev, soundEnabled: val }));
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setIsSidebarOpen(false);
-      } else {
-        setIsSidebarOpen(true);
-      }
+      if (window.innerWidth < 768) setIsSidebarOpen(false);
+      else setIsSidebarOpen(true);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    sessionStorage.clear();
-    setToken(null);
-    setUser(null);
-    setActiveTab('Welcome');
+    localStorage.removeItem('token'); localStorage.removeItem('user'); sessionStorage.clear();
+    setToken(null); setUser(null); setActiveTab('Welcome');
   }, []);
 
   const handleLogin = (authToken, userData) => {
-    localStorage.setItem('token', authToken);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setToken(authToken);
-    setUser(userData);
+    localStorage.setItem('token', authToken); localStorage.setItem('user', JSON.stringify(userData));
+    setToken(authToken); setUser(userData);
   };
 
   const checkForInactivity = useCallback(() => {
     if (!isAuthenticated || idleTimeout === 0) return;
-    const timer = setTimeout(() => {
-      console.log("Session timed out. Logging out...");
-      handleLogout();
-    }, idleTimeout);
+    const timer = setTimeout(() => { handleLogout(); }, idleTimeout);
     return timer;
   }, [isAuthenticated, idleTimeout, handleLogout]);
 
   useEffect(() => {
     let timeoutId = checkForInactivity();
-    const handleUserActivity = () => {
-      clearTimeout(timeoutId);
-      timeoutId = checkForInactivity();
-    };
-    window.addEventListener('mousemove', handleUserActivity);
-    window.addEventListener('keydown', handleUserActivity);
-    window.addEventListener('click', handleUserActivity);
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('mousemove', handleUserActivity);
-      window.removeEventListener('keydown', handleUserActivity);
-      window.removeEventListener('click', handleUserActivity);
-    };
+    const handleUserActivity = () => { clearTimeout(timeoutId); timeoutId = checkForInactivity(); };
+    window.addEventListener('mousemove', handleUserActivity); window.addEventListener('keydown', handleUserActivity); window.addEventListener('click', handleUserActivity);
+    return () => { clearTimeout(timeoutId); window.removeEventListener('mousemove', handleUserActivity); window.removeEventListener('keydown', handleUserActivity); window.removeEventListener('click', handleUserActivity); };
   }, [checkForInactivity]);
 
   // --- DATA FETCHING ---
@@ -328,11 +265,7 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/auth/user`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
-      if (res.ok) {
-        const freshUser = await res.json();
-        setUser(freshUser);
-        localStorage.setItem('user', JSON.stringify(freshUser));
-      }
+      if (res.ok) { const freshUser = await res.json(); setUser(freshUser); localStorage.setItem('user', JSON.stringify(freshUser)); }
     } catch (error) { console.error("Error fetching user:", error); }
   }, [authHeaders, handleLogout]);
 
@@ -341,8 +274,7 @@ function App() {
       const res = await fetch(`${API_BASE}/api/tasks`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
-      const formattedTasks = data.map(t => ({ ...t, id: t._id }));
-      setTasks(formattedTasks);
+      setTasks(data.map(t => ({ ...t, id: t._id })));
     } catch (error) { console.error("Error fetching tasks:", error); }
   }, [authHeaders, handleLogout]);
 
@@ -350,8 +282,7 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/notes`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
-      const data = await res.json();
-      setNotes(data);
+      setNotes(await res.json());
     } catch (error) { console.error("Error fetching notes:", error); }
   }, [authHeaders, handleLogout]);
 
@@ -359,17 +290,46 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/keynotes`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
-      const data = await res.json();
-      setKeynotes(data);
+      setKeynotes(await res.json());
     } catch (error) { console.error("Error fetching keynotes:", error); }
   }, [authHeaders, handleLogout]);
+
+  const fetchAssessments = useCallback(async () => {
+    try {
+      const manualRes = await fetch(`${API_BASE}/api/assessments`, { headers: authHeaders });
+      let manualData = [];
+      if (manualRes.ok) {
+         const json = await manualRes.json();
+         manualData = (Array.isArray(json) ? json : []).map(item => ({ ...item, source: 'manual', id: item._id }));
+      }
+
+      const portalRes = await fetch(`${API_BASE}/api/submissions`, { headers: authHeaders });
+      let portalData = [];
+      if (portalRes.ok) {
+         const json = await portalRes.json();
+         portalData = (Array.isArray(json) ? json : []).flatMap(sub =>
+          (sub.tasks || []).map(task => ({
+            _id: task._id || Math.random().toString(),
+            id: task._id || Math.random().toString(),
+            title: task.title,
+            courseName: sub.courseName,
+            type: 'Portal Task',
+            dueDate: task.dueDate,
+            status: task.status.toLowerCase().includes('submitted') ? 'Submitted' : 'Pending',
+            source: 'portal',
+            url: task.submissionUrl
+          }))
+        );
+      }
+      setAssessments([...manualData, ...portalData].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)));
+    } catch (error) { console.error("Error fetching assessments:", error); }
+  }, [authHeaders]);
 
   const fetchBin = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/bin`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
-      
       const formattedBin = [
         ...(data.tasks || []).map(t => ({ ...t, id: t._id, binType: 'Task', name: t.name, subtitle: t.course })),
         ...(data.transactions || []).map(t => ({ ...t, id: t._id, binType: 'Transaction', name: t.description || 'Transaction', subtitle: `Rs ${t.amount}` })),
@@ -377,7 +337,6 @@ function App() {
         ...(data.notes || []).map(n => ({ ...n, id: n._id, binType: 'Note', name: n.title, subtitle: n.courseId })),
         ...(data.keynotes || []).map(k => ({ ...k, id: k._id, binType: 'Keynote', name: k.title, subtitle: k.courseName })) 
       ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
-      
       setBinItems(formattedBin);
     } catch (error) { console.error("Error fetching bin:", error); }
   }, [authHeaders, handleLogout]);
@@ -388,15 +347,9 @@ function App() {
       const res = await fetch(`${API_BASE}/api/courses`, { headers: authHeaders });
       if (res.ok) {
         const customData = await res.json();
-        fetchedCourses = (Array.isArray(customData) ? customData : []).map(c => ({
-          id: c._id, 
-          name: c.name, 
-          type: c.type === 'university' ? 'uni' : 'general' 
-        }));
+        fetchedCourses = (Array.isArray(customData) ? customData : []).map(c => ({ id: c._id, name: c.name, type: c.type === 'university' ? 'uni' : 'general' }));
       }
-    } catch (error) { 
-        console.error("Error fetching courses:", error); 
-    }
+    } catch (error) { console.error("Error fetching courses:", error); }
     setCourses(fetchedCourses);
   }, [authHeaders]);
 
@@ -406,18 +359,32 @@ function App() {
       fetchTasks();
       fetchNotes();
       fetchKeynotes();
+      fetchAssessments();
       fetchBin();
       fetchCourses();
     }
-  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses]);
+  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses]);
+
+  // ==========================================
+  // 🚀 LIVE WEB-SOCKET SYNC
+  // ==========================================
+  const handleLiveUpdate = useCallback(() => {
+    if (token && isAuthenticated) {
+      fetchTasks();
+      fetchNotes();
+      fetchKeynotes();
+      fetchAssessments();
+      fetchBin();
+      fetchCourses();
+    }
+  }, [token, isAuthenticated, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses]);
+
+  useLiveSync(handleLiveUpdate);
+  // ==========================================
 
   const handleAddTask = async (newTaskData) => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify(newTaskData)
-      });
+      const res = await fetch(`${API_BASE}/api/tasks`, { method: 'POST', headers: authHeaders, body: JSON.stringify(newTaskData) });
       if (!res.ok) throw new Error("Server Error");
       const savedTask = await res.json();
       setTasks(prev => [{ ...savedTask, id: savedTask._id }, ...prev]);
@@ -426,14 +393,11 @@ function App() {
   };
 
   const deleteTask = (taskId) => setTaskToDelete(taskId);
-
   const executeDelete = async () => {
     if (!taskToDelete) return;
     try {
       await fetch(`${API_BASE}/api/tasks/${taskToDelete}/delete`, { method: 'PUT', headers: authHeaders });
-      fetchTasks();
-      fetchBin(); 
-      setTaskToDelete(null);
+      fetchTasks(); fetchBin(); setTaskToDelete(null);
     } catch (error) { console.error("Error deleting task:", error); }
   };
 
@@ -446,42 +410,26 @@ function App() {
   };
 
   const deleteKeynote = (id) => setKeynoteToDelete(id);
-  
   const executeDeleteKeynote = async () => {
     if (!keynoteToDelete) return;
     try {
       await fetch(`${API_BASE}/api/keynotes/${keynoteToDelete}/delete`, { method: 'PUT', headers: authHeaders });
-      fetchKeynotes();
-      fetchBin();
-      setKeynoteToDelete(null);
+      fetchKeynotes(); fetchBin(); setKeynoteToDelete(null);
     } catch (err) { console.error("Failed to move to bin", err); }
   };
 
-  const handleBatchDeleteKeynotes = (ids) => {
-    setKeynotesToBatchDelete(ids);
-    setIsBatchDeleteKeynotes(true);
-  };
-
+  const handleBatchDeleteKeynotes = (ids) => { setKeynotesToBatchDelete(ids); setIsBatchDeleteKeynotes(true); };
   const executeBatchDeleteKeynotes = async () => {
     if (!keynotesToBatchDelete || keynotesToBatchDelete.length === 0) return;
     try {
-      for (const id of keynotesToBatchDelete) {
-        await fetch(`${API_BASE}/api/keynotes/${id}/delete`, { method: 'PUT', headers: authHeaders });
-      }
-      fetchKeynotes();
-      fetchBin();
-      setIsBatchDeleteKeynotes(false);
-      setKeynotesToBatchDelete([]);
+      for (const id of keynotesToBatchDelete) await fetch(`${API_BASE}/api/keynotes/${id}/delete`, { method: 'PUT', headers: authHeaders });
+      fetchKeynotes(); fetchBin(); setIsBatchDeleteKeynotes(false); setKeynotesToBatchDelete([]);
     } catch (err) { console.error("Failed to batch move to bin", err); }
   };
 
   const handleAddKeynoteSubmit = async (formData) => {
     try {
-      const uploadRes = await fetch(`${API_BASE}/api/upload`, {
-        method: 'POST',
-        headers: { 'x-auth-token': token },
-        body: formData
-      });
+      const uploadRes = await fetch(`${API_BASE}/api/upload`, { method: 'POST', headers: { 'x-auth-token': token }, body: formData });
       if (!uploadRes.ok) throw new Error("Media upload failed");
       const uploadData = await uploadRes.json();
       
@@ -493,15 +441,9 @@ function App() {
         mediaUrls: uploadData.urls || []
       };
 
-      await fetch(`${API_BASE}/api/keynotes`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify(payload)
-      });
+      await fetch(`${API_BASE}/api/keynotes`, { method: 'POST', headers: authHeaders, body: JSON.stringify(payload) });
       fetchKeynotes();
-    } catch (error) {
-      console.error("Failed to add keynote", error);
-    }
+    } catch (error) { console.error("Failed to add keynote", error); }
   };
 
   const restoreItem = async (id, type) => {
@@ -524,38 +466,19 @@ function App() {
   };
 
   const restoreAllBin = async () => {
-    try { 
-      await fetch(`${API_BASE}/api/bin/restore-all`, { method: 'PUT', headers: authHeaders }); 
-      fetchTasks();
-      fetchNotes();
-      fetchKeynotes();
-      fetchBin(); 
-    } catch (error) { }
+    try { await fetch(`${API_BASE}/api/bin/restore-all`, { method: 'PUT', headers: authHeaders }); fetchTasks(); fetchNotes(); fetchKeynotes(); fetchBin(); } catch (error) { }
   };
 
   const deleteAllBin = async () => {
-    try { 
-      await fetch(`${API_BASE}/api/bin/empty`, { method: 'DELETE', headers: authHeaders }); 
-      setBinItems([]); 
-    } catch (error) { }
+    try { await fetch(`${API_BASE}/api/bin/empty`, { method: 'DELETE', headers: authHeaders }); setBinItems([]); } catch (error) { }
   };
 
   const updateTask = async (id, field, value) => {
     setTasks(prevTasks => prevTasks.map(task => task.id === id ? { ...task, [field]: value } : task));
-    try {
-      await fetch(`${API_BASE}/api/tasks/${id}`, {
-        method: 'PUT',
-        headers: authHeaders,
-        body: JSON.stringify({ [field]: value })
-      });
-    } catch (error) { console.error("Error updating task:", error); }
+    try { await fetch(`${API_BASE}/api/tasks/${id}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ [field]: value }) }); } catch (error) { console.error("Error updating task:", error); }
   };
 
-  const openAddTaskWithDate = (dateString) => {
-    setPrefilledDate(dateString);
-    setIsAddTaskOpen(true);
-  };
-
+  const openAddTaskWithDate = (dateString) => { setPrefilledDate(dateString); setIsAddTaskOpen(true); };
   const toggleTheme = () => setIsDarkMode(prev => !prev);
 
   const getFilteredTasks = () => {
@@ -600,147 +523,111 @@ function App() {
         if (!matchesTitle && !matchesContent) return false;
       }
       if (filters.course !== 'All' && k.courseName !== filters.course) return false;
-      
-      if (filters.mediaType === 'Image') {
-         if (!k.mediaUrls?.some(url => !isAudioUrl(url))) return false;
-      }
-      if (filters.mediaType === 'Audio') {
-         if (!k.mediaUrls?.some(url => isAudioUrl(url))) return false;
-      }
-
+      if (filters.mediaType === 'Image' && !k.mediaUrls?.some(url => !isAudioUrl(url))) return false;
+      if (filters.mediaType === 'Audio' && !k.mediaUrls?.some(url => isAudioUrl(url))) return false;
       if (filters.startDate && new Date(k.createdAt) < new Date(filters.startDate)) return false;
       if (filters.endDate && new Date(k.createdAt) > new Date(filters.endDate)) return false;
+      return true;
+    });
+  };
 
+  const getFilteredAssessments = () => {
+    return assessments.filter(a => {
+      if (filters.searchQuery) {
+        const query = filters.searchQuery.toLowerCase();
+        const matchesTitle = a.title?.toLowerCase().includes(query) || false;
+        const matchesCourse = a.courseName?.toLowerCase().includes(query) || false;
+        if (!matchesTitle && !matchesCourse) return false;
+      }
+      if (filters.course !== 'All' && a.courseName !== filters.course) return false;
+      if (filters.status !== 'All' && a.status !== filters.status) return false;
+      if (filters.source && filters.source !== 'All' && a.source !== filters.source.toLowerCase()) return false;
+      if (filters.startDate && new Date(a.dueDate) < new Date(filters.startDate)) return false;
+      if (filters.endDate && new Date(a.dueDate) > new Date(filters.endDate)) return false;
       return true;
     });
   };
 
   const handleManualSync = async () => {
-    try {
-      await fetch(`${API_BASE}/api/sync-grades`, { method: 'POST', headers: authHeaders });
-      fetchCourses();
-    } catch (e) { throw e; }
+    try { await fetch(`${API_BASE}/api/sync-grades`, { method: 'POST', headers: authHeaders }); fetchCourses(); } catch (e) { throw e; }
   };
 
   const handleDisconnect = async () => {
     try {
       await fetch(`${API_BASE}/api/user/unlink-portal`, { method: 'POST', headers: authHeaders });
       const updatedUser = { ...user, isPortalConnected: false, portalId: null };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser); localStorage.setItem('user', JSON.stringify(updatedUser));
       setCourses(prev => prev.filter(c => c.type !== 'uni'));
     } catch (e) { console.error(e); }
   };
 
   const handleLinkPortal = async (portalId, portalPassword) => {
     try {
-      const res = await fetch(`${API_BASE}/api/user/link-portal`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ portalId, portalPassword })
-      });
+      const res = await fetch(`${API_BASE}/api/user/link-portal`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ portalId, portalPassword }) });
       if (res.ok) {
         const updatedUser = { ...user, isPortalConnected: true, portalId };
-        setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        fetchCourses();
-      } else {
-        throw new Error("Failed to link");
-      }
+        setUser(updatedUser); localStorage.setItem('user', JSON.stringify(updatedUser)); fetchCourses();
+      } else { throw new Error("Failed to link"); }
     } catch (e) { throw e; }
   };
 
   const handleUpdateProfile = async (name) => {
     try {
-      const res = await fetch(`${API_BASE}/api/user/profile`, {
-        method: 'PUT',
-        headers: authHeaders,
-        body: JSON.stringify({ name })
-      });
+      const res = await fetch(`${API_BASE}/api/user/profile`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ name }) });
       if (res.ok) {
         const updatedUser = await res.json();
-        setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-      } else {
-        throw new Error("Update failed");
-      }
+        setUser(updatedUser); localStorage.setItem('user', JSON.stringify(updatedUser));
+      } else { throw new Error("Update failed"); }
     } catch (e) { throw e; }
   };
 
   const handleChangePassword = async (currentPassword, newPassword) => {
     try {
-      const res = await fetch(`${API_BASE}/api/user/password`, {
-        method: 'PUT',
-        headers: authHeaders,
-        body: JSON.stringify({ currentPassword, newPassword })
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed");
-      }
+      const res = await fetch(`${API_BASE}/api/user/password`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ currentPassword, newPassword }) });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Failed"); }
     } catch (e) { throw e; }
   };
 
   const addCourse = async (courseName) => {
     if (!courseName || !courseName.trim()) return;
     try {
-      const res = await fetch(`${API_BASE}/api/courses`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ name: courseName.trim() })
-      });
-      if (res.ok) {
-        fetchCourses();
-      }
+      const res = await fetch(`${API_BASE}/api/courses`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ name: courseName.trim() }) });
+      if (res.ok) fetchCourses();
     } catch (e) { console.error("Add course failed", e); }
   };
 
   const removeCourse = async (courseId) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/courses/${courseId}`, {
-        method: 'DELETE',
-        headers: authHeaders
-      });
-      if (res.ok) {
-        fetchCourses();
-      }
-    } catch (e) { console.error("Delete course failed", e); }
+    try { const res = await fetch(`${API_BASE}/api/courses/${courseId}`, { method: 'DELETE', headers: authHeaders }); if (res.ok) fetchCourses(); } catch (e) { console.error("Delete course failed", e); }
   };
 
   const handleNavigate = (tab) => {
-    if (tab === 'Server') {
-      if (user?.isAdmin) {
-        setIsServerModalOpen(true);
-      }
-      return; 
-    }
+    if (tab === 'Server') { if (user?.isAdmin) setIsServerModalOpen(true); return; }
     setActiveTab(tab);
     if (tab === 'Bin') fetchBin(); 
-    if (window.innerWidth < 768) {
-      setIsSidebarOpen(false);
-    }
+    if (window.innerWidth < 768) setIsSidebarOpen(false);
   };
 
   const triggerAddClick = () => {
     if (activeTab === 'Tasks' || activeTab === 'Calendar') {
-      setPrefilledDate(''); 
-      setIsAddTaskOpen(true);
+      setPrefilledDate(''); setIsAddTaskOpen(true);
     } else if (activeTab === 'Notes') {
       setIsAddingNewNote(true);
     } else if (activeTab === 'Keynotes') {
       setIsAddKeynoteOpen(true);
+    } else if (activeTab === 'Assessments') {
+      setAddAssessmentTrigger(prev => prev + 1);
     } else if (activeTab && activeTab.startsWith('Cash')) {
       setIsAddingNewTransaction(true); 
     } else {
-      setPrefilledDate(''); 
-      setIsAddTaskOpen(true); 
+      setPrefilledDate(''); setIsAddTaskOpen(true); 
     }
   };
 
   if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
   return (
-    <div className={`flex h-screen w-full transition-colors duration-300 relative ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
+    // 🚨 ADDED overflow-hidden to the outermost div to lock the layout to 100vh globally
+    <div className={`flex h-screen w-full overflow-hidden transition-colors duration-300 relative ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
       
       {isSidebarOpen && (
         <div 
@@ -749,14 +636,7 @@ function App() {
         />
       )}
 
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={handleNavigate}
-        isOpen={isSidebarOpen}
-        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        binCount={binItems.length}
-        user={user}
-      />
+      <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} isOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} binCount={binItems.length} user={user} />
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300 w-full relative">
         <Header
@@ -778,7 +658,9 @@ function App() {
           keynotes={keynotes} 
           onToggleKeynoteRead={handleToggleKeynoteRead}
           hfState={hfState} 
-          hfModes={HF_MODES} 
+          hfModes={HF_MODES}
+          assessments={assessments}
+          onOpenAssessment={(a) => setViewAssessment(a)}
         />
         <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
 
@@ -798,104 +680,44 @@ function App() {
             </div>
           )}
           
-          {activeTab === 'HyperFocus' && (
-            <div className="w-full h-full">
-               <HyperFocus 
-                 hfState={hfState} 
-                 toggleAutomation={toggleAutomation} 
-                 setSoundEnabled={setSoundEnabled} 
-                 hfModes={HF_MODES} 
-                 skipPhase={skipPhase}
-               />
-            </div>
-          )}
-
-          {activeTab === 'Notes' && (
-            <div className="w-full h-full">
-              <Notes 
-                courses={courses} 
-                notes={getFilteredNotes()} 
-                setNotes={setNotes} 
-                isAddingNew={isAddingNewNote} 
-                setIsAddingNew={setIsAddingNewNote} 
-                fetchNotes={fetchNotes} 
-                fetchBin={fetchBin}     
-              />
-            </div>
-          )}
-
+          {activeTab === 'HyperFocus' && <div className="w-full h-full"><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>}
+          {activeTab === 'Notes' && <div className="w-full h-full"><Notes courses={courses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} /></div>}
           {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} /></div>}
           {activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
           {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>} 
-          
-          {activeTab === 'Keynotes' && (
-            <div className="w-full h-full">
-              <Keynote 
-                keynotes={getFilteredKeynotes()} 
-                courses={courses} 
-                onToggleRead={handleToggleKeynoteRead} 
-                onDelete={deleteKeynote}
-                onBatchDelete={handleBatchDeleteKeynotes}
-              />
-            </div>
-          )} 
-          
+          {activeTab === 'Keynotes' && <div className="w-full h-full"><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} /></div>} 
           {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
           {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
           {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
-
-          {/* --- NEW COURSE PORTAL VIEWS --- */}
-          {['Announcements', 'Attendance', 'Submissions'].includes(activeTab) && (
-            <div className="w-full h-full">
-              <CoursePortalView activeTab={activeTab} courses={courses} />
-            </div>
-          )}
-          
-          {activeTab.startsWith('Cash-') && (
-            <div className="w-full h-full">
-              <CashManager 
-                activeTab={activeTab} 
-                isAddingNew={isAddingNewTransaction} 
-                setIsAddingNew={setIsAddingNewTransaction} 
+          {activeTab === 'Assessments' && (
+            <div className="w-full h-full overflow-y-auto">
+              <Assessments 
+                 token={token} 
+                 assessments={getFilteredAssessments()} 
+                 courses={courses} 
+                 fetchAssessments={fetchAssessments} 
+                 externalAddTrigger={addAssessmentTrigger} 
+                 viewAssessment={viewAssessment} 
+                 setViewAssessment={setViewAssessment} 
               />
             </div>
           )}
-
+          
+          {['Announcements', 'Attendance', 'Submissions'].includes(activeTab) && <div className="w-full h-full"><CoursePortalView activeTab={activeTab} courses={courses} /></div>}
+          {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>}
           {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
           {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard /></div>}
           {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} /></div>}
 
-          {activeTab === 'Settings' && (
-            <div className="w-full h-full">
-              <Settings
-                user={user}
-                idleTimeout={idleTimeout}
-                setIdleTimeout={setIdleTimeout}
-                onManualSync={handleManualSync}
-                onDisconnect={handleDisconnect}
-                onLinkPortal={handleLinkPortal}
-                onUpdateProfile={handleUpdateProfile}
-                onChangePassword={handleChangePassword}
-                courses={courses}
-                addCourse={addCourse}
-                removeCourse={removeCourse}
-              />
-            </div>
-          )}
-
+          {activeTab === 'Settings' && <div className="w-full h-full"><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} /></div>}
         </div>
       </div>
 
       <style>{`
         .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
         .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* IN-APP SNACK NOTIFICATION ANIMATION */
         .animate-slideInRight { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes slideInRight {
-          0% { transform: translateX(120%); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
+        @keyframes slideInRight { 0% { transform: translateX(120%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
       `}</style>
 
       {/* --- MODALS --- */}
@@ -911,36 +733,18 @@ function App() {
       {isServerModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
           <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 w-full max-w-sm shadow-2xl relative border border-gray-200 dark:border-[#333]">
-            <button 
-              onClick={() => setIsServerModalOpen(false)} 
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"
-            >
-              <X size={20} />
-            </button>
-            
+            <button onClick={() => setIsServerModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"><X size={20} /></button>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Cloud Workspace</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Select the environment you want to connect to.</p>
 
             <div className="space-y-3">
-              <button
-                onClick={() => { window.open('http://161.118.247.217:8080', '_blank'); setIsServerModalOpen(false); }}
-                className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-brand-blue dark:hover:border-brand-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group"
-              >
-                <div className="text-left">
-                  <div className="font-bold text-gray-900 dark:text-white group-hover:text-brand-blue transition-colors">Admin Workspace</div>
-                  <div className="text-xs text-gray-500">Port 8080</div>
-                </div>
+              <button onClick={() => { window.open('http://161.118.247.217:8080', '_blank'); setIsServerModalOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-brand-blue dark:hover:border-brand-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group">
+                <div className="text-left"><div className="font-bold text-gray-900 dark:text-white group-hover:text-brand-blue transition-colors">Admin Workspace</div><div className="text-xs text-gray-500">Port 8080</div></div>
                 <ArrowRight size={18} className="text-gray-400 group-hover:text-brand-blue transition-colors" />
               </button>
 
-              <button
-                onClick={() => { window.open('http://161.118.247.217:8081', '_blank'); setIsServerModalOpen(false); }}
-                className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all group"
-              >
-                <div className="text-left">
-                  <div className="font-bold text-gray-900 dark:text-white group-hover:text-emerald-500 transition-colors">Hashu's Workspace</div>
-                  <div className="text-xs text-gray-500">Port 8081</div>
-                </div>
+              <button onClick={() => { window.open('http://161.118.247.217:8081', '_blank'); setIsServerModalOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all group">
+                <div className="text-left"><div className="font-bold text-gray-900 dark:text-white group-hover:text-emerald-500 transition-colors">Hashu's Workspace</div><div className="text-xs text-gray-500">Port 8081</div></div>
                 <ArrowRight size={18} className="text-gray-400 group-hover:text-emerald-500 transition-colors" />
               </button>
             </div>
@@ -953,17 +757,10 @@ function App() {
         <div className="fixed top-6 right-6 z-[9999] bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-2xl rounded-2xl p-4 w-80 animate-slideInRight">
           <div className="flex items-start justify-between">
             <div className="flex gap-3">
-               <div className="mt-0.5">
-                 {toast.modeId === 'focus' ? <Activity className="text-blue-500" size={20} /> : <Coffee className="text-emerald-500" size={20} />}
-               </div>
-               <div>
-                 <h4 className="font-bold text-gray-900 dark:text-white text-sm">{toast.title}</h4>
-                 <p className="text-xs text-gray-500 mt-1">{toast.message}</p>
-               </div>
+               <div className="mt-0.5">{toast.modeId === 'focus' ? <Activity className="text-blue-500" size={20} /> : <Coffee className="text-emerald-500" size={20} />}</div>
+               <div><h4 className="font-bold text-gray-900 dark:text-white text-sm">{toast.title}</h4><p className="text-xs text-gray-500 mt-1">{toast.message}</p></div>
             </div>
-            <button onClick={() => setToast(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-              <X size={16} />
-            </button>
+            <button onClick={() => setToast(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><X size={16} /></button>
           </div>
           {toast.showSkip && (
              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#333] flex justify-end">

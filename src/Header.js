@@ -4,36 +4,28 @@ import {
   Book, Mail, Clock, CheckCircle2, Calendar, Menu,
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown, 
   Settings, LogOut, FileText, X, Image as ImageIcon, Mic, FileArchive,
-  Timer, Download, Maximize2, Trash2, EyeOff, Activity
+  Timer, Download, Maximize2, Trash2, EyeOff, Activity, Target
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
 const Header = ({ 
-  activeTab, 
-  isDarkMode, 
-  toggleTheme, 
-  filters, 
-  setFilters, 
-  courses, 
-  onAddClick, 
-  user, 
-  onLogout, 
-  tasks = [], 
-  onOpenTask,
-  onNavigate,
-  onMenuClick,
-  notes = [],           
-  onOpenNote,
-  keynotes = [], 
-  onToggleKeynoteRead,
-  hfState,     
-  hfModes 
+  activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout, 
+  tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, onToggleKeynoteRead, hfState, hfModes,
+  assessments, onOpenAssessment 
 }) => {
+
+  const safeCourses = Array.isArray(courses) ? courses : [];
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  const safeNotes = Array.isArray(notes) ? notes : [];
+  const safeKeynotes = Array.isArray(keynotes) ? keynotes : [];
+  const safeAssessments = Array.isArray(assessments) ? assessments : [];
+
   const [showFilters, setShowFilters] = useState(false);
   const [showCourseList, setShowCourseList] = useState(false); 
   const [showStatusList, setShowStatusList] = useState(false);
   const [showPriorityList, setShowPriorityList] = useState(false);
   const [showMediaList, setShowMediaList] = useState(false);
+  const [showSourceList, setShowSourceList] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
@@ -65,7 +57,7 @@ const Header = ({
   }, []);
 
   const clearFilters = () => {
-    setFilters({ ...filters, course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', mediaType: 'All' });
+    setFilters({ ...filters, course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', mediaType: 'All', source: 'All' });
   };
 
   const handleSearchChange = (e) => {
@@ -74,23 +66,17 @@ const Header = ({
 
     if (query.trim().length > 0 && !isCashTab) {
       if (activeTab === 'Notes') {
-        const results = notes.filter(note => 
-          note?.title?.toLowerCase().includes(query.toLowerCase()) || 
-          note?.content?.toLowerCase().includes(query.toLowerCase())
-        ).slice(0, 6);
+        const results = safeNotes.filter(note => note?.title?.toLowerCase().includes(query.toLowerCase()) || note?.content?.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
         setSearchResults(results.map(n => ({ ...n, isNoteResult: true })));
       } else if (activeTab === 'Keynotes') {
-        const results = keynotes.filter(note => 
-          note?.title?.toLowerCase().includes(query.toLowerCase()) || 
-          note?.content?.toLowerCase().includes(query.toLowerCase())
-        ).slice(0, 6);
+        const results = safeKeynotes.filter(note => note?.title?.toLowerCase().includes(query.toLowerCase()) || note?.content?.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
         setSearchResults(results.map(n => ({ ...n, isNoteResult: true })));
+      } else if (activeTab === 'Assessments') {
+        const results = safeAssessments.filter(a => a?.title?.toLowerCase().includes(query.toLowerCase()) || a?.courseName?.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
+        setSearchResults(results.map(a => ({ ...a, isAssessmentResult: true })));
       } else {
-        const results = tasks.filter(task => 
-          task?.name?.toLowerCase().includes(query.toLowerCase()) || 
-          (task?.description && task.description.toLowerCase().includes(query.toLowerCase()))
-        ).slice(0, 6);
-        setSearchResults(results.map(t => ({ ...t, isNoteResult: false })));
+        const results = safeTasks.filter(task => task?.name?.toLowerCase().includes(query.toLowerCase()) || (task?.description && task.description.toLowerCase().includes(query.toLowerCase()))).slice(0, 6);
+        setSearchResults(results.map(t => ({ ...t, isTaskResult: true })));
       }
       setShowSearchDropdown(true);
     } else {
@@ -123,20 +109,22 @@ const Header = ({
 
   const getCourseFilterIcon = (courseName) => {
     if (courseName === 'All') return <Book size={14} className="text-gray-400" />;
-    const foundCourse = courses.find(c => c?.name === courseName);
+    const foundCourse = safeCourses.find(c => c?.name === courseName);
     if (foundCourse?.type === 'uni') return <UCPLogo className="w-4 h-4" />;
     return <Book size={14} className="text-gray-400" />;
   };
 
   const activeFilterCount = [
     filters?.course !== 'All', filters?.status !== 'All', filters?.priority !== 'All',
-    filters?.startDate !== '', filters?.endDate !== '', filters?.mediaType !== 'All'
+    filters?.startDate !== '', filters?.endDate !== '', filters?.mediaType !== 'All',
+    filters?.source !== 'All'
   ].filter(Boolean).length;
 
-  const unreadKeynotes = keynotes.filter(k => !k?.isRead);
+  const unreadKeynotes = safeKeynotes.filter(k => !k?.isRead);
 
   const today = new Date().setHours(0,0,0,0);
-  const inboxSnaps = keynotes.filter(note => {
+  
+  const inboxSnaps = safeKeynotes.filter(note => {
     const noteDate = new Date(note.createdAt).setHours(0,0,0,0);
     return !note.isRead || noteDate === today; 
   }).sort((a, b) => {
@@ -159,9 +147,7 @@ const Header = ({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      window.open(url, '_blank');
-    }
+    } catch (err) { window.open(url, '_blank'); }
   };
 
   const toggleModalReadStatus = () => {
@@ -186,7 +172,7 @@ const Header = ({
           >
             <Plus size={18} />
             <span className="hidden md:inline text-sm font-semibold">
-              {activeTab === 'Notes' ? 'New Note' : activeTab === 'Keynotes' ? 'Add Snap' : isCashTab ? 'Add Transaction' : 'Add new'}
+              {activeTab === 'Notes' ? 'New Note' : activeTab === 'Keynotes' ? 'Add Snap' : activeTab === 'Assessments' ? 'Add Assessment' : isCashTab ? 'Add Transaction' : 'Add new'}
             </span>
           </button>
 
@@ -200,7 +186,7 @@ const Header = ({
                 value={filters?.searchQuery || ''}
                 onChange={handleSearchChange}
                 onFocus={() => filters?.searchQuery && !isCashTab && setShowSearchDropdown(true)}
-                placeholder={activeTab === 'Notes' || activeTab === 'Keynotes' ? `Search ${activeTab.toLowerCase()}...` : isCashTab ? 'Search transactions...' : "Search tasks..."}
+                placeholder={activeTab === 'Notes' || activeTab === 'Keynotes' ? `Search ${activeTab.toLowerCase()}...` : activeTab === 'Assessments' ? 'Search assessments...' : isCashTab ? 'Search transactions...' : "Search tasks..."}
                 autoComplete="off"
                 name="global-portal-search-input"
                 spellCheck="false"
@@ -215,23 +201,25 @@ const Header = ({
                   <div 
                     key={item?.id || item?._id || index} 
                     onClick={() => { 
-                      item.isNoteResult ? onOpenNote(item) : onOpenTask(item); 
+                      if (item.isNoteResult) onOpenNote(item);
+                      else if (item.isAssessmentResult) onOpenAssessment(item);
+                      else onOpenTask(item);
                       setShowSearchDropdown(false); 
                     }}
                     className="px-4 py-3 hover:bg-blue-50 dark:hover:bg-[#2C2C2C] cursor-pointer border-b border-gray-100 dark:border-[#2C2C2C] last:border-0 flex items-start gap-3 group"
                   >
                     <div className="mt-1 flex-shrink-0 text-brand-blue">
-                      {item.isNoteResult ? <FileText size={14} /> : <div className={`w-2 h-2 rounded-full ${item.status === 'Completed' ? 'bg-green-500' : 'bg-blue-500'}`} />}
+                      {item.isNoteResult ? <FileText size={14} /> : item.isAssessmentResult ? <Target size={14} /> : <div className={`w-2 h-2 rounded-full ${item.status === 'Completed' ? 'bg-green-500' : 'bg-blue-500'}`} />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate group-hover:text-brand-blue transition-colors">
-                        {item.isNoteResult ? item.title : item.name}
+                        {item.isNoteResult ? item.title : item.isAssessmentResult ? item.title : item.name}
                       </p>
                       <div className="flex items-center justify-between mt-1">
                         <span className="text-[10px] text-gray-400 truncate max-w-[120px]">
-                          {item.isNoteResult ? (courses.find(c => (c.id || c._id) === item.courseId)?.name || 'General') : item.course}
+                          {item.isNoteResult ? (safeCourses.find(c => (c.id || c._id) === item.courseId)?.name || 'General') : item.isAssessmentResult ? item.courseName : item.course}
                         </span>
-                        {!item.isNoteResult && (
+                        {item.isTaskResult && (
                           <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
                             item.priority === 'Critical' ? 'border-red-500/30 text-red-500 bg-red-500/10' : 
                             item.priority === 'High' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' : 
@@ -247,7 +235,7 @@ const Header = ({
               </div>
             )}
             
-            {(activeTab === 'Tasks' || activeTab === 'Notes' || activeTab === 'Keynotes') && (
+            {(activeTab === 'Tasks' || activeTab === 'Notes' || activeTab === 'Keynotes' || activeTab === 'Assessments') && (
               <div className="relative" ref={filterRef}>
                 <button onClick={() => setShowFilters(!showFilters)} className={`p-2 rounded-full transition-all relative ${showFilters ? 'bg-blue-100 dark:bg-blue-900/30 text-brand-blue' : 'text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-dark-surface'}`}>
                   <SlidersHorizontal size={20} />
@@ -272,7 +260,7 @@ const Header = ({
                           <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
                             <div onClick={() => { setFilters({...filters, course: 'All'}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-2 text-gray-500"><Book size={14} /> All Courses</div>
                             <div className="max-h-[160px] overflow-y-auto custom-scrollbar">
-                              {courses.map((c, idx) => (
+                              {safeCourses.map((c, idx) => (
                                 <div key={c?.id || c?._id || idx} onClick={() => { setFilters({...filters, course: c.name}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-[#2C2C2C]">
                                   <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">
                                     {c?.type === 'uni' ? <UCPLogo className="w-4 h-4"/> : <Book size={14} className="text-gray-400"/>}
@@ -285,6 +273,46 @@ const Header = ({
                           </div>
                         )}
                       </div>
+
+                      {activeTab === 'Assessments' && (
+                        <>
+                          <div className="relative" ref={statusDropdownRef}>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Status</label>
+                            <button onClick={() => setShowStatusList(!showStatusList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
+                              <span className="flex items-center gap-2">{filters.status}</span>
+                              <ChevronDown size={14} className={`transition-transform ${showStatusList ? 'rotate-180' : ''}`} />
+                            </button>
+                            {showStatusList && (
+                              <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                                {['All', 'Pending', 'Submitted', 'Graded', 'Missed'].map(status => (
+                                  <div key={status} onClick={() => { setFilters({...filters, status}); setShowStatusList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                    <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{status}</span>
+                                    {filters.status === status && <CheckCircle2 size={12} className="text-brand-blue" />}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="relative">
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Source Type</label>
+                            <button onClick={() => setShowSourceList(!showSourceList)} className="w-full flex items-center justify-between bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all">
+                              <span className="flex items-center gap-2">{filters.source}</span>
+                              <ChevronDown size={14} className={`transition-transform ${showSourceList ? 'rotate-180' : ''}`} />
+                            </button>
+                            {showSourceList && (
+                              <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+                                {['All', 'Portal', 'Manual'].map(type => (
+                                  <div key={type} onClick={() => { setFilters({...filters, source: type}); setShowSourceList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                    <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{type}</span>
+                                    {filters.source === type && <CheckCircle2 size={12} className="text-brand-blue" />}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
 
                       {activeTab === 'Keynotes' && (
                         <div className="relative">
@@ -483,7 +511,7 @@ const Header = ({
              </div>
           ) : (
             inboxSnaps.map((note) => {
-              const isUni = courses.find(c => c.name === note.courseName)?.type === 'uni';
+              const isUni = safeCourses.find(c => c.name === note.courseName)?.type === 'uni';
               return (
                 <div 
                   key={note._id} 
@@ -528,7 +556,7 @@ const Header = ({
             <div className="p-5 sm:p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-start bg-gray-50 dark:bg-[#222230]">
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
-                   {courses.find(c => c.name === selectedNote.courseName)?.type === 'uni' && <UCPLogo className="w-4 h-4 text-brand-blue" />}
+                   {safeCourses.find(c => c.name === selectedNote.courseName)?.type === 'uni' && <UCPLogo className="w-4 h-4 text-brand-blue" />}
                    {selectedNote.courseName}
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedNote.title}</h2>
