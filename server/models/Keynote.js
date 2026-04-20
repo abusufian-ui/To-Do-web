@@ -8,8 +8,8 @@ const KeynoteSchema = new mongoose.Schema({
   content: { type: String }, 
   mediaUrls: { type: [String], default: [] }, 
   isRead: { type: Boolean, default: false },
-  isDeleted: { type: Boolean, default: false }, // <-- ADD THIS
-  deletedAt: { type: Date, default: null },     // <-- ADD THIS
+  isDeleted: { type: Boolean, default: false },
+  deletedAt: { type: Date, default: null },     
   createdAt: { type: Date, default: Date.now }
 });
 

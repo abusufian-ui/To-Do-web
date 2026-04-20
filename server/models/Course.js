@@ -9,9 +9,9 @@ const CourseSchema = new mongoose.Schema({
   color: { type: String, default: '#3498db' },
 
   // --- UNIVERSITY COURSE CLASSIFICATION ---
-  code: { type: String, default: '' }, // Course Code (if available)
-  instructors: [{ type: String }],     // Array: Can hold both Lecture & Lab teachers
-  rooms: [{ type: String }],           // Array: Can hold both Lecture & Lab rooms
+  code: { type: String, default: '' }, 
+  instructors: [{ type: String }],     
+  rooms: [{ type: String }],           
 
   createdAt: { type: Date, default: Date.now }
 });

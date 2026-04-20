@@ -38,7 +38,8 @@ const Attendance = require('./models/Attendance');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
 const Feedback = require('./models/Feedback'); 
-const Assessment = require('./models/Assessment'); // NEW: Assessment Model
+const Assessment = require('./models/Assessment'); 
+const Exam = require('./models/Exam'); // 🚨 NEW: DATESHEET EXAM MODEL
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
@@ -150,7 +151,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // Allow mobile & web portal to connect
+    origin: "*", 
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   }
 });
@@ -163,7 +164,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000', 
   'http://localhost:3001',
-  'http://192.168.0.109:8081',
+  'http://192.168.0.113:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
@@ -273,6 +274,14 @@ app.get('/api/submissions', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// --- DATESHEET EXAM ROUTES ---
+app.get('/api/datesheet', auth, async (req, res) => {
+  try {
+    const exams = await Exam.find({ userId: req.user.id }).sort({ date: 1 });
+    res.json(exams);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
 // --- NEW ASSESSMENTS ROUTES ---
 app.get('/api/assessments', auth, async (req, res) => {
   try {
@@ -345,7 +354,7 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
 // --- THE SMART EXTENSION SYNC ---
 app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
   try {
-    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, portalId, ucpCookie } = req.body;
+    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie } = req.body;
     const userId = req.user.id;
     const user = await User.findById(userId);
 
@@ -409,6 +418,18 @@ app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
             
             if (sub.tasks) {
                 await Submission.findOneAndUpdate({ userId, courseUrl: sub.courseUrl }, { ...sub, lastUpdated: new Date() }, { upsert: true });
+            }
+        }
+    }
+    
+    // 4. SAFE SAVING: DATESHEET / EXAMS
+    if (datesheetData !== undefined) {
+        // ALWAYS clear previous datesheet first. This perfectly handles the "No Exams Scheduled" state.
+        await Exam.deleteMany({ userId }); 
+        
+        if (datesheetData.length > 0) {
+            for (const exam of datesheetData) {
+                await new Exam({ ...exam, userId, lastUpdated: new Date() }).save();
             }
         }
     }
@@ -510,8 +531,8 @@ mongoose.connect(dbLink).then(async () => {
     console.log("✅ MongoDB Connected Successfully!"); 
 
     try {
-        // Added Assessment to Watchdogs
-        const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment];
+        // Added Exam to Watchdogs
+        const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment, Exam];
         
         modelsToWatch.forEach(model => {
             if (model.watch) {
@@ -643,7 +664,10 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return res.status(400).json({ message: "Cannot delete yourself!" });
-    await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId }), Assessment.deleteMany({ userId })]);
+    
+    // Updated to also wipe Exams for the deleted user
+    await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId }), Assessment.deleteMany({ userId }), Exam.deleteMany({ userId })]);
+    
     res.json({ message: "User deleted" });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
