@@ -269,28 +269,48 @@ function App() {
     } catch (error) { console.error("Error fetching user:", error); }
   }, [authHeaders, handleLogout]);
 
+  // SAFTEY NET ADDED: Array.isArray() check for Tasks
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/tasks`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
-      setTasks(data.map(t => ({ ...t, id: t._id })));
+      if (Array.isArray(data)) {
+        setTasks(data.map(t => ({ ...t, id: t._id })));
+      } else {
+        console.error("Expected an array of tasks but got:", data);
+        setTasks([]);
+      }
     } catch (error) { console.error("Error fetching tasks:", error); }
   }, [authHeaders, handleLogout]);
 
+  // SAFTEY NET ADDED: Array.isArray() check for Notes
   const fetchNotes = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/notes`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
-      setNotes(await res.json());
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setNotes(data);
+      } else {
+        console.error("Expected an array of notes but got:", data);
+        setNotes([]);
+      }
     } catch (error) { console.error("Error fetching notes:", error); }
   }, [authHeaders, handleLogout]);
 
+  // SAFTEY NET ADDED: Array.isArray() check for Keynotes
   const fetchKeynotes = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/keynotes`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
-      setKeynotes(await res.json());
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setKeynotes(data);
+      } else {
+        console.error("Expected an array of keynotes but got:", data);
+        setKeynotes([]);
+      }
     } catch (error) { console.error("Error fetching keynotes:", error); }
   }, [authHeaders, handleLogout]);
 

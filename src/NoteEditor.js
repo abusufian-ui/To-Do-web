@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
+import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -9,7 +9,19 @@ import TextAlign from '@tiptap/extension-text-align';
 import { Node, mergeAttributes } from '@tiptap/core';
 import Editor from '@monaco-editor/react';
 
-import { Paperclip, X, Book, ArrowLeft, ChevronDown, Copy, Trash2, CheckCircle2, Undo2, Redo2, Loader2, Cloud, Highlighter, Bold, Italic, Image as ImageIcon, Code, List, ListOrdered, Quote, AlignLeft, AlignCenter, AlignRight, Maximize2, Minimize2 } from 'lucide-react';
+// New Extensions
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
+import SuperscriptExtension from '@tiptap/extension-superscript';
+import SubscriptExtension from '@tiptap/extension-subscript';
+import CodeBlock from '@tiptap/extension-code-block';
+
+import { 
+  Paperclip, X, Book, ArrowLeft, ChevronDown, Copy, Trash2, CheckCircle2, 
+  Undo2, Redo2, Loader2, Cloud, Highlighter, Bold, Italic, Image as ImageIcon, 
+  Code, List, ListOrdered, Quote, AlignLeft, AlignCenter, AlignRight, Maximize2, Minimize2,
+  CheckSquare, Terminal, Superscript as SuperscriptIcon, Subscript as SubscriptIcon, Sigma, FileCode 
+} from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -37,10 +49,9 @@ if (typeof window !== 'undefined') {
     }
   });
 }
-// ==========================================
 
 // ==========================================
-// 1. THE MONACO CODE BLOCK (INTELLISENSE, FLEXIBLE & THEMED)
+// 1. THE MONACO CODE BLOCK (INTELLISENSE)
 // ==========================================
 const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
   const [copied, setCopied] = useState(false);
@@ -207,7 +218,82 @@ const MonacoCodeBlockExtension = Node.create({
 });
 
 // ==========================================
-// 2. THE CUSTOM IMAGE BLOCK
+// 2. STATIC CODE BLOCK (LIGHTWEIGHT) WITH DELETE
+// ==========================================
+const StaticCodeBlockNode = ({ node, deleteNode }) => {
+  const [copied, setCopied] = useState(false);
+  
+  const handleCopy = () => {
+    navigator.clipboard.writeText(node.textContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <NodeViewWrapper className="relative group my-6 rounded-lg bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden flex flex-col">
+      <div className="flex justify-between items-center px-4 py-2 bg-[#2D2D2D] border-b border-[#3D3D3D]">
+        <div className="flex items-center gap-2">
+          <FileCode size={14} className="text-gray-400" />
+          <span className="text-xs font-bold text-gray-300 tracking-wider uppercase">Code Snippet</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button contentEditable={false} onClick={handleCopy} className="text-gray-400 hover:text-white transition-colors text-xs font-bold flex items-center gap-1.5 bg-[#3D3D3D] hover:bg-[#4D4D4D] px-2 py-1 rounded">
+            {copied ? <CheckCircle2 size={12} className="text-green-400"/> : <Copy size={12}/>}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          <button contentEditable={false} onClick={deleteNode} className="text-gray-400 hover:text-red-500 transition-colors bg-[#3D3D3D] hover:bg-red-900/40 px-2 py-1 rounded" title="Delete Snippet">
+            <Trash2 size={12}/>
+          </button>
+        </div>
+      </div>
+      <pre className="p-4 overflow-x-auto text-sm font-mono text-gray-200 m-0 bg-[#1E1E1E]">
+        <NodeViewContent as="code" />
+      </pre>
+    </NodeViewWrapper>
+  );
+};
+
+const StaticCodeBlockExtension = CodeBlock.extend({
+  addNodeView() { return ReactNodeViewRenderer(StaticCodeBlockNode); }
+});
+
+// ==========================================
+// 3. MS-WORD STYLE EQUATION BLOCK (ALIGNMENT SUPPORTED)
+// ==========================================
+const EquationBlockNode = ({ node }) => {
+  // Read alignment set by the Tiptap TextAlign extension
+  const align = node.attrs.textAlign || 'center';
+  const alignClass = align === 'left' ? 'justify-start' : align === 'right' ? 'justify-end' : 'justify-center';
+  const textClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
+
+  return (
+    <NodeViewWrapper className={`my-6 flex w-full ${alignClass}`}>
+       <div className="relative group w-full max-w-2xl bg-gray-50/50 dark:bg-[#1A1A1A]/50 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 rounded-lg py-4 px-8 transition-colors">
+          <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white dark:bg-[#121212] px-2 text-[10px] uppercase font-bold text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+             <Sigma size={10} /> Equation
+          </div>
+          <NodeViewContent 
+            className={`font-serif italic text-xl md:text-2xl outline-none text-gray-900 dark:text-gray-100 ${textClass}`} 
+            as="div" 
+          />
+       </div>
+    </NodeViewWrapper>
+  );
+};
+
+const EquationExtension = Node.create({
+  name: 'equationBlock',
+  group: 'block',
+  content: 'inline*',
+  // Allow alignment attribute to be read properly
+  addAttributes() { return { textAlign: { default: 'center' } } },
+  parseHTML() { return [{ tag: 'div[data-equation]' }] },
+  renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-equation': '' }), 0] },
+  addNodeView() { return ReactNodeViewRenderer(EquationBlockNode); }
+});
+
+// ==========================================
+// 4. THE CUSTOM IMAGE BLOCK
 // ==========================================
 const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) => {
   const { src, caption, width, textAlign } = node.attrs;
@@ -321,10 +407,17 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       MonacoCodeBlockExtension,
+      StaticCodeBlockExtension,
+      EquationExtension,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      SuperscriptExtension,
+      SubscriptExtension,
       CustomImageExtension,
       Underline,
       Highlight.configure({ multicolor: true }),
-      TextAlign.configure({ types: ['heading', 'paragraph', 'image'] }), 
+      // ADDED equationBlock to the types allowed to receive alignment styling
+      TextAlign.configure({ types: ['heading', 'paragraph', 'image', 'equationBlock'] }), 
       Placeholder.configure({ placeholder: 'Start typing your brilliance here...' }),
     ],
     content: initialNote?.content || '',
@@ -589,6 +682,69 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         .ProseMirror ul { list-style-type: disc; padding-left: 1.5rem; }
         .ProseMirror ol { list-style-type: decimal; padding-left: 1.5rem; }
         
+        /* ==========================================
+           BEAUTIFUL CUSTOM CHECKLIST STYLING 
+           ========================================== */
+        .ProseMirror ul[data-type="taskList"] { list-style: none; padding: 0; }
+        .ProseMirror ul[data-type="taskList"] li { 
+          display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.25rem; 
+        }
+        
+        /* FIX FOR ALIGNMENT: Tiptap wraps text in a <p>, which has default margins */
+        .ProseMirror ul[data-type="taskList"] li > div > p {
+          margin: 0 !important;
+        }
+        
+        .ProseMirror ul[data-type="taskList"] li > label { 
+          margin-top: 0.2rem; /* perfectly aligns with the first line of text */
+          flex-shrink: 0; user-select: none; 
+        }
+        
+        /* Custom Checkbox Design (Minimalist unfilled style) */
+        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"] { 
+          appearance: none; -webkit-appearance: none;
+          width: 1.2rem; height: 1.2rem;
+          border: 2px solid #9ca3af; /* Gray border */
+          border-radius: 4px;
+          cursor: pointer; display: inline-grid; place-content: center;
+          transition: all 0.2s ease; background-color: transparent;
+          margin: 0;
+        }
+        .dark .ProseMirror ul[data-type="taskList"] li input[type="checkbox"] { border-color: #6b7280; }
+
+        /* The Checkmark */
+        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]::before {
+          content: ""; width: 0.75em; height: 0.75em;
+          transform: scale(0); transition: 120ms transform ease-in-out;
+          background-color: #3b82f6; /* Blue checkmark */
+          transform-origin: center;
+          clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        }
+        .dark .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]::before { background-color: #60a5fa; }
+
+        /* Checked Box State */
+        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked {
+          border-color: #3b82f6; /* Border matches checkmark */
+          background-color: transparent; /* No fill! */
+        }
+        .dark .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked {
+          border-color: #60a5fa; 
+        }
+        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked::before {
+          transform: scale(1);
+        }
+
+        /* Strikethrough Text when Checked */
+        .ProseMirror ul[data-type="taskList"] li > div { flex: 1; transition: all 0.2s ease; margin-top: 0; }
+        .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+          text-decoration: line-through; color: #9ca3af;
+        }
+        .dark .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { color: #6b7280; }
+        
+        /* INLINE CODE STYLES */
+        .ProseMirror code { background-color: #f3f4f6; color: #ef4444; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.875em; }
+        .dark .ProseMirror code { background-color: #2d3748; color: #fca5a5; }
+
         #custom-toolbar {
           border-bottom: 1px solid #e5e7eb !important; padding: 8px 24px !important; background-color: #f9fafb;
           display: flex; flex-wrap: wrap; gap: 4px; align-items: center; position: sticky; top: 0; z-index: 40;
@@ -727,6 +883,9 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           <button onClick={() => editor.chain().focus().toggleBold().run()} className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`}><Bold size={16}/></button>
           <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`}><Italic size={16}/></button>
           <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`toolbar-btn ${editor.isActive('underline') ? 'active' : ''}`}><span className="font-serif font-bold underline">U</span></button>
+          <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={`toolbar-btn ${editor.isActive('superscript') ? 'active' : ''}`} title="Superscript"><SuperscriptIcon size={16}/></button>
+          <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={`toolbar-btn ${editor.isActive('subscript') ? 'active' : ''}`} title="Subscript"><SubscriptIcon size={16}/></button>
+          <button onClick={() => editor.chain().focus().toggleCode().run()} className={`toolbar-btn ${editor.isActive('code') ? 'active' : ''}`} title="Inline Code"><Terminal size={16}/></button>
           <button onClick={toggleHighlight} className={`toolbar-btn ${editor.isActive('highlight') ? 'active text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30' : ''}`}><Highlighter size={16}/></button>
           <div className="toolbar-divider"></div>
 
@@ -776,9 +935,13 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
           <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`}><List size={16}/></button>
           <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`}><ListOrdered size={16}/></button>
+          <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={`toolbar-btn ${editor.isActive('taskList') ? 'active' : ''}`} title="Checklist"><CheckSquare size={16}/></button>
           <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`}><Quote size={16}/></button>
-          
-          <button onClick={() => editor.chain().focus().insertContent({ type: 'monacoCodeBlock' }).run()} className="toolbar-btn" title="Insert Code Editor"><Code size={16}/></button>
+          <div className="toolbar-divider"></div>
+
+          <button onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={`toolbar-btn ${editor.isActive('codeBlock') ? 'active' : ''}`} title="Static Code Snippet"><FileCode size={16}/></button>
+          <button onClick={() => editor.chain().focus().insertContent({ type: 'monacoCodeBlock' }).run()} className="toolbar-btn" title="IntelliSense Editor Block"><Code size={16}/></button>
+          <button onClick={() => editor.chain().focus().insertContent({ type: 'equationBlock' }).run()} className="toolbar-btn" title="Insert Equation"><Sigma size={16}/></button>
           <div className="toolbar-divider"></div>
 
           <button onClick={imageHandler} className="toolbar-btn"><ImageIcon size={16}/></button>
@@ -807,19 +970,19 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
             )}
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-            <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar max-w-[300px]">
+          <div className="flex items-center justify-end gap-3 w-full md:w-auto flex-1 min-w-0">
+            <div className="flex flex-wrap items-center justify-end gap-2 max-h-[80px] overflow-y-auto custom-scrollbar pr-1">
               {referenceFiles.map((file, index) => (
-                <div key={index} className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-full text-xs shrink-0">
-                  <button onClick={(e) => handleDownload(e, file.fileUrl, file.fileName)} className="truncate max-w-[100px] text-brand-blue font-medium hover:underline cursor-pointer text-left">
+                <div key={index} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-brand-blue/40 rounded-lg text-xs transition-all shadow-sm">
+                  <Paperclip size={12} className="text-gray-400 shrink-0" />
+                  <button onClick={(e) => handleDownload(e, file.fileUrl, file.fileName)} className="truncate max-w-[120px] text-gray-700 dark:text-gray-300 font-medium hover:text-brand-blue dark:hover:text-blue-400 cursor-pointer text-left">
                     {file.fileName}
                   </button>
-                  <button onClick={() => removeFile(index)} className="text-blue-400 hover:text-red-500"><X size={12} strokeWidth={3} /></button>
+                  <button onClick={() => removeFile(index)} className="text-gray-400 hover:text-red-500 ml-1 shrink-0"><X size={14} /></button>
                 </div>
               ))}
             </div>
 
-            {/* THE NEW, UNRESTRICTED, MULTIPLE FILE INPUT */}
             <input type="file" ref={fileInputRef} multiple onChange={handleFileUpload} className="hidden" />
             
             <button 
