@@ -416,7 +416,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       CustomImageExtension,
       Underline,
       Highlight.configure({ multicolor: true }),
-      // ADDED equationBlock to the types allowed to receive alignment styling
       TextAlign.configure({ types: ['heading', 'paragraph', 'image', 'equationBlock'] }), 
       Placeholder.configure({ placeholder: 'Start typing your brilliance here...' }),
     ],
@@ -570,18 +569,17 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   };
 
   // =========================================================================
-  // UPDATED: MULTIPLE FILE UPLOADS + ANIMATIONS + ALL FILE FORMATS ALLOWED
+  // MULTIPLE FILE UPLOADS
   // =========================================================================
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
     
-    setIsUploadingFile(true); // Trigger UI Spinner
+    setIsUploadingFile(true); 
     setSaveStatus(`Uploading ${files.length} attachment(s)...`);
     
     const formData = new FormData(); 
     
-    // Loop through every selected file and add it to the form data
     files.forEach(file => {
       formData.append('files', file); 
     });
@@ -594,14 +592,11 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       const data = await response.json();
       
       if (response.ok && data.urls && data.urls.length > 0) {
-        
-        // Match the URLs back to the original file names
         const newAttachments = files.map((file, index) => ({
           fileName: file.name,
           fileUrl: data.urls[index]
         }));
         
-        // Add all new files to the array safely
         setReferenceFiles(prev => [...prev, ...newAttachments]);
         setIsDirty(true); 
         setSaveStatus('Unsaved changes');
@@ -612,22 +607,51 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       console.error('Upload failed', error); 
       setSaveStatus('Error uploading files');
     } finally {
-      setIsUploadingFile(false); // Stop UI Spinner
-      e.target.value = ''; // Reset input
+      setIsUploadingFile(false); 
+      e.target.value = ''; 
     }
   };
 
-  // NATIVE DOWNLOAD HANDLER (NO CORS FETCH REQUIRED)
-  const handleDownload = (e, url, filename) => {
+  // =========================================================================
+  // 🚀 BULLETPROOF BLOB DOWNLOADER (Bypasses School Network Proxies)
+  // =========================================================================
+  const handleDownload = async (e, url, filename) => {
     e.preventDefault();
-    const downloadUrl = url.replace('/media/', '/download/');
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.setAttribute('download', filename || 'attachment');
-    link.setAttribute('target', '_blank');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    
+    // Extract the backend-generated filename (e.g. files-12345.pdf)
+    const storedFilename = url.split('/').pop();
+    
+    // Construct the URL to our new dedicated download API endpoint
+    const downloadUrl = `${API_BASE}/api/download/${storedFilename}?name=${encodeURIComponent(filename)}`;
+    
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Fetch as a raw Blob to bypass strict browser CORS & proxy modifications
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: { 'x-auth-token': token }
+      });
+      
+      if (!response.ok) throw new Error("Network error during download");
+      
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.setAttribute('download', filename); // Forces the exact original name
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
+      
+    } catch (error) {
+      console.error("Blob download failed, falling back to direct tab:", error);
+      // Fallback: Just open it in a new tab if fetch fails completely
+      window.open(url, '_blank');
+    }
   };
 
   const removeFile = (indexToRemove) => {
@@ -666,12 +690,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         .dark .ProseMirror h1, .dark .ProseMirror h2, .dark .ProseMirror h3 { color: #ffffff !important; }
 
         .ProseMirror p.is-editor-empty:first-child::before {
-          content: attr(data-placeholder);
-          float: left;
-          color: #9ca3af;
-          pointer-events: none;
-          height: 0;
-          font-style: italic;
+          content: attr(data-placeholder); float: left; color: #9ca3af; pointer-events: none; height: 0; font-style: italic;
         }
 
         .ProseMirror mark { background-color: #fef08a !important; color: #111827 !important; border-radius: 4px; padding: 0 2px; }
@@ -696,7 +715,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         }
         
         .ProseMirror ul[data-type="taskList"] li > label { 
-          margin-top: 0.2rem; /* perfectly aligns with the first line of text */
+          margin-top: 0.15rem; /* Perfect alignment with first line of text */
           flex-shrink: 0; user-select: none; 
         }
         
@@ -704,7 +723,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         .ProseMirror ul[data-type="taskList"] li input[type="checkbox"] { 
           appearance: none; -webkit-appearance: none;
           width: 1.2rem; height: 1.2rem;
-          border: 2px solid #9ca3af; /* Gray border */
+          border: 2px solid #9ca3af; 
           border-radius: 4px;
           cursor: pointer; display: inline-grid; place-content: center;
           transition: all 0.2s ease; background-color: transparent;
@@ -716,7 +735,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]::before {
           content: ""; width: 0.75em; height: 0.75em;
           transform: scale(0); transition: 120ms transform ease-in-out;
-          background-color: #3b82f6; /* Blue checkmark */
+          background-color: #3b82f6; 
           transform-origin: center;
           clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
         }
@@ -724,21 +743,15 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
         /* Checked Box State */
         .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked {
-          border-color: #3b82f6; /* Border matches checkmark */
-          background-color: transparent; /* No fill! */
+          border-color: #3b82f6; 
+          background-color: transparent; 
         }
-        .dark .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked {
-          border-color: #60a5fa; 
-        }
-        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked::before {
-          transform: scale(1);
-        }
+        .dark .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked { border-color: #60a5fa; }
+        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked::before { transform: scale(1); }
 
         /* Strikethrough Text when Checked */
         .ProseMirror ul[data-type="taskList"] li > div { flex: 1; transition: all 0.2s ease; margin-top: 0; }
-        .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
-          text-decoration: line-through; color: #9ca3af;
-        }
+        .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { text-decoration: line-through; color: #9ca3af; }
         .dark .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { color: #6b7280; }
         
         /* INLINE CODE STYLES */
@@ -876,21 +889,22 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
       {editor && (
         <div id="custom-toolbar">
-          <button onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} className="toolbar-btn"><Undo2 size={16}/></button>
-          <button onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} className="toolbar-btn"><Redo2 size={16}/></button>
+          <button title="Undo" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} className="toolbar-btn"><Undo2 size={16}/></button>
+          <button title="Redo" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} className="toolbar-btn"><Redo2 size={16}/></button>
           <div className="toolbar-divider"></div>
 
-          <button onClick={() => editor.chain().focus().toggleBold().run()} className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`}><Bold size={16}/></button>
-          <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`}><Italic size={16}/></button>
-          <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`toolbar-btn ${editor.isActive('underline') ? 'active' : ''}`}><span className="font-serif font-bold underline">U</span></button>
-          <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={`toolbar-btn ${editor.isActive('superscript') ? 'active' : ''}`} title="Superscript"><SuperscriptIcon size={16}/></button>
-          <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={`toolbar-btn ${editor.isActive('subscript') ? 'active' : ''}`} title="Subscript"><SubscriptIcon size={16}/></button>
-          <button onClick={() => editor.chain().focus().toggleCode().run()} className={`toolbar-btn ${editor.isActive('code') ? 'active' : ''}`} title="Inline Code"><Terminal size={16}/></button>
-          <button onClick={toggleHighlight} className={`toolbar-btn ${editor.isActive('highlight') ? 'active text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30' : ''}`}><Highlighter size={16}/></button>
+          <button title="Bold (Ctrl+B)" onClick={() => editor.chain().focus().toggleBold().run()} className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`}><Bold size={16}/></button>
+          <button title="Italic (Ctrl+I)" onClick={() => editor.chain().focus().toggleItalic().run()} className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`}><Italic size={16}/></button>
+          <button title="Underline (Ctrl+U)" onClick={() => editor.chain().focus().toggleUnderline().run()} className={`toolbar-btn ${editor.isActive('underline') ? 'active' : ''}`}><span className="font-serif font-bold underline">U</span></button>
+          <button title="Superscript" onClick={() => editor.chain().focus().toggleSuperscript().run()} className={`toolbar-btn ${editor.isActive('superscript') ? 'active' : ''}`}><SuperscriptIcon size={16}/></button>
+          <button title="Subscript" onClick={() => editor.chain().focus().toggleSubscript().run()} className={`toolbar-btn ${editor.isActive('subscript') ? 'active' : ''}`}><SubscriptIcon size={16}/></button>
+          <button title="Inline Code" onClick={() => editor.chain().focus().toggleCode().run()} className={`toolbar-btn ${editor.isActive('code') ? 'active' : ''}`}><Terminal size={16}/></button>
+          <button title="Highlight" onClick={toggleHighlight} className={`toolbar-btn ${editor.isActive('highlight') ? 'active text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30' : ''}`}><Highlighter size={16}/></button>
           <div className="toolbar-divider"></div>
 
           <div className="relative" ref={headingDropdownRef}>
             <button 
+              title="Headings"
               onClick={() => setIsHeadingDropdownOpen(!isHeadingDropdownOpen)}
               className="toolbar-btn flex items-center gap-2 px-3 py-1.5 min-w-[130px] justify-between"
             >
@@ -910,6 +924,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
           <div className="relative" ref={alignDropdownRef}>
             <button 
+              title="Text Alignment"
               onClick={() => setIsAlignDropdownOpen(!isAlignDropdownOpen)} 
               className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 ${editor.isActive({ textAlign: 'left' }) || editor.isActive({ textAlign: 'center' }) || editor.isActive({ textAlign: 'right' }) ? 'active' : ''}`}
             >
@@ -933,18 +948,18 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           </div>
           <div className="toolbar-divider"></div>
 
-          <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`}><List size={16}/></button>
-          <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`}><ListOrdered size={16}/></button>
-          <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={`toolbar-btn ${editor.isActive('taskList') ? 'active' : ''}`} title="Checklist"><CheckSquare size={16}/></button>
-          <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`}><Quote size={16}/></button>
+          <button title="Bullet List" onClick={() => editor.chain().focus().toggleBulletList().run()} className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`}><List size={16}/></button>
+          <button title="Numbered List" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`}><ListOrdered size={16}/></button>
+          <button title="Checklist" onClick={() => editor.chain().focus().toggleTaskList().run()} className={`toolbar-btn ${editor.isActive('taskList') ? 'active' : ''}`}><CheckSquare size={16}/></button>
+          <button title="Blockquote" onClick={() => editor.chain().focus().toggleBlockquote().run()} className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`}><Quote size={16}/></button>
           <div className="toolbar-divider"></div>
 
-          <button onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={`toolbar-btn ${editor.isActive('codeBlock') ? 'active' : ''}`} title="Static Code Snippet"><FileCode size={16}/></button>
-          <button onClick={() => editor.chain().focus().insertContent({ type: 'monacoCodeBlock' }).run()} className="toolbar-btn" title="IntelliSense Editor Block"><Code size={16}/></button>
-          <button onClick={() => editor.chain().focus().insertContent({ type: 'equationBlock' }).run()} className="toolbar-btn" title="Insert Equation"><Sigma size={16}/></button>
+          <button title="Static Code Block" onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={`toolbar-btn ${editor.isActive('codeBlock') ? 'active' : ''}`}><FileCode size={16}/></button>
+          <button title="Interactive IntelliSense Block" onClick={() => editor.chain().focus().insertContent({ type: 'monacoCodeBlock' }).run()} className="toolbar-btn"><Code size={16}/></button>
+          <button title="Insert Math Equation" onClick={() => editor.chain().focus().insertContent({ type: 'equationBlock' }).run()} className="toolbar-btn"><Sigma size={16}/></button>
           <div className="toolbar-divider"></div>
 
-          <button onClick={imageHandler} className="toolbar-btn"><ImageIcon size={16}/></button>
+          <button title="Insert Image" onClick={imageHandler} className="toolbar-btn"><ImageIcon size={16}/></button>
         </div>
       )}
 

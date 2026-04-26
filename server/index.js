@@ -566,6 +566,21 @@ app.post('/api/upload', auth, (req, res) => {
   });
 });
 
+// ==========================================
+// 📂 NEW: FILE DOWNLOAD ROUTE (Forces Original Name)
+// ==========================================
+app.get('/api/download/:filename', (req, res) => {
+    const filepath = path.join(uploadDir, req.params.filename);
+    // Grab the original name from the URL query, or fallback to server name
+    const originalName = req.query.name || req.params.filename;
+    
+    // Check if file exists to prevent crashing
+    if (fs.existsSync(filepath)) {
+        res.download(filepath, originalName);
+    } else {
+        res.status(404).json({ error: "File not found on server" });
+    }
+});
 app.get('/api/keynotes', auth, async (req, res) => {
   try { res.json(await Keynote.find({ userId: req.user.id, isDeleted: { $ne: true } }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
