@@ -4,14 +4,14 @@ import {
   Book, Mail, Clock, CheckCircle2, Calendar, Menu,
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown, 
   Settings, LogOut, FileText, X, Image as ImageIcon, Mic, FileArchive,
-  Timer, Download, Maximize2, Trash2, EyeOff, Activity, Target
+  Timer, Download, Maximize2, Trash2, EyeOff, Activity, Target, AlertCircle
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
 const Header = ({ 
   activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout, 
   tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, onToggleKeynoteRead, hfState, hfModes,
-  assessments, onOpenAssessment 
+  assessments, onOpenAssessment, exams 
 }) => {
 
   const safeCourses = Array.isArray(courses) ? courses : [];
@@ -175,6 +175,18 @@ const Header = ({
               {activeTab === 'Notes' ? 'New Note' : activeTab === 'Keynotes' ? 'Add Snap' : activeTab === 'Assessments' ? 'Add Assessment' : isCashTab ? 'Add Transaction' : 'Add new'}
             </span>
           </button>
+
+          {/* 🚀 THE RED ALERT EXAM BUTTON */}
+          {exams && exams.length > 0 && (
+            <button
+              onClick={() => onNavigate('Datesheet')}
+              className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-full text-red-600 dark:text-red-400 font-bold text-sm transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse hover:animate-none ml-1 md:ml-2"
+              title="View Datesheet"
+            >
+              <AlertCircle size={16} />
+              <span className="hidden sm:inline">Exams ({exams.length})</span>
+            </button>
+          )}
 
           <div className="hidden sm:flex items-center gap-2 relative" ref={searchRef}>
             <div className="relative group">

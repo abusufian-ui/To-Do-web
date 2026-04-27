@@ -22,6 +22,7 @@ import Keynote from './Keynote';
 import AddKeynoteModal from './AddKeynoteModal'; 
 import CoursePortalView from './CoursePortalView';
 import Assessments from './Assessments';
+import Datesheet from './Datesheet'; // 🚀 IMPORT THE NEW DATESHEET
 
 // 🚀 IMPORT THE NEW LIVE SYNC HOOK
 import useLiveSync from './hooks/useLiveSync'; 
@@ -102,6 +103,31 @@ function App() {
   const [tasks, setTasks] = useState([]);
   const [notes, setNotes] = useState([]); 
   const [keynotes, setKeynotes] = useState([]); 
+  const [exams, setExams] = useState([]); // 🚀 ADDED STATE FOR EXAMS
+
+  // 🚀 NEW: Auto-Expiring Exams Logic
+  const activeExams = useMemo(() => {
+    if (!exams || exams.length === 0) return [];
+    
+    const now = new Date();
+    
+    return exams.filter(exam => {
+      const examDate = new Date(exam.date);
+      // Set expiration to 11:59:59 PM of the exam day
+      examDate.setHours(23, 59, 59, 999); 
+      
+      // Keep the exam ONLY if the current time is before the expiration
+      return now <= examDate;
+    });
+  }, [exams]);
+
+  // Auto-kick user if the datesheet expires while they are looking at it
+  useEffect(() => {
+    if (activeTab === 'Datesheet' && activeExams.length === 0) {
+      setActiveTab('Tasks');
+    }
+  }, [activeExams.length, activeTab]);
+
   const [isAddingNewNote, setIsAddingNewNote] = useState(false);
   const [isAddingNewTransaction, setIsAddingNewTransaction] = useState(false);
   const [binItems, setBinItems] = useState([]);
@@ -269,7 +295,6 @@ function App() {
     } catch (error) { console.error("Error fetching user:", error); }
   }, [authHeaders, handleLogout]);
 
-  // SAFTEY NET ADDED: Array.isArray() check for Tasks
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/tasks`, { headers: authHeaders });
@@ -284,7 +309,6 @@ function App() {
     } catch (error) { console.error("Error fetching tasks:", error); }
   }, [authHeaders, handleLogout]);
 
-  // SAFTEY NET ADDED: Array.isArray() check for Notes
   const fetchNotes = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/notes`, { headers: authHeaders });
@@ -299,7 +323,6 @@ function App() {
     } catch (error) { console.error("Error fetching notes:", error); }
   }, [authHeaders, handleLogout]);
 
-  // SAFTEY NET ADDED: Array.isArray() check for Keynotes
   const fetchKeynotes = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/keynotes`, { headers: authHeaders });
@@ -312,6 +335,20 @@ function App() {
         setKeynotes([]);
       }
     } catch (error) { console.error("Error fetching keynotes:", error); }
+  }, [authHeaders, handleLogout]);
+
+  // 🚀 FETCH DATESHEET / EXAMS
+  const fetchExams = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/datesheet`, { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setExams(data);
+      } else {
+        setExams([]);
+      }
+    } catch (error) { console.error("Error fetching exams:", error); }
   }, [authHeaders, handleLogout]);
 
   const fetchAssessments = useCallback(async () => {
@@ -382,8 +419,9 @@ function App() {
       fetchAssessments();
       fetchBin();
       fetchCourses();
+      fetchExams();
     }
-  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses]);
+  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses, fetchExams]);
 
   // ==========================================
   // 🚀 LIVE WEB-SOCKET SYNC
@@ -396,8 +434,9 @@ function App() {
       fetchAssessments();
       fetchBin();
       fetchCourses();
+      fetchExams();
     }
-  }, [token, isAuthenticated, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses]);
+  }, [token, isAuthenticated, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses, fetchExams]);
 
   useLiveSync(handleLiveUpdate);
   // ==========================================
@@ -681,6 +720,7 @@ function App() {
           hfModes={HF_MODES}
           assessments={assessments}
           onOpenAssessment={(a) => setViewAssessment(a)}
+          exams={activeExams} // 🚀 PASSED FILTERED EXAMS DOWN TO HEADER
         />
         <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
 
@@ -723,6 +763,13 @@ function App() {
             </div>
           )}
           
+          {/* 🚀 THE NEW DATESHEET ROUTE */}
+          {activeTab === 'Datesheet' && activeExams.length > 0 && (
+            <div className="w-full h-full">
+              <Datesheet exams={activeExams} />
+            </div>
+          )}
+
           {['Announcements', 'Attendance', 'Submissions'].includes(activeTab) && <div className="w-full h-full"><CoursePortalView activeTab={activeTab} courses={courses} /></div>}
           {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>}
           {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
