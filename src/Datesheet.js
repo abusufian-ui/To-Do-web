@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, User, AlertCircle, CheckCircle2, Timer, Activity } from 'lucide-react';
+import { Calendar, Clock, User, AlertCircle, CheckCircle2, Timer, Activity, MapPin } from 'lucide-react';
 
 const Datesheet = ({ exams = [] }) => {
   const [now, setNow] = useState(new Date());
@@ -23,11 +23,11 @@ const Datesheet = ({ exams = [] }) => {
       let endDate = new Date(targetDate);
       endDate.setHours(endDate.getHours() + 2);
 
-      // If current time is past the end of the exam
+      // 1. If current time is past the end of the exam
       if (now > endDate) {
         return { 
           label: 'Done', 
-          color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30', 
+          color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20', 
           icon: <CheckCircle2 size={14} /> 
         };
       }
@@ -36,26 +36,26 @@ const Datesheet = ({ exams = [] }) => {
       const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
       const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
 
-      // If we are currently inside the exam window
+      // 2. If we are currently inside the exam window
       if (diffMs < 0 && now <= endDate) {
         return { 
           label: 'In Progress', 
-          color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800 animate-pulse', 
+          color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 animate-pulse', 
           icon: <Activity size={14} /> 
         };
       }
 
-      // Future exams
+      // 3. Future exams
       if (days === 0) {
-         if (hours === 0) return { label: 'Starting Soon', color: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-900/30', icon: <Timer size={14} /> };
-         return { label: `Today in ${hours}h`, color: 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 border border-orange-200 dark:border-orange-900/30', icon: <Clock size={14} /> };
+         if (hours === 0) return { label: 'Starting Soon', color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20', icon: <Timer size={14} /> };
+         return { label: `Today in ${hours}h`, color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20', icon: <Clock size={14} /> };
       }
       
-      if (days === 1) return { label: 'Tomorrow', color: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border border-blue-200 dark:border-blue-900/30', icon: <Calendar size={14} /> };
+      if (days === 1) return { label: 'Tomorrow', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20', icon: <Calendar size={14} /> };
       
-      return { label: `In ${days} days`, color: 'bg-gray-50 text-gray-600 dark:bg-[#252525] dark:text-gray-400 border border-gray-200 dark:border-[#333]', icon: <Calendar size={14} /> };
+      return { label: `In ${days} days`, color: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20', icon: <Calendar size={14} /> };
     } catch (e) {
-      return { label: 'Scheduled', color: 'bg-gray-100 text-gray-600', icon: <Calendar size={14} /> };
+      return { label: 'Scheduled', color: 'bg-gray-500/10 text-gray-600 border-gray-500/20', icon: <Calendar size={14} /> };
     }
   };
 
@@ -72,102 +72,111 @@ const Datesheet = ({ exams = [] }) => {
   }).length;
 
   return (
-    <div className="p-4 md:p-8 h-full overflow-y-auto custom-scrollbar animate-fadeIn">
+    <div className="h-full flex flex-col animate-fadeIn overflow-hidden">
       
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <div>
-          <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tight flex items-center gap-3">
-            <AlertCircle className="text-red-500" size={32} />
-            Final Datesheet
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 mt-2 font-medium">
-            You have <span className="text-red-500 font-bold">{remainingCount}</span> remaining exams to conquer. Stay focused!
-          </p>
-        </div>
+      {/* Immersive Header */}
+      <div className="px-6 md:px-10 pt-10 pb-8 shrink-0 relative">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-orange-500 to-brand-blue"></div>
+        <h2 className="text-3xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight flex items-center gap-4">
+          <AlertCircle className="text-red-500" size={40} strokeWidth={2.5} />
+          Final Datesheet
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400 mt-3 font-medium text-lg ml-[56px]">
+          You have <span className="text-red-500 font-bold">{remainingCount}</span> remaining exams to conquer. Stay focused!
+        </p>
       </div>
 
       {exams.length === 0 ? (
-        <div className="flex flex-col items-center justify-center mt-32 text-center bg-white dark:bg-[#1E1E1E] p-10 rounded-3xl border border-gray-200 dark:border-[#333] shadow-sm max-w-lg mx-auto">
-          <div className="w-20 h-20 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mb-6">
-            <CheckCircle2 size={32} className="text-green-500" />
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+          <div className="w-24 h-24 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mb-6">
+            <CheckCircle2 size={40} className="text-green-500" />
           </div>
-          <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Exams Completed!</h3>
-          <p className="text-gray-500 dark:text-gray-400">Take a deep breath. Your datesheet is completely clear right now.</p>
+          <h3 className="text-3xl font-black text-gray-900 dark:text-white mb-3">Exams Completed!</h3>
+          <p className="text-lg text-gray-500 dark:text-gray-400 max-w-md">Take a deep breath. Your datesheet is completely clear right now.</p>
         </div>
       ) : (
-        /* Premium Table Layout */
-        <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-[#252525] border-b border-gray-200 dark:border-[#333] text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  <th className="p-4 font-bold w-12 text-center">Sr#</th>
-                  <th className="p-4 font-bold">Class</th>
-                  <th className="p-4 font-bold">Teacher</th>
-                  <th className="p-4 font-bold">Date</th>
-                  <th className="p-4 font-bold">Time</th>
-                  <th className="p-4 font-bold">Venue</th>
-                  <th className="p-4 font-bold text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-[#2C2C2C]">
-                {exams.sort((a, b) => new Date(a.date) - new Date(b.date)).map((exam, index) => {
-                  const status = getExamStatus(exam.date, exam.time);
-                  const isDone = status.label === 'Done';
-                  
-                  return (
-                    <tr 
-                      key={exam._id || index} 
-                      className={`transition-colors hover:bg-gray-50/50 dark:hover:bg-[#252525]/50 ${isDone ? 'opacity-60' : ''}`}
-                    >
-                      <td className="p-4 text-center text-sm font-medium text-gray-400 dark:text-gray-500">
-                        {index + 1}
-                      </td>
-                      
-                      <td className="p-4">
-                        <div className={`text-sm font-bold ${isDone ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>
-                          {exam.courseName}
-                        </div>
-                      </td>
-                      
-                      <td className="p-4">
-                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium">
-                          <User size={14} className="text-gray-400" />
-                          {exam.instructor || 'TBA'}
-                        </div>
-                      </td>
-                      
-                      <td className="p-4">
-                        <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                          {formatDate(exam.date)}
-                        </div>
-                      </td>
-                      
-                      <td className="p-4">
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          {exam.time}
-                        </div>
-                      </td>
-                      
-                      <td className="p-4">
-                        <div className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                          {exam.venue || 'TBA'}
-                        </div>
-                      </td>
-                      
-                      <td className="p-4 text-right">
-                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${status.color}`}>
-                          {status.icon}
-                          {status.label}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        /* Full Bleed Data Grid */
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-6 md:px-10 pb-10">
+          <table className="w-full text-left border-collapse">
+            
+            <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-[#121212]/95 backdrop-blur-md border-b-2 border-gray-200 dark:border-[#2C2C2C]">
+              <tr>
+                <th className="py-4 font-bold text-xs uppercase tracking-widest text-gray-400 w-12 text-center">#</th>
+                <th className="py-4 font-bold text-xs uppercase tracking-widest text-gray-400">Subject</th>
+                <th className="py-4 font-bold text-xs uppercase tracking-widest text-gray-400 hidden lg:table-cell">Instructor</th>
+                <th className="py-4 font-bold text-xs uppercase tracking-widest text-gray-400">Date & Time</th>
+                <th className="py-4 font-bold text-xs uppercase tracking-widest text-gray-400 hidden sm:table-cell">Venue</th>
+                <th className="py-4 font-bold text-xs uppercase tracking-widest text-gray-400 text-right pr-2">Status</th>
+              </tr>
+            </thead>
+            
+            <tbody className="divide-y divide-gray-100 dark:divide-[#252525]">
+              {exams.sort((a, b) => new Date(a.date) - new Date(b.date)).map((exam, index) => {
+                const status = getExamStatus(exam.date, exam.time);
+                const isDone = status.label === 'Done';
+                
+                return (
+                  <tr 
+                    key={exam._id || index} 
+                    className={`group transition-colors duration-200 hover:bg-white dark:hover:bg-[#1A1A1A] ${isDone ? 'opacity-40 grayscale-[30%]' : ''}`}
+                  >
+                    {/* Index */}
+                    <td className="py-5 px-2 text-center text-sm font-black text-gray-300 dark:text-[#444]">
+                      {String(index + 1).padStart(2, '0')}
+                    </td>
+                    
+                    {/* Subject */}
+                    <td className="py-5 pr-4">
+                      <div className={`text-base md:text-lg font-black tracking-tight ${isDone ? 'text-gray-500' : 'text-gray-900 dark:text-white group-hover:text-brand-blue transition-colors'}`}>
+                        {exam.courseName}
+                      </div>
+                      {/* Mobile Instructor Fallback */}
+                      <div className="lg:hidden flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+                        <User size={12} className="opacity-60" /> {exam.instructor || 'TBA'}
+                      </div>
+                    </td>
+                    
+                    {/* Instructor (Desktop) */}
+                    <td className="py-5 pr-4 hidden lg:table-cell">
+                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 font-medium">
+                        <User size={14} className="text-gray-400" />
+                        {exam.instructor || 'TBA'}
+                      </div>
+                    </td>
+                    
+                    {/* Date & Time */}
+                    <td className="py-5 pr-4">
+                      <div className="flex flex-col gap-1">
+                         <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                            {formatDate(exam.date)}
+                         </div>
+                         <div className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                           <Clock size={12} className="text-brand-blue opacity-80" /> {exam.time}
+                         </div>
+                      </div>
+                    </td>
+                    
+                    {/* Venue */}
+                    <td className="py-5 pr-4 hidden sm:table-cell">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 dark:bg-[#252525] rounded-md text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-[#333]">
+                        <MapPin size={12} className="text-emerald-500" />
+                        {exam.venue || 'TBA'}
+                      </div>
+                    </td>
+                    
+                    {/* Status Badge */}
+                    <td className="py-5 text-right pr-2">
+                      <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] sm:text-xs uppercase tracking-wider font-bold border ${status.color}`}>
+                        {status.icon}
+                        <span className="hidden sm:inline">{status.label}</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+
+          </table>
         </div>
       )}
     </div>
