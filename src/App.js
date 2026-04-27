@@ -22,17 +22,13 @@ import Keynote from './Keynote';
 import AddKeynoteModal from './AddKeynoteModal'; 
 import CoursePortalView from './CoursePortalView';
 import Assessments from './Assessments';
-import Datesheet from './Datesheet'; // 🚀 IMPORT THE NEW DATESHEET
+import Datesheet from './Datesheet'; 
 
-// 🚀 IMPORT THE NEW LIVE SYNC HOOK
 import useLiveSync from './hooks/useLiveSync'; 
-
-// IMPORTING NEW ICONS FOR THE SNACK NOTIFICATION
 import { Heart, ArrowRight, X, Activity, Coffee, FastForward } from 'lucide-react'; 
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// --- HYPER FOCUS GLOBALS ---
 const HF_MODES = {
   focus: { id: 'focus', title: 'Deep Focus', text: 'Immerse yourself in the work.', minutes: 25, color: '#3B82F6', textClass: 'text-blue-500', glow: 'shadow-[0_0_60px_rgba(59,130,246,0.3)]' },
   short_break: { id: 'short_break', title: 'Short Break', text: 'Step away. Breathe. Hydrate.', minutes: 5, color: '#10B981', textClass: 'text-emerald-500', glow: 'shadow-[0_0_60px_rgba(16,185,129,0.3)]' },
@@ -55,13 +51,12 @@ function App() {
     return false;
   });
 
-  // --- DARK MODE & ROOT BODY FIX ---
   useEffect(() => {
     const root = document.documentElement;
     if (isDarkMode) {
       root.classList.add('dark');
       localStorage.setItem('theme', 'dark');
-      document.body.style.backgroundColor = '#121212'; // Prevents white flash at bottom
+      document.body.style.backgroundColor = '#121212'; 
     } else {
       root.classList.remove('dark');
       localStorage.setItem('theme', 'light');
@@ -78,7 +73,6 @@ function App() {
     localStorage.setItem('idleTimeout', idleTimeout);
   }, [idleTimeout]);
 
-  // --- APP STATE ---
   const [activeTab, setActiveTab] = useState('Welcome');
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -89,7 +83,6 @@ function App() {
   const [isBatchDeleteKeynotes, setIsBatchDeleteKeynotes] = useState(false);
   const [keynotesToBatchDelete, setKeynotesToBatchDelete] = useState([]);
 
-  // --- ASSESSMENTS STATE ---
   const [assessments, setAssessments] = useState([]);
   const [addAssessmentTrigger, setAddAssessmentTrigger] = useState(0);
   const [viewAssessment, setViewAssessment] = useState(null);
@@ -103,25 +96,32 @@ function App() {
   const [tasks, setTasks] = useState([]);
   const [notes, setNotes] = useState([]); 
   const [keynotes, setKeynotes] = useState([]); 
-  const [exams, setExams] = useState([]); // 🚀 ADDED STATE FOR EXAMS
+  const [exams, setExams] = useState([]); 
 
-  // 🚀 NEW: Auto-Expiring Exams Logic
+  // 🚀 UPDATED: Shows full datesheet until the LAST exam is over
   const activeExams = useMemo(() => {
     if (!exams || exams.length === 0) return [];
     
     const now = new Date();
+    // Sort exams by date chronologically
+    const sortedExams = [...exams].sort((a, b) => new Date(a.date) - new Date(b.date));
     
-    return exams.filter(exam => {
-      const examDate = new Date(exam.date);
-      // Set expiration to 11:59:59 PM of the exam day
-      examDate.setHours(23, 59, 59, 999); 
-      
-      // Keep the exam ONLY if the current time is before the expiration
-      return now <= examDate;
-    });
+    // Get the very last exam in the schedule
+    const lastExam = sortedExams[sortedExams.length - 1];
+    const lastExamDate = new Date(lastExam.date);
+    
+    // Set expiration to 11:59:59 PM of the LAST exam day
+    lastExamDate.setHours(23, 59, 59, 999); 
+    
+    // If we haven't passed the final exam yet, return the WHOLE datesheet
+    if (now <= lastExamDate) {
+      return sortedExams;
+    }
+    
+    // Otherwise, exams are entirely over
+    return [];
   }, [exams]);
 
-  // Auto-kick user if the datesheet expires while they are looking at it
   useEffect(() => {
     if (activeTab === 'Datesheet' && activeExams.length === 0) {
       setActiveTab('Tasks');
@@ -149,9 +149,6 @@ function App() {
     'x-auth-token': token
   }), [token]);
 
-  // ==========================================
-  // HYPER FOCUS GLOBAL ENGINE
-  // ==========================================
   const alarmSoundRef = useRef(typeof window !== 'undefined' ? new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3') : null);
 
   const [hfState, setHfState] = useState(() => {
@@ -286,7 +283,6 @@ function App() {
     return () => { clearTimeout(timeoutId); window.removeEventListener('mousemove', handleUserActivity); window.removeEventListener('keydown', handleUserActivity); window.removeEventListener('click', handleUserActivity); };
   }, [checkForInactivity]);
 
-  // --- DATA FETCHING ---
   const fetchUser = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/user`, { headers: authHeaders });
@@ -302,10 +298,7 @@ function App() {
       const data = await res.json();
       if (Array.isArray(data)) {
         setTasks(data.map(t => ({ ...t, id: t._id })));
-      } else {
-        console.error("Expected an array of tasks but got:", data);
-        setTasks([]);
-      }
+      } else { setTasks([]); }
     } catch (error) { console.error("Error fetching tasks:", error); }
   }, [authHeaders, handleLogout]);
 
@@ -314,12 +307,7 @@ function App() {
       const res = await fetch(`${API_BASE}/api/notes`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setNotes(data);
-      } else {
-        console.error("Expected an array of notes but got:", data);
-        setNotes([]);
-      }
+      if (Array.isArray(data)) { setNotes(data); } else { setNotes([]); }
     } catch (error) { console.error("Error fetching notes:", error); }
   }, [authHeaders, handleLogout]);
 
@@ -328,26 +316,16 @@ function App() {
       const res = await fetch(`${API_BASE}/api/keynotes`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setKeynotes(data);
-      } else {
-        console.error("Expected an array of keynotes but got:", data);
-        setKeynotes([]);
-      }
+      if (Array.isArray(data)) { setKeynotes(data); } else { setKeynotes([]); }
     } catch (error) { console.error("Error fetching keynotes:", error); }
   }, [authHeaders, handleLogout]);
 
-  // 🚀 FETCH DATESHEET / EXAMS
   const fetchExams = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/datesheet`, { headers: authHeaders });
       if (res.status === 401) return handleLogout();
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setExams(data);
-      } else {
-        setExams([]);
-      }
+      if (Array.isArray(data)) { setExams(data); } else { setExams([]); }
     } catch (error) { console.error("Error fetching exams:", error); }
   }, [authHeaders, handleLogout]);
 
@@ -423,9 +401,6 @@ function App() {
     }
   }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses, fetchExams]);
 
-  // ==========================================
-  // 🚀 LIVE WEB-SOCKET SYNC
-  // ==========================================
   const handleLiveUpdate = useCallback(() => {
     if (token && isAuthenticated) {
       fetchTasks();
@@ -439,7 +414,6 @@ function App() {
   }, [token, isAuthenticated, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses, fetchExams]);
 
   useLiveSync(handleLiveUpdate);
-  // ==========================================
 
   const handleAddTask = async (newTaskData) => {
     try {
@@ -685,7 +659,6 @@ function App() {
   if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
   return (
-    // 🚨 ADDED overflow-hidden to the outermost div to lock the layout to 100vh globally
     <div className={`flex h-screen w-full overflow-hidden transition-colors duration-300 relative ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
       
       {isSidebarOpen && (
@@ -720,7 +693,7 @@ function App() {
           hfModes={HF_MODES}
           assessments={assessments}
           onOpenAssessment={(a) => setViewAssessment(a)}
-          exams={activeExams} // 🚀 PASSED FILTERED EXAMS DOWN TO HEADER
+          exams={activeExams} 
         />
         <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
 
@@ -763,7 +736,6 @@ function App() {
             </div>
           )}
           
-          {/* 🚀 THE NEW DATESHEET ROUTE */}
           {activeTab === 'Datesheet' && activeExams.length > 0 && (
             <div className="w-full h-full">
               <Datesheet exams={activeExams} />

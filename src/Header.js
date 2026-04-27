@@ -176,18 +176,6 @@ const Header = ({
             </span>
           </button>
 
-          {/* 🚀 THE RED ALERT EXAM BUTTON */}
-          {exams && exams.length > 0 && (
-            <button
-              onClick={() => onNavigate('Datesheet')}
-              className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-full text-red-600 dark:text-red-400 font-bold text-sm transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse hover:animate-none ml-1 md:ml-2"
-              title="View Datesheet"
-            >
-              <AlertCircle size={16} />
-              <span className="hidden sm:inline">Exams ({exams.length})</span>
-            </button>
-          )}
-
           <div className="hidden sm:flex items-center gap-2 relative" ref={searchRef}>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -419,6 +407,19 @@ const Header = ({
                 )}
               </div>
             )}
+
+            {/* 🚀 MOVED THE RED ALERT EXAM BUTTON HERE */}
+            {exams && exams.length > 0 && (
+              <button
+                onClick={() => onNavigate('Datesheet')}
+                className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-full text-red-600 dark:text-red-400 font-bold text-sm transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse hover:animate-none ml-2"
+                title="View Datesheet"
+              >
+                <AlertCircle size={16} />
+                <span className="hidden sm:inline">Exams ({exams.length})</span>
+              </button>
+            )}
+
           </div>
         </div>
 
