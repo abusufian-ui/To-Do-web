@@ -164,7 +164,8 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000', 
   'http://localhost:3001',
-  'http://192.168.0.113:8081',
+  'http://192.168.0.109:8081',
+  'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
   'http://localhost:8081', 
@@ -190,6 +191,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+// 🚨 THIS IS YOUR GLOBAL 50MB LIMIT
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -249,7 +251,9 @@ app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
 // ==========================================
 // ROUTES: UCP DATA & SYNC ENGINE
 // ==========================================
-app.post('/api/session/keep-alive', express.json(), auth, async (req, res) => {
+
+// 🚨 FIXED: Removed express.json() override to respect the 50mb limit
+app.post('/api/session/keep-alive', auth, async (req, res) => {
     const { ucpCookie } = req.body;
     if (!ucpCookie) return res.status(400).json({ error: "No cookie provided" });
     try {
@@ -352,7 +356,8 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
 });
 
 // --- THE SMART EXTENSION SYNC ---
-app.post('/api/extension-sync', express.json(), auth, async (req, res) => {
+// 🚨 FIXED: Removed express.json() override to respect the 50mb limit
+app.post('/api/extension-sync', auth, async (req, res) => {
   try {
     const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie } = req.body;
     const userId = req.user.id;
@@ -581,6 +586,7 @@ app.get('/api/download/:filename', (req, res) => {
         res.status(404).json({ error: "File not found on server" });
     }
 });
+
 app.get('/api/keynotes', auth, async (req, res) => {
   try { res.json(await Keynote.find({ userId: req.user.id, isDeleted: { $ne: true } }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -808,6 +814,72 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
+// =================================================================
+// 🚀 NEW: UNIFIED MICROSOFT SSO LOGIN & REGISTRATION
+// =================================================================
+app.post('/api/auth/microsoft-login', async (req, res) => {
+  try {
+    const { rollNumber, name, ucpCookie } = req.body;
+    
+    if (!rollNumber) {
+      return res.status(400).json({ error: 'Roll number not detected from portal.' });
+    }
+
+    // Convert Roll Number to Official Email Format
+    const formattedRoll = rollNumber.toLowerCase().trim();
+    const email = `${formattedRoll}@ucp.edu.pk`;
+
+    // 🚀 ADMIN VERIFICATION LOGIC
+    const adminEmails = [
+      'l1f23bscs1329@ucp.edu.pk',
+      'l1f23bscs0023@ucp.edu.pk'
+    ];
+    const isUserAdmin = adminEmails.includes(email);
+
+    let user = await User.findOne({ email });
+
+    if (user) {
+      // 1. User exists: Update cookie, name, and ensure admin rights are correct
+      user.ucpCookie = ucpCookie;
+      user.isPortalConnected = true;
+      user.isAdmin = isUserAdmin; 
+      user.name = name && name !== 'UCP Student' ? name : user.name;
+      await user.save();
+    } else {
+      // 2. New User: Create fresh profile with automatic email
+      user = new User({
+        name: name || formattedRoll.toUpperCase(),
+        email: email,
+        password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10), // Dummy secure password
+        isPortalConnected: true,
+        isAdmin: isUserAdmin, // Automatically grant Admin if email matches
+        ucpCookie: ucpCookie
+      });
+      await user.save();
+    }
+
+    // Generate JWT Token (FIXED THE SECRET VARIABLE)
+    const payload = { user: { id: user.id } };
+    
+    jwt.sign(payload, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' }, (err, token) => {
+      if (err) throw err;
+      res.json({ 
+        token, 
+        user: { 
+          id: user.id, 
+          name: user.name, 
+          email: user.email, 
+          isAdmin: user.isAdmin 
+        } 
+      });
+    });
+
+  } catch (err) {
+    console.error('[MICROSOFT LOGIN ERROR]:', err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
 app.post('/api/forgot-password', async (req, res) => {
   try {
     if (!(await User.findOne({ email: req.body.email }))) return res.status(400).json({ message: "No account found" });
@@ -881,7 +953,45 @@ app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await
 
 app.get('/api/tasks', auth, async (req, res) => { try { res.json(await Task.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (err) { res.status(500).json({ message: err.message }) } });
 app.post('/api/tasks', auth, async (req, res) => { try { res.json(await new Task({ ...req.body, userId: req.user.id }).save()); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.put('/api/tasks/:id', auth, async (req, res) => { try { res.json(await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { $set: req.body }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+
+// ==========================================
+// 🚀 UPDATED & SAFE TASK PUT ENDPOINT
+// ==========================================
+app.put('/api/tasks/:id', auth, async (req, res) => {
+  try {
+    const oldTask = await Task.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!oldTask) return res.status(404).json({ message: "Task not found" });
+
+    const updatedTask = await Task.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { $set: req.body },
+      { new: true }
+    );
+
+    // 🚀 SAFE GAMIFICATION REWARD SYSTEM
+    if (req.body.completed === true && !oldTask.completed) {
+        const userStats = await StudentStats.findOne({ userId: req.user.id });
+        if (userStats) {
+            // Safely initialize the gamification object if it is missing from older accounts
+            if (!userStats.gamification) {
+                userStats.gamification = { score: 0, level: 1, tasksCompleted: 0, habitsMaintained: 0 };
+            }
+            
+            // Safely add points and increment completions
+            userStats.gamification.score = (userStats.gamification.score || 0) + 10;
+            userStats.gamification.tasksCompleted = (userStats.gamification.tasksCompleted || 0) + 1;
+            userStats.gamification.lastActive = Date.now();
+            
+            await userStats.save();
+        }
+    }
+
+    res.json(updatedTask);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => { try { await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true }); res.json({ success: true }); } catch (err) { res.status(500).json({ message: err.message }) } });
 app.put('/api/tasks/:id/delete', auth, async (req, res) => { try { res.json(await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
 app.put('/api/tasks/:id/restore', auth, async (req, res) => { try { res.json(await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
