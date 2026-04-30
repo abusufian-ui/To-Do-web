@@ -164,7 +164,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000', 
   'http://localhost:3001',
-  'http://192.168.0.109:8081',
+  'http://192.168.0.111:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001', 
@@ -814,12 +814,14 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
+
+
 // =================================================================
-// 🚀 NEW: UNIFIED MICROSOFT SSO LOGIN & REGISTRATION
+// 🚀 UNIFIED MICROSOFT SSO LOGIN & REGISTRATION
 // =================================================================
 app.post('/api/auth/microsoft-login', async (req, res) => {
   try {
-    const { rollNumber, name, ucpCookie } = req.body;
+    const { rollNumber, name, profilePic, ucpCookie } = req.body; 
     
     if (!rollNumber) {
       return res.status(400).json({ error: 'Roll number not detected from portal.' });
@@ -836,30 +838,74 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     ];
     const isUserAdmin = adminEmails.includes(email);
 
+    // 🔄 LEGACY ACCOUNT MIGRATION MAP
+    const legacyEmailMap = {
+      'l1f23bscs1329@ucp.edu.pk': 'ranasuffyan9@gmail.com',
+      'l1f23bscs0023@ucp.edu.pk': 'hashirfarooq48@gmail.com'
+    };
+
     let user = await User.findOne({ email });
 
+    if (!user && legacyEmailMap[email]) {
+        user = await User.findOne({ email: legacyEmailMap[email] });
+        if (user) {
+            console.log(`[MIGRATION] Upgrading legacy account ${user.email} to ${email}`);
+            user.email = email; 
+        }
+    }
+
+    // 📸 NEW: IMAGE CONVERSION & STORAGE ENGINE
+    let finalProfilePicUrl = user ? user.profilePic : null;
+
+    if (profilePic && profilePic.includes('base64')) {
+        try {
+            // 1. Strip the HTML metadata prefix from the string
+            const base64Data = profilePic.replace(/^data:image\/\w+;base64,/, "");
+            
+            // 2. Convert the raw string back into a binary file buffer
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            // 3. Create a unique, permanent filename
+            const filename = `profile_${formattedRoll}_${Date.now()}.jpg`;
+            const filepath = path.join(uploadDir, filename);
+
+            // 4. Save it physically to your server's media folder
+            fs.writeFileSync(filepath, buffer);
+            
+            // 5. Generate the permanent URL for the app
+            finalProfilePicUrl = `https://api.myportalucp.online/media/${filename}`;
+            console.log(`[PROFILE PIC] Successfully saved to disk: ${filename}`);
+        } catch (imgErr) {
+            console.error('[IMAGE SAVE ERROR]:', imgErr);
+        }
+    }
+
     if (user) {
-      // 1. User exists: Update cookie, name, and ensure admin rights are correct
+      // 1. User exists: Update cookie, name, admin rights, and picture
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
       user.isAdmin = isUserAdmin; 
       user.name = name && name !== 'UCP Student' ? name : user.name;
+      
+      if (finalProfilePicUrl) user.profilePic = finalProfilePicUrl; 
+      
       await user.save();
     } else {
-      // 2. New User: Create fresh profile with automatic email
+      // 2. Brand New User: Create fresh profile
       user = new User({
         name: name || formattedRoll.toUpperCase(),
         email: email,
-        password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10), // Dummy secure password
+        password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10),
         isPortalConnected: true,
-        isAdmin: isUserAdmin, // Automatically grant Admin if email matches
-        ucpCookie: ucpCookie
+        isAdmin: isUserAdmin, 
+        ucpCookie: ucpCookie,
+        profilePic: finalProfilePicUrl
       });
       await user.save();
     }
 
-    // Generate JWT Token (FIXED THE SECRET VARIABLE)
-    const payload = { user: { id: user.id } };
+    // Generate JWT Token 
+    const payload = { id: user.id };
     
     jwt.sign(payload, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' }, (err, token) => {
       if (err) throw err;
@@ -869,7 +915,8 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
           id: user.id, 
           name: user.name, 
           email: user.email, 
-          isAdmin: user.isAdmin 
+          isAdmin: user.isAdmin,
+          profilePic: user.profilePic // 🚀 Now sending a clean, fast URL!
         } 
       });
     });
