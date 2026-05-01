@@ -818,7 +818,7 @@ app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.
 
 
 // =================================================================
-// 🚀 UNIFIED MICROSOFT SSO LOGIN & REGISTRATION
+// 🚀 UNIFIED MICROSOFT SSO LOGIN & FAST-LOGIN ENGINE
 // =================================================================
 app.post('/api/auth/microsoft-login', async (req, res) => {
   try {
@@ -828,18 +828,12 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       return res.status(400).json({ error: 'Roll number not detected from portal.' });
     }
 
-    // Convert Roll Number to Official Email Format
     const formattedRoll = rollNumber.toLowerCase().trim();
     const email = `${formattedRoll}@ucp.edu.pk`;
 
-    // 🚀 ADMIN VERIFICATION LOGIC
-    const adminEmails = [
-      'l1f23bscs1329@ucp.edu.pk',
-      'l1f23bscs0023@ucp.edu.pk'
-    ];
+    const adminEmails = ['l1f23bscs1329@ucp.edu.pk', 'l1f23bscs0023@ucp.edu.pk'];
     const isUserAdmin = adminEmails.includes(email);
 
-    // 🔄 LEGACY ACCOUNT MIGRATION MAP
     const legacyEmailMap = {
       'l1f23bscs1329@ucp.edu.pk': 'ranasuffyan9@gmail.com',
       'l1f23bscs0023@ucp.edu.pk': 'hashirfarooq48@gmail.com'
@@ -850,49 +844,40 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     if (!user && legacyEmailMap[email]) {
         user = await User.findOne({ email: legacyEmailMap[email] });
         if (user) {
-            console.log(`[MIGRATION] Upgrading legacy account ${user.email} to ${email}`);
             user.email = email; 
         }
     }
 
-    // 📸 NEW: IMAGE CONVERSION & STORAGE ENGINE
+    // 📸 STANDARD IMAGE STORAGE (FAST, NO AI)
     let finalProfilePicUrl = user ? user.profilePic : null;
 
     if (profilePic && profilePic.includes('base64')) {
         try {
-            // 1. Strip the HTML metadata prefix from the string
             const base64Data = profilePic.replace(/^data:image\/\w+;base64,/, "");
-            
-            // 2. Convert the raw string back into a binary file buffer
             const buffer = Buffer.from(base64Data, 'base64');
-            
-            // 3. Create a unique, permanent filename
             const filename = `profile_${formattedRoll}_${Date.now()}.jpg`;
             const filepath = path.join(uploadDir, filename);
-
-            // 4. Save it physically to your server's media folder
-            fs.writeFileSync(filepath, buffer);
             
-            // 5. Generate the permanent URL for the app
+            fs.writeFileSync(filepath, buffer);
             finalProfilePicUrl = `https://api.myportalucp.online/media/${filename}`;
-            console.log(`[PROFILE PIC] Successfully saved to disk: ${filename}`);
         } catch (imgErr) {
-            console.error('[IMAGE SAVE ERROR]:', imgErr);
+            console.error('[IMAGE SAVE ERROR]:', imgErr.message);
         }
     }
 
+    let isNewUser = false;
+
     if (user) {
-      // 1. User exists: Update cookie, name, admin rights, and picture
+      // Returning user
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
       user.isAdmin = isUserAdmin; 
       user.name = name && name !== 'UCP Student' ? name : user.name;
-      
       if (finalProfilePicUrl) user.profilePic = finalProfilePicUrl; 
-      
       await user.save();
     } else {
-      // 2. Brand New User: Create fresh profile
+      // Brand New User
+      isNewUser = true;
       user = new User({
         name: name || formattedRoll.toUpperCase(),
         email: email,
@@ -905,19 +890,19 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       await user.save();
     }
 
-    // Generate JWT Token 
     const payload = { id: user.id };
     
     jwt.sign(payload, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' }, (err, token) => {
       if (err) throw err;
       res.json({ 
         token, 
+        isNewUser, // Tells the mobile app if it should wait for scraping
         user: { 
           id: user.id, 
           name: user.name, 
           email: user.email, 
           isAdmin: user.isAdmin,
-          profilePic: user.profilePic // 🚀 Now sending a clean, fast URL!
+          profilePic: user.profilePic
         } 
       });
     });
@@ -927,7 +912,6 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
-
 app.post('/api/forgot-password', async (req, res) => {
   try {
     if (!(await User.findOne({ email: req.body.email }))) return res.status(400).json({ message: "No account found" });
