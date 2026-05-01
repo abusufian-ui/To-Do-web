@@ -818,7 +818,7 @@ app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.
 
 
 // =================================================================
-// 🚀 UNIFIED MICROSOFT SSO LOGIN, MIGRATION & AI IMAGE ENGINE
+// 🚀 UNIFIED MICROSOFT SSO LOGIN & REGISTRATION
 // =================================================================
 app.post('/api/auth/microsoft-login', async (req, res) => {
   try {
@@ -828,18 +828,18 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       return res.status(400).json({ error: 'Roll number not detected from portal.' });
     }
 
-    // Convert Roll Number to Official Email Format[cite: 11]
+    // Convert Roll Number to Official Email Format
     const formattedRoll = rollNumber.toLowerCase().trim();
     const email = `${formattedRoll}@ucp.edu.pk`;
 
-    // 🚀 ADMIN VERIFICATION LOGIC[cite: 11]
+    // 🚀 ADMIN VERIFICATION LOGIC
     const adminEmails = [
       'l1f23bscs1329@ucp.edu.pk',
       'l1f23bscs0023@ucp.edu.pk'
     ];
     const isUserAdmin = adminEmails.includes(email);
 
-    // 🔄 LEGACY ACCOUNT MIGRATION MAP[cite: 11]
+    // 🔄 LEGACY ACCOUNT MIGRATION MAP
     const legacyEmailMap = {
       'l1f23bscs1329@ucp.edu.pk': 'ranasuffyan9@gmail.com',
       'l1f23bscs0023@ucp.edu.pk': 'hashirfarooq48@gmail.com'
@@ -847,7 +847,6 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 
     let user = await User.findOne({ email });
 
-    // Handle Legacy Migration[cite: 11]
     if (!user && legacyEmailMap[email]) {
         user = await User.findOne({ email: legacyEmailMap[email] });
         if (user) {
@@ -856,56 +855,34 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         }
     }
 
-    // 📸 LOCAL AI BACKGROUND REMOVAL ENGINE
+    // 📸 NEW: IMAGE CONVERSION & STORAGE ENGINE
     let finalProfilePicUrl = user ? user.profilePic : null;
 
     if (profilePic && profilePic.includes('base64')) {
         try {
+            // 1. Strip the HTML metadata prefix from the string
             const base64Data = profilePic.replace(/^data:image\/\w+;base64,/, "");
-            const inputBuffer = Buffer.from(base64Data, 'base64');
-
-            console.log(`[PROFILE PIC] Running local AI background removal for ${formattedRoll}...`);
-
-            // Spawn the Python process created in /var/www/student_portal/remove_bg.py
-            const pyProcess = spawn('python3', ['/var/www/student_portal/remove_bg.py']);
-
-            let chunks = [];
-            pyProcess.stdin.write(inputBuffer);
-            pyProcess.stdin.end();
-
-            pyProcess.stdout.on('data', (chunk) => chunks.push(chunk));
-
-            await new Promise((resolve, reject) => {
-                pyProcess.on('close', (code) => {
-                    if (code === 0) {
-                        const finalBuffer = Buffer.concat(chunks);
-                        // Save as PNG to support transparency from the AI removal[cite: 14]
-                        const filename = `profile_${formattedRoll}_${Date.now()}.png`;
-                        const filepath = path.join(uploadDir, filename);
-
-                        fs.writeFileSync(filepath, finalBuffer);
-                        finalProfilePicUrl = `https://api.myportalucp.online/media/${filename}`;
-                        console.log(`[PROFILE PIC] Local AI processing complete: ${filename}`);
-                        resolve();
-                    } else {
-                        console.error("[PROFILE PIC] Python script failed with code:", code);
-                        reject(new Error("Python background removal failed"));
-                    }
-                });
-            });
-
-        } catch (imgErr) {
-            console.error('[IMAGE ENGINE FAILED]:', imgErr.message);
-            // Fallback: Save original if AI fails[cite: 14]
-            const originalBuffer = Buffer.from(profilePic.replace(/^data:image\/\w+;base64,/, ""), 'base64');
+            
+            // 2. Convert the raw string back into a binary file buffer
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            // 3. Create a unique, permanent filename
             const filename = `profile_${formattedRoll}_${Date.now()}.jpg`;
-            fs.writeFileSync(path.join(uploadDir, filename), originalBuffer);
+            const filepath = path.join(uploadDir, filename);
+
+            // 4. Save it physically to your server's media folder
+            fs.writeFileSync(filepath, buffer);
+            
+            // 5. Generate the permanent URL for the app
             finalProfilePicUrl = `https://api.myportalucp.online/media/${filename}`;
+            console.log(`[PROFILE PIC] Successfully saved to disk: ${filename}`);
+        } catch (imgErr) {
+            console.error('[IMAGE SAVE ERROR]:', imgErr);
         }
     }
 
     if (user) {
-      // 1. User exists: Update session data[cite: 11, 14]
+      // 1. User exists: Update cookie, name, admin rights, and picture
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
       user.isAdmin = isUserAdmin; 
@@ -915,7 +892,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       
       await user.save();
     } else {
-      // 2. Brand New User: Create fresh profile[cite: 11, 14]
+      // 2. Brand New User: Create fresh profile
       user = new User({
         name: name || formattedRoll.toUpperCase(),
         email: email,
@@ -928,7 +905,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       await user.save();
     }
 
-    // Generate JWT Token[cite: 11]
+    // Generate JWT Token 
     const payload = { id: user.id };
     
     jwt.sign(payload, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' }, (err, token) => {
@@ -940,7 +917,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
           name: user.name, 
           email: user.email, 
           isAdmin: user.isAdmin,
-          profilePic: user.profilePic // Returning the permanent server URL[cite: 14]
+          profilePic: user.profilePic // 🚀 Now sending a clean, fast URL!
         } 
       });
     });
