@@ -1231,102 +1231,102 @@ cron.schedule('* * * * *', async () => {
     }
   } catch (error) { console.error(`[TASK ENGINE] Error:`, error); }
 
-  // ---------------------------------------------------------
-  // 🕌 ENGINE 2: LIVE PRAYER ALERTS (Bulletproof HH:mm)
-  // ---------------------------------------------------------
-  try {
-    const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-    const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
+  // // ---------------------------------------------------------
+  // // 🕌 ENGINE 2: LIVE PRAYER ALERTS (Bulletproof HH:mm)
+  // // ---------------------------------------------------------
+  // try {
+  //   const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+  //   const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
     
-    // Safely pad single digits so 2:05 PM becomes "14:05" to perfectly match Aladhan API
-    const h = String(lahoreDateObj.getHours()).padStart(2, '0');
-    const m = String(lahoreDateObj.getMinutes()).padStart(2, '0');
-    const currentLahoreTime = `${h}:${m}`;
+  //   // Safely pad single digits so 2:05 PM becomes "14:05" to perfectly match Aladhan API
+  //   const h = String(lahoreDateObj.getHours()).padStart(2, '0');
+  //   const m = String(lahoreDateObj.getMinutes()).padStart(2, '0');
+  //   const currentLahoreTime = `${h}:${m}`;
 
-    const times = await getLahorePrayerTimes(todayStr);
+  //   const times = await getLahorePrayerTimes(todayStr);
 
-    if (times) {
-        let currentPrayer = null;
-        for (const [prayer, time] of Object.entries(times)) {
-          if (time === currentLahoreTime) { currentPrayer = prayer; break; }
-        }
+  //   if (times) {
+  //       let currentPrayer = null;
+  //       for (const [prayer, time] of Object.entries(times)) {
+  //         if (time === currentLahoreTime) { currentPrayer = prayer; break; }
+  //       }
 
-        if (currentPrayer) {
-          console.log(`[PRAYER ENGINE] 🕌 Match found! Triggering ${currentPrayer}...`);
-          const prayerUsers = await User.find({ prayerNotifs: true });
-          const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha']; 
-          const pIndex = prayerOrder.indexOf(currentPrayer);
+  //       if (currentPrayer) {
+  //         console.log(`[PRAYER ENGINE] 🕌 Match found! Triggering ${currentPrayer}...`);
+  //         const prayerUsers = await User.find({ prayerNotifs: true });
+  //         const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha']; 
+  //         const pIndex = prayerOrder.indexOf(currentPrayer);
 
-          for (let user of prayerUsers) {
-            let record = await NamazRecord.findOne({ userId: user._id, dateStr: todayStr });
-            if (!record) record = new NamazRecord({ userId: user._id, dateStr: todayStr });
+  //         for (let user of prayerUsers) {
+  //           let record = await NamazRecord.findOne({ userId: user._id, dateStr: todayStr });
+  //           if (!record) record = new NamazRecord({ userId: user._id, dateStr: todayStr });
 
-            if (pIndex > 0) {
-               const prevPrayer = prayerOrder[pIndex - 1];
-               if (record.prayers[prevPrayer] === 'pending') record.prayers[prevPrayer] = 'missed';
-            }
+  //           if (pIndex > 0) {
+  //              const prevPrayer = prayerOrder[pIndex - 1];
+  //              if (record.prayers[prevPrayer] === 'pending') record.prayers[prevPrayer] = 'missed';
+  //           }
             
-            record.prayers[currentPrayer] = 'pending';
-            await record.save();
+  //           record.prayers[currentPrayer] = 'pending';
+  //           await record.save();
             
-            sendPush(
-                user, 
-                `🕌 ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} Prayer Time`, 
-                `It is time for ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} prayer. Please take a moment to pray.`, 
-                { type: 'prayer', prayerName: currentPrayer },
-                "prayer-alert",         
-                "prayer-channel-live"   
-            );
-          }
-        }
-    }
-  } catch (error) { console.error(`[PRAYER ENGINE] Error:`, error); }
+  //           sendPush(
+  //               user, 
+  //               `🕌 ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} Prayer Time`, 
+  //               `It is time for ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} prayer. Please take a moment to pray.`, 
+  //               { type: 'prayer', prayerName: currentPrayer },
+  //               "prayer-alert",         
+  //               "prayer-channel-live"   
+  //           );
+  //         }
+  //       }
+  //   }
+  // } catch (error) { console.error(`[PRAYER ENGINE] Error:`, error); }
 
-  // ---------------------------------------------------------
-  // ENGINE 3: CLASS REMINDERS
-  // ---------------------------------------------------------
-  try {
-    const pktNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-    const targetTime = new Date(pktNow.getTime() + 5 * 60000);
-    const targetDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetTime.getDay()];
+  // // ---------------------------------------------------------
+  // // ENGINE 3: CLASS REMINDERS
+  // // ---------------------------------------------------------
+  // try {
+  //   const pktNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+  //   const targetTime = new Date(pktNow.getTime() + 5 * 60000);
+  //   const targetDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetTime.getDay()];
     
-    const targetHours = targetTime.getHours();
-    const targetMins = targetTime.getMinutes();
+  //   const targetHours = targetTime.getHours();
+  //   const targetMins = targetTime.getMinutes();
 
-    const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => []);
+  //   const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => []);
 
-    for (let cls of todaysClasses) {
-      if (!cls || !cls.userId || !cls.startTime) continue;
+  //   for (let cls of todaysClasses) {
+  //     if (!cls || !cls.userId || !cls.startTime) continue;
 
-      let classHours = -1, classMinutes = -1;
-      const timeMatch = String(cls.startTime).trim().match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
+  //     let classHours = -1, classMinutes = -1;
+  //     const timeMatch = String(cls.startTime).trim().match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
       
-      if (timeMatch) {
-        classHours = parseInt(timeMatch[1], 10);
-        classMinutes = parseInt(timeMatch[2], 10);
-        const modifier = timeMatch[3];
-        if (modifier) {
-           const isPM = modifier.toLowerCase() === 'pm';
-           if (isPM && classHours < 12) classHours += 12;
-           if (!isPM && classHours === 12) classHours = 0;
-        }
-      }
+  //     if (timeMatch) {
+  //       classHours = parseInt(timeMatch[1], 10);
+  //       classMinutes = parseInt(timeMatch[2], 10);
+  //       const modifier = timeMatch[3];
+  //       if (modifier) {
+  //          const isPM = modifier.toLowerCase() === 'pm';
+  //          if (isPM && classHours < 12) classHours += 12;
+  //          if (!isPM && classHours === 12) classHours = 0;
+  //       }
+  //     }
 
-      if (classHours === targetHours && classMinutes === targetMins) {
-        console.log(`[CLASS ENGINE] 🏫 Match found! Alerting user for ${cls.courseName}`);
+  //     if (classHours === targetHours && classMinutes === targetMins) {
+  //       console.log(`[CLASS ENGINE] 🏫 Match found! Alerting user for ${cls.courseName}`);
         
-        const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) ? cls.instructor : "Your teacher";
-        const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) ? ` (Room: ${cls.room})` : "";
+  //       const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) ? cls.instructor : "Your teacher";
+  //       const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) ? ` (Room: ${cls.room})` : "";
         
-        sendPush(
-            cls.userId, 
-            `Upcoming Class: ${cls.courseName} 📚`, 
-            `${instructorName} is starting the lecture in 5 mins${roomInfo}`, 
-            { type: 'class', classId: cls._id }
-        );
-      }
-    }
-  } catch (error) { console.error(`[CLASS ENGINE] Error:`, error.message); }
+  //       sendPush(
+  //           cls.userId, 
+  //           `Upcoming Class: ${cls.courseName} 📚`, 
+  //           `${instructorName} is starting the lecture in 5 mins${roomInfo}`, 
+  //           { type: 'class', classId: cls._id }
+  //       );
+  //     }
+  //   }
+  // } catch (error) { console.error(`[CLASS ENGINE] Error:`, error.message); }
 
   // ---------------------------------------------------------
   // ENGINE 4: SUBMISSION DEADLINE ALERTS
