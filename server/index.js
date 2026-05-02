@@ -94,6 +94,40 @@ const generateEmailTemplate = (title, code, message) => `
 `;
 
 // ==========================================
+// 🚀 SILENT PUSH NOTIFICATION HELPER
+// ==========================================
+async function sendSilentPush(user, data = {}) {
+    let tokens = [];
+    if (user.pushTokens && user.pushTokens.length > 0) {
+        tokens = user.pushTokens.filter(t => Expo.isExpoPushToken(t));
+    } else if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
+        tokens = [user.pushToken];
+    }
+
+    if (tokens.length === 0) return;
+
+    let messages = [];
+    for (let pushToken of tokens) {
+        messages.push({
+            to: pushToken,
+            // 🚨 NO title or body! This makes it silent.
+            data: data,
+            _displayInForeground: false, // Don't show if app is open
+        });
+    }
+
+    try {
+        let chunks = expo.chunkPushNotifications(messages);
+        for (let chunk of chunks) {
+            await expo.sendPushNotificationsAsync(chunk);
+        }
+        console.log(`📲 Sent SILENT sync ping to ${user.email}`);
+    } catch(e) { 
+        console.error("Silent Push Error:", e.message); 
+    }
+}
+
+// ==========================================
 // 🚀 MULTI-DEVICE PUSH NOTIFICATION HELPER
 // ==========================================
 async function sendPush(user, title, body, data = {}, categoryId = "smart-alert", channelId = "default") {
@@ -249,6 +283,111 @@ app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Server Error" }); }
 });
 
+// =================================================================
+// 🌐 NEW PREMIUM WEB PORTAL AUTHENTICATION FLOW
+// =================================================================
+
+// 1. CHECK EMAIL STATUS
+app.post('/api/web/check-email', async (req, res) => {
+    try {
+        const { email } = req.body;
+        const formattedEmail = email.toLowerCase().trim();
+        
+        const user = await User.findOne({ email: formattedEmail });
+        
+        if (!user) {
+            return res.json({ exists: false });
+        }
+        
+        return res.json({ 
+            exists: true, 
+            hasPassword: !!user.webPassword,
+            name: user.name.split(' ')[0] // Send first name for a friendly greeting
+        });
+    } catch (err) {
+        res.status(500).json({ message: "Server error checking email." });
+    }
+});
+
+// 2. SEND OTP (For First-Time Setup OR Password Reset)
+app.post('/api/web/send-otp', async (req, res) => {
+    try {
+        const { email, type } = req.body; // type is 'setup' or 'reset'
+        const user = await User.findOne({ email });
+        
+        if (!user) return res.status(404).json({ message: "Account not found." });
+
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
+
+        const subject = type === 'setup' ? 'Set up your Web Portal Password' : 'Reset your Web Portal Password';
+        const msg = type === 'setup' 
+            ? 'Welcome to MyPortal Web! Use this code to verify your identity and create your web password.'
+            : 'You requested a password reset for MyPortal Web. Use this code to proceed.';
+
+        await resend.emails.send({ 
+            from: 'MyPortal <otp@myportalucp.online>', 
+            to: email, 
+            subject: subject, 
+            html: generateEmailTemplate(subject, code, msg)
+        });
+
+        res.json({ success: true, message: "OTP sent successfully." });
+    } catch (err) {
+        res.status(500).json({ message: "Error sending verification code." });
+    }
+});
+
+// 3. SET OR RESET PASSWORD & LOGIN
+app.post('/api/web/set-password', async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+        
+        const validOtp = await OTP.findOne({ email, code: otp });
+        if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
+
+        const user = await User.findOne({ email });
+        user.webPassword = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
+        await user.save();
+        await OTP.deleteOne({ email }); // Clear OTP after success
+
+        // Generate Token & Log them in instantly
+        const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+        
+        res.json({ 
+            token, 
+            user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic } 
+        });
+    } catch (err) {
+        res.status(500).json({ message: "Error securing your new password." });
+    }
+});
+
+// 4. STANDARD WEB LOGIN
+app.post('/api/web/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        
+        const user = await User.findOne({ email });
+        if (!user || !user.webPassword) {
+            return res.status(400).json({ message: "Invalid credentials." });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.webPassword);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Incorrect password." });
+        }
+
+        const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+        res.json({ 
+            token, 
+            user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic } 
+        });
+    } catch (err) {
+        res.status(500).json({ message: "Error logging in." });
+    }
+});
+
 // ==========================================
 // ROUTES: UCP DATA & SYNC ENGINE
 // ==========================================
@@ -262,6 +401,31 @@ app.post('/api/session/keep-alive', auth, async (req, res) => {
         res.status(200).json({ message: "Cookies saved to vault." });
     } catch (err) {
         res.status(500).json({ error: "Failed to secure cookie in vault" });
+    }
+});
+
+// 🚨 ENDPOINT: TRIGGER EXPIRED SESSION PUSH
+app.post('/api/trigger-expired-push', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        console.log(`[PUSH] Triggering Session Expired push for ${user.email}`);
+        
+        // Use your existing sendPush helper to send the notification
+        await sendPush(
+            user,
+            "UCP Session Expired ⚠️",
+            "Your university portal session has expired. Tap here to log in.",
+            { type: "session_expired" },
+            "smart-alert",
+            "default"
+        );
+
+        res.json({ success: true, message: "Push notification triggered." });
+    } catch (err) {
+        console.error("Error triggering expired push:", err);
+        res.status(500).json({ message: "Server error triggering push." });
     }
 });
 
@@ -1359,6 +1523,41 @@ cron.schedule('* * * * *', async () => {
         }
     }
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
+});
+
+// ---------------------------------------------------------
+// ENGINE 5: BACKGROUND SYNC HEARTBEAT (Runs every 15 mins)
+// ---------------------------------------------------------
+cron.schedule('*/15 * * * *', async () => {
+    try {
+        console.log("[CRON] 💓 Firing 15-minute background sync heartbeat...");
+        
+        // Find users who have an active portal connection and push tokens
+        const activeUsers = await User.find({ 
+            isPortalConnected: true,
+            $or: [
+                { pushTokens: { $exists: true, $not: {$size: 0} } },
+                { pushToken: { $exists: true, $ne: null } }
+            ]
+        });
+
+        if (activeUsers.length === 0) {
+            console.log("[CRON] No active portal users with push tokens found.");
+            return;
+        }
+
+        console.log(`[CRON] Pinging ${activeUsers.length} users to run background sync...`);
+
+        // Send a silent push to wake up their apps
+        for (let user of activeUsers) {
+            await sendSilentPush(user, { 
+                action: 'RUN_BACKGROUND_SYNC',
+                timestamp: Date.now().toString() 
+            });
+        }
+    } catch (error) {
+        console.error(`[SYNC ENGINE] Error:`, error.message);
+    }
 });
 
 // 🚨 NEW: LAUNCH THE COMBINED HTTP/WEBSOCKET SERVER
