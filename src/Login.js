@@ -15,6 +15,7 @@ export default function Login() {
     const [step, setStep] = useState('EMAIL'); // EMAIL, PASSWORD, OTP, NEW_PASSWORD, NOT_FOUND
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [successMsg, setSuccessMsg] = useState('');
     
     // Data State
     const [rollNumber, setRollNumber] = useState('');
@@ -68,8 +69,11 @@ export default function Login() {
     const sendOtp = async (type) => {
         setIsLoading(true);
         setError('');
+        setSuccessMsg('');
         try {
             await axios.post(`${API_BASE}/api/web/send-otp`, { email, type });
+            setSuccessMsg('OTP sent successfully. Please check your inbox.');
+            setTimeout(() => setSuccessMsg(''), 5000);
         } catch (err) {
             setError(err.response?.data?.message || "Failed to send code.");
         } finally {
@@ -208,14 +212,22 @@ export default function Login() {
                     </div>
                 </div>
 
-                <div className="px-10 pb-10">
-                    {/* Error Toast */}
-                    <div className={`overflow-hidden transition-all duration-300 ease-in-out ${error ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-red-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            {error}
+                    <div className="px-10 pb-10">
+                        {/* Error Toast */}
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${error ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
+                            <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-red-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                {error}
+                            </div>
                         </div>
-                    </div>
+
+                        {/* Success Toast */}
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${successMsg ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
+                            <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-green-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                {successMsg}
+                            </div>
+                        </div>
 
                     <div className="relative">
                         {/* STEP 1: EMAIL */}
