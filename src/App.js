@@ -24,7 +24,7 @@ import CoursePortalView from './CoursePortalView';
 import Assessments from './Assessments';
 import Datesheet from './Datesheet'; 
 import AnimatedLogo from './Animation'; // 🚀 IMPORTED YOUR NEW LOGO ANIMATION HERE
-import { CustomToast } from './CustomToast';
+import { CustomToast, ToastConfig } from './CustomToast';
 
 import useLiveSync from './hooks/useLiveSync'; 
 import { Heart, ArrowRight, X, Activity, Coffee, FastForward } from 'lucide-react'; 

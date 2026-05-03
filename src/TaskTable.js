@@ -572,6 +572,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                 <div className={COL.course}>Course</div>
                 <div className={COL.date}>Due date</div>
                 <div className={COL.priority}>Priority</div>
+
+                </div>
               {activeTasks.length > 0 ? activeTasks.map(task => renderRow(task, false)) : (
                 <EmptyState 
                   icon={CheckSquareIcon}

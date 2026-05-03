@@ -343,6 +343,21 @@ app.post('/api/web/send-otp', async (req, res) => {
     }
 });
 
+// 2.5 VERIFY OTP (Intermediate Step)
+app.post('/api/web/verify-otp', async (req, res) => {
+    try {
+        const email = req.body.email.toLowerCase().trim();
+        const otpCode = String(req.body.otp).trim();
+        
+        const validOtp = await OTP.findOne({ email: email, code: otpCode });
+        if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
+
+        res.json({ success: true, message: "OTP verified." });
+    } catch (err) {
+        res.status(500).json({ message: "Error verifying OTP." });
+    }
+});
+
 // 3. SET OR RESET PASSWORD & LOGIN
 app.post('/api/web/set-password', async (req, res) => {
     try {
