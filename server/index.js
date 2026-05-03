@@ -192,7 +192,12 @@ const io = new Server(server, {
 });
 
 io.on('connection', (socket) => {
-    // Silently handle connections
+    socket.on('join_room', (userId) => {
+        if (userId) {
+            socket.join(userId.toString());
+            console.log(`👤 User ${userId} joined their personal data room.`);
+        }
+    });
 });
 
 const allowedOrigins = [
@@ -706,10 +711,19 @@ mongoose.connect(dbLink).then(async () => {
         
         modelsToWatch.forEach(model => {
             if (model.watch) {
-                const changeStream = model.watch();
+                // Ensure we get the full document even on updates so we can extract the userId
+                const changeStream = model.watch([], { fullDocument: 'updateLookup' });
                 changeStream.on('change', (change) => {
-                    // Blast the update signal to the frontend (Web & Mobile)
-                    io.emit('live_db_update'); 
+                    const doc = change.fullDocument;
+                    if (doc && doc.userId) {
+                        const userIdStr = doc.userId.toString();
+                        // 🚀 Send the update ONLY to the specific user whose data changed
+                        io.to(userIdStr).emit('live_db_update'); 
+                    } else {
+                        // Fallback: if we can't determine the user, we still don't broadcast to everyone
+                        // to prevent server crashes.
+                        console.log("Change detected but no userId found. Skipping broadcast.");
+                    }
                 });
             }
         });
@@ -1344,56 +1358,56 @@ app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
 
 cron.schedule('* * * * *', async () => {
 
-  // ---------------------------------------------------------
-  // ENGINE 1: STANDARD TASK REMINDERS
-  // ---------------------------------------------------------
-  try {
-    const now = new Date();
+  // // ---------------------------------------------------------
+  // // ENGINE 1: STANDARD TASK REMINDERS
+  // // ---------------------------------------------------------
+  // try {
+  //   const now = new Date();
     
-    const target15Start = new Date(now.getTime() + (15 * 60000));
-    target15Start.setSeconds(0, 0); 
-    const target15End = new Date(target15Start.getTime() + 59999); 
+  //   const target15Start = new Date(now.getTime() + (15 * 60000));
+  //   target15Start.setSeconds(0, 0); 
+  //   const target15End = new Date(target15Start.getTime() + 59999); 
 
-    const targetExactStart = new Date(now.getTime());
-    targetExactStart.setSeconds(0, 0);
-    const targetExactEnd = new Date(targetExactStart.getTime() + 59999);
+  //   const targetExactStart = new Date(now.getTime());
+  //   targetExactStart.setSeconds(0, 0);
+  //   const targetExactEnd = new Date(targetExactStart.getTime() + 59999);
 
-    const orConditions = [
-        { triggerAt: { $gte: target15Start, $lte: target15End } },
-        { triggerAt: { $gte: targetExactStart, $lte: targetExactEnd } }
-    ];
+  //   const orConditions = [
+  //       { triggerAt: { $gte: target15Start, $lte: target15End } },
+  //       { triggerAt: { $gte: targetExactStart, $lte: targetExactEnd } }
+  //   ];
 
-    const currentHour = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" })).getHours();
-    const currentMinute = now.getMinutes();
-    if (currentMinute === 0 && [9, 12, 15, 19].includes(currentHour)) {
-        const yyyy = now.getFullYear();
-        const mm = String(now.getMonth() + 1).padStart(2, "0");
-        const dd = String(now.getDate()).padStart(2, "0");
-        orConditions.push({ date: `${yyyy}-${mm}-${dd}`, time: null });
-    }
+  //   const currentHour = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" })).getHours();
+  //   const currentMinute = now.getMinutes();
+  //   if (currentMinute === 0 && [9, 12, 15, 19].includes(currentHour)) {
+  //       const yyyy = now.getFullYear();
+  //       const mm = String(now.getMonth() + 1).padStart(2, "0");
+  //       const dd = String(now.getDate()).padStart(2, "0");
+  //       orConditions.push({ date: `${yyyy}-${mm}-${dd}`, time: null });
+  //   }
 
-    const upcomingTasks = await Task.find({ 
-        completed: false, 
-        isDeleted: false, 
-        acknowledged: false, 
-        $or: orConditions 
-    }).populate('userId');
+  //   const upcomingTasks = await Task.find({ 
+  //       completed: false, 
+  //       isDeleted: false, 
+  //       acknowledged: false, 
+  //       $or: orConditions 
+  //   }).populate('userId');
 
-    if (upcomingTasks.length > 0) {
-        console.log(`[CRON] Found ${upcomingTasks.length} tasks ready to fire!`);
-    }
+  //   if (upcomingTasks.length > 0) {
+  //       console.log(`[CRON] Found ${upcomingTasks.length} tasks ready to fire!`);
+  //   }
 
-    for (let task of upcomingTasks) {
-      if (!task.userId) continue;
-      let bodyText = `Task: ${task.name}`;
+  //   for (let task of upcomingTasks) {
+  //     if (!task.userId) continue;
+  //     let bodyText = `Task: ${task.name}`;
       
-      if (task.time && new Date(task.triggerAt) > now) bodyText = `Starts in 15 mins: ${task.name}`;
-      else if (task.time && new Date(task.triggerAt) <= now) bodyText = `It is time for: ${task.name}`;
-      else bodyText = `Daily Reminder: ${task.name}`;
+  //     if (task.time && new Date(task.triggerAt) > now) bodyText = `Starts in 15 mins: ${task.name}`;
+  //     else if (task.time && new Date(task.triggerAt) <= now) bodyText = `It is time for: ${task.name}`;
+  //     else bodyText = `Daily Reminder: ${task.name}`;
 
-      sendPush(task.userId, `Task Reminder: ${task.course || 'General'} 📌`, bodyText, { taskId: task._id, type: 'task' });
-    }
-  } catch (error) { console.error(`[TASK ENGINE] Error:`, error); }
+  //     sendPush(task.userId, `Task Reminder: ${task.course || 'General'} 📌`, bodyText, { taskId: task._id, type: 'task' });
+  //   }
+  // } catch (error) { console.error(`[TASK ENGINE] Error:`, error); }
 
   // // ---------------------------------------------------------
   // // 🕌 ENGINE 2: LIVE PRAYER ALERTS (Bulletproof HH:mm)

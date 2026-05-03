@@ -3,8 +3,10 @@ import { io } from 'socket.io-client';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-const useLiveSync = (onUpdateCallback) => {
+const useLiveSync = (onUpdateCallback, userId) => {
   useEffect(() => {
+    if (!userId) return; // Wait until we have a userId
+
     // 1. Establish connection to the backend
     const socket = io(API_BASE, {
       transports: ['websocket', 'polling'], 
@@ -12,6 +14,7 @@ const useLiveSync = (onUpdateCallback) => {
 
     socket.on('connect', () => {
       console.log('🟢 Connected to Live Data Sync WebSockets');
+      socket.emit('join_room', userId); // 🚀 Securely join personal data room
     });
 
     // 2. Listen for the exact event emitted by your backend's Change Streams
@@ -30,7 +33,7 @@ const useLiveSync = (onUpdateCallback) => {
     return () => {
       socket.disconnect();
     };
-  }, [onUpdateCallback]); // Re-run if the callback changes
+  }, [onUpdateCallback, userId]); // Re-run if the callback or userId changes
 };
 
 export default useLiveSync;

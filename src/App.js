@@ -426,17 +426,21 @@ function AppLayout() {
 
   const handleLiveUpdate = useCallback(() => {
     if (token && isAuthenticated) {
-      fetchTasks();
-      fetchNotes();
-      fetchKeynotes();
-      fetchAssessments();
-      fetchBin();
-      fetchCourses();
-      fetchExams();
+      // 🚀 Add a 500ms debounce to prevent API spam if multiple DB changes happen rapidly
+      if (window.liveSyncTimeout) clearTimeout(window.liveSyncTimeout);
+      window.liveSyncTimeout = setTimeout(() => {
+        fetchTasks();
+        fetchNotes();
+        fetchKeynotes();
+        fetchAssessments();
+        fetchBin();
+        fetchCourses();
+        fetchExams();
+      }, 500);
     }
   }, [token, isAuthenticated, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses, fetchExams]);
 
-  useLiveSync(handleLiveUpdate);
+  useLiveSync(handleLiveUpdate, user?.id);
 
   const handleAddTask = async (newTaskData) => {
     try {

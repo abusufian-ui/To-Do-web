@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import FloatingBackground from './FloatingBackground'; // 🚀 Import the new background
+import AnimatedLogo from './Animation'; // 🚀 Premium SVG Animation Splash
 
 export default function Login() {
     const navigate = useNavigate();
     
     // UI State
+    const [showSplash, setShowSplash] = useState(true);
     const [step, setStep] = useState('EMAIL'); // EMAIL, PASSWORD, OTP, NEW_PASSWORD, NOT_FOUND
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -15,11 +16,21 @@ export default function Login() {
     const [rollNumber, setRollNumber] = useState('');
     const [firstName, setFirstName] = useState('');
     const [password, setPassword] = useState('');
-    const [otp, setOtp] = useState('');
+    const [otpValues, setOtpValues] = useState(Array(6).fill(''));
     const [newPassword, setNewPassword] = useState('');
     const [flowType, setFlowType] = useState(''); 
 
     const email = `${rollNumber.toLowerCase().trim()}@ucp.edu.pk`;
+    const otp = otpValues.join('');
+    const otpRefs = useRef([]);
+
+    // Splash Screen Timer
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setShowSplash(false);
+        }, 2500); // 2.5 seconds to let the trace finish and text slide up
+        return () => clearTimeout(timer);
+    }, []);
 
     // 1. Check Email
     const handleCheckEmail = async (e) => {
@@ -105,48 +116,80 @@ export default function Login() {
         }
     };
 
-    return (
-        <div className="relative min-h-screen bg-[#fafafa] dark:bg-[#050505] flex items-center justify-center p-4 selection:bg-blue-500/30 transition-colors duration-500">
-            
-            {/* 🚀 New Floating Education SVGs */}
-            <FloatingBackground />
+    // --- OTP Input Handlers ---
+    const handleOtpChange = (index, value) => {
+        if (!/^\d*$/.test(value)) return; // Only allow digits
+        
+        const newOtpValues = [...otpValues];
+        // Take only the last character if they somehow type multiple
+        newOtpValues[index] = value.slice(-1);
+        setOtpValues(newOtpValues);
+        
+        // Auto-focus next
+        if (value && index < 5) {
+            otpRefs.current[index + 1]?.focus();
+        }
+    };
 
-            {/* Ambient Background Glow (Subtle & Professional) */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-                <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-400/5 dark:bg-blue-600/5 blur-[120px]" />
-                <div className="absolute top-[60%] -right-[10%] w-[40%] h-[60%] rounded-full bg-gray-300/20 dark:bg-gray-800/20 blur-[100px]" />
+    const handleOtpKeyDown = (index, e) => {
+        if (e.key === 'Backspace' && !otpValues[index] && index > 0) {
+            // Auto-focus previous on backspace if current is empty
+            otpRefs.current[index - 1]?.focus();
+        }
+    };
+
+    const handleOtpPaste = (e) => {
+        e.preventDefault();
+        const pastedData = e.clipboardData.getData('text').slice(0, 6).replace(/\D/g, '');
+        if (pastedData) {
+            const newOtpValues = [...otpValues];
+            for (let i = 0; i < pastedData.length; i++) {
+                newOtpValues[i] = pastedData[i];
+            }
+            setOtpValues(newOtpValues);
+            // Focus the next empty box or the last box
+            const focusIndex = Math.min(pastedData.length, 5);
+            otpRefs.current[focusIndex]?.focus();
+        }
+    };
+
+    // 🚀 Show the Premium SVG Splash Screen first!
+    if (showSplash) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-1000">
+                <AnimatedLogo />
             </div>
+        );
+    }
 
-            {/* Main Card */}
-            <div className="relative z-10 w-full max-w-[420px] bg-white/80 dark:bg-[#0f0f0f]/80 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-gray-100 dark:border-white/5 overflow-hidden transition-all duration-500 animate-fade-in-up">
+    return (
+        <div className="relative min-h-screen bg-black flex items-center justify-center p-4 selection:bg-white/30 transition-colors duration-1000">
+            
+            {/* Main Card - Pure Premium Black & White Aesthetic */}
+            <div className="relative z-10 w-full max-w-[420px] bg-[#050505] rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.03)] border border-[#222] overflow-hidden transition-all duration-700 animate-fade-in-up">
                 
                 {/* Progress Bar (Loading State) */}
-                <div className="absolute top-0 left-0 w-full h-1 bg-transparent">
-                    <div className={`h-full bg-blue-600 transition-all duration-300 ease-out ${isLoading ? 'w-full animate-pulse' : 'w-0'}`} />
+                <div className="absolute top-0 left-0 w-full h-[2px] bg-transparent">
+                    <div className={`h-full bg-white transition-all duration-300 ease-out ${isLoading ? 'w-full animate-pulse' : 'w-0'}`} />
                 </div>
 
                 <div className="p-10 pb-6 text-center">
-                    {/* Fixed Logo Paths mapping to your .jpg files */}
-                    <img 
-                        src="/images/logo_black.jpg" 
-                        alt="MyPortal" 
-                        className="h-20 w-auto mx-auto mb-8 dark:hidden rounded-full shadow-sm"
-                    />
+                    {/* Simplified to just the white logo for the pure black background */}
                     <img 
                         src="/images/logo_white.jpg" 
                         alt="MyPortal" 
-                        className="h-20 w-auto mx-auto mb-8 hidden dark:block rounded-full shadow-lg"
+                        className="h-20 w-auto mx-auto mb-8 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                     />
 
                     <div className="h-[72px] flex flex-col justify-end mb-2">
-                        <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight animate-slide-up-fade">
+                        <h2 className="text-3xl font-extrabold text-white tracking-tight animate-slide-up-fade">
                             {step === 'EMAIL' && "Sign In"}
                             {step === 'PASSWORD' && `Welcome, ${firstName}`}
-                            {step === 'OTP' && "Check your Email"}
+                            {step === 'OTP' && "Verification"}
                             {step === 'NEW_PASSWORD' && "Secure Account"}
                             {step === 'NOT_FOUND' && "Not Found"}
                         </h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2.5 font-medium animate-slide-up-fade delay-75">
+                        <p className="text-sm text-[#888] mt-2.5 font-medium animate-slide-up-fade delay-75">
                             {step === 'EMAIL' && "Enter your university ID to continue"}
                             {step === 'PASSWORD' && "Enter your web portal password"}
                             {step === 'OTP' && `We sent a 6-digit code to ${email}`}
@@ -158,7 +201,7 @@ export default function Login() {
                 <div className="px-10 pb-10">
                     {/* Error Toast */}
                     <div className={`overflow-hidden transition-all duration-300 ease-in-out ${error ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="p-3.5 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-sm font-semibold text-center flex items-center justify-center gap-2">
+                        <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-red-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             {error}
                         </div>
@@ -168,20 +211,20 @@ export default function Login() {
                         {/* STEP 1: EMAIL */}
                         {step === 'EMAIL' && (
                             <form onSubmit={handleCheckEmail} className="space-y-6 animate-step-enter">
-                                <div className="flex items-center bg-gray-50 dark:bg-[#141414] rounded-2xl border border-gray-200 dark:border-[#222] focus-within:border-blue-500 dark:focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/20 transition-all duration-300 overflow-hidden group">
+                                <div className="flex items-center bg-[#111] rounded-2xl border border-[#333] focus-within:border-white focus-within:ring-4 focus-within:ring-white/10 transition-all duration-300 overflow-hidden group">
                                     <input
                                         type="text"
                                         placeholder="L1F23BSCS0000"
                                         value={rollNumber}
                                         onChange={(e) => setRollNumber(e.target.value.toUpperCase())}
-                                        className="w-full px-5 py-4 bg-transparent outline-none font-bold text-gray-900 dark:text-white uppercase placeholder-gray-400 dark:placeholder-gray-600 transition-colors"
+                                        className="w-full px-5 py-4 bg-transparent outline-none font-bold text-white uppercase placeholder-[#555] transition-colors"
                                         autoFocus
                                     />
-                                    <div className="px-5 py-4 border-l border-gray-200 dark:border-[#222] text-gray-400 dark:text-gray-500 font-semibold select-none group-focus-within:text-gray-600 dark:group-focus-within:text-gray-300 transition-colors">
+                                    <div className="px-5 py-4 border-l border-[#333] text-[#666] font-semibold select-none group-focus-within:text-[#999] transition-colors">
                                         @ucp.edu.pk
                                     </div>
                                 </div>
-                                <button disabled={isLoading} className="w-full bg-gray-900 dark:bg-white text-white dark:text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-xl hover:shadow-gray-900/10 dark:hover:shadow-white/10 transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
+                                <button disabled={isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                                     {isLoading ? 'Checking...' : 'Continue'}
                                 </button>
                             </form>
@@ -196,41 +239,48 @@ export default function Login() {
                                         placeholder="Enter your password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full px-5 py-4 bg-gray-50 dark:bg-[#141414] rounded-2xl border border-gray-200 dark:border-[#222] outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-gray-900 dark:text-white font-medium transition-all duration-300"
+                                        className="w-full px-5 py-4 bg-[#111] rounded-2xl border border-[#333] outline-none focus:border-white focus:ring-4 focus:ring-white/10 text-white font-medium transition-all duration-300"
                                         autoFocus
                                     />
                                 </div>
                                 <div className="flex justify-between items-center px-1">
-                                    <button type="button" onClick={() => setStep('EMAIL')} className="text-sm font-semibold text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-300">
+                                    <button type="button" onClick={() => setStep('EMAIL')} className="text-sm font-semibold text-[#666] hover:text-white transition-colors duration-300">
                                         Wrong account?
                                     </button>
-                                    <button type="button" onClick={handleForgotPassword} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-300">
+                                    <button type="button" onClick={handleForgotPassword} className="text-sm font-bold text-white hover:text-gray-300 transition-colors duration-300">
                                         Forgot Password?
                                     </button>
                                 </div>
-                                <button disabled={isLoading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-xl hover:shadow-blue-600/20 transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
+                                <button disabled={isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                                     {isLoading ? 'Authenticating...' : 'Sign In'}
                                 </button>
                             </form>
                         )}
 
-                        {/* STEP 3: OTP */}
+                        {/* STEP 3: OTP (MODERN 6-BOX) */}
                         {step === 'OTP' && (
-                            <form onSubmit={(e) => { e.preventDefault(); setStep('NEW_PASSWORD'); }} className="space-y-6 animate-step-enter">
-                                <input
-                                    type="text"
-                                    placeholder="123456"
-                                    maxLength={6}
-                                    value={otp}
-                                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                                    className="w-full px-5 py-4 bg-gray-50 dark:bg-[#141414] rounded-2xl border border-gray-200 dark:border-[#222] outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-center text-3xl tracking-[0.5em] text-gray-900 dark:text-white font-black transition-all duration-300 placeholder:text-gray-300 dark:placeholder:text-gray-700 placeholder:font-medium placeholder:tracking-normal"
-                                    autoFocus
-                                />
-                                <button disabled={otp.length !== 6} className="w-full bg-gray-900 dark:bg-white text-white dark:text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-xl hover:shadow-gray-900/10 dark:hover:shadow-white/10 transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
+                            <form onSubmit={(e) => { e.preventDefault(); if (otp.length === 6) setStep('NEW_PASSWORD'); }} className="space-y-8 animate-step-enter">
+                                <div className="flex justify-between gap-2" onPaste={handleOtpPaste}>
+                                    {otpValues.map((digit, index) => (
+                                        <input
+                                            key={index}
+                                            ref={el => otpRefs.current[index] = el}
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={1}
+                                            value={digit}
+                                            onChange={(e) => handleOtpChange(index, e.target.value)}
+                                            onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                                            className="w-[14%] aspect-square bg-[#111] rounded-xl border border-[#333] outline-none focus:border-white focus:ring-2 focus:ring-white/20 text-center text-2xl text-white font-bold transition-all duration-300"
+                                            autoFocus={index === 0}
+                                        />
+                                    ))}
+                                </div>
+                                <button disabled={otp.length !== 6} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                                     Verify Code
                                 </button>
                                 <div className="text-center">
-                                    <button type="button" onClick={() => sendOtp(flowType)} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-300">
+                                    <button type="button" onClick={() => sendOtp(flowType)} className="text-sm font-bold text-[#888] hover:text-white transition-colors duration-300">
                                         Resend Code
                                     </button>
                                 </div>
@@ -245,10 +295,10 @@ export default function Login() {
                                     placeholder="Create a new password"
                                     value={newPassword}
                                     onChange={(e) => setNewPassword(e.target.value)}
-                                    className="w-full px-5 py-4 bg-gray-50 dark:bg-[#141414] rounded-2xl border border-gray-200 dark:border-[#222] outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-gray-900 dark:text-white font-medium transition-all duration-300"
+                                    className="w-full px-5 py-4 bg-[#111] rounded-2xl border border-[#333] outline-none focus:border-white focus:ring-4 focus:ring-white/10 text-white font-medium transition-all duration-300"
                                     autoFocus
                                 />
-                                <button disabled={isLoading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-xl hover:shadow-blue-600/20 transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
+                                <button disabled={isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                                     {isLoading ? 'Securing Account...' : 'Save & Log In'}
                                 </button>
                             </form>
@@ -257,15 +307,15 @@ export default function Login() {
                         {/* STEP 5: NOT FOUND */}
                         {step === 'NOT_FOUND' && (
                             <div className="text-center space-y-8 animate-step-enter">
-                                <div className="w-20 h-20 bg-red-50 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-2 border border-red-100 dark:border-red-500/20 shadow-inner">
-                                    <svg className="w-10 h-10 text-red-500 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <div className="w-20 h-20 bg-[#111] rounded-full flex items-center justify-center mx-auto mb-2 border border-[#333] shadow-inner">
+                                    <svg className="w-10 h-10 text-[#888]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                     </svg>
                                 </div>
-                                <p className="text-gray-600 dark:text-gray-400 font-medium leading-relaxed">
-                                    To ensure your data is perfectly synced, you must log in via the <span className="font-bold text-gray-900 dark:text-white">MyPortal Mobile App</span> first to initialize your account.
+                                <p className="text-[#888] font-medium leading-relaxed">
+                                    To ensure your data is perfectly synced, you must log in via the <span className="font-bold text-white">MyPortal Mobile App</span> first to initialize your account.
                                 </p>
-                                <button onClick={() => setStep('EMAIL')} className="w-full bg-gray-100 dark:bg-[#1a1a1a] text-gray-900 dark:text-white py-4 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-[#222] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border border-transparent dark:border-[#333]">
+                                <button onClick={() => setStep('EMAIL')} className="w-full bg-[#1a1a1a] text-white py-4 rounded-2xl font-bold hover:bg-[#222] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border border-[#333]">
                                     Try Another ID
                                 </button>
                             </div>
