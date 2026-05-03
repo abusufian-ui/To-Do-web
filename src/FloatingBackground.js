@@ -32,7 +32,7 @@ const FloatingBackground = () => {
       {floatingElements.map((el, index) => (
         <motion.div
           key={index}
-          className="absolute text-gray-400/20 dark:text-white/5" // Very low opacity to stay subtle
+          className="absolute text-white/5" // 🚀 Perfect subtle visibility on pure black
           style={{ left: el.x, top: el.y }}
           animate={{
             y: [0, -40, 0], // Float up and down

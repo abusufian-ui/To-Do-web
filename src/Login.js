@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import AnimatedLogo from './Animation'; // 🚀 Premium SVG Animation Splash
+import FloatingBackground from './FloatingBackground'; // 🚀 SVG Educational Background
 
 export default function Login() {
     const navigate = useNavigate();
@@ -165,6 +166,20 @@ export default function Login() {
     return (
         <div className="relative min-h-screen bg-black flex items-center justify-center p-4 selection:bg-white/30 transition-colors duration-1000">
             
+            {/* 🚀 Premium Header */}
+            <header className="absolute top-0 left-0 w-full p-6 sm:px-12 flex justify-between items-center z-20">
+                <div className="flex items-center gap-3">
+                    <img src="/images/logo_white.jpg" alt="Logo" className="w-10 h-10 rounded-full shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
+                    <span className="text-white font-black text-xl tracking-wide hidden sm:block">MyPortal</span>
+                </div>
+                <div className="text-[#666] text-xs sm:text-sm font-semibold tracking-[0.2em] uppercase">
+                    University of Central Punjab
+                </div>
+            </header>
+
+            {/* 🚀 Educational SVG Animations */}
+            <FloatingBackground />
+
             {/* Main Card - Pure Premium Black & White Aesthetic */}
             <div className="relative z-10 w-full max-w-[420px] bg-[#050505] rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.03)] border border-[#222] overflow-hidden transition-all duration-700 animate-fade-in-up">
                 
