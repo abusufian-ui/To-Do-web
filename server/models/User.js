@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  webPassword: { type: String, default: null },
   isAdmin: { type: Boolean, default: false },
   isPortalConnected: { type: Boolean, default: false },
   portalId: { type: String, default: null },

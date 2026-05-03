@@ -23,9 +23,12 @@ import AddKeynoteModal from './AddKeynoteModal';
 import CoursePortalView from './CoursePortalView';
 import Assessments from './Assessments';
 import Datesheet from './Datesheet'; 
+import AnimatedLogo from './Animation'; // 🚀 IMPORTED YOUR NEW LOGO ANIMATION HERE
 
 import useLiveSync from './hooks/useLiveSync'; 
 import { Heart, ArrowRight, X, Activity, Coffee, FastForward } from 'lucide-react'; 
+// 🚨 Notice we imported a few extra router tools here
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -35,14 +38,21 @@ const HF_MODES = {
   long_break: { id: 'long_break', title: 'Long Break', text: 'Excellent work. Take a deep rest.', minutes: 30, color: '#EC4899', textClass: 'text-pink-500', glow: 'shadow-[0_0_60px_rgba(236,72,153,0.3)]' }
 };
 
-function App() {
+// =========================================================
+// 🚀 APP LAYOUT COMPONENT (Has access to useNavigate now!)
+// =========================================================
+function AppLayout() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [user, setUser] = useState(() => {
     const u = localStorage.getItem('user');
     return u ? JSON.parse(u) : null;
   });
 
-  const isAuthenticated = !!token;
+  // Smart Authentication check (prevents bounce back to login if navigating fast)
+  const isAuthenticated = !!token || !!localStorage.getItem('token');
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -98,27 +108,20 @@ function App() {
   const [keynotes, setKeynotes] = useState([]); 
   const [exams, setExams] = useState([]); 
 
-  // 🚀 UPDATED: Shows full datesheet until the LAST exam is over
   const activeExams = useMemo(() => {
     if (!exams || exams.length === 0) return [];
     
     const now = new Date();
-    // Sort exams by date chronologically
     const sortedExams = [...exams].sort((a, b) => new Date(a.date) - new Date(b.date));
-    
-    // Get the very last exam in the schedule
     const lastExam = sortedExams[sortedExams.length - 1];
     const lastExamDate = new Date(lastExam.date);
     
-    // Set expiration to 11:59:59 PM of the LAST exam day
     lastExamDate.setHours(23, 59, 59, 999); 
     
-    // If we haven't passed the final exam yet, return the WHOLE datesheet
     if (now <= lastExamDate) {
       return sortedExams;
     }
     
-    // Otherwise, exams are entirely over
     return [];
   }, [exams]);
 
@@ -260,15 +263,35 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 🚨 FIXED: Now explicitly uses react-router to kick you back to login
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('token'); localStorage.removeItem('user'); sessionStorage.clear();
-    setToken(null); setUser(null); setActiveTab('Welcome');
-  }, []);
+    localStorage.removeItem('token'); 
+    localStorage.removeItem('user'); 
+    sessionStorage.clear();
+    setToken(null); 
+    setUser(null); 
+    setActiveTab('Welcome');
+    navigate('/login'); 
+  }, [navigate]);
 
+  // 🚨 FIXED: Manually redirects you into the dashboard and sets state
   const handleLogin = (authToken, userData) => {
-    localStorage.setItem('token', authToken); localStorage.setItem('user', JSON.stringify(userData));
-    setToken(authToken); setUser(userData);
+    localStorage.setItem('token', authToken); 
+    localStorage.setItem('user', JSON.stringify(userData));
+    setToken(authToken); 
+    setUser(userData);
+    navigate('/dashboard'); 
   };
+
+  // 🚨 SMART SYNC: Listens for URL changes to ensure state is perfectly synced
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    if (storedToken && storedToken !== token) {
+      setToken(storedToken);
+      const u = localStorage.getItem('user');
+      if (u) setUser(JSON.parse(u));
+    }
+  }, [location.pathname, token]);
 
   const checkForInactivity = useCallback(() => {
     if (!isAuthenticated || idleTimeout === 0) return;
@@ -656,163 +679,192 @@ function App() {
     }
   };
 
-  if (!isAuthenticated) return <Login onLogin={handleLogin} />;
-
+  // ==========================================
+  // 🛡️ SECURE ROUTES RETURN
+  // ==========================================
   return (
-    <div className={`flex h-screen w-full overflow-hidden transition-colors duration-300 relative ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
-      
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm transition-opacity" 
-          onClick={() => setIsSidebarOpen(false)} 
-        />
-      )}
+    <Routes>
+      {/* 🚀 ADDED THIS ROUTE JUST FOR TESTING THE LOGO */}
+      <Route path="/test-logo" element={<AnimatedLogo />} />
 
-      <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} isOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} binCount={binItems.length} user={user} />
+      <Route 
+        path="/login" 
+        element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" replace />} 
+      />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300 w-full relative">
-        <Header
-          activeTab={activeTab}
-          isDarkMode={isDarkMode}
-          toggleTheme={toggleTheme}
-          filters={filters}
-          setFilters={setFilters}
-          courses={courses}
-          onAddClick={triggerAddClick} 
-          user={user}
-          onLogout={handleLogout}
-          tasks={tasks}
-          onOpenTask={(task) => setViewTask(task)}
-          onNavigate={handleNavigate}
-          onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          notes={notes}
-          onOpenNote={(note) => console.log("Open Note from search:", note)} 
-          keynotes={keynotes} 
-          onToggleKeynoteRead={handleToggleKeynoteRead}
-          hfState={hfState} 
-          hfModes={HF_MODES}
-          assessments={assessments}
-          onOpenAssessment={(a) => setViewAssessment(a)}
-          exams={activeExams} 
-        />
-        <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
+      <Route 
+        path="/*" 
+        element={
+          isAuthenticated ? (
+            <div className={`flex h-screen w-full overflow-hidden transition-colors duration-300 relative ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
+              
+              {isSidebarOpen && (
+                <div 
+                  className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm transition-opacity" 
+                  onClick={() => setIsSidebarOpen(false)} 
+                />
+              )}
 
-          {activeTab === 'Welcome' && (
-            <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn w-full">
-              <div className="max-w-2xl">
-                <h1 className="text-3xl md:text-5xl font-bold mb-4 md:mb-6 dark:text-white text-gray-900 tracking-tight">Welcome, {user?.name || 'Student'}</h1>
-                <p className="text-gray-500 dark:text-gray-400 text-base md:text-lg mb-8 md:mb-12">Select a module from the sidebar to manage your academic journey.</p>
-                <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border p-6 md:p-8 rounded-2xl shadow-lg relative overflow-hidden transition-colors">
-                  <Heart className="w-8 h-8 text-brand-pink mb-4 mx-auto animate-pulse" fill="#E11D48" />
-                  <p className="text-lg md:text-2xl font-medium dark:text-white text-gray-800 leading-relaxed font-serif italic">"Your mom and dad are still waiting to celebrate your success."</p>
-                  <div className="mt-6 flex justify-center">
-                    <button onClick={() => handleNavigate('Tasks')} className="text-brand-blue hover:text-blue-600 flex items-center gap-2 transition-colors font-medium">Start working now <ArrowRight size={16} /></button>
-                  </div>
+              <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} isOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} binCount={binItems.length} user={user} />
+
+              <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50 dark:bg-dark-bg transition-colors duration-300 w-full relative">
+                <Header
+                  activeTab={activeTab}
+                  isDarkMode={isDarkMode}
+                  toggleTheme={toggleTheme}
+                  filters={filters}
+                  setFilters={setFilters}
+                  courses={courses}
+                  onAddClick={triggerAddClick} 
+                  user={user}
+                  onLogout={handleLogout}
+                  tasks={tasks}
+                  onOpenTask={(task) => setViewTask(task)}
+                  onNavigate={handleNavigate}
+                  onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                  notes={notes}
+                  onOpenNote={(note) => console.log("Open Note from search:", note)} 
+                  keynotes={keynotes} 
+                  onToggleKeynoteRead={handleToggleKeynoteRead}
+                  hfState={hfState} 
+                  hfModes={HF_MODES}
+                  assessments={assessments}
+                  onOpenAssessment={(a) => setViewAssessment(a)}
+                  exams={activeExams} 
+                />
+                <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
+
+                  {activeTab === 'Welcome' && (
+                    <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn w-full">
+                      <div className="max-w-2xl">
+                        <h1 className="text-3xl md:text-5xl font-bold mb-4 md:mb-6 dark:text-white text-gray-900 tracking-tight">Welcome, {user?.name || 'Student'}</h1>
+                        <p className="text-gray-500 dark:text-gray-400 text-base md:text-lg mb-8 md:mb-12">Select a module from the sidebar to manage your academic journey.</p>
+                        <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border p-6 md:p-8 rounded-2xl shadow-lg relative overflow-hidden transition-colors">
+                          <Heart className="w-8 h-8 text-brand-pink mb-4 mx-auto animate-pulse" fill="#E11D48" />
+                          <p className="text-lg md:text-2xl font-medium dark:text-white text-gray-800 leading-relaxed font-serif italic">"Your mom and dad are still waiting to celebrate your success."</p>
+                          <div className="mt-6 flex justify-center">
+                            <button onClick={() => handleNavigate('Tasks')} className="text-brand-blue hover:text-blue-600 flex items-center gap-2 transition-colors font-medium">Start working now <ArrowRight size={16} /></button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {activeTab === 'HyperFocus' && <div className="w-full h-full"><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>}
+                  {activeTab === 'Notes' && <div className="w-full h-full"><Notes courses={courses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} /></div>}
+                  {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} /></div>}
+                  {activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
+                  {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>} 
+                  {activeTab === 'Keynotes' && <div className="w-full h-full"><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} /></div>} 
+                  {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
+                  {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
+                  {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
+                  {activeTab === 'Assessments' && (
+                    <div className="w-full h-full overflow-y-auto">
+                      <Assessments 
+                        token={token} 
+                        assessments={getFilteredAssessments()} 
+                        courses={courses} 
+                        fetchAssessments={fetchAssessments} 
+                        externalAddTrigger={addAssessmentTrigger} 
+                        viewAssessment={viewAssessment} 
+                        setViewAssessment={setViewAssessment} 
+                      />
+                    </div>
+                  )}
+                  
+                  {activeTab === 'Datesheet' && activeExams.length > 0 && (
+                    <div className="w-full h-full">
+                      <Datesheet exams={activeExams} />
+                    </div>
+                  )}
+
+                  {['Announcements', 'Attendance', 'Submissions'].includes(activeTab) && <div className="w-full h-full"><CoursePortalView activeTab={activeTab} courses={courses} /></div>}
+                  {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>}
+                  {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
+                  {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard /></div>}
+                  {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} /></div>}
+
+                  {activeTab === 'Settings' && <div className="w-full h-full"><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} /></div>}
                 </div>
               </div>
+
+              <style>{`
+                .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
+                .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+                .animate-slideInRight { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+                @keyframes slideInRight { 0% { transform: translateX(120%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
+              `}</style>
+
+              {/* --- MODALS --- */}
+              <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} tasks={tasks} />
+              <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={courses} onUpdate={updateTask} />
+              <AddKeynoteModal isOpen={isAddKeynoteOpen} onClose={() => setIsAddKeynoteOpen(false)} onSave={handleAddKeynoteSubmit} courses={courses} />
+
+              <ConfirmationModal isOpen={!!taskToDelete} onClose={() => setTaskToDelete(null)} onConfirm={executeDelete} title="Move to Bin?" message="Are you sure you want to move this task to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
+              <ConfirmationModal isOpen={!!keynoteToDelete} onClose={() => setKeynoteToDelete(null)} onConfirm={executeDeleteKeynote} title="Move Snap to Bin?" message="Are you sure you want to move this Keynote to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
+              <ConfirmationModal isOpen={isBatchDeleteKeynotes} onClose={() => { setIsBatchDeleteKeynotes(false); setKeynotesToBatchDelete([]); }} onConfirm={executeBatchDeleteKeynotes} title={`Move ${keynotesToBatchDelete.length} Snaps to Bin?`} message="Are you sure you want to move the selected Keynotes to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
+
+              {/* --- SERVER SELECTION MODAL --- */}
+              {isServerModalOpen && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
+                  <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 w-full max-w-sm shadow-2xl relative border border-gray-200 dark:border-[#333]">
+                    <button onClick={() => setIsServerModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"><X size={20} /></button>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Cloud Workspace</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Select the environment you want to connect to.</p>
+
+                    <div className="space-y-3">
+                      <button onClick={() => { window.open('http://161.118.247.217:8080', '_blank'); setIsServerModalOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-brand-blue dark:hover:border-brand-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group">
+                        <div className="text-left"><div className="font-bold text-gray-900 dark:text-white group-hover:text-brand-blue transition-colors">Admin Workspace</div><div className="text-xs text-gray-500">Port 8080</div></div>
+                        <ArrowRight size={18} className="text-gray-400 group-hover:text-brand-blue transition-colors" />
+                      </button>
+
+                      <button onClick={() => { window.open('http://161.118.247.217:8081', '_blank'); setIsServerModalOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all group">
+                        <div className="text-left"><div className="font-bold text-gray-900 dark:text-white group-hover:text-emerald-500 transition-colors">Hashu's Workspace</div><div className="text-xs text-gray-500">Port 8081</div></div>
+                        <ArrowRight size={18} className="text-gray-400 group-hover:text-emerald-500 transition-colors" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* --- IN-APP SNACK NOTIFICATION --- */}
+              {toast && (
+                <div className="fixed top-6 right-6 z-[9999] bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-2xl rounded-2xl p-4 w-80 animate-slideInRight">
+                  <div className="flex items-start justify-between">
+                    <div className="flex gap-3">
+                      <div className="mt-0.5">{toast.modeId === 'focus' ? <Activity className="text-blue-500" size={20} /> : <Coffee className="text-emerald-500" size={20} />}</div>
+                      <div><h4 className="font-bold text-gray-900 dark:text-white text-sm">{toast.title}</h4><p className="text-xs text-gray-500 mt-1">{toast.message}</p></div>
+                    </div>
+                    <button onClick={() => setToast(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><X size={16} /></button>
+                  </div>
+                  {toast.showSkip && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#333] flex justify-end">
+                        <button onClick={skipPhase} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors bg-gray-50 dark:bg-[#252525] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#333]">
+                          <FastForward size={12} className="fill-current" /> SKIP BREAK
+                        </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
-          )}
-          
-          {activeTab === 'HyperFocus' && <div className="w-full h-full"><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>}
-          {activeTab === 'Notes' && <div className="w-full h-full"><Notes courses={courses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} /></div>}
-          {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} /></div>}
-          {activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
-          {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>} 
-          {activeTab === 'Keynotes' && <div className="w-full h-full"><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} /></div>} 
-          {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
-          {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
-          {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
-          {activeTab === 'Assessments' && (
-            <div className="w-full h-full overflow-y-auto">
-              <Assessments 
-                 token={token} 
-                 assessments={getFilteredAssessments()} 
-                 courses={courses} 
-                 fetchAssessments={fetchAssessments} 
-                 externalAddTrigger={addAssessmentTrigger} 
-                 viewAssessment={viewAssessment} 
-                 setViewAssessment={setViewAssessment} 
-              />
-            </div>
-          )}
-          
-          {activeTab === 'Datesheet' && activeExams.length > 0 && (
-            <div className="w-full h-full">
-              <Datesheet exams={activeExams} />
-            </div>
-          )}
-
-          {['Announcements', 'Attendance', 'Submissions'].includes(activeTab) && <div className="w-full h-full"><CoursePortalView activeTab={activeTab} courses={courses} /></div>}
-          {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>}
-          {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
-          {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard /></div>}
-          {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} /></div>}
-
-          {activeTab === 'Settings' && <div className="w-full h-full"><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} /></div>}
-        </div>
-      </div>
-
-      <style>{`
-        .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
-        .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        .animate-slideInRight { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes slideInRight { 0% { transform: translateX(120%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
-      `}</style>
-
-      {/* --- MODALS --- */}
-      <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} tasks={tasks} />
-      <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={courses} onUpdate={updateTask} />
-      <AddKeynoteModal isOpen={isAddKeynoteOpen} onClose={() => setIsAddKeynoteOpen(false)} onSave={handleAddKeynoteSubmit} courses={courses} />
-
-      <ConfirmationModal isOpen={!!taskToDelete} onClose={() => setTaskToDelete(null)} onConfirm={executeDelete} title="Move to Bin?" message="Are you sure you want to move this task to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
-      <ConfirmationModal isOpen={!!keynoteToDelete} onClose={() => setKeynoteToDelete(null)} onConfirm={executeDeleteKeynote} title="Move Snap to Bin?" message="Are you sure you want to move this Keynote to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
-      <ConfirmationModal isOpen={isBatchDeleteKeynotes} onClose={() => { setIsBatchDeleteKeynotes(false); setKeynotesToBatchDelete([]); }} onConfirm={executeBatchDeleteKeynotes} title={`Move ${keynotesToBatchDelete.length} Snaps to Bin?`} message="Are you sure you want to move the selected Keynotes to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
-
-      {/* --- SERVER SELECTION MODAL --- */}
-      {isServerModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 w-full max-w-sm shadow-2xl relative border border-gray-200 dark:border-[#333]">
-            <button onClick={() => setIsServerModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"><X size={20} /></button>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Cloud Workspace</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Select the environment you want to connect to.</p>
-
-            <div className="space-y-3">
-              <button onClick={() => { window.open('http://161.118.247.217:8080', '_blank'); setIsServerModalOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-brand-blue dark:hover:border-brand-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group">
-                <div className="text-left"><div className="font-bold text-gray-900 dark:text-white group-hover:text-brand-blue transition-colors">Admin Workspace</div><div className="text-xs text-gray-500">Port 8080</div></div>
-                <ArrowRight size={18} className="text-gray-400 group-hover:text-brand-blue transition-colors" />
-              </button>
-
-              <button onClick={() => { window.open('http://161.118.247.217:8081', '_blank'); setIsServerModalOpen(false); }} className="w-full flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-[#333] hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all group">
-                <div className="text-left"><div className="font-bold text-gray-900 dark:text-white group-hover:text-emerald-500 transition-colors">Hashu's Workspace</div><div className="text-xs text-gray-500">Port 8081</div></div>
-                <ArrowRight size={18} className="text-gray-400 group-hover:text-emerald-500 transition-colors" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- IN-APP SNACK NOTIFICATION --- */}
-      {toast && (
-        <div className="fixed top-6 right-6 z-[9999] bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-2xl rounded-2xl p-4 w-80 animate-slideInRight">
-          <div className="flex items-start justify-between">
-            <div className="flex gap-3">
-               <div className="mt-0.5">{toast.modeId === 'focus' ? <Activity className="text-blue-500" size={20} /> : <Coffee className="text-emerald-500" size={20} />}</div>
-               <div><h4 className="font-bold text-gray-900 dark:text-white text-sm">{toast.title}</h4><p className="text-xs text-gray-500 mt-1">{toast.message}</p></div>
-            </div>
-            <button onClick={() => setToast(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><X size={16} /></button>
-          </div>
-          {toast.showSkip && (
-             <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#333] flex justify-end">
-                <button onClick={skipPhase} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors bg-gray-50 dark:bg-[#252525] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#333]">
-                   <FastForward size={12} className="fill-current" /> SKIP BREAK
-                </button>
-             </div>
-          )}
-        </div>
-      )}
-
-    </div>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        } 
+      />
+    </Routes>
   );
 }
 
-export default App;
+// =========================================================
+// 🌐 APP ROOT (Wraps the layout in a Router environment)
+// =========================================================
+export default function App() {
+  return (
+    <Router>
+      <AppLayout/>
+    </Router>
+  );
+}
