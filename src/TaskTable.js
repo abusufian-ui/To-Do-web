@@ -4,9 +4,10 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, ChevronsUp, ChevronUp,
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
   X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle,
-  CalendarDays, Archive
+  CalendarDays, Archive, CheckSquare as CheckSquareIcon
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
+import EmptyState from './EmptyState';
 
 // --- HELPER: CONVERT LONG NAMES TO ABBREVIATIONS ---
 const getAbbreviation = (name) => {
@@ -571,8 +572,13 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                 <div className={COL.course}>Course</div>
                 <div className={COL.date}>Due date</div>
                 <div className={COL.priority}>Priority</div>
-              </div>
-              {activeTasks.length > 0 ? activeTasks.map(task => renderRow(task, false)) : <p className="py-6 text-center text-gray-500 text-sm italic">No active tasks.</p>}
+              {activeTasks.length > 0 ? activeTasks.map(task => renderRow(task, false)) : (
+                <EmptyState 
+                  icon={CheckSquareIcon}
+                  title="No active tasks"
+                  message="You're all caught up! Enjoy your free time or add a new task."
+                />
+              )}
             </div>
           </div>
         )}

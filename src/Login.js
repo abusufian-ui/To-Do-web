@@ -173,10 +173,6 @@ export default function Login() {
             <header className="absolute top-0 left-0 w-full p-6 sm:px-12 flex justify-between items-center z-20">
                 <div className="flex items-center gap-3">
                     <StaticLogo className="w-10 h-10 rounded-full shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
-                    <span className="text-white font-black text-xl tracking-wide hidden sm:block">MyPortal</span>
-                </div>
-                <div className="text-[#666] text-xs sm:text-sm font-semibold tracking-[0.2em] uppercase">
-                    University of Central Punjab
                 </div>
             </header>
 
@@ -198,7 +194,7 @@ export default function Login() {
                     <div className="h-[72px] flex flex-col justify-end mb-2">
                         <h2 className="text-3xl font-extrabold text-white tracking-tight animate-slide-up-fade">
                             {step === 'EMAIL' && "Sign In"}
-                            {step === 'PASSWORD' && `Welcome, ${firstName}`}
+                            {step === 'PASSWORD' && `Hey, ${firstName ? firstName.split(' ')[0] : ''}`}
                             {step === 'OTP' && "Verification"}
                             {step === 'NEW_PASSWORD' && "Secure Account"}
                             {step === 'NOT_FOUND' && "Not Found"}

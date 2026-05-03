@@ -4,6 +4,7 @@ import {
   X, Download, Maximize2, Type, EyeOff, CheckSquare, Square
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
+import EmptyState from './EmptyState';
 
 const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchDelete }) => {
   const [selectedNote, setSelectedNote] = useState(null);
@@ -83,10 +84,12 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
 
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-20">
         {keynotes.length === 0 ? (
-          <div className="text-center py-24 bg-white dark:bg-[#1c1c24] rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
-            <BookOpen className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" />
-            <h3 className="text-lg font-medium text-gray-500 dark:text-gray-300">No Keynotes Found</h3>
-            <p className="text-sm text-gray-400 mt-2">Try adjusting your search or filters.</p>
+          <div className="mt-8">
+            <EmptyState 
+              icon={BookOpen}
+              title="No Keynotes Found"
+              message="You haven't captured any keynotes yet. Tap the + button to create your first snap!"
+            />
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">

@@ -24,6 +24,7 @@ import CoursePortalView from './CoursePortalView';
 import Assessments from './Assessments';
 import Datesheet from './Datesheet'; 
 import AnimatedLogo from './Animation'; // 🚀 IMPORTED YOUR NEW LOGO ANIMATION HERE
+import { CustomToast } from './CustomToast';
 
 import useLiveSync from './hooks/useLiveSync'; 
 import { Heart, ArrowRight, X, Activity, Coffee, FastForward } from 'lucide-react'; 
@@ -449,7 +450,7 @@ function AppLayout() {
       const savedTask = await res.json();
       setTasks(prev => [{ ...savedTask, id: savedTask._id }, ...prev]);
       if (activeTab !== 'Tasks' && activeTab !== 'Calendar') setActiveTab('Tasks');
-    } catch (error) { alert("Failed to save task."); }
+    } catch (error) { ToastConfig.show({ title: "Error", message: "Failed to save task.", type: "error" }); }
   };
 
   const deleteTask = (taskId) => setTaskToDelete(taskId);
@@ -869,6 +870,7 @@ export default function App() {
   return (
     <Router>
       <AppLayout/>
+      <CustomToast />
     </Router>
   );
 }

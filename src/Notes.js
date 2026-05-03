@@ -3,6 +3,7 @@ import NoteEditor from './NoteEditor';
 import { FileText, Clock, Trash2, CheckSquare, Book } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal'; 
 import UCPLogo from './UCPLogo'; // Imported the UCP Logo
+import EmptyState from './EmptyState';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -107,9 +108,12 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
           </div>
 
           {notes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center mt-32 text-gray-400">
-              <FileText size={64} className="mb-4 opacity-30" />
-              <p className="text-lg">No notes yet. Click "New Note" to start writing!</p>
+            <div className="mt-16 w-full flex justify-center">
+              <EmptyState 
+                icon={FileText}
+                title="No notes in here, sorry!"
+                message="Your notebook is empty. Tap 'New Note' to start writing your first idea or lecture!"
+              />
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

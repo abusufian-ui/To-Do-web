@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Trash2, RefreshCw, AlertTriangle, CheckCircle2, CheckSquare, CreditCard, Activity, FileText, Lightbulb } from 'lucide-react';
+import EmptyState from './EmptyState';
 
 const Bin = ({ binItems = [], restoreItem, permanentlyDeleteItem, restoreAll, deleteAll }) => {
   const [confirmation, setConfirmation] = useState({ isOpen: false, type: null, item: null });
@@ -125,9 +126,12 @@ const Bin = ({ binItems = [], restoreItem, permanentlyDeleteItem, restoreAll, de
             );
           })
         ) : (
-          <div className="text-center py-24 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 dark:border-[#2C2C2C] rounded-2xl">
-            <div className="w-16 h-16 bg-gray-100 dark:bg-[#2C2C2C] rounded-full flex items-center justify-center mb-4"><Trash2 size={32} className="text-gray-400" /></div>
-            <p className="text-gray-500 dark:text-gray-400 font-medium">Recycle Bin is empty</p>
+          <div className="mt-8">
+            <EmptyState 
+              icon={Trash2}
+              title="Recycle Bin is empty"
+              message="Items you delete will show up here. You can restore them or permanently delete them."
+            />
           </div>
         )}
       </div>

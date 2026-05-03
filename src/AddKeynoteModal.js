@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Mic, Square, Trash2, Image as ImageIcon, Book, CheckCircle2 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
+import { ToastConfig } from './CustomToast';
 
 const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
   const [title, setTitle] = useState('');
@@ -64,7 +65,7 @@ const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
         setRecordingTime(0);
         timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
       } catch (err) {
-        alert("Microphone access denied or unavailable.");
+        ToastConfig.show({ title: "Error", message: "Microphone access denied or unavailable.", type: "error" });
       }
     }
   };
@@ -74,8 +75,8 @@ const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
   };
 
   const handleSubmit = async () => {
-    if (!title.trim()) return alert('Please enter a Snap Title');
-    if (!content.trim() && mediaFiles.length === 0) return alert('Please add content or media');
+    if (!title.trim()) return ToastConfig.show({ title: "Validation Error", message: "Please enter a Snap Title", type: "error" });
+    if (!content.trim() && mediaFiles.length === 0) return ToastConfig.show({ title: "Validation Error", message: "Please add content or media", type: "error" });
     
     setIsSubmitting(true);
     const formData = new FormData();

@@ -4,6 +4,7 @@ import {
   Shield, HardDrive, Cpu, AlertTriangle, X,
   ShieldAlert, Lock, ShieldCheck, Mail, KeyRound, CheckCircle2, Server
 } from 'lucide-react';
+import { ToastConfig } from './CustomToast';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -230,7 +231,7 @@ const AdminDashboard = () => {
       setUsers(users.filter(u => u._id !== userToDelete));
       setUserToDelete(null); 
     } catch (error) {
-      alert("Failed to delete user");
+      ToastConfig.show({ title: "Error", message: "Failed to delete user", type: "error" });
     }
   };
 
@@ -348,7 +349,7 @@ const AdminDashboard = () => {
         body: JSON.stringify({ otp: otpInput.join(''), newPin: fullNewPin })
       });
       if (res.ok) {
-        alert("Security PIN successfully changed!");
+        ToastConfig.show({ title: "Success", message: "Security PIN successfully changed!", type: "success" });
         setChangePinModal({ isOpen: false, step: 'otp' });
         setOtpInput(['', '', '', '', '', '']);
         setNewPin(['', '', '', '']);
