@@ -5,6 +5,8 @@ import AnimatedLogo from './Animation'; // 🚀 Premium SVG Animation Splash
 import { StaticLogo } from './StaticLogo'; // 🚀 Premium SVG Static Logo
 import FloatingBackground from './FloatingBackground'; // 🚀 SVG Educational Background
 
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 export default function Login() {
     const navigate = useNavigate();
     
@@ -42,7 +44,7 @@ export default function Login() {
         setIsLoading(true);
         setError('');
         try {
-            const res = await axios.post('/api/web/check-email', { email });
+            const res = await axios.post(`${API_BASE}/api/web/check-email`, { email });
             
             if (!res.data.exists) {
                 setStep('NOT_FOUND');
@@ -67,7 +69,7 @@ export default function Login() {
         setIsLoading(true);
         setError('');
         try {
-            await axios.post('/api/web/send-otp', { email, type });
+            await axios.post(`${API_BASE}/api/web/send-otp`, { email, type });
         } catch (err) {
             setError(err.response?.data?.message || "Failed to send code.");
         } finally {
@@ -87,7 +89,7 @@ export default function Login() {
         setIsLoading(true);
         setError('');
         try {
-            const res = await axios.post('/api/web/login', { email, password });
+            const res = await axios.post(`${API_BASE}/api/web/login`, { email, password });
             localStorage.setItem('token', res.data.token);
             localStorage.setItem('user', JSON.stringify(res.data.user));
             navigate('/dashboard'); 
@@ -107,7 +109,7 @@ export default function Login() {
         setIsLoading(true);
         setError('');
         try {
-            const res = await axios.post('/api/web/set-password', { email, otp, newPassword });
+            const res = await axios.post(`${API_BASE}/api/web/set-password`, { email, otp, newPassword });
             localStorage.setItem('token', res.data.token);
             localStorage.setItem('user', JSON.stringify(res.data.user));
             navigate('/dashboard');
