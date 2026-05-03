@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import AnimatedLogo from './Animation'; // 🚀 Premium SVG Animation Splash
+import { StaticLogo } from './StaticLogo'; // 🚀 Premium SVG Static Logo
 import FloatingBackground from './FloatingBackground'; // 🚀 SVG Educational Background
 
 export default function Login() {
@@ -169,7 +170,7 @@ export default function Login() {
             {/* 🚀 Premium Header */}
             <header className="absolute top-0 left-0 w-full p-6 sm:px-12 flex justify-between items-center z-20">
                 <div className="flex items-center gap-3">
-                    <img src="/images/logo_white.jpg" alt="Logo" className="w-10 h-10 rounded-full shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
+                    <StaticLogo className="w-10 h-10 rounded-full shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
                     <span className="text-white font-black text-xl tracking-wide hidden sm:block">MyPortal</span>
                 </div>
                 <div className="text-[#666] text-xs sm:text-sm font-semibold tracking-[0.2em] uppercase">
@@ -189,12 +190,8 @@ export default function Login() {
                 </div>
 
                 <div className="p-10 pb-6 text-center">
-                    {/* Simplified to just the white logo for the pure black background */}
-                    <img 
-                        src="/images/logo_white.jpg" 
-                        alt="MyPortal" 
-                        className="h-20 w-auto mx-auto mb-8 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                    />
+                    {/* SVG Logo instead of JPG */}
+                    <StaticLogo className="h-20 w-auto mx-auto mb-8 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.1)]" />
 
                     <div className="h-[72px] flex flex-col justify-end mb-2">
                         <h2 className="text-3xl font-extrabold text-white tracking-tight animate-slide-up-fade">
