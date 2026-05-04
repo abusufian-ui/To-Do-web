@@ -1168,7 +1168,7 @@ app.post('/api/reset-password', async (req, res) => {
     res.json({ message: "Password updated" });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
-app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/ping', (req, res) => res.json({ status: "alive", time: new Date() }));
 
 // 📸 PROFILE PICTURE UPLOAD (Multi-route fallback for live server)
 app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], auth, profilePicUpload.single('profilePic'), async (req, res) => {
@@ -1200,6 +1200,8 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
     res.status(500).json({ message: "Failed to upload profile picture" });
   }
 });
+
+app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 app.put('/api/user/password', auth, async (req, res) => {
   try {
