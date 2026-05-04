@@ -47,7 +47,6 @@ const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "l1f23bscs1329@ucp.ed
 const resend = new Resend(process.env.RESEND_API_KEY);
 let expo = new Expo();
 
-
 // ==========================================
 // 🕌 ALADHAN API HELPER (Bulletproof caching)
 // ==========================================
@@ -74,6 +73,51 @@ async function getLahorePrayerTimes(todayStr) {
   }
   return cachedPrayerTimes;
 }
+
+// --- API URL CONFIG ---
+const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp.online' : 'http://localhost:5000';
+
+// ==========================================
+// 📂 LOCAL MEDIA STORAGE CONFIGURATION 
+// ==========================================
+const uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production' 
+  ? '/var/www/student_portal/media/' 
+  : path.join(__dirname, 'media'));
+
+// Ensure the directory exists safely
+try {
+    if (!fs.existsSync(uploadDir)){
+        fs.mkdirSync(uploadDir, { recursive: true });
+        console.log(`📁 Created media directory at: ${uploadDir}`);
+    }
+} catch (err) {
+    console.error(`❌ Failed to create media directory at ${uploadDir}:`, err.message);
+    const fallbackDir = path.join(__dirname, 'media');
+    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+}
+
+const localDiskStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir); 
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+
+const profilePicUpload = multer({ 
+    storage: localDiskStorage,
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for profile pics
+});
+
+const generalUpload = multer({ 
+    storage: localDiskStorage,
+    limits: { fileSize: 10 * 1024 * 1024 } 
+});
+
+const upload = generalUpload;
 
 // ==========================================
 // 🎨 PREMIUM EMAIL HTML TEMPLATE
@@ -233,7 +277,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 // Serve static media files
-app.use('/media', express.static('/var/www/student_portal/media/'));
+app.use('/media', express.static(uploadDir));
 
 // 🚨 THIS IS YOUR GLOBAL 50MB LIMIT
 app.use(express.json({ limit: '50mb' }));
@@ -263,39 +307,7 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-// ==========================================
-// 🚀 LOCAL MEDIA STORAGE CONFIGURATION 🚀
-// (Replacing Cloudinary)
-// ==========================================
-
-const uploadDir = '/var/www/student_portal/media/';
-
-// Ensure the directory exists when the server starts
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate a unique file name to prevent overwriting
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-  }
-});
-
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit to protect 1GB RAM
-});
-
-const profilePicUpload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for profile pics
-});
+// (Redundant storage config removed as it was moved up)
 
 // ==========================================
 // 🚀 ROUTES: FEEDBACK & SUPPORT
@@ -739,14 +751,12 @@ mongoose.connect(dbLink).then(async () => {
         const changeStream = model.watch([], { fullDocument: 'updateLookup' });
         changeStream.on('change', (change) => {
           const doc = change.fullDocument;
-          if (doc && doc.userId) {
-            const userIdStr = doc.userId.toString();
-            // 🚀 Send the update ONLY to the specific user whose data changed
+          // Support both 'userId' and 'user' field naming conventions
+          const targetUserId = doc?.userId || doc?.user;
+          
+          if (targetUserId) {
+            const userIdStr = targetUserId.toString();
             io.to(userIdStr).emit('live_db_update');
-          } else {
-            // Fallback: if we can't determine the user, we still don't broadcast to everyone
-            // to prevent server crashes.
-            console.log("Change detected but no userId found. Skipping broadcast.");
           }
         });
       }
@@ -1059,11 +1069,11 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       try {
         const base64Data = profilePic.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, 'base64');
-        const filename = `profile_${formattedRoll}_${Date.now()}.jpg`;
+        const filename = `portal_profile_${formattedRoll}_${Date.now()}.jpg`;
         const filepath = path.join(uploadDir, filename);
 
         fs.writeFileSync(filepath, buffer);
-        finalProfilePicUrl = `https://api.myportalucp.online/media/${filename}`;
+        finalProfilePicUrl = `${API_URL}/media/${filename}`;
       } catch (imgErr) {
         console.error('[IMAGE SAVE ERROR]:', imgErr.message);
       }
@@ -1077,7 +1087,17 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       user.isPortalConnected = true;
       // Do not overwrite user.isAdmin here
       user.name = name && name !== 'UCP Student' ? name : user.name;
-      if (finalProfilePicUrl) user.profilePic = finalProfilePicUrl;
+      if (finalProfilePicUrl) {
+          user.portalProfilePic = finalProfilePicUrl;
+          
+          // 🛡️ PRESERVE ORIGINAL PORTAL IMAGE IF NOT ALREADY SET
+          if (!user.originalPortalProfilePic) {
+              user.originalPortalProfilePic = finalProfilePicUrl;
+          }
+
+          // If user hasn't set a custom pic, update the main profilePic
+          if (!user.customProfilePic) user.profilePic = finalProfilePicUrl;
+      }
       await user.save();
     } else {
       // Brand New User
@@ -1089,6 +1109,8 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         isPortalConnected: true,
         // isAdmin defaults to false in schema
         ucpCookie: ucpCookie,
+        portalProfilePic: finalProfilePicUrl,
+        originalPortalProfilePic: finalProfilePicUrl, // Record the first one
         profilePic: finalProfilePicUrl
       });
       await user.save();
@@ -1143,18 +1165,20 @@ app.post('/api/reset-password', async (req, res) => {
 app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 // 📸 PROFILE PICTURE UPLOAD
-app.post('/api/user/profile-pic', auth, profilePicUpload.single('profilePic'), async (req, res) => {
+app.post(['/api/user/profile-pic', '/user/profile-pic'], auth, profilePicUpload.single('profilePic'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    // Force the correct HTTPS URL based on the saved filename
-    const fileUrl = `https://api.myportalucp.online/media/${req.file.filename}`;
+    const filename = req.file.filename;
+    const fileUrl = `${API_URL}/media/${filename}`;
+
+    console.log(`📸 [PROFILE] Successful upload for user ${req.user.id}. URL: ${fileUrl}`);
 
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
       {
-        profilePic: fileUrl,
-        customProfilePic: fileUrl
+        customProfilePic: fileUrl,
+        profilePic: fileUrl // Always use custom pic if uploaded
       },
       { new: true }
     ).select('-password');
