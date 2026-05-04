@@ -781,8 +781,11 @@ app.post('/api/upload', auth, (req, res) => {
   upload.array('files', 10)(req, res, function (err) {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
     try {
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.get('host');
+      const baseUrl = `${protocol}://${host}`;
       const urls = req.files.map(file => `${baseUrl}/media/${file.filename}`);
+      res.json({ urls });
     } catch (error) {
       res.status(500).json({ error: 'Failed to process files after upload' });
     }
@@ -872,7 +875,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
           for (let url of kn.mediaUrls) {
             try {
               const filename = url.split('/').pop();
-              const filepath = path.join('/var/www/student_portal/media/', filename);
+              const filepath = path.join(uploadDir, filename);
               if (fs.existsSync(filepath)) {
                 storageBytes += fs.statSync(filepath).size; // Add file size to their total
               }
@@ -1078,7 +1081,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         const filepath = path.join(uploadDir, filename);
 
         fs.writeFileSync(filepath, buffer);
-        finalProfilePicUrl = `${API_URL}/media/${filename}`;
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const host = req.get('host');
+        finalProfilePicUrl = `${protocol}://${host}/media/${filename}`;
       } catch (imgErr) {
         console.error('[IMAGE SAVE ERROR]:', imgErr.message);
       }
@@ -1174,13 +1179,9 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    // 🚀 FORCE HTTPS ON PRODUCTION
-    let fileUrl;
-    if (process.env.NODE_ENV === 'production') {
-        fileUrl = `https://api.myportalucp.online/media/${req.file.filename}`;
-    } else {
-        fileUrl = `${API_URL}/media/${req.file.filename}`;
-    }
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    const fileUrl = `${protocol}://${host}/media/${req.file.filename}`;
 
     console.log(`📸 [PROFILE] Successful upload for user ${req.user.id}. URL: ${fileUrl}`);
 
