@@ -1627,11 +1627,11 @@ cron.schedule('* * * * *', async () => {
 });
 
 // ---------------------------------------------------------
-// ENGINE 5: BACKGROUND SYNC HEARTBEAT (Runs every 15 mins)
+// ENGINE 5: BACKGROUND SYNC HEARTBEAT (Runs every hour)
 // ---------------------------------------------------------
-cron.schedule('*/15 * * * *', async () => {
+cron.schedule('0 * * * *', async () => {
   try {
-    console.log("[CRON] 💓 Firing 15-minute background sync heartbeat...");
+    console.log("[CRON] 💓 Firing hourly background sync heartbeat...");
 
     // Find users who have an active portal connection and push tokens
     const activeUsers = await User.find({
