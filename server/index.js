@@ -195,7 +195,7 @@ async function sendPush(user, title, body, data = {}, categoryId = "smart-alert"
   for (let pushToken of tokens) {
     messages.push({
       to: pushToken,
-      sound: channelId === "prayer-channel-live" ? 'azan.wav' : 'default',
+      sound: channelId === "prayer-channel-live-v2" ? 'azan.wav' : 'default',
       categoryId: categoryId,
       channelId: channelId,
       title,
