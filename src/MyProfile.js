@@ -4,6 +4,9 @@ import { User, Calendar, Shield, Link2, CheckCircle2, XCircle, Activity, Mail } 
 const MyProfile = ({ user }) => {
   if (!user) return null;
 
+  const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
+  const isSuperAdmin = user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+
   // Format Date Helper
   const formatDate = (dateString) => {
     if (!dateString) return 'Unknown';
@@ -18,14 +21,22 @@ const MyProfile = ({ user }) => {
         
         {/* HEADER CARD */}
         <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-8 border border-gray-200 dark:border-[#333] shadow-sm flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
-          <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-4xl text-white font-bold shadow-lg uppercase">
-            {user.name.charAt(0)}
-          </div>
+          {user.profilePic ? (
+            <img 
+              src={user.profilePic} 
+              alt={user.name} 
+              className="w-24 h-24 rounded-full object-cover shadow-lg ring-4 ring-blue-500/10" 
+            />
+          ) : (
+            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-4xl text-white font-bold shadow-lg uppercase">
+              {user.name.charAt(0)}
+            </div>
+          )}
           <div className="flex-1">
             <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">{user.name}</h1>
             <div className="flex flex-wrap justify-center md:justify-start gap-3">
-              <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-full uppercase tracking-wider flex items-center gap-1">
-                <User size={12} /> {user.isAdmin ? 'Administrator' : 'Student'}
+              <span className={`px-3 py-1 ${isSuperAdmin ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400' : user.isAdmin ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'} text-xs font-bold rounded-full uppercase tracking-wider flex items-center gap-1`}>
+                <Shield size={12} /> {isSuperAdmin ? 'Super Admin' : user.isAdmin ? 'Administrator' : 'Student'}
               </span>
               <span className="px-3 py-1 bg-gray-100 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs font-bold rounded-full flex items-center gap-1">
                 <Mail size={12} /> {user.email}
@@ -86,12 +97,12 @@ const MyProfile = ({ user }) => {
                 <div className="space-y-2 mt-4">
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-500">Connected Account:</span>
-                    <span className="font-mono font-medium text-gray-900 dark:text-white">{user.portalId}</span>
+                    <span className="font-mono font-medium text-gray-900 dark:text-white uppercase">{user.rollNumber || user.portalId || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-500">Sync Status:</span>
-                    <span className="flex items-center gap-1 text-blue-500 font-bold text-xs">
-                      <Activity size={12} /> Live
+                    <span className={`flex items-center gap-1 ${user.ucpCookie ? 'text-blue-500' : 'text-yellow-500'} font-bold text-xs`}>
+                      <Activity size={12} className={user.ucpCookie ? "animate-pulse" : ""} /> {user.ucpCookie ? 'Active' : 'Cookie Expired'}
                     </span>
                   </div>
                 </div>

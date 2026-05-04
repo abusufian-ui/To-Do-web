@@ -12,7 +12,6 @@ export default function Login() {
     const navigate = useNavigate();
     
     // UI State
-    const [showSplash, setShowSplash] = useState(true);
     const [step, setStep] = useState('EMAIL'); // EMAIL, PASSWORD, OTP, NEW_PASSWORD, NOT_FOUND
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -34,14 +33,6 @@ export default function Login() {
     const email = `${rollNumber.toLowerCase().trim()}@ucp.edu.pk`;
     const otp = otpValues.join('');
     const otpRefs = useRef([]);
-
-    // Splash Screen Timer
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setShowSplash(false);
-        }, 2500); 
-        return () => clearTimeout(timer);
-    }, []);
 
     // 🚀 NEW: Password Strength Calculator
     const getPasswordStrength = (pass) => {
@@ -201,14 +192,6 @@ export default function Login() {
             otpRefs.current[focusIndex]?.focus();
         }
     };
-
-    if (showSplash) {
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-1000">
-                <AnimatedLogo />
-            </div>
-        );
-    }
 
     return (
         <div className="relative min-h-screen bg-black flex items-center justify-center p-4 selection:bg-white/30 transition-colors duration-1000">

@@ -13,6 +13,8 @@ const Header = ({
   tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, onToggleKeynoteRead, hfState, hfModes,
   assessments, onOpenAssessment, exams 
 }) => {
+  const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
+  const isSuperAdmin = user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
   const safeCourses = Array.isArray(courses) ? courses : [];
   const safeTasks = Array.isArray(tasks) ? tasks : [];
@@ -470,12 +472,16 @@ const Header = ({
 
           <div className="relative" ref={profileDropdownRef}>
             <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333]">
-              <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase">
-                {user?.name?.charAt(0) || 'U'}
-              </div>
+              {user?.profilePic ? (
+                <img src={user.profilePic} alt={user.name} className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/20" />
+              ) : (
+                <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase">
+                  {user?.name?.charAt(0) || 'U'}
+                </div>
+              )}
               <div className="text-left hidden md:block">
                 <p className="text-sm font-bold text-gray-700 dark:text-white leading-none">{user?.name || 'User'}</p>
-                <p className="text-[10px] text-gray-400 font-medium">{user?.isAdmin ? 'Admin' : 'Student'}</p>
+                <p className="text-[10px] text-gray-400 font-medium">{isSuperAdmin ? 'Super Admin' : user?.isAdmin ? 'Admin' : 'Student'}</p>
               </div>
               <ChevronDown size={16} className="text-gray-400 hidden md:block" />
             </button>
@@ -487,6 +493,9 @@ const Header = ({
                   <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                 </div>
                 <div className="p-2 border-t border-gray-100 dark:border-[#333]">
+                  <button onClick={() => { onNavigate('Profile'); setIsProfileOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2 mb-1 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors font-medium">
+                    <User size={16} /> Account
+                  </button>
                   <button onClick={onLogout} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors font-medium">
                     <LogOut size={16} /> Sign Out
                   </button>

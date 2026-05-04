@@ -70,7 +70,10 @@ const StorageBar = ({ label, used, total, color, percentage, icon: Icon }) => {
 };
 
 // 3. User Row Component
-const UserRow = ({ u, onInitiateDelete }) => {
+const UserRow = ({ u, onInitiateDelete, isSuperAdmin, onToggleRole }) => {
+  const superAdminEmail = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
+  const isTargetSuperAdmin = u.email.toLowerCase() === superAdminEmail.toLowerCase();
+
   return (
     <tr className="hover:bg-gray-50 dark:hover:bg-[#1c1c1f] transition-colors group border-b border-gray-100 dark:border-[#27272a]">
       <td className="px-6 py-4">
@@ -81,7 +84,13 @@ const UserRow = ({ u, onInitiateDelete }) => {
           <div>
             <p className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
               {u.name}
-              {u.isAdmin && <span className="text-[9px] bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-500 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-900/50">ADMIN</span>}
+              {isTargetSuperAdmin ? (
+                <span className="text-[9px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500 px-1.5 py-0.5 rounded border border-yellow-200 dark:border-yellow-900/50">SUPER ADMIN</span>
+              ) : u.isAdmin ? (
+                <span className="text-[9px] bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-500 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-900/50">ADMIN</span>
+              ) : (
+                <span className="text-[9px] bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">STUDENT</span>
+              )}
             </p>
             <p className="text-xs text-gray-500">{u.email}</p>
           </div>
@@ -127,9 +136,9 @@ const UserRow = ({ u, onInitiateDelete }) => {
         </div>
       </td>
 
-      <td className="px-6 py-4 text-right">
-        {u.email === "ranasuffyan9@gmail.com" ? (
-          <span className="text-xs font-bold text-gray-400 dark:text-gray-600 flex items-center justify-end gap-1">
+      <td className="px-6 py-4 text-right flex justify-end gap-2">
+        {u.isAdmin ? (
+          <span className="text-xs font-bold text-gray-400 dark:text-gray-600 flex items-center justify-end gap-1 px-2 py-2">
             <Shield size={12} /> Protected
           </span>
         ) : (
@@ -141,6 +150,16 @@ const UserRow = ({ u, onInitiateDelete }) => {
             <Trash2 size={18} />
           </button>
         )}
+        
+        {isSuperAdmin && !isTargetSuperAdmin && (
+          <button
+            onClick={() => onToggleRole(u._id)}
+            className={`p-2 rounded-lg transition-all ${u.isAdmin ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/10' : 'text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 dark:text-gray-500 dark:hover:text-yellow-500 dark:hover:bg-yellow-900/10'}`}
+            title={u.isAdmin ? "Demote Admin" : "Promote to Admin"}
+          >
+            <Shield size={18} />
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -148,7 +167,9 @@ const UserRow = ({ u, onInitiateDelete }) => {
 
 
 // --- MAIN DASHBOARD ---
-const AdminDashboard = () => {
+const AdminDashboard = ({ currentUser }) => {
+  const superAdminEmail = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
+  const isSuperAdmin = currentUser?.email?.toLowerCase() === superAdminEmail.toLowerCase();
   const token = localStorage.getItem('token');
 
   // --- SECURITY PIN STATE ---
@@ -232,6 +253,25 @@ const AdminDashboard = () => {
       setUserToDelete(null); 
     } catch (error) {
       ToastConfig.show({ title: "Error", message: "Failed to delete user", type: "error" });
+    }
+  };
+
+  const toggleRole = async (userId) => {
+    if (!window.confirm("Are you sure you want to change this user's admin role?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${userId}/role`, {
+        method: 'PUT',
+        headers: { 'x-auth-token': token }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUsers(users.map(u => u._id === userId ? { ...u, isAdmin: data.isAdmin } : u));
+        ToastConfig.show({ title: "Success", message: "User role updated", type: "success" });
+      } else {
+        ToastConfig.show({ title: "Error", message: data.message || "Failed to update role", type: "error" });
+      }
+    } catch (err) {
+      ToastConfig.show({ title: "Error", message: "Failed to update role", type: "error" });
     }
   };
 
@@ -531,7 +571,7 @@ const AdminDashboard = () => {
             <tbody className="divide-y divide-gray-200 dark:divide-[#27272a]">
               {loading ? (
                 <tr><td colSpan="5" className="text-center py-8 text-gray-500 animate-pulse">Loading data stream...</td></tr>
-              ) : filteredUsers.map((u) => <UserRow key={u._id} u={u} onInitiateDelete={setUserToDelete} />)}
+              ) : filteredUsers.map((u) => <UserRow key={u._id} u={u} onInitiateDelete={setUserToDelete} isSuperAdmin={isSuperAdmin} onToggleRole={toggleRole} />)}
             </tbody>
           </table>
         </div>

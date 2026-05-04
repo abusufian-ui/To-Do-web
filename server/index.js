@@ -43,7 +43,7 @@ const Exam = require('./models/Exam'); // 🚨 NEW: DATESHEET EXAM MODEL
 const { spawn } = require('child_process');
 
 // --- CONFIGURATION ---
-const SUPER_ADMIN_EMAIL = "ranasuffyan9@gmail.com";
+const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "l1f23bscs1329@ucp.edu.pk";
 const resend = new Resend(process.env.RESEND_API_KEY);
 let expo = new Expo(); 
 
@@ -878,12 +878,29 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
     const userId = req.params.id;
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
-    if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) return res.status(400).json({ message: "Cannot delete yourself!" });
+    if (user.isAdmin) return res.status(400).json({ message: "Admin accounts cannot be deleted!" });
     
     // Updated to also wipe Exams for the deleted user
     await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId }), Assessment.deleteMany({ userId }), Exam.deleteMany({ userId })]);
     
     res.json({ message: "User deleted" });
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.put('/api/admin/users/:id/role', auth, adminAuth, async (req, res) => {
+  try {
+    const requestingUser = await User.findById(req.user.id);
+    if (requestingUser.email.toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase()) {
+      return res.status(403).json({ message: "Only Super Admin can change roles" });
+    }
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+    if (targetUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      return res.status(400).json({ message: "Cannot change Super Admin role" });
+    }
+    targetUser.isAdmin = !targetUser.isAdmin;
+    await targetUser.save();
+    res.json({ success: true, isAdmin: targetUser.isAdmin });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
@@ -1024,22 +1041,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     const formattedRoll = rollNumber.toLowerCase().trim();
     const email = `${formattedRoll}@ucp.edu.pk`;
 
-    const adminEmails = ['l1f23bscs1329@ucp.edu.pk', 'l1f23bscs0023@ucp.edu.pk'];
-    const isUserAdmin = adminEmails.includes(email);
-
-    const legacyEmailMap = {
-      'l1f23bscs1329@ucp.edu.pk': 'ranasuffyan9@gmail.com',
-      'l1f23bscs0023@ucp.edu.pk': 'hashirfarooq48@gmail.com'
-    };
-
     let user = await User.findOne({ email });
-
-    if (!user && legacyEmailMap[email]) {
-        user = await User.findOne({ email: legacyEmailMap[email] });
-        if (user) {
-            user.email = email; 
-        }
-    }
 
     // 📸 STANDARD IMAGE STORAGE (FAST, NO AI)
     let finalProfilePicUrl = user ? user.profilePic : null;
@@ -1064,7 +1066,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       // Returning user
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
-      user.isAdmin = isUserAdmin; 
+      // Do not overwrite user.isAdmin here
       user.name = name && name !== 'UCP Student' ? name : user.name;
       if (finalProfilePicUrl) user.profilePic = finalProfilePicUrl; 
       await user.save();
@@ -1076,7 +1078,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         email: email,
         password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10),
         isPortalConnected: true,
-        isAdmin: isUserAdmin, 
+        // isAdmin defaults to false in schema
         ucpCookie: ucpCookie,
         profilePic: finalProfilePicUrl
       });

@@ -787,7 +787,7 @@ function AppLayout() {
                   {['Announcements', 'Attendance', 'Submissions'].includes(activeTab) && <div className="w-full h-full"><CoursePortalView activeTab={activeTab} courses={courses} /></div>}
                   {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>}
                   {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
-                  {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard /></div>}
+                  {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard currentUser={user} /></div>}
                   {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} /></div>}
 
                   {activeTab === 'Settings' && <div className="w-full h-full"><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} /></div>}
@@ -867,8 +867,22 @@ function AppLayout() {
 // 🌐 APP ROOT (Wraps the layout in a Router environment)
 // =========================================================
 export default function App() {
+  const [showSplash, setShowSplash] = React.useState(true);
+
+  React.useEffect(() => {
+      const timer = setTimeout(() => {
+          setShowSplash(false);
+      }, 2500); 
+      return () => clearTimeout(timer);
+  }, []);
+
   return (
     <Router>
+      {showSplash && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black transition-opacity duration-1000">
+              <AnimatedLogo />
+          </div>
+      )}
       <AppLayout/>
       <CustomToast />
     </Router>
