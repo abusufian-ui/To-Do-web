@@ -101,9 +101,15 @@ const localDiskStorage = multer.diskStorage({
     cb(null, uploadDir); 
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    // 🛡️ IMPROVED: Use Student Roll Number if available (from auth middleware)
+    // Fallback to 'user' if not found.
+    const identifier = req.user?.rollNumber || req.user?.id || 'user';
+    const cleanIdentifier = identifier.toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const uniqueSuffix = Date.now();
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    
+    // Format: profile_rollnumber_timestamp.jpg (Matches your record screenshot)
+    cb(null, `profile_${cleanIdentifier}_${uniqueSuffix}${ext}`);
   }
 });
 
@@ -1164,13 +1170,18 @@ app.post('/api/reset-password', async (req, res) => {
 });
 app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-// 📸 PROFILE PICTURE UPLOAD
-app.post(['/api/user/profile-pic', '/user/profile-pic'], auth, profilePicUpload.single('profilePic'), async (req, res) => {
+// 📸 PROFILE PICTURE UPLOAD (Multi-route fallback for live server)
+app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], auth, profilePicUpload.single('profilePic'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    const filename = req.file.filename;
-    const fileUrl = `${API_URL}/media/${filename}`;
+    // 🚀 FORCE HTTPS ON PRODUCTION
+    let fileUrl;
+    if (process.env.NODE_ENV === 'production') {
+        fileUrl = `https://api.myportalucp.online/media/${req.file.filename}`;
+    } else {
+        fileUrl = `${API_URL}/media/${req.file.filename}`;
+    }
 
     console.log(`📸 [PROFILE] Successful upload for user ${req.user.id}. URL: ${fileUrl}`);
 
