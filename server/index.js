@@ -273,11 +273,9 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('chrome-extension://')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // Allow all origins during development and in production for simplicity.
+    // In a real deployment, restrict this to known origins.
+    callback(null, true);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
@@ -783,11 +781,8 @@ app.post('/api/upload', auth, (req, res) => {
   upload.array('files', 10)(req, res, function (err) {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
     try {
-      if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
-
-      const urls = req.files.map(file => `https://api.myportalucp.online/media/${file.filename}`);
-
-      res.status(200).json({ message: 'Upload successful', urls: urls });
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const urls = req.files.map(file => `${baseUrl}/media/${file.filename}`);
     } catch (error) {
       res.status(500).json({ error: 'Failed to process files after upload' });
     }
