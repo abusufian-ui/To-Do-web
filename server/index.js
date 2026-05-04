@@ -11,8 +11,6 @@ const fs = require('fs');
 const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
-const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 // 🚨 NEW: IMPORT HTTP AND SOCKET.IO
 const http = require('http');
@@ -21,7 +19,7 @@ const { Server } = require('socket.io');
 // --- PUSH NOTIFICATIONS & CRON ---
 const { Expo } = require('expo-server-sdk');
 const cron = require('node-cron');
-const axios = require('axios'); 
+const axios = require('axios');
 
 // --- MODELS ---
 const User = require('./models/User');
@@ -39,60 +37,16 @@ const { Transaction, Budget, Debt } = require('./models/Transaction');
 const Attendance = require('./models/Attendance');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
-const Feedback = require('./models/Feedback'); 
-const Assessment = require('./models/Assessment'); 
+const Feedback = require('./models/Feedback');
+const Assessment = require('./models/Assessment');
 const Exam = require('./models/Exam'); // 🚨 NEW: DATESHEET EXAM MODEL
 const { spawn } = require('child_process');
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "l1f23bscs1329@ucp.edu.pk";
 const resend = new Resend(process.env.RESEND_API_KEY);
-let expo = new Expo(); 
+let expo = new Expo();
 
-// --- API URL CONFIG ---
-const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp.online' : 'http://localhost:5000';
-
-// ==========================================
-// 📂 LOCAL MEDIA STORAGE CONFIGURATION 
-// ==========================================
-// Priority: Environment Variable > Production Path > Local Path
-const uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production' 
-  ? '/var/www/student_portal/media/' 
-  : path.join(__dirname, 'media'));
-
-// Ensure the directory exists safely
-try {
-    if (!fs.existsSync(uploadDir)){
-        fs.mkdirSync(uploadDir, { recursive: true });
-        console.log(`📁 Created media directory at: ${uploadDir}`);
-    }
-} catch (err) {
-    console.error(`❌ Failed to create media directory at ${uploadDir}:`, err.message);
-    // Fallback to a local media folder if the primary one fails (e.g. permission issues on cloud)
-    const fallbackDir = path.join(__dirname, 'media');
-    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
-}
-
-const localDiskStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir); 
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-  }
-});
-
-const profilePicUpload = multer({ 
-    storage: localDiskStorage,
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for profile pics
-});
-
-const generalUpload = multer({ 
-    storage: localDiskStorage,
-    limits: { fileSize: 10 * 1024 * 1024 } 
-});
 
 // ==========================================
 // 🕌 ALADHAN API HELPER (Bulletproof caching)
@@ -101,24 +55,24 @@ let cachedPrayerTimes = null;
 let lastFetchDate = null;
 
 async function getLahorePrayerTimes(todayStr) {
-    if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
-        try {
-            const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1');
-            const timings = response.data.data.timings;
-            cachedPrayerTimes = { 
-                fajr: timings.Fajr, 
-                zuhr: timings.Dhuhr, 
-                asr: timings.Asr, 
-                maghrib: timings.Maghrib, 
-                isha: timings.Isha 
-            };
-            lastFetchDate = todayStr;
-        } catch (err) {
-            console.error("Failed to fetch Aladhan API:", err.message);
-            return null;
-        }
+  if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
+    try {
+      const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1');
+      const timings = response.data.data.timings;
+      cachedPrayerTimes = {
+        fajr: timings.Fajr,
+        zuhr: timings.Dhuhr,
+        asr: timings.Asr,
+        maghrib: timings.Maghrib,
+        isha: timings.Isha
+      };
+      lastFetchDate = todayStr;
+    } catch (err) {
+      console.error("Failed to fetch Aladhan API:", err.message);
+      return null;
     }
-    return cachedPrayerTimes;
+  }
+  return cachedPrayerTimes;
 }
 
 // ==========================================
@@ -144,71 +98,71 @@ const generateEmailTemplate = (title, code, message) => `
 // 🚀 SILENT PUSH NOTIFICATION HELPER
 // ==========================================
 async function sendSilentPush(user, data = {}) {
-    let tokens = [];
-    if (user.pushTokens && user.pushTokens.length > 0) {
-        tokens = user.pushTokens.filter(t => Expo.isExpoPushToken(t));
-    } else if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
-        tokens = [user.pushToken];
-    }
+  let tokens = [];
+  if (user.pushTokens && user.pushTokens.length > 0) {
+    tokens = user.pushTokens.filter(t => Expo.isExpoPushToken(t));
+  } else if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
+    tokens = [user.pushToken];
+  }
 
-    if (tokens.length === 0) return;
+  if (tokens.length === 0) return;
 
-    let messages = [];
-    for (let pushToken of tokens) {
-        messages.push({
-            to: pushToken,
-            // 🚨 NO title or body! This makes it silent.
-            data: data,
-            _displayInForeground: false, // Don't show if app is open
-        });
-    }
+  let messages = [];
+  for (let pushToken of tokens) {
+    messages.push({
+      to: pushToken,
+      // 🚨 NO title or body! This makes it silent.
+      data: data,
+      _displayInForeground: false, // Don't show if app is open
+    });
+  }
 
-    try {
-        let chunks = expo.chunkPushNotifications(messages);
-        for (let chunk of chunks) {
-            await expo.sendPushNotificationsAsync(chunk);
-        }
-        console.log(`📲 Sent SILENT sync ping to ${user.email}`);
-    } catch(e) { 
-        console.error("Silent Push Error:", e.message); 
+  try {
+    let chunks = expo.chunkPushNotifications(messages);
+    for (let chunk of chunks) {
+      await expo.sendPushNotificationsAsync(chunk);
     }
+    console.log(`📲 Sent SILENT sync ping to ${user.email}`);
+  } catch (e) {
+    console.error("Silent Push Error:", e.message);
+  }
 }
 
 // ==========================================
 // 🚀 MULTI-DEVICE PUSH NOTIFICATION HELPER
 // ==========================================
 async function sendPush(user, title, body, data = {}, categoryId = "smart-alert", channelId = "default") {
-    let tokens = [];
-    if (user.pushTokens && user.pushTokens.length > 0) {
-        tokens = user.pushTokens.filter(t => Expo.isExpoPushToken(t));
-    } else if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
-        tokens = [user.pushToken]; 
-    }
+  let tokens = [];
+  if (user.pushTokens && user.pushTokens.length > 0) {
+    tokens = user.pushTokens.filter(t => Expo.isExpoPushToken(t));
+  } else if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
+    tokens = [user.pushToken];
+  }
 
-    if (tokens.length === 0) return;
+  if (tokens.length === 0) return;
 
-    let messages = [];
-    for (let pushToken of tokens) {
-        messages.push({
-            to: pushToken,
-            sound: channelId === "prayer-channel-live" ? 'azan.wav' : 'default',
-            categoryId: categoryId, 
-            channelId: channelId,   
-            title,
-            body,
-            data
-        });
-    }
+  let messages = [];
+  for (let pushToken of tokens) {
+    messages.push({
+      to: pushToken,
+      sound: channelId === "prayer-channel-live" ? 'azan.wav' : 'default',
+      categoryId: categoryId,
+      channelId: channelId,
+      title,
+      body,
+      data
+    });
+  }
 
-    try {
-        let chunks = expo.chunkPushNotifications(messages);
-        for (let chunk of chunks) {
-            await expo.sendPushNotificationsAsync(chunk);
-        }
-        console.log(`📲 Sent push: "${title}" to ${user.email} (Category: ${categoryId})`);
-    } catch(e) { 
-        console.error("Push Error:", e.message); 
+  try {
+    let chunks = expo.chunkPushNotifications(messages);
+    for (let chunk of chunks) {
+      await expo.sendPushNotificationsAsync(chunk);
     }
+    console.log(`📲 Sent push: "${title}" to ${user.email} (Category: ${categoryId})`);
+  } catch (e) {
+    console.error("Push Error:", e.message);
+  }
 }
 
 const otpSchema = new mongoose.Schema({
@@ -220,9 +174,9 @@ const OTP = mongoose.model('OTP', otpSchema);
 
 const focusSessionSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  durationMinutes: { type: Number, required: true }, 
+  durationMinutes: { type: Number, required: true },
   type: { type: String, enum: ['focus', 'short_break', 'long_break'], required: true },
-  relatedCourse: { type: String }, 
+  relatedCourse: { type: String },
   completedAt: { type: Date, default: Date.now }
 });
 const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
@@ -233,29 +187,29 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", 
+    origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   }
 });
 
 io.on('connection', (socket) => {
-    socket.on('join_room', (userId) => {
-        if (userId) {
-            socket.join(userId.toString());
-            console.log(`👤 User ${userId} joined their personal data room.`);
-        }
-    });
+  socket.on('join_room', (userId) => {
+    if (userId) {
+      socket.join(userId.toString());
+      console.log(`👤 User ${userId} joined their personal data room.`);
+    }
+  });
 });
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'http://127.0.0.1:3000', 
+  'http://127.0.0.1:3000',
   'http://localhost:3001',
   'http://192.168.0.111:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
-  'http://127.0.0.1:3001', 
-  'http://localhost:8081', 
+  'http://127.0.0.1:3001',
+  'http://localhost:8081',
   'http://localhost:5000/',
   'https://myportalucp.online',
   'http://4.188.99.151',
@@ -272,14 +226,14 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'], 
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
   credentials: true,
-  optionsSuccessStatus: 200 
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
 // Serve static media files
-app.use('/media', express.static(uploadDir));
+app.use('/media', express.static('/var/www/student_portal/media/'));
 
 // 🚨 THIS IS YOUR GLOBAL 50MB LIMIT
 app.use(express.json({ limit: '50mb' }));
@@ -310,24 +264,58 @@ const adminAuth = async (req, res, next) => {
 };
 
 // ==========================================
+// 🚀 LOCAL MEDIA STORAGE CONFIGURATION 🚀
+// (Replacing Cloudinary)
+// ==========================================
+
+const uploadDir = '/var/www/student_portal/media/';
+
+// Ensure the directory exists when the server starts
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    // Generate a unique file name to prevent overwriting
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit to protect 1GB RAM
+});
+
+const profilePicUpload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for profile pics
+});
+
+// ==========================================
 // 🚀 ROUTES: FEEDBACK & SUPPORT
 // ==========================================
 app.post('/api/feedback', auth, async (req, res) => {
   try {
     const { subject, description } = req.body;
     if (!subject || !description) return res.status(400).json({ message: "Subject and description are required." });
-    
-    const newFeedback = new Feedback({ 
-      userId: req.user.id, 
-      subject: subject, 
-      description: description 
+
+    const newFeedback = new Feedback({
+      userId: req.user.id,
+      subject: subject,
+      description: description
     });
-    
+
     await newFeedback.save();
     res.json({ success: true, message: "Feedback submitted successfully." });
-  } catch (error) { 
+  } catch (error) {
     console.error("Feedback Error:", error);
-    res.status(500).json({ message: "Server Error processing feedback" }); 
+    res.status(500).json({ message: "Server Error processing feedback" });
   }
 });
 
@@ -344,118 +332,118 @@ app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
 
 // 1. CHECK EMAIL STATUS
 app.post('/api/web/check-email', async (req, res) => {
-    try {
-        const { email } = req.body;
-        const formattedEmail = email.toLowerCase().trim();
-        
-        const user = await User.findOne({ email: formattedEmail });
-        
-        if (!user) {
-            return res.json({ exists: false });
-        }
-        
-        return res.json({ 
-            exists: true, 
-            hasPassword: !!user.webPassword,
-            name: user.name.split(' ')[0] // Send first name for a friendly greeting
-        });
-    } catch (err) {
-        res.status(500).json({ message: "Server error checking email." });
+  try {
+    const { email } = req.body;
+    const formattedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: formattedEmail });
+
+    if (!user) {
+      return res.json({ exists: false });
     }
+
+    return res.json({
+      exists: true,
+      hasPassword: !!user.webPassword,
+      name: user.name.split(' ')[0] // Send first name for a friendly greeting
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error checking email." });
+  }
 });
 
 // 2. SEND OTP (For First-Time Setup OR Password Reset)
 app.post('/api/web/send-otp', async (req, res) => {
-    try {
-        const { email, type } = req.body; // type is 'setup' or 'reset'
-        const user = await User.findOne({ email });
-        
-        if (!user) return res.status(404).json({ message: "Account not found." });
+  try {
+    const { email, type } = req.body; // type is 'setup' or 'reset'
+    const user = await User.findOne({ email });
 
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
+    if (!user) return res.status(404).json({ message: "Account not found." });
 
-        const subject = type === 'setup' ? 'Set up your Web Portal Password' : 'Reset your Web Portal Password';
-        const msg = type === 'setup' 
-            ? 'Welcome to MyPortal Web! Use this code to verify your identity and create your web password.'
-            : 'You requested a password reset for MyPortal Web. Use this code to proceed.';
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
 
-        await resend.emails.send({ 
-            from: 'MyPortal <otp@myportalucp.online>', 
-            to: email, 
-            subject: subject, 
-            html: generateEmailTemplate(subject, code, msg)
-        });
+    const subject = type === 'setup' ? 'Set up your Web Portal Password' : 'Reset your Web Portal Password';
+    const msg = type === 'setup'
+      ? 'Welcome to MyPortal Web! Use this code to verify your identity and create your web password.'
+      : 'You requested a password reset for MyPortal Web. Use this code to proceed.';
 
-        res.json({ success: true, message: "OTP sent successfully." });
-    } catch (err) {
-        res.status(500).json({ message: "Error sending verification code." });
-    }
+    await resend.emails.send({
+      from: 'MyPortal <otp@myportalucp.online>',
+      to: email,
+      subject: subject,
+      html: generateEmailTemplate(subject, code, msg)
+    });
+
+    res.json({ success: true, message: "OTP sent successfully." });
+  } catch (err) {
+    res.status(500).json({ message: "Error sending verification code." });
+  }
 });
 
 // 2.5 VERIFY OTP (Intermediate Step)
 app.post('/api/web/verify-otp', async (req, res) => {
-    try {
-        const email = req.body.email.toLowerCase().trim();
-        const otpCode = String(req.body.otp).trim();
-        
-        const validOtp = await OTP.findOne({ email: email, code: otpCode });
-        if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
+  try {
+    const email = req.body.email.toLowerCase().trim();
+    const otpCode = String(req.body.otp).trim();
 
-        res.json({ success: true, message: "OTP verified." });
-    } catch (err) {
-        res.status(500).json({ message: "Error verifying OTP." });
-    }
+    const validOtp = await OTP.findOne({ email: email, code: otpCode });
+    if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
+
+    res.json({ success: true, message: "OTP verified." });
+  } catch (err) {
+    res.status(500).json({ message: "Error verifying OTP." });
+  }
 });
 
 // 3. SET OR RESET PASSWORD & LOGIN
 app.post('/api/web/set-password', async (req, res) => {
-    try {
-        const { email, otp, newPassword } = req.body;
-        
-        const validOtp = await OTP.findOne({ email, code: otp });
-        if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
+  try {
+    const { email, otp, newPassword } = req.body;
 
-        const user = await User.findOne({ email });
-        user.webPassword = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
-        await user.save();
-        await OTP.deleteOne({ email }); // Clear OTP after success
+    const validOtp = await OTP.findOne({ email, code: otp });
+    if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
 
-        // Generate Token & Log them in instantly
-        const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
-        
-        res.json({ 
-            token, 
-            user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic } 
-        });
-    } catch (err) {
-        res.status(500).json({ message: "Error securing your new password." });
-    }
+    const user = await User.findOne({ email });
+    user.webPassword = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
+    await user.save();
+    await OTP.deleteOne({ email }); // Clear OTP after success
+
+    // Generate Token & Log them in instantly
+    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+
+    res.json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic }
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Error securing your new password." });
+  }
 });
 
 // 4. STANDARD WEB LOGIN
 app.post('/api/web/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        
-        const user = await User.findOne({ email });
-        if (!user || !user.webPassword) {
-            return res.status(400).json({ message: "Invalid credentials." });
-        }
+  try {
+    const { email, password } = req.body;
 
-        const isMatch = await bcrypt.compare(password, user.webPassword);
-        if (!isMatch) {
-            return res.status(400).json({ message: "Incorrect password." });
-        }
-
-        const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
-        res.json({ 
-            token, 
-            user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic } 
-        });
-    } catch (err) {
-        res.status(500).json({ message: "Error logging in." });
+    const user = await User.findOne({ email });
+    if (!user || !user.webPassword) {
+      return res.status(400).json({ message: "Invalid credentials." });
     }
+
+    const isMatch = await bcrypt.compare(password, user.webPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Incorrect password." });
+    }
+
+    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+    res.json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic }
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Error logging in." });
+  }
 });
 
 // ==========================================
@@ -464,39 +452,39 @@ app.post('/api/web/login', async (req, res) => {
 
 // 🚨 FIXED: Removed express.json() override to respect the 50mb limit
 app.post('/api/session/keep-alive', auth, async (req, res) => {
-    const { ucpCookie } = req.body;
-    if (!ucpCookie) return res.status(400).json({ error: "No cookie provided" });
-    try {
-        await User.findByIdAndUpdate(req.user.id, { $set: { ucpCookie: ucpCookie, isPortalConnected: true, lastSyncAt: new Date() } }, { strict: false });
-        res.status(200).json({ message: "Cookies saved to vault." });
-    } catch (err) {
-        res.status(500).json({ error: "Failed to secure cookie in vault" });
-    }
+  const { ucpCookie } = req.body;
+  if (!ucpCookie) return res.status(400).json({ error: "No cookie provided" });
+  try {
+    await User.findByIdAndUpdate(req.user.id, { $set: { ucpCookie: ucpCookie, isPortalConnected: true, lastSyncAt: new Date() } }, { strict: false });
+    res.status(200).json({ message: "Cookies saved to vault." });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to secure cookie in vault" });
+  }
 });
 
 // 🚨 ENDPOINT: TRIGGER EXPIRED SESSION PUSH
 app.post('/api/trigger-expired-push', auth, async (req, res) => {
-    try {
-        const user = await User.findById(req.user.id);
-        if (!user) return res.status(404).json({ message: "User not found" });
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-        console.log(`[PUSH] Triggering Session Expired push for ${user.email}`);
-        
-        // Use your existing sendPush helper to send the notification
-        await sendPush(
-            user,
-            "UCP Session Expired ⚠️",
-            "Your university portal session has expired. Tap here to log in.",
-            { type: "session_expired" },
-            "smart-alert",
-            "default"
-        );
+    console.log(`[PUSH] Triggering Session Expired push for ${user.email}`);
 
-        res.json({ success: true, message: "Push notification triggered." });
-    } catch (err) {
-        console.error("Error triggering expired push:", err);
-        res.status(500).json({ message: "Server error triggering push." });
-    }
+    // Use your existing sendPush helper to send the notification
+    await sendPush(
+      user,
+      "UCP Session Expired ⚠️",
+      "Your university portal session has expired. Tap here to log in.",
+      { type: "session_expired" },
+      "smart-alert",
+      "default"
+    );
+
+    res.json({ success: true, message: "Push notification triggered." });
+  } catch (err) {
+    console.error("Error triggering expired push:", err);
+    res.status(500).json({ message: "Server error triggering push." });
+  }
 });
 
 app.get('/api/attendance', auth, async (req, res) => {
@@ -601,7 +589,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     // --- SMART ID BYPASS FOR BACKGROUND ENGINE ---
     let activePortalId = portalId;
     if (activePortalId === "BACKGROUND_SYNC" && user.portalId) {
-        activePortalId = user.portalId; 
+      activePortalId = user.portalId;
     }
 
     if (!activePortalId) throw new Error("Student ID not detected.");
@@ -612,66 +600,66 @@ app.post('/api/extension-sync', auth, async (req, res) => {
 
     // 1. SMART DIFFING & SAFE SAVING: ATTENDANCE
     if (attendanceData && attendanceData.length > 0) {
-        for (const att of attendanceData) {
-            if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
+      for (const att of attendanceData) {
+        if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
 
-            if (att.records) {
-                const oldAtt = await Attendance.findOne({ userId, courseUrl: att.courseUrl });
-                
-                if (oldAtt && oldAtt.summary && att.summary) {
-                    const oldAbsents = oldAtt.summary.conducted - oldAtt.summary.attended;
-                    const newAbsents = att.summary.conducted - att.summary.attended;
-                    
-                    if (newAbsents > oldAbsents) {
-                        sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${newAbsents}`);
-                        if (newAbsents >= 10 && oldAbsents < 10) {
-                            sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
-                        }
-                    }
-                }
-                await Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true });
+        if (att.records) {
+          const oldAtt = await Attendance.findOne({ userId, courseUrl: att.courseUrl });
+
+          if (oldAtt && oldAtt.summary && att.summary) {
+            const oldAbsents = oldAtt.summary.conducted - oldAtt.summary.attended;
+            const newAbsents = att.summary.conducted - att.summary.attended;
+
+            if (newAbsents > oldAbsents) {
+              sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${newAbsents}`);
+              if (newAbsents >= 10 && oldAbsents < 10) {
+                sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
+              }
             }
+          }
+          await Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true });
         }
+      }
     }
 
     // 2. SMART DIFFING & SAFE SAVING: ANNOUNCEMENTS
     if (announcementsData && announcementsData.length > 0) {
-        for (const ann of announcementsData) {
-            if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
+      for (const ann of announcementsData) {
+        if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
 
-            if (ann.news) {
-                const oldAnn = await Announcement.findOne({ userId, courseUrl: ann.courseUrl });
-                if (oldAnn && oldAnn.news) {
-                    if (ann.news.length > oldAnn.news.length) {
-                        sendPush(user, `New Announcement: ${ann.courseName} 📢`, ann.news[0].subject || "Tap to view details.");
-                    }
-                }
-                await Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true });
+        if (ann.news) {
+          const oldAnn = await Announcement.findOne({ userId, courseUrl: ann.courseUrl });
+          if (oldAnn && oldAnn.news) {
+            if (ann.news.length > oldAnn.news.length) {
+              sendPush(user, `New Announcement: ${ann.courseName} 📢`, ann.news[0].subject || "Tap to view details.");
             }
+          }
+          await Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true });
         }
+      }
     }
 
     // 3. SAFE SAVING: SUBMISSIONS
     if (submissionsData && submissionsData.length > 0) {
-        for (const sub of submissionsData) {
-            if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
-            
-            if (sub.tasks) {
-                await Submission.findOneAndUpdate({ userId, courseUrl: sub.courseUrl }, { ...sub, lastUpdated: new Date() }, { upsert: true });
-            }
+      for (const sub of submissionsData) {
+        if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
+
+        if (sub.tasks) {
+          await Submission.findOneAndUpdate({ userId, courseUrl: sub.courseUrl }, { ...sub, lastUpdated: new Date() }, { upsert: true });
         }
+      }
     }
-    
+
     // 4. SAFE SAVING: DATESHEET / EXAMS
     if (datesheetData !== undefined) {
-        // ALWAYS clear previous datesheet first. This perfectly handles the "No Exams Scheduled" state.
-        await Exam.deleteMany({ userId }); 
-        
-        if (datesheetData.length > 0) {
-            for (const exam of datesheetData) {
-                await new Exam({ ...exam, userId, lastUpdated: new Date() }).save();
-            }
+      // ALWAYS clear previous datesheet first. This perfectly handles the "No Exams Scheduled" state.
+      await Exam.deleteMany({ userId });
+
+      if (datesheetData.length > 0) {
+        for (const exam of datesheetData) {
+          await new Exam({ ...exam, userId, lastUpdated: new Date() }).save();
         }
+      }
     }
 
     // --- STANDARD ACADEMIC DATA ---
@@ -697,13 +685,13 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     if (timetableData && timetableData.length > 0) {
       await Timetable.deleteMany({ userId });
       const courseMap = new Map();
-      
+
       for (const classItem of timetableData) {
         const { id, ...classData } = classItem;
         if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
 
         await new Timetable({ ...classData, userId, lastUpdated: new Date() }).save();
-        
+
         if (!courseMap.has(classItem.courseName)) courseMap.set(classItem.courseName, { name: classItem.courseName, code: classItem.courseCode || '', color: classItem.color || '#3498db', instructors: new Set(), rooms: new Set() });
         const course = courseMap.get(classItem.courseName);
         if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
@@ -720,7 +708,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     }
 
     await User.updateOne({ _id: userId }, { $set: { isPortalConnected: true, lastSyncAt: new Date(), portalId: user.portalId, ucpCookie: ucpCookie || user.ucpCookie } });
-    
+
     res.json({ message: "Sync & Diffing complete securely!" });
 
   } catch (error) {
@@ -730,13 +718,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
 });
 
 
-// (Previous local storage config removed as it was moved up)
-const upload = generalUpload; 
-
-// ==========================================
-// REST OF THE ROUTES
-// ==========================================
-
 // ==========================================
 // REST OF THE ROUTES
 // ==========================================
@@ -745,35 +726,35 @@ const dbLink = process.env.REACT_APP_MONGODB_URI;
 console.log("🔗 Connecting to MyPortal Database...");
 
 // 🚨 NEW: CONNECT TO MONGODB AND ACTIVATE CHANGE STREAMS
-mongoose.connect(dbLink).then(async () => { 
-    console.log("✅ MongoDB Connected Successfully!"); 
+mongoose.connect(dbLink).then(async () => {
+  console.log("✅ MongoDB Connected Successfully!");
 
-    try {
-        // Added Exam to Watchdogs
-        const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment, Exam];
-        
-        modelsToWatch.forEach(model => {
-            if (model.watch) {
-                // Ensure we get the full document even on updates so we can extract the userId
-                const changeStream = model.watch([], { fullDocument: 'updateLookup' });
-                changeStream.on('change', (change) => {
-                    const doc = change.fullDocument;
-                    if (doc && doc.userId) {
-                        const userIdStr = doc.userId.toString();
-                        // 🚀 Send the update ONLY to the specific user whose data changed
-                        io.to(userIdStr).emit('live_db_update'); 
-                    } else {
-                        // Fallback: if we can't determine the user, we still don't broadcast to everyone
-                        // to prevent server crashes.
-                        console.log("Change detected but no userId found. Skipping broadcast.");
-                    }
-                });
-            }
+  try {
+    // Added Exam to Watchdogs
+    const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment, Exam];
+
+    modelsToWatch.forEach(model => {
+      if (model.watch) {
+        // Ensure we get the full document even on updates so we can extract the userId
+        const changeStream = model.watch([], { fullDocument: 'updateLookup' });
+        changeStream.on('change', (change) => {
+          const doc = change.fullDocument;
+          if (doc && doc.userId) {
+            const userIdStr = doc.userId.toString();
+            // 🚀 Send the update ONLY to the specific user whose data changed
+            io.to(userIdStr).emit('live_db_update');
+          } else {
+            // Fallback: if we can't determine the user, we still don't broadcast to everyone
+            // to prevent server crashes.
+            console.log("Change detected but no userId found. Skipping broadcast.");
+          }
         });
-        console.log("🟢 Database Live Sync Watchdogs Active!");
-    } catch (err) {
-        console.log("⚠️ MongoDB Change Streams require a Replica Set (Active by default on MongoDB Atlas).");
-    }
+      }
+    });
+    console.log("🟢 Database Live Sync Watchdogs Active!");
+  } catch (err) {
+    console.log("⚠️ MongoDB Change Streams require a Replica Set (Active by default on MongoDB Atlas).");
+  }
 
 }).catch(err => console.log(err));
 
@@ -783,12 +764,12 @@ app.post('/api/upload', auth, (req, res) => {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
     try {
       if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
-      
+
       const urls = req.files.map(file => `https://api.myportalucp.online/media/${file.filename}`);
-      
+
       res.status(200).json({ message: 'Upload successful', urls: urls });
-    } catch (error) { 
-      res.status(500).json({ error: 'Failed to process files after upload' }); 
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to process files after upload' });
     }
   });
 });
@@ -797,16 +778,16 @@ app.post('/api/upload', auth, (req, res) => {
 // 📂 NEW: FILE DOWNLOAD ROUTE (Forces Original Name)
 // ==========================================
 app.get('/api/download/:filename', (req, res) => {
-    const filepath = path.join(uploadDir, req.params.filename);
-    // Grab the original name from the URL query, or fallback to server name
-    const originalName = req.query.name || req.params.filename;
-    
-    // Check if file exists to prevent crashing
-    if (fs.existsSync(filepath)) {
-        res.download(filepath, originalName);
-    } else {
-        res.status(404).json({ error: "File not found on server" });
-    }
+  const filepath = path.join(uploadDir, req.params.filename);
+  // Grab the original name from the URL query, or fallback to server name
+  const originalName = req.query.name || req.params.filename;
+
+  // Check if file exists to prevent crashing
+  if (fs.existsSync(filepath)) {
+    res.download(filepath, originalName);
+  } else {
+    res.status(404).json({ error: "File not found on server" });
+  }
 });
 
 app.get('/api/keynotes', auth, async (req, res) => {
@@ -844,18 +825,18 @@ app.get('/api/admin/system-stats', async (req, res) => {
   try {
     const cpuLoad = await si.currentLoad();
     const mem = await si.mem();
-    
+
     // 🚨 NEW: Fetch Azure VM Hard Drive Space
     const disks = await si.fsSize();
     // Usually the primary partition is mounted at '/' on Linux/Ubuntu VMs
-    const rootDisk = disks.find(d => d.mount === '/') || disks[0] || { size: 30 * 1024 * 1024 * 1024, used: 0 }; 
-    
+    const rootDisk = disks.find(d => d.mount === '/') || disks[0] || { size: 30 * 1024 * 1024 * 1024, used: 0 };
+
     let dbSize = 0;
-    if (mongoose.connection.readyState === 1) dbSize = (await mongoose.connection.db.stats()).dataSize; 
-    
-    res.json({ 
-      cpu: Math.round(cpuLoad.currentLoad), 
-      memory: { active: mem.active, total: mem.total }, 
+    if (mongoose.connection.readyState === 1) dbSize = (await mongoose.connection.db.stats()).dataSize;
+
+    res.json({
+      cpu: Math.round(cpuLoad.currentLoad),
+      memory: { active: mem.active, total: mem.total },
       dbSize: dbSize,
       disk: { total: rootDisk.size, used: rootDisk.used } // Added to response
     });
@@ -864,38 +845,38 @@ app.get('/api/admin/system-stats', async (req, res) => {
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
-    
+
     // 🚨 NEW: Calculate Per-User Storage Footprint
     const usersWithStorage = await Promise.all(users.map(async (user) => {
-        let storageBytes = 15360; // 15KB base estimate for MongoDB text records
+      let storageBytes = 15360; // 15KB base estimate for MongoDB text records
 
-        // Scan local media vault for this user's Keynote uploads
-        const keynotes = await Keynote.find({ userId: user._id });
-        for(let kn of keynotes) {
-            if (kn.mediaUrls && kn.mediaUrls.length > 0) {
-                for(let url of kn.mediaUrls) {
-                    try {
-                        const filename = url.split('/').pop();
-                        const filepath = path.join('/var/www/student_portal/media/', filename);
-                        if (fs.existsSync(filepath)) {
-                            storageBytes += fs.statSync(filepath).size; // Add file size to their total
-                        }
-                    } catch (e) { /* Safely ignore missing files */ }
-                }
-            }
+      // Scan local media vault for this user's Keynote uploads
+      const keynotes = await Keynote.find({ userId: user._id });
+      for (let kn of keynotes) {
+        if (kn.mediaUrls && kn.mediaUrls.length > 0) {
+          for (let url of kn.mediaUrls) {
+            try {
+              const filename = url.split('/').pop();
+              const filepath = path.join('/var/www/student_portal/media/', filename);
+              if (fs.existsSync(filepath)) {
+                storageBytes += fs.statSync(filepath).size; // Add file size to their total
+              }
+            } catch (e) { /* Safely ignore missing files */ }
+          }
         }
+      }
 
-        return { 
-            _id: user._id, 
-            name: user.name, 
-            email: user.email, 
-            isAdmin: user.isAdmin, 
-            isPortalConnected: user.isPortalConnected, 
-            portalId: user.portalId, 
-            lastSyncAt: user.lastSyncAt, 
-            createdAt: user.createdAt,
-            storageUsed: storageBytes // Added to response
-        };
+      return {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        isPortalConnected: user.isPortalConnected,
+        portalId: user.portalId,
+        lastSyncAt: user.lastSyncAt,
+        createdAt: user.createdAt,
+        storageUsed: storageBytes // Added to response
+      };
     }));
 
     res.json(usersWithStorage);
@@ -907,10 +888,10 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.isAdmin) return res.status(400).json({ message: "Admin accounts cannot be deleted!" });
-    
+
     // Updated to also wipe Exams for the deleted user
     await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId }), Assessment.deleteMany({ userId }), Exam.deleteMany({ userId })]);
-    
+
     res.json({ message: "User deleted" });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
@@ -974,12 +955,12 @@ app.post('/api/admin/verify-pin', auth, adminAuth, async (req, res) => {
 app.post('/api/admin/request-pin-otp', auth, adminAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const code = Math.floor(100000 + Math.random() * 900000).toString(); 
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email: user.email }, { code }, { upsert: true, new: true });
-    await resend.emails.send({ 
-      from: 'MyPortal <otp@myportalucp.online>', 
-      to: user.email, 
-      subject: 'Admin PIN OTP', 
+    await resend.emails.send({
+      from: 'MyPortal <otp@myportalucp.online>',
+      to: user.email,
+      subject: 'Admin PIN OTP',
       html: generateEmailTemplate('Security Alert: PIN Change', code, 'You requested to change your Admin Command Center PIN.')
     });
     res.json({ message: "OTP sent" });
@@ -989,7 +970,7 @@ app.put('/api/admin/change-pin', auth, adminAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!(await OTP.findOne({ email: user.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
-    user.adminPin = req.body.newPin; await user.save(); await OTP.deleteOne({ email: user.email }); 
+    user.adminPin = req.body.newPin; await user.save(); await OTP.deleteOne({ email: user.email });
     res.json({ success: true });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -1023,10 +1004,10 @@ app.post('/api/send-otp', async (req, res) => {
     if (await User.findOne({ email: req.body.email })) return res.status(400).json({ message: "Registered" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email: req.body.email }, { code }, { upsert: true, new: true });
-    await resend.emails.send({ 
-      from: 'MyPortal <otp@myportalucp.online>', 
-      to: req.body.email, 
-      subject: 'Welcome to MyPortal', 
+    await resend.emails.send({
+      from: 'MyPortal <otp@myportalucp.online>',
+      to: req.body.email,
+      subject: 'Welcome to MyPortal',
       html: generateEmailTemplate('Welcome to MyPortal', code, 'Please use the following verification code to complete your registration.')
     });
     res.json({ message: "OTP sent" });
@@ -1060,8 +1041,8 @@ app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.
 // =================================================================
 app.post('/api/auth/microsoft-login', async (req, res) => {
   try {
-    const { rollNumber, name, profilePic, ucpCookie } = req.body; 
-    
+    const { rollNumber, name, profilePic, ucpCookie } = req.body;
+
     if (!rollNumber) {
       return res.status(400).json({ error: 'Roll number not detected from portal.' });
     }
@@ -1075,17 +1056,17 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     let finalProfilePicUrl = user ? user.profilePic : null;
 
     if (profilePic && profilePic.includes('base64')) {
-        try {
-            const base64Data = profilePic.replace(/^data:image\/\w+;base64,/, "");
-            const buffer = Buffer.from(base64Data, 'base64');
-            const filename = `portal_profile_${formattedRoll}_${Date.now()}.jpg`;
-            const filepath = path.join(uploadDir, filename);
-            
-            fs.writeFileSync(filepath, buffer);
-            finalProfilePicUrl = `${API_URL}/media/${filename}`;
-        } catch (imgErr) {
-            console.error('[IMAGE SAVE ERROR]:', imgErr.message);
-        }
+      try {
+        const base64Data = profilePic.replace(/^data:image\/\w+;base64,/, "");
+        const buffer = Buffer.from(base64Data, 'base64');
+        const filename = `profile_${formattedRoll}_${Date.now()}.jpg`;
+        const filepath = path.join(uploadDir, filename);
+
+        fs.writeFileSync(filepath, buffer);
+        finalProfilePicUrl = `https://api.myportalucp.online/media/${filename}`;
+      } catch (imgErr) {
+        console.error('[IMAGE SAVE ERROR]:', imgErr.message);
+      }
     }
 
     let isNewUser = false;
@@ -1094,18 +1075,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       // Returning user
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
+      // Do not overwrite user.isAdmin here
       user.name = name && name !== 'UCP Student' ? name : user.name;
-      if (finalProfilePicUrl) {
-          user.portalProfilePic = finalProfilePicUrl;
-          
-          // 🛡️ PRESERVE ORIGINAL PORTAL IMAGE IF NOT ALREADY SET
-          if (!user.originalPortalProfilePic) {
-              user.originalPortalProfilePic = finalProfilePicUrl;
-          }
-
-          // If user hasn't set a custom pic, update the main profilePic
-          if (!user.customProfilePic) user.profilePic = finalProfilePicUrl;
-      }
+      if (finalProfilePicUrl) user.profilePic = finalProfilePicUrl;
       await user.save();
     } else {
       // Brand New User
@@ -1115,28 +1087,27 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         email: email,
         password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10),
         isPortalConnected: true,
+        // isAdmin defaults to false in schema
         ucpCookie: ucpCookie,
-        portalProfilePic: finalProfilePicUrl,
-        originalPortalProfilePic: finalProfilePicUrl, // Record the first one
         profilePic: finalProfilePicUrl
       });
       await user.save();
     }
 
     const payload = { id: user.id };
-    
+
     jwt.sign(payload, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' }, (err, token) => {
       if (err) throw err;
-      res.json({ 
-        token, 
+      res.json({
+        token,
         isNewUser, // Tells the mobile app if it should wait for scraping
-        user: { 
-          id: user.id, 
-          name: user.name, 
-          email: user.email, 
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
           isAdmin: user.isAdmin,
           profilePic: user.profilePic
-        } 
+        }
       });
     });
 
@@ -1150,10 +1121,10 @@ app.post('/api/forgot-password', async (req, res) => {
     if (!(await User.findOne({ email: req.body.email }))) return res.status(400).json({ message: "No account found" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await OTP.findOneAndUpdate({ email: req.body.email }, { code }, { upsert: true, new: true });
-    await resend.emails.send({ 
-      from: 'MyPortal <otp@myportalucp.online>', 
-      to: req.body.email, 
-      subject: 'Password Reset', 
+    await resend.emails.send({
+      from: 'MyPortal <otp@myportalucp.online>',
+      to: req.body.email,
+      subject: 'Password Reset',
       html: generateEmailTemplate('Password Reset', code, 'You requested a password reset. Use the code below to securely change your password.')
     });
     res.json({ message: "OTP sent" });
@@ -1165,7 +1136,7 @@ app.post('/api/reset-password', async (req, res) => {
     if (!(await OTP.findOne({ email: req.body.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
     const user = await User.findOne({ email: req.body.email });
     user.password = await bcrypt.hash(req.body.newPassword, await bcrypt.genSalt(10));
-    await user.save(); await OTP.deleteOne({ email: req.body.email }); 
+    await user.save(); await OTP.deleteOne({ email: req.body.email });
     res.json({ message: "Password updated" });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -1175,42 +1146,23 @@ app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await Us
 app.post('/api/user/profile-pic', auth, profilePicUpload.single('profilePic'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-    
-    const filename = req.file.filename;
-    const fileUrl = `${API_URL}/media/${filename}`;
+
+    // Force the correct HTTPS URL based on the saved filename
+    const fileUrl = `https://api.myportalucp.online/media/${req.file.filename}`;
 
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
-      { 
-        customProfilePic: fileUrl,
-        profilePic: fileUrl // Always use custom pic if uploaded
+      {
+        profilePic: fileUrl,
+        customProfilePic: fileUrl
       },
       { new: true }
     ).select('-password');
-    
+
     res.json(updatedUser);
   } catch (error) {
     console.error("Profile Pic Upload Error:", error);
     res.status(500).json({ message: "Failed to upload profile picture" });
-  }
-});
-
-app.put('/api/user/security-settings', auth, async (req, res) => {
-  try {
-    const { autoLockEnabled, autoLockTimer } = req.body;
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { 
-        securitySettings: { 
-          autoLockEnabled, 
-          autoLockTimer 
-        } 
-      },
-      { new: true }
-    ).select('-password');
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ message: "Error updating security settings" });
   }
 });
 
@@ -1228,11 +1180,11 @@ app.post('/api/user/push-token', auth, async (req, res) => {
     const user = await User.findById(req.user.id);
     const token = req.body.token;
     if (token) {
-        if (!user.pushTokens) user.pushTokens = [];
-        if (!user.pushTokens.includes(token)) {
-            user.pushTokens.push(token);
-            await user.save();
-        }
+      if (!user.pushTokens) user.pushTokens = [];
+      if (!user.pushTokens.includes(token)) {
+        user.pushTokens.push(token);
+        await user.save();
+      }
     }
     res.json({ success: true, message: "Push token registered" });
   } catch (error) { res.status(500).json({ message: "Failed to update token" }); }
@@ -1246,13 +1198,13 @@ app.post('/api/user/link-portal', auth, async (req, res) => {
 app.post('/api/user/unlink-portal', auth, async (req, res) => {
   try {
     await User.findByIdAndUpdate(req.user.id, { portalId: null, isPortalConnected: false, lastSyncAt: null, ucpCookie: null }, { strict: false });
-    await Promise.all([ Grade.deleteMany({ userId: req.user.id }), ResultHistory.deleteMany({ userId: req.user.id }), StudentStats.deleteMany({ userId: req.user.id }), Timetable.deleteMany({ userId: req.user.id }), Course.deleteMany({ userId: req.user.id, type: 'university' }) ]);
+    await Promise.all([Grade.deleteMany({ userId: req.user.id }), ResultHistory.deleteMany({ userId: req.user.id }), StudentStats.deleteMany({ userId: req.user.id }), Timetable.deleteMany({ userId: req.user.id }), Course.deleteMany({ userId: req.user.id, type: 'university' })]);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 app.get('/api/user/portal-status', auth, async (req, res) => { try { const user = await User.findById(req.user.id); res.json({ isConnected: !!user.portalId && user.isPortalConnected, portalId: user.portalId }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-app.get('/api/timetable', auth, async (req, res) => { try { res.json((await Timetable.find({ userId: req.user.id })).map(i => ({...i.toObject(), id: i._id}))); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/timetable', auth, async (req, res) => { try { res.json((await Timetable.find({ userId: req.user.id })).map(i => ({ ...i.toObject(), id: i._id }))); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await StudentStats.findOne({ userId: req.user.id }) || { cgpa: "0.00", credits: "0", inprogressCr: "0" }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/results-history', auth, async (req, res) => { try { res.json(await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
@@ -1279,20 +1231,20 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
 
     // 🚀 SAFE GAMIFICATION REWARD SYSTEM
     if (req.body.completed === true && !oldTask.completed) {
-        const userStats = await StudentStats.findOne({ userId: req.user.id });
-        if (userStats) {
-            // Safely initialize the gamification object if it is missing from older accounts
-            if (!userStats.gamification) {
-                userStats.gamification = { score: 0, level: 1, tasksCompleted: 0, habitsMaintained: 0 };
-            }
-            
-            // Safely add points and increment completions
-            userStats.gamification.score = (userStats.gamification.score || 0) + 10;
-            userStats.gamification.tasksCompleted = (userStats.gamification.tasksCompleted || 0) + 1;
-            userStats.gamification.lastActive = Date.now();
-            
-            await userStats.save();
+      const userStats = await StudentStats.findOne({ userId: req.user.id });
+      if (userStats) {
+        // Safely initialize the gamification object if it is missing from older accounts
+        if (!userStats.gamification) {
+          userStats.gamification = { score: 0, level: 1, tasksCompleted: 0, habitsMaintained: 0 };
         }
+
+        // Safely add points and increment completions
+        userStats.gamification.score = (userStats.gamification.score || 0) + 10;
+        userStats.gamification.tasksCompleted = (userStats.gamification.tasksCompleted || 0) + 1;
+        userStats.gamification.lastActive = Date.now();
+
+        await userStats.save();
+      }
     }
 
     res.json(updatedTask);
@@ -1326,7 +1278,7 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
   try {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
     habit.checkIns.push(new Date());
-    const uniqueDays = new Set(habit.checkIns.map(d => new Date(d).setHours(0,0,0,0)));
+    const uniqueDays = new Set(habit.checkIns.map(d => new Date(d).setHours(0, 0, 0, 0)));
     if (uniqueDays.size > habit.longestStreak) habit.longestStreak = uniqueDays.size;
     await habit.save(); res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error" }); }
@@ -1336,85 +1288,85 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
 // 🕌 THE SMART NAMAZ UNLOCK ROUTE
 // ==========================================
 app.get('/api/namaz/today', auth, async (req, res) => {
-    try {
-        const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-        let todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-        
-        // 1. Get times for today
-        const times = await getLahorePrayerTimes(todayStr);
-        if (!times) return res.status(500).json({ message: "API Error" });
+  try {
+    const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+    let todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
 
-        const currentMins = lahoreDateObj.getHours() * 60 + lahoreDateObj.getMinutes();
-        const [fajrH, fajrM] = times.fajr.split(':').map(Number);
-        const fajrMins = fajrH * 60 + fajrM;
+    // 1. Get times for today
+    const times = await getLahorePrayerTimes(todayStr);
+    if (!times) return res.status(500).json({ message: "API Error" });
 
-        // 2. MIDNIGHT FIX: If it's before Fajr (e.g., 2 AM), the "current" Islamic day is yesterday.
-        if (currentMins < fajrMins) {
-            const yesterday = new Date(lahoreDateObj);
-            yesterday.setDate(yesterday.getDate() - 1);
-            todayStr = `${yesterday.getDate()}-${yesterday.getMonth() + 1}-${yesterday.getFullYear()}`;
+    const currentMins = lahoreDateObj.getHours() * 60 + lahoreDateObj.getMinutes();
+    const [fajrH, fajrM] = times.fajr.split(':').map(Number);
+    const fajrMins = fajrH * 60 + fajrM;
+
+    // 2. MIDNIGHT FIX: If it's before Fajr (e.g., 2 AM), the "current" Islamic day is yesterday.
+    if (currentMins < fajrMins) {
+      const yesterday = new Date(lahoreDateObj);
+      yesterday.setDate(yesterday.getDate() - 1);
+      todayStr = `${yesterday.getDate()}-${yesterday.getMonth() + 1}-${yesterday.getFullYear()}`;
+    }
+
+    let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
+    if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
+
+    let modified = false;
+    const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha'];
+
+    for (let i = 0; i < prayerOrder.length; i++) {
+      const pName = prayerOrder[i];
+      const [h, m] = times[pName].split(':').map(Number);
+      const pMins = h * 60 + m;
+
+      // Is the prayer active? 
+      // Active if current time is >= prayer time, OR if it's Isha and we are past midnight (currentMins < fajrMins)
+      let isPastPrayerTime = currentMins >= pMins || (pName === 'isha' && currentMins < fajrMins);
+
+      if (isPastPrayerTime) {
+        if (record.prayers[pName] === 'locked') {
+          record.prayers[pName] = 'pending';
+          modified = true;
         }
 
-        let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
-        if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
-
-        let modified = false;
-        const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha'];
-
-        for (let i = 0; i < prayerOrder.length; i++) {
-            const pName = prayerOrder[i];
-            const [h, m] = times[pName].split(':').map(Number);
-            const pMins = h * 60 + m;
-
-            // Is the prayer active? 
-            // Active if current time is >= prayer time, OR if it's Isha and we are past midnight (currentMins < fajrMins)
-            let isPastPrayerTime = currentMins >= pMins || (pName === 'isha' && currentMins < fajrMins);
-
-            if (isPastPrayerTime) {
-                if (record.prayers[pName] === 'locked') {
-                    record.prayers[pName] = 'pending';
-                    modified = true;
-                }
-                
-                // Mark previous prayers as missed if we entered a new prayer time
-                if (i > 0) {
-                    const prevP = prayerOrder[i-1];
-                    if (record.prayers[prevP] === 'pending') {
-                        record.prayers[prevP] = 'missed';
-                        modified = true;
-                    }
-                }
-            }
+        // Mark previous prayers as missed if we entered a new prayer time
+        if (i > 0) {
+          const prevP = prayerOrder[i - 1];
+          if (record.prayers[prevP] === 'pending') {
+            record.prayers[prevP] = 'missed';
+            modified = true;
+          }
         }
+      }
+    }
 
-        if (modified || record.isNew) await record.save();
-        res.json(record);
-    } catch (err) { res.status(500).json({ message: err.message }); }
+    if (modified || record.isNew) await record.save();
+    res.json(record);
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.post('/api/namaz/offer', auth, async (req, res) => {
-   try {
-       const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-       let todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-       
-       const times = await getLahorePrayerTimes(todayStr);
-       const currentMins = lahoreDateObj.getHours() * 60 + lahoreDateObj.getMinutes();
-       const [fajrH, fajrM] = times.fajr.split(':').map(Number);
-       
-       if (currentMins < (fajrH * 60 + fajrM)) {
-            const yesterday = new Date(lahoreDateObj);
-            yesterday.setDate(yesterday.getDate() - 1);
-            todayStr = `${yesterday.getDate()}-${yesterday.getMonth() + 1}-${yesterday.getFullYear()}`;
-       }
+  try {
+    const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+    let todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
 
-       let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
-       if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
-       
-       if (record.prayers[req.body.prayerName] === 'pending') record.prayers[req.body.prayerName] = 'offered';
-       else if (record.prayers[req.body.prayerName] === 'missed' || record.prayers[req.body.prayerName] === 'locked') record.prayers[req.body.prayerName] = 'qazah'; 
-       
-       await record.save(); res.json(record);
-   } catch (err) { res.status(500).json({ message: err.message }); }
+    const times = await getLahorePrayerTimes(todayStr);
+    const currentMins = lahoreDateObj.getHours() * 60 + lahoreDateObj.getMinutes();
+    const [fajrH, fajrM] = times.fajr.split(':').map(Number);
+
+    if (currentMins < (fajrH * 60 + fajrM)) {
+      const yesterday = new Date(lahoreDateObj);
+      yesterday.setDate(yesterday.getDate() - 1);
+      todayStr = `${yesterday.getDate()}-${yesterday.getMonth() + 1}-${yesterday.getFullYear()}`;
+    }
+
+    let record = await NamazRecord.findOne({ userId: req.user.id, dateStr: todayStr });
+    if (!record) record = new NamazRecord({ userId: req.user.id, dateStr: todayStr });
+
+    if (record.prayers[req.body.prayerName] === 'pending') record.prayers[req.body.prayerName] = 'offered';
+    else if (record.prayers[req.body.prayerName] === 'missed' || record.prayers[req.body.prayerName] === 'locked') record.prayers[req.body.prayerName] = 'qazah';
+
+    await record.save(); res.json(record);
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.get('/api/bin', auth, async (req, res) => {
@@ -1422,8 +1374,8 @@ app.get('/api/bin', auth, async (req, res) => {
     const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).lean();
     const transactions = await Transaction.find({ userId: req.user.id, isDeleted: true }).lean();
     const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
-    const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean(); 
-    const keynotes = await Keynote.find({ userId: req.user.id, isDeleted: true }).lean(); 
+    const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean();
+    const keynotes = await Keynote.find({ userId: req.user.id, isDeleted: true }).lean();
     res.json({ tasks, transactions, habits, notes, keynotes });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
@@ -1432,8 +1384,8 @@ app.put('/api/bin/restore-all', auth, async (req, res) => {
     await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Transaction.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Habit.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
-    await Note.updateMany({ user: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null }); 
-    await Keynote.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null }); 
+    await Note.updateMany({ user: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
+    await Keynote.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     res.json({ message: "Restored" });
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
@@ -1442,17 +1394,10 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
     await Task.deleteMany({ userId: req.user.id, isDeleted: true });
     await Transaction.deleteMany({ userId: req.user.id, isDeleted: true });
     await Habit.deleteMany({ userId: req.user.id, isDeleted: true });
-    await Note.deleteMany({ user: req.user.id, isDeleted: true }); 
-    await Keynote.deleteMany({ userId: req.user.id, isDeleted: true }); 
+    await Note.deleteMany({ user: req.user.id, isDeleted: true });
+    await Keynote.deleteMany({ userId: req.user.id, isDeleted: true });
     res.json({ message: "Emptied" });
   } catch (err) { res.status(500).json({ message: err.message }) }
-});
-
-app.all('/api/*', (req, res) => {
-    res.status(404).json({ 
-        message: `API Route [${req.method}] ${req.url} not found on this server.`,
-        hint: "Check if the server code is up to date."
-    });
 });
 
 app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
@@ -1469,7 +1414,7 @@ cron.schedule('* * * * *', async () => {
   // // ---------------------------------------------------------
   // try {
   //   const now = new Date();
-    
+
   //   const target15Start = new Date(now.getTime() + (15 * 60000));
   //   target15Start.setSeconds(0, 0); 
   //   const target15End = new Date(target15Start.getTime() + 59999); 
@@ -1506,7 +1451,7 @@ cron.schedule('* * * * *', async () => {
   //   for (let task of upcomingTasks) {
   //     if (!task.userId) continue;
   //     let bodyText = `Task: ${task.name}`;
-      
+
   //     if (task.time && new Date(task.triggerAt) > now) bodyText = `Starts in 15 mins: ${task.name}`;
   //     else if (task.time && new Date(task.triggerAt) <= now) bodyText = `It is time for: ${task.name}`;
   //     else bodyText = `Daily Reminder: ${task.name}`;
@@ -1521,7 +1466,7 @@ cron.schedule('* * * * *', async () => {
   // try {
   //   const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
   //   const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-    
+
   //   // Safely pad single digits so 2:05 PM becomes "14:05" to perfectly match Aladhan API
   //   const h = String(lahoreDateObj.getHours()).padStart(2, '0');
   //   const m = String(lahoreDateObj.getMinutes()).padStart(2, '0');
@@ -1549,10 +1494,10 @@ cron.schedule('* * * * *', async () => {
   //              const prevPrayer = prayerOrder[pIndex - 1];
   //              if (record.prayers[prevPrayer] === 'pending') record.prayers[prevPrayer] = 'missed';
   //           }
-            
+
   //           record.prayers[currentPrayer] = 'pending';
   //           await record.save();
-            
+
   //           sendPush(
   //               user, 
   //               `🕌 ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} Prayer Time`, 
@@ -1573,7 +1518,7 @@ cron.schedule('* * * * *', async () => {
   //   const pktNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
   //   const targetTime = new Date(pktNow.getTime() + 5 * 60000);
   //   const targetDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetTime.getDay()];
-    
+
   //   const targetHours = targetTime.getHours();
   //   const targetMins = targetTime.getMinutes();
 
@@ -1584,7 +1529,7 @@ cron.schedule('* * * * *', async () => {
 
   //     let classHours = -1, classMinutes = -1;
   //     const timeMatch = String(cls.startTime).trim().match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
-      
+
   //     if (timeMatch) {
   //       classHours = parseInt(timeMatch[1], 10);
   //       classMinutes = parseInt(timeMatch[2], 10);
@@ -1598,10 +1543,10 @@ cron.schedule('* * * * *', async () => {
 
   //     if (classHours === targetHours && classMinutes === targetMins) {
   //       console.log(`[CLASS ENGINE] 🏫 Match found! Alerting user for ${cls.courseName}`);
-        
+
   //       const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) ? cls.instructor : "Your teacher";
   //       const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) ? ` (Room: ${cls.room})` : "";
-        
+
   //       sendPush(
   //           cls.userId, 
   //           `Upcoming Class: ${cls.courseName} 📚`, 
@@ -1620,27 +1565,27 @@ cron.schedule('* * * * *', async () => {
     const now = new Date();
 
     for (let sub of allSubmissions) {
-        if (!sub.userId || !sub.tasks || sub.tasks.length === 0) continue;
+      if (!sub.userId || !sub.tasks || sub.tasks.length === 0) continue;
 
-        for (let task of sub.tasks) {
-            if (task.status.toLowerCase().includes('submitted')) continue;
-            
-            const dueDate = new Date(task.dueDate);
-            if (isNaN(dueDate)) continue;
+      for (let task of sub.tasks) {
+        if (task.status.toLowerCase().includes('submitted')) continue;
 
-            const diffMinutes = Math.floor((dueDate.getTime() - now.getTime()) / 60000);
-            let alertMsg = null;
-            
-            if (diffMinutes === 24 * 60) alertMsg = "24 Hours Remaining!";
-            else if (diffMinutes === 12 * 60) alertMsg = "12 Hours Remaining!";
-            else if (diffMinutes === 6 * 60) alertMsg = "6 Hours Remaining!";
-            else if (diffMinutes === 2 * 60) alertMsg = "2 Hours Remaining! Hurry!";
-            else if (diffMinutes === 30) alertMsg = "FINAL WARNING: 30 Mins Left!";
+        const dueDate = new Date(task.dueDate);
+        if (isNaN(dueDate)) continue;
 
-            if (alertMsg) {
-                sendPush(sub.userId, `Deadline Alert: ${sub.courseName} ⚠️`, `${alertMsg} for "${task.title}".`, { type: 'submission', url: task.submissionUrl });
-            }
+        const diffMinutes = Math.floor((dueDate.getTime() - now.getTime()) / 60000);
+        let alertMsg = null;
+
+        if (diffMinutes === 24 * 60) alertMsg = "24 Hours Remaining!";
+        else if (diffMinutes === 12 * 60) alertMsg = "12 Hours Remaining!";
+        else if (diffMinutes === 6 * 60) alertMsg = "6 Hours Remaining!";
+        else if (diffMinutes === 2 * 60) alertMsg = "2 Hours Remaining! Hurry!";
+        else if (diffMinutes === 30) alertMsg = "FINAL WARNING: 30 Mins Left!";
+
+        if (alertMsg) {
+          sendPush(sub.userId, `Deadline Alert: ${sub.courseName} ⚠️`, `${alertMsg} for "${task.title}".`, { type: 'submission', url: task.submissionUrl });
         }
+      }
     }
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
 });
@@ -1649,35 +1594,35 @@ cron.schedule('* * * * *', async () => {
 // ENGINE 5: BACKGROUND SYNC HEARTBEAT (Runs every 15 mins)
 // ---------------------------------------------------------
 cron.schedule('*/15 * * * *', async () => {
-    try {
-        console.log("[CRON] 💓 Firing 15-minute background sync heartbeat...");
-        
-        // Find users who have an active portal connection and push tokens
-        const activeUsers = await User.find({ 
-            isPortalConnected: true,
-            $or: [
-                { pushTokens: { $exists: true, $not: {$size: 0} } },
-                { pushToken: { $exists: true, $ne: null } }
-            ]
-        });
+  try {
+    console.log("[CRON] 💓 Firing 15-minute background sync heartbeat...");
 
-        if (activeUsers.length === 0) {
-            console.log("[CRON] No active portal users with push tokens found.");
-            return;
-        }
+    // Find users who have an active portal connection and push tokens
+    const activeUsers = await User.find({
+      isPortalConnected: true,
+      $or: [
+        { pushTokens: { $exists: true, $not: { $size: 0 } } },
+        { pushToken: { $exists: true, $ne: null } }
+      ]
+    });
 
-        console.log(`[CRON] Pinging ${activeUsers.length} users to run background sync...`);
-
-        // Send a silent push to wake up their apps
-        for (let user of activeUsers) {
-            await sendSilentPush(user, { 
-                action: 'RUN_BACKGROUND_SYNC',
-                timestamp: Date.now().toString() 
-            });
-        }
-    } catch (error) {
-        console.error(`[SYNC ENGINE] Error:`, error.message);
+    if (activeUsers.length === 0) {
+      console.log("[CRON] No active portal users with push tokens found.");
+      return;
     }
+
+    console.log(`[CRON] Pinging ${activeUsers.length} users to run background sync...`);
+
+    // Send a silent push to wake up their apps
+    for (let user of activeUsers) {
+      await sendSilentPush(user, {
+        action: 'RUN_BACKGROUND_SYNC',
+        timestamp: Date.now().toString()
+      });
+    }
+  } catch (error) {
+    console.error(`[SYNC ENGINE] Error:`, error.message);
+  }
 });
 
 // 🚨 NEW: LAUNCH THE COMBINED HTTP/WEBSOCKET SERVER
