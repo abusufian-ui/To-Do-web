@@ -11,6 +11,8 @@ const fs = require('fs');
 const multer = require('multer');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 // 🚨 NEW: IMPORT HTTP AND SOCKET.IO
 const http = require('http');
@@ -46,6 +48,42 @@ const { spawn } = require('child_process');
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "l1f23bscs1329@ucp.edu.pk";
 const resend = new Resend(process.env.RESEND_API_KEY);
 let expo = new Expo(); 
+
+// --- API URL CONFIG ---
+const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp.online' : 'http://localhost:5000';
+
+// ==========================================
+// 📂 LOCAL MEDIA STORAGE CONFIGURATION 
+// ==========================================
+const uploadDir = process.env.NODE_ENV === 'production' 
+  ? '/var/www/student_portal/media/' 
+  : path.join(__dirname, 'media');
+
+// Ensure the directory exists when the server starts
+if (!fs.existsSync(uploadDir)){
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const localDiskStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir); 
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+
+const profilePicUpload = multer({ 
+    storage: localDiskStorage,
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for profile pics
+});
+
+const generalUpload = multer({ 
+    storage: localDiskStorage,
+    limits: { fileSize: 10 * 1024 * 1024 } 
+});
 
 // ==========================================
 // 🕌 ALADHAN API HELPER (Bulletproof caching)
@@ -231,6 +269,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+// Serve static media files
+app.use('/media', express.static(uploadDir));
+
 // 🚨 THIS IS YOUR GLOBAL 50MB LIMIT
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -680,34 +721,12 @@ app.post('/api/extension-sync', auth, async (req, res) => {
 });
 
 
+// (Previous local storage config removed as it was moved up)
+const upload = generalUpload; 
+
 // ==========================================
-// 🚀 LOCAL MEDIA STORAGE CONFIGURATION 🚀
-// (Replacing Cloudinary)
+// REST OF THE ROUTES
 // ==========================================
-
-const uploadDir = '/var/www/student_portal/media/';
-
-// Ensure the directory exists when the server starts
-if (!fs.existsSync(uploadDir)){
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir); 
-  },
-  filename: function (req, file, cb) {
-    // Generate a unique file name to prevent overwriting
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-  }
-});
-
-const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit to protect 1GB RAM
-});
 
 // ==========================================
 // REST OF THE ROUTES
@@ -1050,11 +1069,11 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         try {
             const base64Data = profilePic.replace(/^data:image\/\w+;base64,/, "");
             const buffer = Buffer.from(base64Data, 'base64');
-            const filename = `profile_${formattedRoll}_${Date.now()}.jpg`;
+            const filename = `portal_profile_${formattedRoll}_${Date.now()}.jpg`;
             const filepath = path.join(uploadDir, filename);
             
             fs.writeFileSync(filepath, buffer);
-            finalProfilePicUrl = `https://api.myportalucp.online/media/${filename}`;
+            finalProfilePicUrl = `${API_URL}/media/${filename}`;
         } catch (imgErr) {
             console.error('[IMAGE SAVE ERROR]:', imgErr.message);
         }
@@ -1066,9 +1085,18 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       // Returning user
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
-      // Do not overwrite user.isAdmin here
       user.name = name && name !== 'UCP Student' ? name : user.name;
-      if (finalProfilePicUrl) user.profilePic = finalProfilePicUrl; 
+      if (finalProfilePicUrl) {
+          user.portalProfilePic = finalProfilePicUrl;
+          
+          // 🛡️ PRESERVE ORIGINAL PORTAL IMAGE IF NOT ALREADY SET
+          if (!user.originalPortalProfilePic) {
+              user.originalPortalProfilePic = finalProfilePicUrl;
+          }
+
+          // If user hasn't set a custom pic, update the main profilePic
+          if (!user.customProfilePic) user.profilePic = finalProfilePicUrl;
+      }
       await user.save();
     } else {
       // Brand New User
@@ -1078,8 +1106,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         email: email,
         password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10),
         isPortalConnected: true,
-        // isAdmin defaults to false in schema
         ucpCookie: ucpCookie,
+        portalProfilePic: finalProfilePicUrl,
+        originalPortalProfilePic: finalProfilePicUrl, // Record the first one
         profilePic: finalProfilePicUrl
       });
       await user.save();
@@ -1132,6 +1161,50 @@ app.post('/api/reset-password', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
+
+// 📸 PROFILE PICTURE UPLOAD
+app.post('/api/user/profile-pic', auth, profilePicUpload.single('profilePic'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    
+    const filename = req.file.filename;
+    const fileUrl = `${API_URL}/media/${filename}`;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      { 
+        customProfilePic: fileUrl,
+        profilePic: fileUrl // Always use custom pic if uploaded
+      },
+      { new: true }
+    ).select('-password');
+    
+    res.json(updatedUser);
+  } catch (error) {
+    console.error("Profile Pic Upload Error:", error);
+    res.status(500).json({ message: "Failed to upload profile picture" });
+  }
+});
+
+app.put('/api/user/security-settings', auth, async (req, res) => {
+  try {
+    const { autoLockEnabled, autoLockTimer } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { 
+        securitySettings: { 
+          autoLockEnabled, 
+          autoLockTimer 
+        } 
+      },
+      { new: true }
+    ).select('-password');
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Error updating security settings" });
+  }
+});
+
 app.put('/api/user/password', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);

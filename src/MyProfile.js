@@ -1,7 +1,10 @@
 import React from 'react';
-import { User, Calendar, Shield, Link2, CheckCircle2, XCircle, Activity, Mail } from 'lucide-react';
+import { User, Calendar, Shield, Link2, CheckCircle2, XCircle, Activity, Mail, Camera, Loader2 } from 'lucide-react';
+import { ToastConfig } from './CustomToast';
 
-const MyProfile = ({ user }) => {
+const MyProfile = ({ user, onUpdateProfilePic }) => {
+  const [isUploading, setIsUploading] = React.useState(false);
+  const fileInputRef = React.useRef(null);
   if (!user) return null;
 
   const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
@@ -15,23 +18,78 @@ const MyProfile = ({ user }) => {
     });
   };
 
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type and size
+    if (!file.type.startsWith('image/')) {
+      ToastConfig.show({ title: "Invalid File", message: "Please select an image file.", type: "error" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      ToastConfig.show({ title: "File Too Large", message: "Image must be less than 5MB.", type: "error" });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('profilePic', file);
+
+    try {
+      setIsUploading(true);
+      await onUpdateProfilePic(formData);
+      ToastConfig.show({ title: "Success", message: "Profile picture updated!", type: "success" });
+    } catch (error) {
+      console.error("Upload failed:", error);
+      ToastConfig.show({ title: "Upload Failed", message: error.message || "Could not upload image.", type: "error" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
     <div className="p-8 w-full h-full overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#0c0c0c] animate-fadeIn">
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        accept="image/*" 
+        onChange={handleFileChange}
+      />
       <div className="max-w-3xl mx-auto space-y-6">
         
         {/* HEADER CARD */}
         <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-8 border border-gray-200 dark:border-[#333] shadow-sm flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
-          {user.profilePic ? (
-            <img 
-              src={user.profilePic} 
-              alt={user.name} 
-              className="w-24 h-24 rounded-full object-cover shadow-lg ring-4 ring-blue-500/10" 
-            />
-          ) : (
-            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-4xl text-white font-bold shadow-lg uppercase">
-              {user.name.charAt(0)}
+          <div 
+            className="relative group cursor-pointer"
+            onClick={() => !isUploading && fileInputRef.current.click()}
+          >
+            {user.profilePic ? (
+              <img 
+                src={user.profilePic} 
+                alt={user.name} 
+                className="w-24 h-24 rounded-full object-cover shadow-lg ring-4 ring-blue-500/10 transition-opacity group-hover:opacity-75" 
+              />
+            ) : (
+              <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-4xl text-white font-bold shadow-lg uppercase transition-opacity group-hover:opacity-75">
+                {user.name.charAt(0)}
+              </div>
+            )}
+            
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+              {isUploading ? (
+                <Loader2 className="text-white animate-spin" size={24} />
+              ) : (
+                <Camera className="text-white" size={24} />
+              )}
             </div>
-          )}
+            
+            {isUploading && (
+              <div className="absolute -bottom-1 -right-1 bg-blue-600 p-1.5 rounded-full shadow-lg border-2 border-white dark:border-[#1E1E1E]">
+                <Loader2 className="text-white animate-spin" size={12} />
+              </div>
+            )}
+          </div>
           <div className="flex-1">
             <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">{user.name}</h1>
             <div className="flex flex-wrap justify-center md:justify-start gap-3">
@@ -72,6 +130,36 @@ const MyProfile = ({ user }) => {
                 <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-[#252525] px-2 py-1 rounded select-all">
                   {user.id || user._id}
                 </span>
+              </div>
+            </div>
+          </div>
+
+          {/* OFFICIAL PORTAL RECORD */}
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 border border-gray-200 dark:border-[#333] shadow-sm">
+            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6 flex items-center gap-2">
+              <Camera size={16} /> Official Record
+            </h3>
+            <div className="flex flex-col items-center gap-4">
+              {user.originalPortalProfilePic ? (
+                <div className="relative group">
+                  <img 
+                    src={user.originalPortalProfilePic} 
+                    alt="Portal Record" 
+                    className="w-32 h-32 rounded-xl object-cover border-2 border-gray-100 dark:border-[#333] shadow-md"
+                  />
+                  <div className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg uppercase">
+                    Official
+                  </div>
+                </div>
+              ) : (
+                <div className="w-32 h-32 bg-gray-100 dark:bg-[#252525] rounded-xl flex items-center justify-center text-gray-400">
+                  <Loader2 className="animate-spin" size={24} />
+                </div>
+              )}
+              <div className="text-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px]">
+                  This is your primary identity scrapped from the university portal for official records.
+                </p>
               </div>
             </div>
           </div>

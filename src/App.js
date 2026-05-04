@@ -27,7 +27,7 @@ import AnimatedLogo from './Animation'; // 🚀 IMPORTED YOUR NEW LOGO ANIMATION
 import { CustomToast, ToastConfig } from './CustomToast';
 
 import useLiveSync from './hooks/useLiveSync'; 
-import { Heart, ArrowRight, X, Activity, Coffee, FastForward } from 'lucide-react'; 
+import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock } from 'lucide-react'; 
 // 🚨 Notice we imported a few extra router tools here
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
@@ -48,8 +48,13 @@ function AppLayout() {
 
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [user, setUser] = useState(() => {
-    const u = localStorage.getItem('user');
-    return u ? JSON.parse(u) : null;
+    try {
+      const u = localStorage.getItem('user');
+      return u ? JSON.parse(u) : null;
+    } catch (e) {
+      console.error("Failed to parse user from localStorage", e);
+      return null;
+    }
   });
 
   // Smart Authentication check (prevents bounce back to login if navigating fast)
@@ -102,6 +107,7 @@ function AppLayout() {
   const [viewTask, setViewTask] = useState(null);
   
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
 
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -289,16 +295,27 @@ function AppLayout() {
     const storedToken = localStorage.getItem('token');
     if (storedToken && storedToken !== token) {
       setToken(storedToken);
-      const u = localStorage.getItem('user');
-      if (u) setUser(JSON.parse(u));
+      try {
+        const u = localStorage.getItem('user');
+        if (u) setUser(JSON.parse(u));
+      } catch (e) { console.error("Sync error", e); }
     }
   }, [location.pathname, token]);
 
   const checkForInactivity = useCallback(() => {
-    if (!isAuthenticated || idleTimeout === 0) return;
-    const timer = setTimeout(() => { handleLogout(); }, idleTimeout);
+    if (!isAuthenticated) return;
+    
+    // Use user-defined security settings if available, otherwise fallback to local state
+    const isAutoLockEnabled = user?.securitySettings?.autoLockEnabled ?? false;
+    const currentTimer = user?.securitySettings?.autoLockTimer ?? idleTimeout;
+
+    if (!isAutoLockEnabled || currentTimer === 0) return;
+
+    const timer = setTimeout(() => { 
+        setIsLocked(true); 
+    }, currentTimer);
     return timer;
-  }, [isAuthenticated, idleTimeout, handleLogout]);
+  }, [isAuthenticated, user?.securitySettings, idleTimeout]);
 
   useEffect(() => {
     let timeoutId = checkForInactivity();
@@ -642,6 +659,27 @@ function AppLayout() {
     } catch (e) { throw e; }
   };
 
+  const handleUpdateProfilePic = async (formData) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/user/profile-pic`, { 
+        method: 'POST', 
+        headers: {
+          'x-auth-token': localStorage.getItem('token')
+        }, 
+        body: formData 
+      });
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUser(updatedUser); 
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        return updatedUser;
+      } else { 
+        const errData = await res.json();
+        throw new Error(errData.message || "Upload failed"); 
+      }
+    } catch (e) { throw e; }
+  };
+
   const handleChangePassword = async (currentPassword, newPassword) => {
     try {
       const res = await fetch(`${API_BASE}/api/user/password`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ currentPassword, newPassword }) });
@@ -788,7 +826,7 @@ function AppLayout() {
                   {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>}
                   {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
                   {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard currentUser={user} /></div>}
-                  {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} /></div>}
+                  {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} onUpdateProfilePic={handleUpdateProfilePic} /></div>}
 
                   {activeTab === 'Settings' && <div className="w-full h-full"><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} /></div>}
                 </div>
@@ -833,6 +871,49 @@ function AppLayout() {
                 </div>
               )}
 
+              {/* --- AUTO LOCK SCREEN --- */}
+              {isLocked && (
+                <div className="fixed inset-0 z-[10000] bg-white/40 dark:bg-black/60 backdrop-blur-2xl flex items-center justify-center p-6 animate-fadeIn">
+                  <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-[#2C2C2C] p-10 flex flex-col items-center text-center animate-slideUp">
+                    <div className="w-24 h-24 bg-blue-500/10 rounded-full flex items-center justify-center mb-8 relative">
+                      <div className="absolute inset-0 border-2 border-blue-500/20 rounded-full animate-ping"></div>
+                      <Shield size={40} className="text-blue-500" />
+                    </div>
+                    
+                    <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">Session Locked</h2>
+                    <p className="text-gray-500 dark:text-gray-400 mb-10 max-w-xs leading-relaxed">Your account has been secured due to inactivity. Click below to resume your workspace.</p>
+                    
+                    <div className="w-full space-y-4">
+                      <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-[#252525] rounded-2xl border border-gray-100 dark:border-[#333] mb-8">
+                        {user?.profilePic ? (
+                          <img src={user.profilePic} alt="" className="w-12 h-12 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-12 h-12 bg-brand-blue rounded-full flex items-center justify-center text-white font-bold uppercase">{user?.name?.charAt(0)}</div>
+                        )}
+                        <div className="text-left">
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">{user?.name}</p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{user?.email}</p>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => setIsLocked(false)}
+                        className="w-full py-4 bg-brand-blue hover:bg-blue-600 text-white font-bold rounded-2xl shadow-xl shadow-blue-500/25 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                      >
+                        <Lock size={18} />
+                        Unlock Workspace
+                      </button>
+
+                      <button 
+                        onClick={handleLogout}
+                        className="w-full py-3 text-sm font-bold text-gray-500 hover:text-red-500 transition-colors"
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* --- IN-APP SNACK NOTIFICATION --- */}
               {toast && (
                 <div className="fixed top-6 right-6 z-[9999] bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-2xl rounded-2xl p-4 w-80 animate-slideInRight">
@@ -852,7 +933,6 @@ function AppLayout() {
                   )}
                 </div>
               )}
-
             </div>
           ) : (
             <Navigate to="/login" replace />

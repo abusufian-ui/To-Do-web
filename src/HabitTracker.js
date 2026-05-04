@@ -34,6 +34,7 @@ export default function HabitTracker({ activeTab }) {
 
   useEffect(() => {
     fetchHabits();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchHabits = async () => {
