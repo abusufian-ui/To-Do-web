@@ -242,6 +242,10 @@ const io = new Server(server, {
   }
 });
 
+// 🌍 ROOT PING (For quick testing)
+app.get('/ping', (req, res) => res.json({ status: "alive", environment: process.env.NODE_ENV, time: new Date() }));
+app.get('/api/ping', (req, res) => res.json({ status: "alive", prefix: "api", time: new Date() }));
+
 io.on('connection', (socket) => {
   socket.on('join_room', (userId) => {
     if (userId) {
