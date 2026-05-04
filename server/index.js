@@ -55,13 +55,22 @@ const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp
 // ==========================================
 // 📂 LOCAL MEDIA STORAGE CONFIGURATION 
 // ==========================================
-const uploadDir = process.env.NODE_ENV === 'production' 
+// Priority: Environment Variable > Production Path > Local Path
+const uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production' 
   ? '/var/www/student_portal/media/' 
-  : path.join(__dirname, 'media');
+  : path.join(__dirname, 'media'));
 
-// Ensure the directory exists when the server starts
-if (!fs.existsSync(uploadDir)){
-    fs.mkdirSync(uploadDir, { recursive: true });
+// Ensure the directory exists safely
+try {
+    if (!fs.existsSync(uploadDir)){
+        fs.mkdirSync(uploadDir, { recursive: true });
+        console.log(`📁 Created media directory at: ${uploadDir}`);
+    }
+} catch (err) {
+    console.error(`❌ Failed to create media directory at ${uploadDir}:`, err.message);
+    // Fallback to a local media folder if the primary one fails (e.g. permission issues on cloud)
+    const fallbackDir = path.join(__dirname, 'media');
+    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
 }
 
 const localDiskStorage = multer.diskStorage({
@@ -1437,6 +1446,13 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
     await Keynote.deleteMany({ userId: req.user.id, isDeleted: true }); 
     res.json({ message: "Emptied" });
   } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+app.all('/api/*', (req, res) => {
+    res.status(404).json({ 
+        message: `API Route [${req.method}] ${req.url} not found on this server.`,
+        hint: "Check if the server code is up to date."
+    });
 });
 
 app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
