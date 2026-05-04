@@ -233,6 +233,15 @@ const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
 
 const app = express();
 
+const getBaseUrl = (req) => {
+  const host = req.get('host') || '';
+  if (host.includes('myportalucp.online') || host.includes('render.com')) {
+    return `https://${host}`;
+  }
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  return `${protocol}://${host}`;
+};
+
 // 🚨 NEW: WRAP APP IN HTTP SERVER & ATTACH WEBSOCKETS
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -781,9 +790,7 @@ app.post('/api/upload', auth, (req, res) => {
   upload.array('files', 10)(req, res, function (err) {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
     try {
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.get('host');
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = getBaseUrl(req);
       const urls = req.files.map(file => `${baseUrl}/media/${file.filename}`);
       res.json({ urls });
     } catch (error) {
@@ -1081,9 +1088,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         const filepath = path.join(uploadDir, filename);
 
         fs.writeFileSync(filepath, buffer);
-        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-        const host = req.get('host');
-        finalProfilePicUrl = `${protocol}://${host}/media/${filename}`;
+        finalProfilePicUrl = `${getBaseUrl(req)}/media/${filename}`;
       } catch (imgErr) {
         console.error('[IMAGE SAVE ERROR]:', imgErr.message);
       }
@@ -1179,9 +1184,7 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const fileUrl = `${protocol}://${host}/media/${req.file.filename}`;
+    const fileUrl = `${getBaseUrl(req)}/media/${req.file.filename}`;
 
     console.log(`📸 [PROFILE] Successful upload for user ${req.user.id}. URL: ${fileUrl}`);
 
