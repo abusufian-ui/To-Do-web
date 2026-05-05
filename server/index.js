@@ -9,6 +9,11 @@ const si = require('systeminformation');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+
+// 🚨 NEW: CLOUDINARY IMPORTS
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
 const { encrypt, decrypt } = require('./utils/encryption');
 const { Resend } = require('resend');
 
@@ -78,49 +83,71 @@ async function getLahorePrayerTimes(todayStr) {
 const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp.online' : 'http://localhost:5000';
 
 // ==========================================
-// 📂 LOCAL MEDIA STORAGE CONFIGURATION 
+// 📂 LOCAL MEDIA STORAGE CONFIGURATION (For general uploads)
 // ==========================================
-const uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production' 
-  ? '/var/www/student_portal/media/' 
+const uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production'
+  ? '/var/www/student_portal/media/'
   : path.join(__dirname, 'media'));
 
 // Ensure the directory exists safely
 try {
-    if (!fs.existsSync(uploadDir)){
-        fs.mkdirSync(uploadDir, { recursive: true });
-        console.log(`📁 Created media directory at: ${uploadDir}`);
-    }
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log(`📁 Created media directory at: ${uploadDir}`);
+  }
 } catch (err) {
-    console.error(`❌ Failed to create media directory at ${uploadDir}:`, err.message);
-    const fallbackDir = path.join(__dirname, 'media');
-    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+  console.error(`❌ Failed to create media directory at ${uploadDir}:`, err.message);
+  const fallbackDir = path.join(__dirname, 'media');
+  if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
 }
 
+// Keep local storage for things like general files or Keynote media
 const localDiskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir); 
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    // 🛡️ IMPROVED: Use Student Roll Number if available (from auth middleware)
-    // Fallback to 'user' if not found.
     const identifier = req.user?.rollNumber || req.user?.id || 'user';
     const cleanIdentifier = identifier.toString().toLowerCase().replace(/[^a-z0-9]/g, '');
     const uniqueSuffix = Date.now();
     const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-    
-    // Format: profile_rollnumber_timestamp.jpg (Matches your record screenshot)
-    cb(null, `profile_${cleanIdentifier}_${uniqueSuffix}${ext}`);
+    cb(null, `file_${cleanIdentifier}_${uniqueSuffix}${ext}`);
   }
 });
 
-const profilePicUpload = multer({ 
-    storage: localDiskStorage,
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for profile pics
+// ==========================================
+// ☁️ NEW: CLOUDINARY CONFIGURATION (For Profile Pics)
+// ==========================================
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-const generalUpload = multer({ 
-    storage: localDiskStorage,
-    limits: { fileSize: 10 * 1024 * 1024 } 
+const cloudinaryProfileStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    const identifier = req.user?.rollNumber || req.user?.id || 'user';
+    const cleanIdentifier = identifier.toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    return {
+      folder: 'myportal/avatars', // Folder name in Cloudinary
+      allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+      public_id: `profile_${cleanIdentifier}_${Date.now()}`,
+      transformation: [{ width: 500, height: 500, crop: 'limit' }] // Compresses on the fly
+    };
+  },
+});
+
+// 🚨 NEW: Profile pic uses Cloudinary, general upload uses local disk
+const profilePicUpload = multer({
+  storage: cloudinaryProfileStorage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit 
+});
+
+const generalUpload = multer({
+  storage: localDiskStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 const upload = generalUpload;
@@ -161,9 +188,8 @@ async function sendSilentPush(user, data = {}) {
   for (let pushToken of tokens) {
     messages.push({
       to: pushToken,
-      // 🚨 NO title or body! This makes it silent.
       data: data,
-      _displayInForeground: false, // Don't show if app is open
+      _displayInForeground: false,
     });
   }
 
@@ -282,8 +308,6 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow all origins during development and in production for simplicity.
-    // In a real deployment, restrict this to known origins.
     callback(null, true);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -324,8 +348,6 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-// (Redundant storage config removed as it was moved up)
-
 // ==========================================
 // 🚀 ROUTES: FEEDBACK & SUPPORT
 // ==========================================
@@ -359,7 +381,6 @@ app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
 // 🌐 NEW PREMIUM WEB PORTAL AUTHENTICATION FLOW
 // =================================================================
 
-// 1. CHECK EMAIL STATUS
 app.post('/api/web/check-email', async (req, res) => {
   try {
     const { email } = req.body;
@@ -374,17 +395,16 @@ app.post('/api/web/check-email', async (req, res) => {
     return res.json({
       exists: true,
       hasPassword: !!user.webPassword,
-      name: user.name.split(' ')[0] // Send first name for a friendly greeting
+      name: user.name.split(' ')[0]
     });
   } catch (err) {
     res.status(500).json({ message: "Server error checking email." });
   }
 });
 
-// 2. SEND OTP (For First-Time Setup OR Password Reset)
 app.post('/api/web/send-otp', async (req, res) => {
   try {
-    const { email, type } = req.body; // type is 'setup' or 'reset'
+    const { email, type } = req.body;
     const user = await User.findOne({ email });
 
     if (!user) return res.status(404).json({ message: "Account not found." });
@@ -410,7 +430,6 @@ app.post('/api/web/send-otp', async (req, res) => {
   }
 });
 
-// 2.5 VERIFY OTP (Intermediate Step)
 app.post('/api/web/verify-otp', async (req, res) => {
   try {
     const email = req.body.email.toLowerCase().trim();
@@ -425,7 +444,6 @@ app.post('/api/web/verify-otp', async (req, res) => {
   }
 });
 
-// 3. SET OR RESET PASSWORD & LOGIN
 app.post('/api/web/set-password', async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
@@ -436,9 +454,8 @@ app.post('/api/web/set-password', async (req, res) => {
     const user = await User.findOne({ email });
     user.webPassword = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
     await user.save();
-    await OTP.deleteOne({ email }); // Clear OTP after success
+    await OTP.deleteOne({ email });
 
-    // Generate Token & Log them in instantly
     const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
 
     res.json({
@@ -450,7 +467,6 @@ app.post('/api/web/set-password', async (req, res) => {
   }
 });
 
-// 4. STANDARD WEB LOGIN
 app.post('/api/web/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -479,7 +495,6 @@ app.post('/api/web/login', async (req, res) => {
 // ROUTES: UCP DATA & SYNC ENGINE
 // ==========================================
 
-// 🚨 FIXED: Removed express.json() override to respect the 50mb limit
 app.post('/api/session/keep-alive', auth, async (req, res) => {
   const { ucpCookie } = req.body;
   if (!ucpCookie) return res.status(400).json({ error: "No cookie provided" });
@@ -491,7 +506,6 @@ app.post('/api/session/keep-alive', auth, async (req, res) => {
   }
 });
 
-// 🚨 ENDPOINT: TRIGGER EXPIRED SESSION PUSH
 app.post('/api/trigger-expired-push', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -499,7 +513,6 @@ app.post('/api/trigger-expired-push', auth, async (req, res) => {
 
     console.log(`[PUSH] Triggering Session Expired push for ${user.email}`);
 
-    // Use your existing sendPush helper to send the notification
     await sendPush(
       user,
       "UCP Session Expired ⚠️",
@@ -530,7 +543,6 @@ app.get('/api/submissions', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- DATESHEET EXAM ROUTES ---
 app.get('/api/datesheet', auth, async (req, res) => {
   try {
     const exams = await Exam.find({ userId: req.user.id }).sort({ date: 1 });
@@ -538,7 +550,6 @@ app.get('/api/datesheet', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- NEW ASSESSMENTS ROUTES ---
 app.get('/api/assessments', auth, async (req, res) => {
   try {
     const assessments = await Assessment.find({ userId: req.user.id }).sort({ dueDate: 1 });
@@ -607,15 +618,12 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error fetching course records" }); }
 });
 
-// --- THE SMART EXTENSION SYNC ---
-// 🚨 FIXED: Removed express.json() override to respect the 50mb limit
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
     const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie } = req.body;
     const userId = req.user.id;
     const user = await User.findById(userId);
 
-    // --- SMART ID BYPASS FOR BACKGROUND ENGINE ---
     let activePortalId = portalId;
     if (activePortalId === "BACKGROUND_SYNC" && user.portalId) {
       activePortalId = user.portalId;
@@ -627,7 +635,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     }
     if (!user.portalId) user.portalId = activePortalId.toUpperCase();
 
-    // 1. SMART DIFFING & SAFE SAVING: ATTENDANCE
     if (attendanceData && attendanceData.length > 0) {
       for (const att of attendanceData) {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
@@ -651,7 +658,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // 2. SMART DIFFING & SAFE SAVING: ANNOUNCEMENTS
     if (announcementsData && announcementsData.length > 0) {
       for (const ann of announcementsData) {
         if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
@@ -668,7 +674,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // 3. SAFE SAVING: SUBMISSIONS
     if (submissionsData && submissionsData.length > 0) {
       for (const sub of submissionsData) {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
@@ -679,11 +684,8 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // 4. SAFE SAVING: DATESHEET / EXAMS
     if (datesheetData !== undefined) {
-      // ALWAYS clear previous datesheet first. This perfectly handles the "No Exams Scheduled" state.
       await Exam.deleteMany({ userId });
-
       if (datesheetData.length > 0) {
         for (const exam of datesheetData) {
           await new Exam({ ...exam, userId, lastUpdated: new Date() }).save();
@@ -691,7 +693,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // --- STANDARD ACADEMIC DATA ---
     if (gradesData && gradesData.length > 0) {
       await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
@@ -746,7 +747,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
   }
 });
 
-
 // ==========================================
 // REST OF THE ROUTES
 // ==========================================
@@ -754,23 +754,19 @@ app.post('/api/extension-sync', auth, async (req, res) => {
 const dbLink = process.env.REACT_APP_MONGODB_URI;
 console.log("🔗 Connecting to MyPortal Database...");
 
-// 🚨 NEW: CONNECT TO MONGODB AND ACTIVATE CHANGE STREAMS
 mongoose.connect(dbLink).then(async () => {
   console.log("✅ MongoDB Connected Successfully!");
 
   try {
-    // Added Exam to Watchdogs
     const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment, Exam];
 
     modelsToWatch.forEach(model => {
       if (model.watch) {
-        // Ensure we get the full document even on updates so we can extract the userId
         const changeStream = model.watch([], { fullDocument: 'updateLookup' });
         changeStream.on('change', (change) => {
           const doc = change.fullDocument;
-          // Support both 'userId' and 'user' field naming conventions
           const targetUserId = doc?.userId || doc?.user;
-          
+
           if (targetUserId) {
             const userIdStr = targetUserId.toString();
             io.to(userIdStr).emit('live_db_update');
@@ -785,7 +781,6 @@ mongoose.connect(dbLink).then(async () => {
 
 }).catch(err => console.log(err));
 
-// --- THE UPDATED UPLOAD ROUTE ---
 app.post('/api/upload', auth, (req, res) => {
   upload.array('files', 10)(req, res, function (err) {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
@@ -799,15 +794,10 @@ app.post('/api/upload', auth, (req, res) => {
   });
 });
 
-// ==========================================
-// 📂 NEW: FILE DOWNLOAD ROUTE (Forces Original Name)
-// ==========================================
 app.get('/api/download/:filename', (req, res) => {
   const filepath = path.join(uploadDir, req.params.filename);
-  // Grab the original name from the URL query, or fallback to server name
   const originalName = req.query.name || req.params.filename;
 
-  // Check if file exists to prevent crashing
   if (fs.existsSync(filepath)) {
     res.download(filepath, originalName);
   } else {
@@ -850,10 +840,7 @@ app.get('/api/admin/system-stats', async (req, res) => {
   try {
     const cpuLoad = await si.currentLoad();
     const mem = await si.mem();
-
-    // 🚨 NEW: Fetch Azure VM Hard Drive Space
     const disks = await si.fsSize();
-    // Usually the primary partition is mounted at '/' on Linux/Ubuntu VMs
     const rootDisk = disks.find(d => d.mount === '/') || disks[0] || { size: 30 * 1024 * 1024 * 1024, used: 0 };
 
     let dbSize = 0;
@@ -863,7 +850,7 @@ app.get('/api/admin/system-stats', async (req, res) => {
       cpu: Math.round(cpuLoad.currentLoad),
       memory: { active: mem.active, total: mem.total },
       dbSize: dbSize,
-      disk: { total: rootDisk.size, used: rootDisk.used } // Added to response
+      disk: { total: rootDisk.size, used: rootDisk.used }
     });
   } catch (error) { res.status(500).json({ message: "Failed" }); }
 });
@@ -871,11 +858,9 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
 
-    // 🚨 NEW: Calculate Per-User Storage Footprint
     const usersWithStorage = await Promise.all(users.map(async (user) => {
-      let storageBytes = 15360; // 15KB base estimate for MongoDB text records
+      let storageBytes = 15360;
 
-      // Scan local media vault for this user's Keynote uploads
       const keynotes = await Keynote.find({ userId: user._id });
       for (let kn of keynotes) {
         if (kn.mediaUrls && kn.mediaUrls.length > 0) {
@@ -884,9 +869,9 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
               const filename = url.split('/').pop();
               const filepath = path.join(uploadDir, filename);
               if (fs.existsSync(filepath)) {
-                storageBytes += fs.statSync(filepath).size; // Add file size to their total
+                storageBytes += fs.statSync(filepath).size;
               }
-            } catch (e) { /* Safely ignore missing files */ }
+            } catch (e) { }
           }
         }
       }
@@ -900,7 +885,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         portalId: user.portalId,
         lastSyncAt: user.lastSyncAt,
         createdAt: user.createdAt,
-        storageUsed: storageBytes // Added to response
+        storageUsed: storageBytes
       };
     }));
 
@@ -914,7 +899,6 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.isAdmin) return res.status(400).json({ message: "Admin accounts cannot be deleted!" });
 
-    // Updated to also wipe Exams for the deleted user
     await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId }), Assessment.deleteMany({ userId }), Exam.deleteMany({ userId })]);
 
     res.json({ message: "User deleted" });
@@ -1059,8 +1043,6 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-
-
 // =================================================================
 // 🚀 UNIFIED MICROSOFT SSO LOGIN & FAST-LOGIN ENGINE
 // =================================================================
@@ -1077,7 +1059,6 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 
     let user = await User.findOne({ email });
 
-    // 📸 STANDARD IMAGE STORAGE (FAST, NO AI)
     let finalProfilePicUrl = user ? user.profilePic : null;
 
     if (profilePic && profilePic.includes('base64')) {
@@ -1097,35 +1078,27 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     let isNewUser = false;
 
     if (user) {
-      // Returning user
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
-      // Do not overwrite user.isAdmin here
       user.name = name && name !== 'UCP Student' ? name : user.name;
       if (finalProfilePicUrl) {
-          user.portalProfilePic = finalProfilePicUrl;
-          
-          // 🛡️ PRESERVE ORIGINAL PORTAL IMAGE IF NOT ALREADY SET
-          if (!user.originalPortalProfilePic) {
-              user.originalPortalProfilePic = finalProfilePicUrl;
-          }
-
-          // If user hasn't set a custom pic, update the main profilePic
-          if (!user.customProfilePic) user.profilePic = finalProfilePicUrl;
+        user.portalProfilePic = finalProfilePicUrl;
+        if (!user.originalPortalProfilePic) {
+          user.originalPortalProfilePic = finalProfilePicUrl;
+        }
+        if (!user.customProfilePic) user.profilePic = finalProfilePicUrl;
       }
       await user.save();
     } else {
-      // Brand New User
       isNewUser = true;
       user = new User({
         name: name || formattedRoll.toUpperCase(),
         email: email,
         password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10),
         isPortalConnected: true,
-        // isAdmin defaults to false in schema
         ucpCookie: ucpCookie,
         portalProfilePic: finalProfilePicUrl,
-        originalPortalProfilePic: finalProfilePicUrl, // Record the first one
+        originalPortalProfilePic: finalProfilePicUrl,
         profilePic: finalProfilePicUrl
       });
       await user.save();
@@ -1137,7 +1110,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       if (err) throw err;
       res.json({
         token,
-        isNewUser, // Tells the mobile app if it should wait for scraping
+        isNewUser,
         user: {
           id: user.id,
           name: user.name,
@@ -1179,14 +1152,16 @@ app.post('/api/reset-password', async (req, res) => {
 });
 app.get('/api/ping', (req, res) => res.json({ status: "alive", time: new Date() }));
 
-// 📸 PROFILE PICTURE UPLOAD (Multi-route fallback for live server)
+
+// 🚨 NEW: 📸 CLOUDINARY PROFILE PICTURE UPLOAD 
 app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], auth, profilePicUpload.single('profilePic'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    const fileUrl = `${getBaseUrl(req)}/media/${req.file.filename}`;
+    // Cloudinary puts the final URL in req.file.path
+    const fileUrl = req.file.path;
 
-    console.log(`📸 [PROFILE] Successful upload for user ${req.user.id}. URL: ${fileUrl}`);
+    console.log(`📸 [PROFILE] Successful Cloudinary upload for user ${req.user.id}. URL: ${fileUrl}`);
 
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
@@ -1203,6 +1178,7 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
     res.status(500).json({ message: "Failed to upload profile picture" });
   }
 });
+
 
 app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
@@ -1255,9 +1231,6 @@ app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await
 app.get('/api/tasks', auth, async (req, res) => { try { res.json(await Task.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (err) { res.status(500).json({ message: err.message }) } });
 app.post('/api/tasks', auth, async (req, res) => { try { res.json(await new Task({ ...req.body, userId: req.user.id }).save()); } catch (err) { res.status(500).json({ message: err.message }) } });
 
-// ==========================================
-// 🚀 UPDATED & SAFE TASK PUT ENDPOINT
-// ==========================================
 app.put('/api/tasks/:id', auth, async (req, res) => {
   try {
     const oldTask = await Task.findOne({ _id: req.params.id, userId: req.user.id });
@@ -1269,16 +1242,13 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       { new: true }
     );
 
-    // 🚀 SAFE GAMIFICATION REWARD SYSTEM
     if (req.body.completed === true && !oldTask.completed) {
       const userStats = await StudentStats.findOne({ userId: req.user.id });
       if (userStats) {
-        // Safely initialize the gamification object if it is missing from older accounts
         if (!userStats.gamification) {
           userStats.gamification = { score: 0, level: 1, tasksCompleted: 0, habitsMaintained: 0 };
         }
 
-        // Safely add points and increment completions
         userStats.gamification.score = (userStats.gamification.score || 0) + 10;
         userStats.gamification.tasksCompleted = (userStats.gamification.tasksCompleted || 0) + 1;
         userStats.gamification.lastActive = Date.now();
@@ -1324,15 +1294,11 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-// ==========================================
-// 🕌 THE SMART NAMAZ UNLOCK ROUTE
-// ==========================================
 app.get('/api/namaz/today', auth, async (req, res) => {
   try {
     const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
     let todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
 
-    // 1. Get times for today
     const times = await getLahorePrayerTimes(todayStr);
     if (!times) return res.status(500).json({ message: "API Error" });
 
@@ -1340,7 +1306,6 @@ app.get('/api/namaz/today', auth, async (req, res) => {
     const [fajrH, fajrM] = times.fajr.split(':').map(Number);
     const fajrMins = fajrH * 60 + fajrM;
 
-    // 2. MIDNIGHT FIX: If it's before Fajr (e.g., 2 AM), the "current" Islamic day is yesterday.
     if (currentMins < fajrMins) {
       const yesterday = new Date(lahoreDateObj);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -1358,8 +1323,6 @@ app.get('/api/namaz/today', auth, async (req, res) => {
       const [h, m] = times[pName].split(':').map(Number);
       const pMins = h * 60 + m;
 
-      // Is the prayer active? 
-      // Active if current time is >= prayer time, OR if it's Isha and we are past midnight (currentMins < fajrMins)
       let isPastPrayerTime = currentMins >= pMins || (pName === 'isha' && currentMins < fajrMins);
 
       if (isPastPrayerTime) {
@@ -1368,7 +1331,6 @@ app.get('/api/namaz/today', auth, async (req, res) => {
           modified = true;
         }
 
-        // Mark previous prayers as missed if we entered a new prayer time
         if (i > 0) {
           const prevP = prayerOrder[i - 1];
           if (record.prayers[prevP] === 'pending') {
@@ -1442,164 +1404,12 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
 
 app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
 
-
 // ==========================================
 // 🔔 THE 1-MINUTE CRON ENGINES 
 // ==========================================
 
 cron.schedule('* * * * *', async () => {
 
-  // // ---------------------------------------------------------
-  // // ENGINE 1: STANDARD TASK REMINDERS
-  // // ---------------------------------------------------------
-  // try {
-  //   const now = new Date();
-
-  //   const target15Start = new Date(now.getTime() + (15 * 60000));
-  //   target15Start.setSeconds(0, 0); 
-  //   const target15End = new Date(target15Start.getTime() + 59999); 
-
-  //   const targetExactStart = new Date(now.getTime());
-  //   targetExactStart.setSeconds(0, 0);
-  //   const targetExactEnd = new Date(targetExactStart.getTime() + 59999);
-
-  //   const orConditions = [
-  //       { triggerAt: { $gte: target15Start, $lte: target15End } },
-  //       { triggerAt: { $gte: targetExactStart, $lte: targetExactEnd } }
-  //   ];
-
-  //   const currentHour = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" })).getHours();
-  //   const currentMinute = now.getMinutes();
-  //   if (currentMinute === 0 && [9, 12, 15, 19].includes(currentHour)) {
-  //       const yyyy = now.getFullYear();
-  //       const mm = String(now.getMonth() + 1).padStart(2, "0");
-  //       const dd = String(now.getDate()).padStart(2, "0");
-  //       orConditions.push({ date: `${yyyy}-${mm}-${dd}`, time: null });
-  //   }
-
-  //   const upcomingTasks = await Task.find({ 
-  //       completed: false, 
-  //       isDeleted: false, 
-  //       acknowledged: false, 
-  //       $or: orConditions 
-  //   }).populate('userId');
-
-  //   if (upcomingTasks.length > 0) {
-  //       console.log(`[CRON] Found ${upcomingTasks.length} tasks ready to fire!`);
-  //   }
-
-  //   for (let task of upcomingTasks) {
-  //     if (!task.userId) continue;
-  //     let bodyText = `Task: ${task.name}`;
-
-  //     if (task.time && new Date(task.triggerAt) > now) bodyText = `Starts in 15 mins: ${task.name}`;
-  //     else if (task.time && new Date(task.triggerAt) <= now) bodyText = `It is time for: ${task.name}`;
-  //     else bodyText = `Daily Reminder: ${task.name}`;
-
-  //     sendPush(task.userId, `Task Reminder: ${task.course || 'General'} 📌`, bodyText, { taskId: task._id, type: 'task' });
-  //   }
-  // } catch (error) { console.error(`[TASK ENGINE] Error:`, error); }
-
-  // // ---------------------------------------------------------
-  // // 🕌 ENGINE 2: LIVE PRAYER ALERTS (Bulletproof HH:mm)
-  // // ---------------------------------------------------------
-  // try {
-  //   const lahoreDateObj = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-  //   const todayStr = `${lahoreDateObj.getDate()}-${lahoreDateObj.getMonth() + 1}-${lahoreDateObj.getFullYear()}`;
-
-  //   // Safely pad single digits so 2:05 PM becomes "14:05" to perfectly match Aladhan API
-  //   const h = String(lahoreDateObj.getHours()).padStart(2, '0');
-  //   const m = String(lahoreDateObj.getMinutes()).padStart(2, '0');
-  //   const currentLahoreTime = `${h}:${m}`;
-
-  //   const times = await getLahorePrayerTimes(todayStr);
-
-  //   if (times) {
-  //       let currentPrayer = null;
-  //       for (const [prayer, time] of Object.entries(times)) {
-  //         if (time === currentLahoreTime) { currentPrayer = prayer; break; }
-  //       }
-
-  //       if (currentPrayer) {
-  //         console.log(`[PRAYER ENGINE] 🕌 Match found! Triggering ${currentPrayer}...`);
-  //         const prayerUsers = await User.find({ prayerNotifs: true });
-  //         const prayerOrder = ['fajr', 'zuhr', 'asr', 'maghrib', 'isha']; 
-  //         const pIndex = prayerOrder.indexOf(currentPrayer);
-
-  //         for (let user of prayerUsers) {
-  //           let record = await NamazRecord.findOne({ userId: user._id, dateStr: todayStr });
-  //           if (!record) record = new NamazRecord({ userId: user._id, dateStr: todayStr });
-
-  //           if (pIndex > 0) {
-  //              const prevPrayer = prayerOrder[pIndex - 1];
-  //              if (record.prayers[prevPrayer] === 'pending') record.prayers[prevPrayer] = 'missed';
-  //           }
-
-  //           record.prayers[currentPrayer] = 'pending';
-  //           await record.save();
-
-  //           sendPush(
-  //               user, 
-  //               `🕌 ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} Prayer Time`, 
-  //               `It is time for ${currentPrayer.charAt(0).toUpperCase() + currentPrayer.slice(1)} prayer. Please take a moment to pray.`, 
-  //               { type: 'prayer', prayerName: currentPrayer },
-  //               "prayer-alert",         
-  //               "prayer-channel-live"   
-  //           );
-  //         }
-  //       }
-  //   }
-  // } catch (error) { console.error(`[PRAYER ENGINE] Error:`, error); }
-
-  // // ---------------------------------------------------------
-  // // ENGINE 3: CLASS REMINDERS
-  // // ---------------------------------------------------------
-  // try {
-  //   const pktNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-  //   const targetTime = new Date(pktNow.getTime() + 5 * 60000);
-  //   const targetDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][targetTime.getDay()];
-
-  //   const targetHours = targetTime.getHours();
-  //   const targetMins = targetTime.getMinutes();
-
-  //   const todaysClasses = await Timetable.find({ day: targetDay }).populate('userId').catch(err => []);
-
-  //   for (let cls of todaysClasses) {
-  //     if (!cls || !cls.userId || !cls.startTime) continue;
-
-  //     let classHours = -1, classMinutes = -1;
-  //     const timeMatch = String(cls.startTime).trim().match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
-
-  //     if (timeMatch) {
-  //       classHours = parseInt(timeMatch[1], 10);
-  //       classMinutes = parseInt(timeMatch[2], 10);
-  //       const modifier = timeMatch[3];
-  //       if (modifier) {
-  //          const isPM = modifier.toLowerCase() === 'pm';
-  //          if (isPM && classHours < 12) classHours += 12;
-  //          if (!isPM && classHours === 12) classHours = 0;
-  //       }
-  //     }
-
-  //     if (classHours === targetHours && classMinutes === targetMins) {
-  //       console.log(`[CLASS ENGINE] 🏫 Match found! Alerting user for ${cls.courseName}`);
-
-  //       const instructorName = (cls.instructor && !String(cls.instructor).includes('Unknown')) ? cls.instructor : "Your teacher";
-  //       const roomInfo = (cls.room && !String(cls.room).includes('Unknown')) ? ` (Room: ${cls.room})` : "";
-
-  //       sendPush(
-  //           cls.userId, 
-  //           `Upcoming Class: ${cls.courseName} 📚`, 
-  //           `${instructorName} is starting the lecture in 5 mins${roomInfo}`, 
-  //           { type: 'class', classId: cls._id }
-  //       );
-  //     }
-  //   }
-  // } catch (error) { console.error(`[CLASS ENGINE] Error:`, error.message); }
-
-  // ---------------------------------------------------------
-  // ENGINE 4: SUBMISSION DEADLINE ALERTS
-  // ---------------------------------------------------------
   try {
     const allSubmissions = await Submission.find({}).populate('userId');
     const now = new Date();
@@ -1630,14 +1440,10 @@ cron.schedule('* * * * *', async () => {
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
 });
 
-// ---------------------------------------------------------
-// ENGINE 5: BACKGROUND SYNC HEARTBEAT (Runs every 15 mins)
-// ---------------------------------------------------------
 cron.schedule('*/15 * * * *', async () => {
   try {
     console.log("[CRON] 💓 Firing 15-minute background sync heartbeat...");
 
-    // Find users who have an active portal connection and push tokens
     const activeUsers = await User.find({
       isPortalConnected: true,
       $or: [
@@ -1653,7 +1459,6 @@ cron.schedule('*/15 * * * *', async () => {
 
     console.log(`[CRON] Pinging ${activeUsers.length} users to run background sync...`);
 
-    // Send a silent push to wake up their apps
     for (let user of activeUsers) {
       await sendSilentPush(user, {
         action: 'RUN_BACKGROUND_SYNC',
@@ -1665,6 +1470,5 @@ cron.schedule('*/15 * * * *', async () => {
   }
 });
 
-// 🚨 NEW: LAUNCH THE COMBINED HTTP/WEBSOCKET SERVER
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));
