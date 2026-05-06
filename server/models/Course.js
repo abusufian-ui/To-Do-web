@@ -10,6 +10,7 @@ const CourseSchema = new mongoose.Schema({
 
   // --- UNIVERSITY COURSE CLASSIFICATION ---
   code: { type: String, default: '' }, 
+  section: { type: String, default: '' }, // 🚨 NEW: Store course section
   instructors: [{ type: String }],     
   rooms: [{ type: String }],           
 

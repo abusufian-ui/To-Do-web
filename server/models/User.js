@@ -18,6 +18,9 @@ const userSchema = new mongoose.Schema({
     autoLockEnabled: { type: Boolean, default: false },
     autoLockTimer: { type: Number, default: 900000 } // 15 minutes in ms
   },
+  // Crowdsourced sync: which sections this student is enrolled in
+  enrolledSections: [{ type: String }], // e.g., ["CSAL3243-S26-BS-CS-F23-F4", "EE212-S26-BS-EE-F23-G11"]
+  lastScrapedAt: { type: Date, default: null }, // When this user last ran a full foreground scrape
   pushTokens: [{ type: String }],
   prayerNotifs: { type: Boolean, default: false },
   lastSyncAt: { type: Date, default: null }

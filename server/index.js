@@ -294,7 +294,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.111:8081',
+  'http://192.168.0.112:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -620,9 +620,12 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
 
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
-    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie } = req.body;
+    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode } = req.body;
     const userId = req.user.id;
     const user = await User.findById(userId);
+
+    // Default mode is AUTO_SYNC if not explicitly provided
+    const mode = syncMode || 'AUTO_SYNC';
 
     let activePortalId = portalId;
     if (activePortalId === "BACKGROUND_SYNC" && user.portalId) {
@@ -635,17 +638,58 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     }
     if (!user.portalId) user.portalId = activePortalId.toUpperCase();
 
+    // ── Extract enrolled sections from courseMap and ensure Courses exist ──
+    const enrolledSections = [];
+    const sectionLookup = {}; // courseName -> courseSection code
+    const baseCodeLookup = {}; // courseName -> full course code
+    if (clientCourseMap && typeof clientCourseMap === 'object') {
+      for (const [url, info] of Object.entries(clientCourseMap)) {
+        const fullCode = (info.code || '').trim();
+        const courseName = (info.name || '').trim();
+
+        let sectionCode = '';
+        if (fullCode) {
+          // Extract section from fullCode (e.g., CSAL3243-S26-BS-CS-F23-F4 -> F4)
+          const parts = fullCode.split('-');
+          sectionCode = parts.length > 1 ? parts[parts.length - 1] : fullCode;
+
+          enrolledSections.push(sectionCode);
+          sectionLookup[url] = sectionCode;
+        }
+
+        if (courseName) {
+          if (sectionCode) {
+            sectionLookup[courseName] = sectionCode;
+            sectionLookup[`${courseName} - Lab`] = sectionCode; // Map lab too
+          }
+          if (fullCode) {
+            baseCodeLookup[courseName] = fullCode;
+            baseCodeLookup[`${courseName} - Lab`] = fullCode; // Map lab too
+          }
+
+          // Force create/update the course document regardless of timetable
+          // 🚀 FIX: Only set code and section if they actually exist, preventing overwrites
+          const updatePayload = { userId, name: courseName, type: 'university' };
+          if (fullCode) updatePayload.code = fullCode;
+          if (sectionCode) updatePayload.section = sectionCode;
+
+          await Course.findOneAndUpdate(
+            { userId, name: courseName },
+            { $set: updatePayload },
+            { upsert: true }
+          );
+        }
+      }
+    }
+
     if (attendanceData && attendanceData.length > 0) {
       for (const att of attendanceData) {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
-
         if (att.records) {
           const oldAtt = await Attendance.findOne({ userId, courseUrl: att.courseUrl });
-
           if (oldAtt && oldAtt.summary && att.summary) {
             const oldAbsents = oldAtt.summary.conducted - oldAtt.summary.attended;
             const newAbsents = att.summary.conducted - att.summary.attended;
-
             if (newAbsents > oldAbsents) {
               sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${newAbsents}`);
               if (newAbsents >= 10 && oldAbsents < 10) {
@@ -661,7 +705,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     if (announcementsData && announcementsData.length > 0) {
       for (const ann of announcementsData) {
         if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
-
         if (ann.news) {
           const oldAnn = await Announcement.findOne({ userId, courseUrl: ann.courseUrl });
           if (oldAnn && oldAnn.news) {
@@ -679,22 +722,95 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
 
         if (sub.tasks) {
+          // 1. Personal submissions (per-user, as before)
           await Submission.findOneAndUpdate({ userId, courseUrl: sub.courseUrl }, { ...sub, lastUpdated: new Date() }, { upsert: true });
+
+          // 2. ── DIRECT SUBMISSION SYNCING TO PEERS IN SAME SECTION ──
+          const sectionCode = sectionLookup[sub.courseName] || sectionLookup[sub.courseUrl] || '';
+          if (sectionCode) {
+            // Find other users enrolled in this exact course + section
+            const peerCourseDocs = await Course.find({ name: sub.courseName, section: sectionCode });
+            const peerUserIds = peerCourseDocs.map(c => c.userId.toString()).filter(id => id !== userId.toString());
+            const uniquePeerIds = [...new Set(peerUserIds)];
+
+            for (const peerId of uniquePeerIds) {
+              const peerSub = await Submission.findOne({ userId: peerId, courseName: sub.courseName });
+              const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
+              const existingTaskMap = new Map(existingTasks.map(t => [`${(t.title || '').trim().toLowerCase()}_${(t.dueDate || '').trim()}`, t]));
+
+              let merged = false;
+              sub.tasks.forEach(incomingTask => {
+                const fingerprint = `${(incomingTask.title || '').trim().toLowerCase()}_${(incomingTask.dueDate || '').trim()}`;
+                if (!existingTaskMap.has(fingerprint)) {
+                  existingTasks.push(incomingTask);
+                  merged = true;
+                }
+              });
+
+              if (merged) {
+                // Upsert to peer's submission record
+                await Submission.findOneAndUpdate(
+                  { userId: peerId, courseName: sub.courseName },
+                  { courseUrl: sub.courseUrl, courseName: sub.courseName, tasks: existingTasks, lastUpdated: new Date() },
+                  { upsert: true }
+                );
+              }
+            }
+          }
         }
       }
     }
 
-    if (datesheetData !== undefined) {
-      await Exam.deleteMany({ userId });
-      if (datesheetData.length > 0) {
+    // Only process Timetable and Datesheet on LOGIN or FORCE sync
+    if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC') {
+      if (datesheetData && datesheetData.length > 0) {
+        await Exam.deleteMany({ userId });
         for (const exam of datesheetData) {
           await new Exam({ ...exam, userId, lastUpdated: new Date() }).save();
+        }
+      }
+
+      if (timetableData && timetableData.length > 0) {
+        await Timetable.deleteMany({ userId });
+        const courseMap = new Map();
+
+        for (const classItem of timetableData) {
+          const { id, ...classData } = classItem;
+          if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
+
+          await new Timetable({ ...classData, userId, lastUpdated: new Date() }).save();
+
+          if (!courseMap.has(classItem.courseName)) courseMap.set(classItem.courseName, { name: classItem.courseName, code: classItem.courseCode || '', color: classItem.color || '#3498db', instructors: new Set(), rooms: new Set() });
+          const course = courseMap.get(classItem.courseName);
+          if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
+          if (classItem.room && !classItem.room.includes('Unknown')) course.rooms.add(classItem.room);
+        }
+
+        for (const [courseName, data] of courseMap.entries()) {
+          const sectionCode = sectionLookup[courseName] || '';
+          const fullCode = baseCodeLookup[courseName] || data.code || '';
+
+          // 🚀 FIX: Defensive update for timetable courses too
+          const courseUpdatePayload = {
+            userId, name: data.name, type: 'university',
+            color: data.color || '#3498db',
+            instructors: Array.from(data.instructors),
+            rooms: Array.from(data.rooms)
+          };
+          if (fullCode) courseUpdatePayload.code = fullCode;
+          if (sectionCode) courseUpdatePayload.section = sectionCode;
+
+          await Course.findOneAndUpdate(
+            { userId, name: courseName },
+            { $set: courseUpdatePayload },
+            { upsert: true }
+          );
         }
       }
     }
 
     if (gradesData && gradesData.length > 0) {
-      await Grade.deleteMany({ userId });
+      if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
         if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
         await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true });
@@ -702,42 +818,32 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     }
 
     if (historyData && historyData.length > 0) {
-      await ResultHistory.deleteMany({ userId });
+      if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
       for (const sem of historyData) {
         await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true });
       }
     }
 
-    if (statsData && statsData.cgpa) {
-      await StudentStats.findOneAndUpdate({ userId }, { ...statsData, userId, lastUpdated: new Date() }, { upsert: true });
+    // 🚀 FIX: Use explicit $set and remove the strict `statsData.cgpa` requirement
+    if (statsData && Object.keys(statsData).length > 0) {
+      await StudentStats.findOneAndUpdate(
+        { userId },
+        { $set: { ...statsData, userId, lastUpdated: new Date() } },
+        { upsert: true }
+      );
     }
 
-    if (timetableData && timetableData.length > 0) {
-      await Timetable.deleteMany({ userId });
-      const courseMap = new Map();
-
-      for (const classItem of timetableData) {
-        const { id, ...classData } = classItem;
-        if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
-
-        await new Timetable({ ...classData, userId, lastUpdated: new Date() }).save();
-
-        if (!courseMap.has(classItem.courseName)) courseMap.set(classItem.courseName, { name: classItem.courseName, code: classItem.courseCode || '', color: classItem.color || '#3498db', instructors: new Set(), rooms: new Set() });
-        const course = courseMap.get(classItem.courseName);
-        if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
-        if (classItem.room && !classItem.room.includes('Unknown')) course.rooms.add(classItem.room);
+    // Update user with enrolled sections + scrape timestamp
+    await User.updateOne({ _id: userId }, {
+      $set: {
+        isPortalConnected: true,
+        lastSyncAt: new Date(),
+        lastScrapedAt: new Date(),
+        portalId: user.portalId,
+        ucpCookie: ucpCookie || user.ucpCookie,
+        ...(enrolledSections.length > 0 ? { enrolledSections } : {})
       }
-
-      for (const [courseName, data] of courseMap.entries()) {
-        await Course.findOneAndUpdate(
-          { userId, name: courseName },
-          { $set: { userId, name: data.name, type: 'university', code: data.code || '', color: data.color || '#3498db', instructors: Array.from(data.instructors), rooms: Array.from(data.rooms) } },
-          { upsert: true }
-        );
-      }
-    }
-
-    await User.updateOne({ _id: userId }, { $set: { isPortalConnected: true, lastSyncAt: new Date(), portalId: user.portalId, ucpCookie: ucpCookie || user.ucpCookie } });
+    });
 
     res.json({ message: "Sync & Diffing complete securely!" });
 
@@ -1063,15 +1169,18 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 
     if (profilePic && profilePic.includes('base64')) {
       try {
-        const base64Data = profilePic.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, 'base64');
-        const filename = `portal_profile_${formattedRoll}_${Date.now()}.jpg`;
-        const filepath = path.join(uploadDir, filename);
+        const base64Data = profilePic; // Keep data URI prefix for Cloudinary
 
-        fs.writeFileSync(filepath, buffer);
-        finalProfilePicUrl = `${getBaseUrl(req)}/media/${filename}`;
+        // 🚨 NEW: Upload base64 directly to Cloudinary
+        const uploadResponse = await cloudinary.uploader.upload(base64Data, {
+          folder: 'myportal/avatars',
+          public_id: `portal_profile_${formattedRoll}_${Date.now()}`,
+          transformation: [{ width: 500, height: 500, crop: 'limit' }]
+        });
+
+        finalProfilePicUrl = uploadResponse.secure_url;
       } catch (imgErr) {
-        console.error('[IMAGE SAVE ERROR]:', imgErr.message);
+        console.error('[CLOUDINARY SAVE ERROR]:', imgErr.message);
       }
     }
 
@@ -1440,10 +1549,12 @@ cron.schedule('* * * * *', async () => {
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
 });
 
-cron.schedule('*/15 * * * *', async () => {
+// ==========================================
+// 🔔 3x DAILY SYNC PROMPT NOTIFICATIONS
+// 9:00 AM PKT (4:00 AM UTC), 1:00 PM PKT (8:00 AM UTC), 6:00 PM PKT (1:00 PM UTC)
+// ==========================================
+async function sendSyncPromptToAll(timeSlot) {
   try {
-    console.log("[CRON] 💓 Firing 15-minute background sync heartbeat...");
-
     const activeUsers = await User.find({
       isPortalConnected: true,
       $or: [
@@ -1452,23 +1563,29 @@ cron.schedule('*/15 * * * *', async () => {
       ]
     });
 
-    if (activeUsers.length === 0) {
-      console.log("[CRON] No active portal users with push tokens found.");
-      return;
-    }
-
-    console.log(`[CRON] Pinging ${activeUsers.length} users to run background sync...`);
+    console.log(`[CRON] 📢 ${timeSlot} Sync Prompt → ${activeUsers.length} users`);
 
     for (let user of activeUsers) {
-      await sendSilentPush(user, {
-        action: 'RUN_BACKGROUND_SYNC',
-        timestamp: Date.now().toString()
-      });
+      await sendPush(
+        user,
+        `📚 ${timeSlot} Portal Check`,
+        'Tap to sync your latest submissions, grades & attendance.',
+        { type: 'sync_prompt', action: 'OPEN_APP' },
+        'smart-alert',
+        'default'
+      );
     }
   } catch (error) {
-    console.error(`[SYNC ENGINE] Error:`, error.message);
+    console.error(`[SYNC PROMPT] Error:`, error.message);
   }
-});
+}
+
+// 9:00 AM PKT = 4:00 AM UTC
+cron.schedule('0 4 * * *', () => sendSyncPromptToAll('Morning'));
+// 1:00 PM PKT = 8:00 AM UTC
+cron.schedule('0 8 * * *', () => sendSyncPromptToAll('Afternoon'));
+// 6:00 PM PKT = 1:00 PM UTC
+cron.schedule('0 13 * * *', () => sendSyncPromptToAll('Evening'));
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));
