@@ -6,6 +6,7 @@ const noteSchema = new mongoose.Schema({
   title: { type: String, required: true },
   content: { type: String, required: true },
   referenceFiles: [{ fileName: String, fileUrl: String }],
+  source: { type: String, enum: ['web', 'mobile'], default: 'web' },
   isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null }
 }, { timestamps: true });

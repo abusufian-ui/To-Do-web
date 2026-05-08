@@ -294,7 +294,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.112:8081',
+  'http://192.168.0.107:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -667,8 +667,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             baseCodeLookup[`${courseName} - Lab`] = fullCode; // Map lab too
           }
 
-          // Force create/update the course document regardless of timetable
-          // 🚀 FIX: Only set code and section if they actually exist, preventing overwrites
           const updatePayload = { userId, name: courseName, type: 'university' };
           if (fullCode) updatePayload.code = fullCode;
           if (sectionCode) updatePayload.section = sectionCode;
@@ -722,13 +720,10 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
 
         if (sub.tasks) {
-          // 1. Personal submissions (per-user, as before)
           await Submission.findOneAndUpdate({ userId, courseUrl: sub.courseUrl }, { ...sub, lastUpdated: new Date() }, { upsert: true });
 
-          // 2. ── DIRECT SUBMISSION SYNCING TO PEERS IN SAME SECTION ──
           const sectionCode = sectionLookup[sub.courseName] || sectionLookup[sub.courseUrl] || '';
           if (sectionCode) {
-            // Find other users enrolled in this exact course + section
             const peerCourseDocs = await Course.find({ name: sub.courseName, section: sectionCode });
             const peerUserIds = peerCourseDocs.map(c => c.userId.toString()).filter(id => id !== userId.toString());
             const uniquePeerIds = [...new Set(peerUserIds)];
@@ -748,7 +743,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
               });
 
               if (merged) {
-                // Upsert to peer's submission record
                 await Submission.findOneAndUpdate(
                   { userId: peerId, courseName: sub.courseName },
                   { courseUrl: sub.courseUrl, courseName: sub.courseName, tasks: existingTasks, lastUpdated: new Date() },
@@ -761,7 +755,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // Only process Timetable and Datesheet on LOGIN or FORCE sync
     if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC') {
       if (datesheetData && datesheetData.length > 0) {
         await Exam.deleteMany({ userId });
@@ -790,7 +783,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
           const sectionCode = sectionLookup[courseName] || '';
           const fullCode = baseCodeLookup[courseName] || data.code || '';
 
-          // 🚀 FIX: Defensive update for timetable courses too
           const courseUpdatePayload = {
             userId, name: data.name, type: 'university',
             color: data.color || '#3498db',
@@ -824,7 +816,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // 🚀 FIX: Use explicit $set and remove the strict `statsData.cgpa` requirement
     if (statsData && Object.keys(statsData).length > 0) {
       await StudentStats.findOneAndUpdate(
         { userId },
@@ -833,7 +824,6 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       );
     }
 
-    // Update user with enrolled sections + scrape timestamp
     await User.updateOne({ _id: userId }, {
       $set: {
         isPortalConnected: true,
@@ -864,7 +854,8 @@ mongoose.connect(dbLink).then(async () => {
   console.log("✅ MongoDB Connected Successfully!");
 
   try {
-    const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment, Exam];
+    // 🚨 FIX: Added `Note` to the watch array to allow WebSockets to trigger live updates on Notes
+    const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, Note, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment, Exam];
 
     modelsToWatch.forEach(model => {
       if (model.watch) {
@@ -1048,17 +1039,85 @@ app.post('/api/debts/:id/pay', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+// ==========================================
+// 🚨 FIX: FULLY SECURED AND CORRECTED NOTES ROUTES 
+// ==========================================
 app.post('/api/notes', auth, async (req, res) => {
   try {
-    const { _id, title, courseId, content, referenceFiles } = req.body;
-    if (_id) return res.json(await Note.findByIdAndUpdate(_id, { title, courseId, content, referenceFiles }, { new: true }));
-    res.json(await new Note({ user: req.user.id, title, courseId, content: content || " ", referenceFiles }).save());
-  } catch (error) { res.status(500).json({ error: "Error" }); }
+    const { _id, title, courseId, content, referenceFiles, source } = req.body;
+
+    // Secure the update to make sure it belongs to the authenticated user
+    if (_id) {
+      const updatedNote = await Note.findOneAndUpdate(
+        { _id, user: req.user.id },
+        { title, courseId, content, referenceFiles, source },
+        { new: true }
+      );
+      if (!updatedNote) return res.status(404).json({ error: "Note not found or access denied." });
+      return res.json(updatedNote);
+    }
+
+    const newNote = await new Note({ user: req.user.id, title, courseId, content: content || " ", referenceFiles, source }).save();
+    res.json(newNote);
+  } catch (error) {
+    console.error("Note POST Error:", error);
+    res.status(500).json({ error: error.message || "Failed to process note" });
+  }
 });
-app.get('/api/notes', auth, async (req, res) => { try { res.json(await Note.find({ user: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ error: "Error" }); } });
-app.put('/api/notes/:id/delete', auth, async (req, res) => { try { await Note.findByIdAndUpdate(req.params.id, { isDeleted: true, deletedAt: new Date() }); res.json({ message: 'Bin' }); } catch (error) { res.status(500).json({ error: "Error" }); } });
-app.put('/api/notes/:id/restore', auth, async (req, res) => { try { await Note.findByIdAndUpdate(req.params.id, { isDeleted: false, deletedAt: null }); res.json({ message: 'Restored' }); } catch (error) { res.status(500).json({ error: "Error" }); } });
-app.delete('/api/notes/:id', auth, async (req, res) => { try { await Note.findByIdAndDelete(req.params.id); res.json({ message: 'Deleted' }); } catch (error) { res.status(500).json({ error: "Error" }); } });
+
+// 🚨 NEW: ADDED STANDARD PUT ROUTE FOR NOTES to prevent 404 from frontend clients
+app.put('/api/notes/:id', auth, async (req, res) => {
+  try {
+    const { title, courseId, content, referenceFiles, source } = req.body;
+    const note = await Note.findOneAndUpdate(
+      { _id: req.params.id, user: req.user.id },
+      { title, courseId, content, referenceFiles, source },
+      { new: true }
+    );
+    if (!note) return res.status(404).json({ message: "Note not found or access denied." });
+    res.json(note);
+  } catch (error) {
+    console.error("Note PUT Error:", error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get('/api/notes', auth, async (req, res) => {
+  try {
+    res.json(await Note.find({ user: req.user.id, isDeleted: false }).sort({ createdAt: -1 }));
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching notes" });
+  }
+});
+
+// 🚨 FIX: Secured delete/restore routes
+app.put('/api/notes/:id/delete', auth, async (req, res) => {
+  try {
+    await Note.findOneAndUpdate({ _id: req.params.id, user: req.user.id }, { isDeleted: true, deletedAt: new Date() });
+    res.json({ message: 'Moved to Bin' });
+  } catch (error) {
+    res.status(500).json({ error: "Error moving note to bin" });
+  }
+});
+
+app.put('/api/notes/:id/restore', auth, async (req, res) => {
+  try {
+    await Note.findOneAndUpdate({ _id: req.params.id, user: req.user.id }, { isDeleted: false, deletedAt: null });
+    res.json({ message: 'Restored' });
+  } catch (error) {
+    res.status(500).json({ error: "Error restoring note" });
+  }
+});
+
+app.delete('/api/notes/:id', auth, async (req, res) => {
+  try {
+    await Note.findOneAndDelete({ _id: req.params.id, user: req.user.id });
+    res.json({ message: 'Permanently Deleted' });
+  } catch (error) {
+    res.status(500).json({ error: "Error deleting note" });
+  }
+});
+
 
 app.post('/api/admin/verify-pin', auth, adminAuth, async (req, res) => {
   try {
@@ -1553,7 +1612,7 @@ cron.schedule('* * * * *', async () => {
 // 🔔 3x DAILY SYNC PROMPT NOTIFICATIONS
 // 9:00 AM PKT (4:00 AM UTC), 1:00 PM PKT (8:00 AM UTC), 6:00 PM PKT (1:00 PM UTC)
 // ==========================================
-async function sendSyncPromptToAll(timeSlot) {
+async function sendSyncPromptToAll(title, body) {
   try {
     const activeUsers = await User.find({
       isPortalConnected: true,
@@ -1563,13 +1622,13 @@ async function sendSyncPromptToAll(timeSlot) {
       ]
     });
 
-    console.log(`[CRON] 📢 ${timeSlot} Sync Prompt → ${activeUsers.length} users`);
+    console.log(`[CRON] 📢 Sync Prompt (${title}) → ${activeUsers.length} users`);
 
     for (let user of activeUsers) {
       await sendPush(
         user,
-        `📚 ${timeSlot} Portal Check`,
-        'Tap to sync your latest submissions, grades & attendance.',
+        title,
+        body,
         { type: 'sync_prompt', action: 'OPEN_APP' },
         'smart-alert',
         'default'
@@ -1581,11 +1640,11 @@ async function sendSyncPromptToAll(timeSlot) {
 }
 
 // 9:00 AM PKT = 4:00 AM UTC
-cron.schedule('0 4 * * *', () => sendSyncPromptToAll('Morning'));
+cron.schedule('0 4 * * *', () => sendSyncPromptToAll("🚀 Don't Fall Behind!", "Stay on top of your classes. Tap here to sync your latest attendance and grades now."));
 // 1:00 PM PKT = 8:00 AM UTC
-cron.schedule('0 8 * * *', () => sendSyncPromptToAll('Afternoon'));
+cron.schedule('0 8 * * *', () => sendSyncPromptToAll("⚠️ Pending Submissions?", "Make sure you haven't missed any new assignments. Sync your portal to check."));
 // 6:00 PM PKT = 1:00 PM UTC
-cron.schedule('0 13 * * *', () => sendSyncPromptToAll('Evening'));
+cron.schedule('0 13 * * *', () => sendSyncPromptToAll("📊 End of Day Sync", "Your portal data might have changed. Keep your dashboard up to date before tomorrow!"));
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));
