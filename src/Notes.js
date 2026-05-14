@@ -1,17 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import NoteEditor from './NoteEditor';
-import { FileText, Clock, Trash2, CheckSquare, Book } from 'lucide-react';
-import ConfirmationModal from './ConfirmationModal'; 
+import { FileText, Clock, Trash2, CheckSquare, Book, Lock, Globe } from 'lucide-react';
+import ConfirmationModal from './ConfirmationModal';
 import UCPLogo from './UCPLogo'; // Imported the UCP Logo
 import EmptyState from './EmptyState';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNotes, fetchBin }) => {
+const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNotes, fetchBin, user }) => {
   const [editingNote, setEditingNote] = useState(null);
   const [noteToDelete, setNoteToDelete] = useState(null);
   const [selectedNotes, setSelectedNotes] = useState([]);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
+
+  const [viewMode, setViewMode] = useState('private');
+  const [sharedNotes, setSharedNotes] = useState([]);
+
+  useEffect(() => {
+    if (viewMode === 'shared' && user?.isAdmin) {
+      fetch(`${API_BASE}/api/admin/shared/notes`, { headers: { 'x-auth-token': localStorage.getItem('token') } })
+        .then(res => res.json())
+        .then(data => setSharedNotes(data));
+    }
+  }, [viewMode, notes, user]);
+
+  // Hide shared notes from My Workspace for admins
+  const displayNotes = viewMode === 'shared'
+    ? sharedNotes
+    : notes.filter(n => !user?.isAdmin || n.isPrivate === true);
 
   // Bulletproof HTML to Plain Text Converter (Preserves formatting!)
   const getPlainText = (html) => {
@@ -20,7 +36,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     let formattedHtml = html
       .replace(/<\/(p|div|h[1-6]|li)>/ig, '\n')
       .replace(/<br\s*\/?>/ig, '\n');
-      
+
     const doc = new DOMParser().parseFromString(formattedHtml, 'text/html');
     return doc.body.textContent.trim() || "";
   };
@@ -35,12 +51,12 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
       });
       if (res.ok) {
         const savedNote = await res.json();
-        if (typeof fetchNotes === 'function') fetchNotes(); 
+        if (typeof fetchNotes === 'function') fetchNotes();
         if (!isAutoSave) {
           setIsAddingNew(false);
           setEditingNote(null);
         }
-        return savedNote; 
+        return savedNote;
       }
     } catch (error) { console.error("Error saving note:", error); }
     return null;
@@ -53,8 +69,8 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
         method: 'PUT',
         headers: { 'x-auth-token': token }
       });
-      if (typeof fetchNotes === 'function') fetchNotes(); 
-      if (typeof fetchBin === 'function') fetchBin(); 
+      if (typeof fetchNotes === 'function') fetchNotes();
+      if (typeof fetchBin === 'function') fetchBin();
       setNoteToDelete(null);
       setEditingNote(null); // Closes the editor automatically!
     } catch (error) { console.error("Error deleting note:", error); }
@@ -63,7 +79,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
   const executeBulkDelete = async () => {
     try {
       const token = localStorage.getItem('token');
-      await Promise.all(selectedNotes.map(id => 
+      await Promise.all(selectedNotes.map(id =>
         fetch(`${API_BASE}/api/notes/${id}/delete`, { method: 'PUT', headers: { 'x-auth-token': token } })
       ));
       if (typeof fetchNotes === 'function') fetchNotes();
@@ -77,19 +93,33 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     setSelectedNotes(prev => prev.includes(id) ? prev.filter(n => n !== id) : [...prev, id]);
   };
 
+  const togglePrivacy = async (e, note) => {
+    e.stopPropagation();
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_BASE}/api/notes/${note._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({ isPrivate: !note.isPrivate })
+      });
+      if (typeof fetchNotes === 'function') fetchNotes();
+      setSharedNotes(prev => prev.map(n => n._id === note._id ? { ...n, isPrivate: !note.isPrivate } : n));
+    } catch (error) { console.error("Error toggling privacy", error); }
+  };
+
   return (
     <>
       {isAddingNew || editingNote ? (
-        <NoteEditor 
-          courses={courses} 
-          initialNote={editingNote} 
-          onSave={handleSaveNote} 
-          onBack={() => { setIsAddingNew(false); setEditingNote(null); }} 
-          onDelete={(note) => setNoteToDelete(note)} 
+        <NoteEditor
+          courses={courses}
+          initialNote={editingNote}
+          onSave={handleSaveNote}
+          onBack={() => { setIsAddingNew(false); setEditingNote(null); }}
+          onDelete={(note) => setNoteToDelete(note)}
         />
       ) : (
         <div className="p-6 md:p-8 animate-fadeIn h-full overflow-y-auto custom-scrollbar relative">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 min-h-[48px]">
+          <div className="flex flex-col justify-between items-start mb-8 gap-4 min-h-[48px]">
             {selectedNotes.length > 0 ? (
               <div className="w-full flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/50 p-3 rounded-xl shadow-sm animate-fadeIn">
                 <span className="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-2">
@@ -103,13 +133,21 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                 </div>
               </div>
             ) : (
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">My Notes</h2>
+              <div className="w-full flex justify-between items-end">
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Notes</h2>
+                {user?.isAdmin && (
+                  <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl w-max shrink-0 border border-gray-200 dark:border-[#333]">
+                    <button onClick={() => setViewMode('private')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
+                    <button onClick={() => setViewMode('shared')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Shared Hub</button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
-          {notes.length === 0 ? (
+          {displayNotes.length === 0 ? (
             <div className="mt-16 w-full flex justify-center">
-              <EmptyState 
+              <EmptyState
                 icon={FileText}
                 title="No notes in here, sorry!"
                 message="Your notebook is empty. Tap 'New Note' to start writing your first idea or lecture!"
@@ -117,17 +155,19 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {notes.map(note => {
+              {displayNotes.map(note => {
                 const isSelected = selectedNotes.includes(note._id);
-                
+                const isOwner = note.user ? (typeof note.user === 'object' ? note.user._id === user?.id : note.user === user?.id) : true;
+                const canEdit = isOwner || user?.isAdmin;
+
                 // Identify the specific course associated with this note
                 const courseObj = courses.find(c => (c._id || c.id) === note.courseId);
                 const courseName = courseObj?.name || 'General Course';
                 const isUni = courseObj?.type === 'uni';
 
                 return (
-                  <div 
-                    key={note._id} 
+                  <div
+                    key={note._id}
                     className={`bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border shadow-sm transition-all flex flex-col h-64 group relative cursor-pointer
                       ${isSelected ? 'border-blue-500 dark:border-blue-500 shadow-md ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-[#2C2C2C] hover:shadow-xl hover:-translate-y-1.5'}
                     `}
@@ -139,29 +179,44 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                     <div className={`absolute top-4 right-4 z-10 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                       <input type="checkbox" checked={isSelected} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); toggleSelect(note._id); }} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
                     </div>
+
+                    {canEdit && (
+                      <button
+                        onClick={(e) => togglePrivacy(e, note)}
+                        className="absolute top-4 right-12 z-20 opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-indigo-500 transition-opacity"
+                        title={note.isPrivate ? "Make Shared" : "Make Private"}
+                      >
+                        {note.isPrivate ? <Lock size={18} /> : <Globe size={18} />}
+                      </button>
+                    )}
+
                     <div className="flex-1 flex flex-col">
-                      <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-3 group-hover:text-blue-500 transition-colors line-clamp-2 pr-8">{note.title || 'Untitled Note'}</h3>
-                      
+                      <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-1 group-hover:text-blue-500 transition-colors line-clamp-2 pr-16">{note.title || 'Untitled Note'}</h3>
+
+                      {viewMode === 'shared' && note.user && (
+                        <div className="text-[10px] text-blue-500 font-bold mb-3">By {note.user.name}</div>
+                      )}
+
                       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 line-clamp-4 flex-1 whitespace-pre-wrap">
                         {getPlainText(note.content) || 'Empty note...'}
                       </p>
-                      
+
                       {/* UPDATED FOOTER: Icons added, strict flex boundaries applied */}
                       {/* UPDATED FOOTER: Multi-line wrapping with bottom alignment */}
                       <div className="flex items-end justify-between mt-auto pt-4 border-t border-gray-100 dark:border-[#333] gap-2">
-                        
+
                         {/* max-w-[75%] ensures it never pushes the date off-screen, forcing a clean wrap */}
                         <div className="flex items-start gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1.5 rounded-lg min-w-0 max-w-[75%]">
                           {isUni ? <UCPLogo className="w-3.5 h-3.5 shrink-0 mt-[2px]" /> : <Book size={14} className="shrink-0 mt-[2px]" />}
                           <span className="whitespace-normal break-words leading-snug text-left">{courseName}</span>
                         </div>
-                        
+
                         {/* mb-1 aligns the date perfectly with the bottom baseline of the text */}
                         <span className="flex items-center justify-end gap-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider shrink-0 mb-1">
-                          <Clock size={12} className="shrink-0" /> 
+                          <Clock size={12} className="shrink-0" />
                           {new Date(note.createdAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
                         </span>
-                        
+
                       </div>
                     </div>
                   </div>

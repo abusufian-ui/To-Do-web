@@ -12,4 +12,6 @@ const announcementSchema = new mongoose.Schema({
     lastUpdated: { type: Date, default: Date.now }
 });
 
+announcementSchema.index({ userId: 1, courseUrl: 1 }, { unique: true });
+
 module.exports = mongoose.model('Announcement', announcementSchema);

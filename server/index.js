@@ -812,14 +812,28 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     if (historyData && historyData.length > 0) {
       if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
       for (const sem of historyData) {
+        if (!sem.term) continue;
+
+        // Safety: Don't overwrite valid data with garbage 0.00
+        const existing = await ResultHistory.findOne({ userId, term: sem.term });
+        if (existing && sem.cgpa === "0.00" && existing.cgpa !== "0.00") continue;
+
         await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true });
       }
     }
 
     if (statsData && Object.keys(statsData).length > 0) {
+      const existingStats = await StudentStats.findOne({ userId });
+      const updatePayload = { ...statsData, userId, lastUpdated: new Date() };
+
+      // Safety: Don't overwrite valid CGPA with 0.00
+      if (existingStats && statsData.cgpa === "0.00" && existingStats.cgpa !== "0.00") {
+        delete updatePayload.cgpa;
+      }
+
       await StudentStats.findOneAndUpdate(
         { userId },
-        { $set: { ...statsData, userId, lastUpdated: new Date() } },
+        { $set: updatePayload },
         { upsert: true }
       );
     }
@@ -911,26 +925,49 @@ app.post('/api/keynotes', auth, async (req, res) => {
 app.put('/api/keynotes/:id/read', auth, async (req, res) => {
   try { res.json(await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isRead: true }, { new: true })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
+
 app.put('/api/keynotes/:id', auth, async (req, res) => {
   try {
-    const { title, content, courseName, mediaUrls, type } = req.body;
-    if (!title || !title.trim()) return res.status(400).json({ message: "Title is required" });
-    const keynote = await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { title: title.trim(), content: content?.trim() || "", courseName: courseName || "General", mediaUrls: mediaUrls || [], type: type || 'mixed' }, { new: true, runValidators: true });
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
+
+    const { title, content, courseName, mediaUrls, type, isPrivate } = req.body;
+    const updateObj = { title: title?.trim(), content: content?.trim() || "", courseName: courseName || "General", mediaUrls: mediaUrls || [], type: type || 'mixed' };
+    if (isPrivate !== undefined) updateObj.isPrivate = isPrivate;
+
+    const keynote = await Keynote.findOneAndUpdate(q, updateObj, { new: true, runValidators: true });
     if (!keynote) return res.status(404).json({ message: "Keynote not found" });
     res.json(keynote);
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
+
 app.put('/api/keynotes/:id/unread', auth, async (req, res) => {
   try { res.json(await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isRead: false }, { new: true })); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
+
 app.put('/api/keynotes/:id/delete', auth, async (req, res) => {
-  try { res.json(await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (error) { res.status(500).json({ message: "Error" }); }
+  try {
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
+    // Transfer ownership to deleting admin
+    res.json(await Keynote.findOneAndUpdate(q, { isDeleted: true, deletedAt: new Date(), userId: req.user.id }, { new: true }));
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
+
 app.put('/api/keynotes/:id/restore', auth, async (req, res) => {
-  try { res.json(await Keynote.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (error) { res.status(500).json({ message: "Error" }); }
+  try {
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
+    res.json(await Keynote.findOneAndUpdate(q, { isDeleted: false, deletedAt: null }, { new: true }));
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 app.delete('/api/keynotes/:id', auth, async (req, res) => {
-  try { await Keynote.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); }
+  try {
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
+    await Keynote.findOneAndDelete(q);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
 app.get('/api/admin/system-stats', async (req, res) => {
@@ -938,7 +975,7 @@ app.get('/api/admin/system-stats', async (req, res) => {
     const cpuLoad = await si.currentLoad();
     const mem = await si.mem();
     const disks = await si.fsSize();
-    const rootDisk = disks.find(d => d.mount === '/') || disks[0] || { size: 30 * 1024 * 1024 * 1024, used: 0 };
+    const rootDisk = disks.find(d => d.mount === '/' || d.mount === 'C:') || disks[0] || { size: 30 * 1024 * 1024 * 1024, used: 0 };
 
     let dbSize = 0;
     if (mongoose.connection.readyState === 1) dbSize = (await mongoose.connection.db.stats()).dataSize;
@@ -950,6 +987,37 @@ app.get('/api/admin/system-stats', async (req, res) => {
       disk: { total: rootDisk.size, used: rootDisk.used }
     });
   } catch (error) { res.status(500).json({ message: "Failed" }); }
+});
+
+// --- ADMIN SHARED RESOURCES ---
+app.get('/api/admin/shared/tasks', auth, adminAuth, async (req, res) => {
+  try {
+    const adminIds = (await User.find({ isAdmin: true })).map(u => u._id);
+    const tasks = await Task.find({ userId: { $in: adminIds }, isPrivate: false, isDeleted: false })
+      .populate('userId', 'name email profilePic originalPortalProfilePic portalProfilePic')
+      .sort({ createdAt: -1 });
+    res.json(tasks);
+  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+});
+
+app.get('/api/admin/shared/notes', auth, adminAuth, async (req, res) => {
+  try {
+    const adminIds = (await User.find({ isAdmin: true })).map(u => u._id);
+    const notes = await Note.find({ user: { $in: adminIds }, isPrivate: false, isDeleted: false })
+      .populate('user', 'name email profilePic originalPortalProfilePic portalProfilePic')
+      .sort({ createdAt: -1 });
+    res.json(notes);
+  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+});
+
+app.get('/api/admin/shared/keynotes', auth, adminAuth, async (req, res) => {
+  try {
+    const adminIds = (await User.find({ isAdmin: true })).map(u => u._id);
+    const keynotes = await Keynote.find({ userId: { $in: adminIds }, isPrivate: false, isDeleted: false })
+      .populate('userId', 'name email profilePic originalPortalProfilePic portalProfilePic')
+      .sort({ createdAt: -1 });
+    res.json(keynotes);
+  } catch (error) { res.status(500).json({ message: "Server Error" }); }
 });
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
@@ -1065,21 +1133,19 @@ app.post('/api/notes', auth, async (req, res) => {
   }
 });
 
-// 🚨 NEW: ADDED STANDARD PUT ROUTE FOR NOTES to prevent 404 from frontend clients
 app.put('/api/notes/:id', auth, async (req, res) => {
   try {
-    const { title, courseId, content, referenceFiles, source } = req.body;
-    const note = await Note.findOneAndUpdate(
-      { _id: req.params.id, user: req.user.id },
-      { title, courseId, content, referenceFiles, source },
-      { new: true }
-    );
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id };
+
+    const { title, courseId, content, referenceFiles, source, isPrivate } = req.body;
+    const updateObj = { title, courseId, content, referenceFiles, source };
+    if (isPrivate !== undefined) updateObj.isPrivate = isPrivate;
+
+    const note = await Note.findOneAndUpdate(q, updateObj, { new: true });
     if (!note) return res.status(404).json({ message: "Note not found or access denied." });
     res.json(note);
-  } catch (error) {
-    console.error("Note PUT Error:", error);
-    res.status(500).json({ message: error.message });
-  }
+  } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.get('/api/notes', auth, async (req, res) => {
@@ -1090,19 +1156,21 @@ app.get('/api/notes', auth, async (req, res) => {
   }
 });
 
-// 🚨 FIX: Secured delete/restore routes
 app.put('/api/notes/:id/delete', auth, async (req, res) => {
   try {
-    await Note.findOneAndUpdate({ _id: req.params.id, user: req.user.id }, { isDeleted: true, deletedAt: new Date() });
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id };
+    // Transfer ownership (user) to deleting admin
+    await Note.findOneAndUpdate(q, { isDeleted: true, deletedAt: new Date(), user: req.user.id });
     res.json({ message: 'Moved to Bin' });
-  } catch (error) {
-    res.status(500).json({ error: "Error moving note to bin" });
-  }
+  } catch (error) { res.status(500).json({ error: "Error moving note to bin" }); }
 });
 
 app.put('/api/notes/:id/restore', auth, async (req, res) => {
   try {
-    await Note.findOneAndUpdate({ _id: req.params.id, user: req.user.id }, { isDeleted: false, deletedAt: null });
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id };
+    await Note.findOneAndUpdate(q, { isDeleted: false, deletedAt: null });
     res.json({ message: 'Restored' });
   } catch (error) {
     res.status(500).json({ error: "Error restoring note" });
@@ -1111,7 +1179,9 @@ app.put('/api/notes/:id/restore', auth, async (req, res) => {
 
 app.delete('/api/notes/:id', auth, async (req, res) => {
   try {
-    await Note.findOneAndDelete({ _id: req.params.id, user: req.user.id });
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id };
+    await Note.findOneAndDelete(q);
     res.json({ message: 'Permanently Deleted' });
   } catch (error) {
     res.status(500).json({ error: "Error deleting note" });
@@ -1401,41 +1471,39 @@ app.post('/api/tasks', auth, async (req, res) => { try { res.json(await new Task
 
 app.put('/api/tasks/:id', auth, async (req, res) => {
   try {
-    const oldTask = await Task.findOne({ _id: req.params.id, userId: req.user.id });
-    if (!oldTask) return res.status(404).json({ message: "Task not found" });
-
-    const updatedTask = await Task.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
-      { $set: req.body },
-      { new: true }
-    );
-
-    if (req.body.completed === true && !oldTask.completed) {
-      const userStats = await StudentStats.findOne({ userId: req.user.id });
-      if (userStats) {
-        if (!userStats.gamification) {
-          userStats.gamification = { score: 0, level: 1, tasksCompleted: 0, habitsMaintained: 0 };
-        }
-
-        userStats.gamification.score = (userStats.gamification.score || 0) + 10;
-        userStats.gamification.tasksCompleted = (userStats.gamification.tasksCompleted || 0) + 1;
-        userStats.gamification.lastActive = Date.now();
-
-        await userStats.save();
-      }
-    }
-
-    res.json(updatedTask);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+    const u = await User.findById(req.user.id);
+    // Allow admins to bypass user ownership check
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
+    res.json(await Task.findOneAndUpdate(q, req.body, { new: true }));
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => { try { await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true }); res.json({ success: true }); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.put('/api/tasks/:id/delete', auth, async (req, res) => { try { res.json(await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.put('/api/tasks/:id/restore', auth, async (req, res) => { try { res.json(await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.delete('/api/tasks/:id', auth, async (req, res) => { try { await Task.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ message: "Deleted" }); } catch (err) { res.status(500).json({ message: err.message }) } });
 
+app.put('/api/tasks/:id/delete', auth, async (req, res) => {
+  try {
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
+    // Transfer ownership (userId) to deleting admin so it goes to THEIR bin
+    res.json(await Task.findOneAndUpdate(q, { isDeleted: true, deletedAt: new Date(), userId: req.user.id }, { new: true }));
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+
+app.put('/api/tasks/:id/restore', auth, async (req, res) => {
+  try {
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
+    res.json(await Task.findOneAndUpdate(q, { isDeleted: false, deletedAt: null }, { new: true }));
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
+app.delete('/api/tasks/:id', auth, async (req, res) => {
+  try {
+    const u = await User.findById(req.user.id);
+    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
+    await Task.findOneAndDelete(q);
+    res.json({ message: "Deleted" });
+  } catch (err) { res.status(500).json({ message: err.message }) }
+});
 app.get('/api/transactions', auth, async (req, res) => { try { res.json(await Transaction.find({ userId: req.user.id, isDeleted: false }).sort({ date: -1, createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/transactions', auth, async (req, res) => { try { res.json(await new Transaction({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.put('/api/transactions/:id/delete', auth, async (req, res) => { try { res.json(await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
@@ -1571,6 +1639,64 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
 });
 
 app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
+
+// ==========================================
+// 🏆 RELATIVE GRADING & LEADERBOARD API
+// ==========================================
+app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res) => {
+  try {
+    const { courseCode, section } = req.params;
+
+    // 1. Find all grades/students enrolled in this specific course & section
+    // Adjust this query based on your actual Mongoose Schema!
+    const sectionGrades = await Grade.find({
+      courseCode: new RegExp(courseCode, 'i'),
+      section: new RegExp(section, 'i')
+    }).populate('userId', 'name rollNumber profilePic');
+
+    if (!sectionGrades || sectionGrades.length === 0) {
+      return res.status(404).json({ message: "No students found in this section yet." });
+    }
+
+    // 2. Calculate absolute scores for everyone
+    let leaderboard = sectionGrades.map(g => {
+      // Adjust these fields to match your DB!
+      const score = g.totalMarks > 0 ? (g.obtainedMarks / g.totalMarks) * 100 : 0;
+
+      return {
+        id: g.userId?.rollNumber || 'Unknown',
+        name: g.userId?.name || 'Unknown Student',
+        score: score,
+        pic: g.userId?.profilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${g.userId?.name}`
+      };
+    });
+
+    // 3. Sort descending (Highest score first)
+    leaderboard.sort((a, b) => b.score - a.score);
+
+    // 4. Assign Ranks and the UCP Relative Curve
+    const total = leaderboard.length;
+    leaderboard = leaderboard.map((s, idx) => {
+      const pctile = (idx / total) * 100;
+      let grade = 'F';
+
+      if (pctile < 10) grade = 'A';
+      else if (pctile < 20) grade = 'A-';
+      else if (pctile < 35) grade = 'B+';
+      else if (pctile < 50) grade = 'B';
+      else if (pctile < 65) grade = 'B-';
+      else if (pctile < 80) grade = 'C';
+      else if (pctile < 95) grade = 'D';
+
+      return { ...s, rank: idx + 1, grade };
+    });
+
+    res.status(200).json(leaderboard);
+  } catch (error) {
+    console.error("[LEADERBOARD ERROR]:", error);
+    res.status(500).json({ error: "Failed to generate relative grading leaderboard" });
+  }
+});
 
 // ==========================================
 // 🔔 THE 1-MINUTE CRON ENGINES 

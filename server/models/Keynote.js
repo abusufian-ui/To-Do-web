@@ -10,7 +10,8 @@ const KeynoteSchema = new mongoose.Schema({
   isRead: { type: Boolean, default: false },
   isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null },     
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  isPrivate: { type: Boolean, default: false },
 });
 
 module.exports = mongoose.model('Keynote', KeynoteSchema);

@@ -14,20 +14,20 @@ import AdminDashboard from './AdminDashboard';
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
 import MyProfile from './MyProfile';
-import Timetable from './TimeTable'; 
+import Timetable from './TimeTable';
 import HabitTracker from './HabitTracker';
 import Notes from './Notes';
-import HyperFocus from './HyperFocus'; 
+import HyperFocus from './HyperFocus';
 import Keynote from './Keynote';
-import AddKeynoteModal from './AddKeynoteModal'; 
+import AddKeynoteModal from './AddKeynoteModal';
 import CoursePortalView from './CoursePortalView';
-import Assessments from './Assessments';
-import Datesheet from './Datesheet'; 
+// Assessments section removed
+import Datesheet from './Datesheet';
 import AnimatedLogo from './Animation'; // 🚀 IMPORTED YOUR NEW LOGO ANIMATION HERE
 import { CustomToast, ToastConfig } from './CustomToast';
 
-import useLiveSync from './hooks/useLiveSync'; 
-import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock } from 'lucide-react'; 
+import useLiveSync from './hooks/useLiveSync';
+import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock } from 'lucide-react';
 // 🚨 Notice we imported a few extra router tools here
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
@@ -72,7 +72,7 @@ function AppLayout() {
     if (isDarkMode) {
       root.classList.add('dark');
       localStorage.setItem('theme', 'dark');
-      document.body.style.backgroundColor = '#121212'; 
+      document.body.style.backgroundColor = '#121212';
     } else {
       root.classList.remove('dark');
       localStorage.setItem('theme', 'light');
@@ -93,42 +93,40 @@ function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
-  
+
   const [isAddKeynoteOpen, setIsAddKeynoteOpen] = useState(false);
-  const [keynoteToDelete, setKeynoteToDelete] = useState(null); 
+  const [keynoteToDelete, setKeynoteToDelete] = useState(null);
   const [isBatchDeleteKeynotes, setIsBatchDeleteKeynotes] = useState(false);
   const [keynotesToBatchDelete, setKeynotesToBatchDelete] = useState([]);
 
-  const [assessments, setAssessments] = useState([]);
-  const [addAssessmentTrigger, setAddAssessmentTrigger] = useState(0);
-  const [viewAssessment, setViewAssessment] = useState(null);
+
 
   const [prefilledDate, setPrefilledDate] = useState('');
   const [viewTask, setViewTask] = useState(null);
-  
+
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
   const [courses, setCourses] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [notes, setNotes] = useState([]); 
-  const [keynotes, setKeynotes] = useState([]); 
-  const [exams, setExams] = useState([]); 
+  const [notes, setNotes] = useState([]);
+  const [keynotes, setKeynotes] = useState([]);
+  const [exams, setExams] = useState([]);
 
   const activeExams = useMemo(() => {
     if (!exams || exams.length === 0) return [];
-    
+
     const now = new Date();
     const sortedExams = [...exams].sort((a, b) => new Date(a.date) - new Date(b.date));
     const lastExam = sortedExams[sortedExams.length - 1];
     const lastExamDate = new Date(lastExam.date);
-    
-    lastExamDate.setHours(23, 59, 59, 999); 
-    
+
+    lastExamDate.setHours(23, 59, 59, 999);
+
     if (now <= lastExamDate) {
       return sortedExams;
     }
-    
+
     return [];
   }, [exams]);
 
@@ -165,7 +163,7 @@ function AppLayout() {
     try {
       const saved = localStorage.getItem('hfGlobalState');
       if (saved) return JSON.parse(saved);
-    } catch(e) {}
+    } catch (e) { }
     return { modeId: 'focus', isAutomated: false, cyclesCompleted: 0, targetEndTime: null, timeLeft: HF_MODES.focus.minutes * 60, soundEnabled: true };
   });
 
@@ -188,7 +186,7 @@ function AppLayout() {
   const executePhaseTransition = useCallback(async () => {
     setHfState(prev => {
       if (prev.modeId === 'focus' && token) {
-        try { fetch(`${API_BASE}/api/focus-sessions`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ durationMinutes: HF_MODES.focus.minutes, type: 'focus' }) }); } catch (e) {}
+        try { fetch(`${API_BASE}/api/focus-sessions`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ durationMinutes: HF_MODES.focus.minutes, type: 'focus' }) }); } catch (e) { }
       }
 
       let nextModeId = 'focus';
@@ -205,11 +203,11 @@ function AppLayout() {
         alarmSoundRef.current.currentTime = 0;
         alarmSoundRef.current.play().catch(e => console.log("Audio failed", e));
       }
-      
+
       let title = 'Hyper Focus';
       let body = 'Phase complete! Transitioning...';
       let showSkip = false;
-      
+
       if (nextModeId === 'focus') {
         title = '🔥 Focus Time!'; body = 'Time to start, get ready!'; showSkip = false;
       } else if (nextModeId === 'short_break' || nextModeId === 'long_break') {
@@ -243,7 +241,7 @@ function AppLayout() {
     setHfState(prev => {
       if (!prev.isAutomated) return { ...prev, isAutomated: true, targetEndTime: Date.now() + prev.timeLeft * 1000 };
       else {
-        setToast(null); 
+        setToast(null);
         return { ...prev, isAutomated: false, targetEndTime: null, modeId: 'focus', timeLeft: HF_MODES.focus.minutes * 60, cyclesCompleted: 0 };
       }
     });
@@ -251,12 +249,12 @@ function AppLayout() {
 
   const skipPhase = () => {
     setHfState(prev => {
-      if (prev.modeId !== 'short_break') return prev; 
+      if (prev.modeId !== 'short_break') return prev;
       if (prev.soundEnabled && alarmSoundRef.current) { alarmSoundRef.current.currentTime = 0; alarmSoundRef.current.play().catch(e => console.log(e)); }
       const nextMode = HF_MODES.focus;
       return { ...prev, modeId: 'focus', timeLeft: nextMode.minutes * 60, targetEndTime: Date.now() + (nextMode.minutes * 60 * 1000) };
     });
-    setToast(null); 
+    setToast(null);
   };
 
   const setSoundEnabled = (val) => setHfState(prev => ({ ...prev, soundEnabled: val }));
@@ -272,22 +270,22 @@ function AppLayout() {
 
   // 🚨 FIXED: Now explicitly uses react-router to kick you back to login
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('token'); 
-    localStorage.removeItem('user'); 
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     sessionStorage.clear();
-    setToken(null); 
-    setUser(null); 
+    setToken(null);
+    setUser(null);
     setActiveTab('Welcome');
-    navigate('/login'); 
+    navigate('/login');
   }, [navigate]);
 
   // 🚨 FIXED: Manually redirects you into the dashboard and sets state
   const handleLogin = (authToken, userData) => {
-    localStorage.setItem('token', authToken); 
+    localStorage.setItem('token', authToken);
     localStorage.setItem('user', JSON.stringify(userData));
-    setToken(authToken); 
+    setToken(authToken);
     setUser(userData);
-    navigate('/dashboard'); 
+    navigate('/dashboard');
   };
 
   // 🚨 SMART SYNC: Listens for URL changes to ensure state is perfectly synced
@@ -304,15 +302,15 @@ function AppLayout() {
 
   const checkForInactivity = useCallback(() => {
     if (!isAuthenticated) return;
-    
+
     // Use user-defined security settings if available, otherwise fallback to local state
     const isAutoLockEnabled = user?.securitySettings?.autoLockEnabled ?? false;
     const currentTimer = user?.securitySettings?.autoLockTimer ?? idleTimeout;
 
     if (!isAutoLockEnabled || currentTimer === 0) return;
 
-    const timer = setTimeout(() => { 
-        setIsLocked(true); 
+    const timer = setTimeout(() => {
+      setIsLocked(true);
     }, currentTimer);
     return timer;
   }, [isAuthenticated, user?.securitySettings, idleTimeout]);
@@ -370,36 +368,7 @@ function AppLayout() {
     } catch (error) { console.error("Error fetching exams:", error); }
   }, [authHeaders, handleLogout]);
 
-  const fetchAssessments = useCallback(async () => {
-    try {
-      const manualRes = await fetch(`${API_BASE}/api/assessments`, { headers: authHeaders });
-      let manualData = [];
-      if (manualRes.ok) {
-         const json = await manualRes.json();
-         manualData = (Array.isArray(json) ? json : []).map(item => ({ ...item, source: 'manual', id: item._id }));
-      }
 
-      const portalRes = await fetch(`${API_BASE}/api/submissions`, { headers: authHeaders });
-      let portalData = [];
-      if (portalRes.ok) {
-         const json = await portalRes.json();
-         portalData = (Array.isArray(json) ? json : []).flatMap(sub =>
-          (sub.tasks || []).map(task => ({
-            _id: task._id || Math.random().toString(),
-            id: task._id || Math.random().toString(),
-            title: task.title,
-            courseName: sub.courseName,
-            type: 'Portal Task',
-            dueDate: task.dueDate,
-            status: task.status.toLowerCase().includes('submitted') ? 'Submitted' : 'Pending',
-            source: 'portal',
-            url: task.submissionUrl
-          }))
-        );
-      }
-      setAssessments([...manualData, ...portalData].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)));
-    } catch (error) { console.error("Error fetching assessments:", error); }
-  }, [authHeaders]);
 
   const fetchBin = useCallback(async () => {
     try {
@@ -411,13 +380,13 @@ function AppLayout() {
         ...(data.transactions || []).map(t => ({ ...t, id: t._id, binType: 'Transaction', name: t.description || 'Transaction', subtitle: `Rs ${t.amount}` })),
         ...(data.habits || []).map(h => ({ ...h, id: h._id, binType: 'Habit', name: h.name, subtitle: h.type === 'good' ? 'Good Protocol' : 'Bad Protocol' })),
         ...(data.notes || []).map(n => ({ ...n, id: n._id, binType: 'Note', name: n.title, subtitle: n.courseId })),
-        ...(data.keynotes || []).map(k => ({ ...k, id: k._id, binType: 'Keynote', name: k.title, subtitle: k.courseName })) 
+        ...(data.keynotes || []).map(k => ({ ...k, id: k._id, binType: 'Keynote', name: k.title, subtitle: k.courseName }))
       ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
       setBinItems(formattedBin);
     } catch (error) { console.error("Error fetching bin:", error); }
   }, [authHeaders, handleLogout]);
 
- const fetchCourses = useCallback(async () => {
+  const fetchCourses = useCallback(async () => {
     let fetchedCourses = [];
     try {
       const res = await fetch(`${API_BASE}/api/courses`, { headers: authHeaders });
@@ -435,28 +404,25 @@ function AppLayout() {
       fetchTasks();
       fetchNotes();
       fetchKeynotes();
-      fetchAssessments();
       fetchBin();
       fetchCourses();
       fetchExams();
     }
-  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses, fetchExams]);
+  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses, fetchExams]);
 
   const handleLiveUpdate = useCallback(() => {
     if (token && isAuthenticated) {
-      // 🚀 Add a 500ms debounce to prevent API spam if multiple DB changes happen rapidly
       if (window.liveSyncTimeout) clearTimeout(window.liveSyncTimeout);
       window.liveSyncTimeout = setTimeout(() => {
         fetchTasks();
         fetchNotes();
         fetchKeynotes();
-        fetchAssessments();
         fetchBin();
         fetchCourses();
         fetchExams();
       }, 500);
     }
-  }, [token, isAuthenticated, fetchTasks, fetchNotes, fetchKeynotes, fetchAssessments, fetchBin, fetchCourses, fetchExams]);
+  }, [token, isAuthenticated, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses, fetchExams]);
 
   useLiveSync(handleLiveUpdate, user?.id);
 
@@ -510,7 +476,7 @@ function AppLayout() {
       const uploadRes = await fetch(`${API_BASE}/api/upload`, { method: 'POST', headers: { 'x-auth-token': token }, body: formData });
       if (!uploadRes.ok) throw new Error("Media upload failed");
       const uploadData = await uploadRes.json();
-      
+
       const payload = {
         title: formData.get('title'),
         courseName: formData.get('courseName') || 'General',
@@ -609,22 +575,7 @@ function AppLayout() {
     });
   };
 
-  const getFilteredAssessments = () => {
-    return assessments.filter(a => {
-      if (filters.searchQuery) {
-        const query = filters.searchQuery.toLowerCase();
-        const matchesTitle = a.title?.toLowerCase().includes(query) || false;
-        const matchesCourse = a.courseName?.toLowerCase().includes(query) || false;
-        if (!matchesTitle && !matchesCourse) return false;
-      }
-      if (filters.course !== 'All' && a.courseName !== filters.course) return false;
-      if (filters.status !== 'All' && a.status !== filters.status) return false;
-      if (filters.source && filters.source !== 'All' && a.source !== filters.source.toLowerCase()) return false;
-      if (filters.startDate && new Date(a.dueDate) < new Date(filters.startDate)) return false;
-      if (filters.endDate && new Date(a.dueDate) > new Date(filters.endDate)) return false;
-      return true;
-    });
-  };
+
 
   const handleManualSync = async () => {
     try { await fetch(`${API_BASE}/api/sync-grades`, { method: 'POST', headers: authHeaders }); fetchCourses(); } catch (e) { throw e; }
@@ -661,21 +612,21 @@ function AppLayout() {
 
   const handleUpdateProfilePic = async (formData) => {
     try {
-      const res = await fetch(`${API_BASE}/api/user/profile-pic`, { 
-        method: 'POST', 
+      const res = await fetch(`${API_BASE}/api/user/profile-pic`, {
+        method: 'POST',
         headers: {
           'x-auth-token': localStorage.getItem('token')
-        }, 
-        body: formData 
+        },
+        body: formData
       });
       if (res.ok) {
         const updatedUser = await res.json();
-        setUser(updatedUser); 
+        setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
         return updatedUser;
-      } else { 
+      } else {
         const errData = await res.json();
-        throw new Error(errData.message || "Upload failed"); 
+        throw new Error(errData.message || "Upload failed");
       }
     } catch (e) { throw e; }
   };
@@ -702,7 +653,7 @@ function AppLayout() {
   const handleNavigate = (tab) => {
     if (tab === 'Server') { if (user?.isAdmin) setIsServerModalOpen(true); return; }
     setActiveTab(tab);
-    if (tab === 'Bin') fetchBin(); 
+    if (tab === 'Bin') fetchBin();
     if (window.innerWidth < 768) setIsSidebarOpen(false);
   };
 
@@ -713,12 +664,10 @@ function AppLayout() {
       setIsAddingNewNote(true);
     } else if (activeTab === 'Keynotes') {
       setIsAddKeynoteOpen(true);
-    } else if (activeTab === 'Assessments') {
-      setAddAssessmentTrigger(prev => prev + 1);
     } else if (activeTab && activeTab.startsWith('Cash')) {
-      setIsAddingNewTransaction(true); 
+      setIsAddingNewTransaction(true);
     } else {
-      setPrefilledDate(''); setIsAddTaskOpen(true); 
+      setPrefilledDate(''); setIsAddTaskOpen(true);
     }
   };
 
@@ -730,21 +679,21 @@ function AppLayout() {
       {/* 🚀 ADDED THIS ROUTE JUST FOR TESTING THE LOGO */}
       <Route path="/test-logo" element={<AnimatedLogo />} />
 
-      <Route 
-        path="/login" 
-        element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" replace />} 
+      <Route
+        path="/login"
+        element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" replace />}
       />
 
-      <Route 
-        path="/*" 
+      <Route
+        path="/*"
         element={
           isAuthenticated ? (
             <div className={`flex h-screen w-full overflow-hidden transition-colors duration-300 relative ${isDarkMode ? 'dark bg-dark-bg' : 'bg-gray-50'}`}>
-              
+
               {isSidebarOpen && (
-                <div 
-                  className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm transition-opacity" 
-                  onClick={() => setIsSidebarOpen(false)} 
+                <div
+                  className="fixed inset-0 bg-black/50 z-[50] md:hidden backdrop-blur-sm transition-opacity"
+                  onClick={() => setIsSidebarOpen(false)}
                 />
               )}
 
@@ -758,7 +707,7 @@ function AppLayout() {
                   filters={filters}
                   setFilters={setFilters}
                   courses={courses}
-                  onAddClick={triggerAddClick} 
+                  onAddClick={triggerAddClick}
                   user={user}
                   onLogout={handleLogout}
                   tasks={tasks}
@@ -766,14 +715,12 @@ function AppLayout() {
                   onNavigate={handleNavigate}
                   onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
                   notes={notes}
-                  onOpenNote={(note) => console.log("Open Note from search:", note)} 
-                  keynotes={keynotes} 
+                  onOpenNote={(note) => console.log("Open Note from search:", note)}
+                  keynotes={keynotes}
                   onToggleKeynoteRead={handleToggleKeynoteRead}
-                  hfState={hfState} 
+                  hfState={hfState}
                   hfModes={HF_MODES}
-                  assessments={assessments}
-                  onOpenAssessment={(a) => setViewAssessment(a)}
-                  exams={activeExams} 
+                  exams={activeExams}
                 />
                 <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
 
@@ -792,30 +739,16 @@ function AppLayout() {
                       </div>
                     </div>
                   )}
-                  
+
                   {activeTab === 'HyperFocus' && <div className="w-full h-full"><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>}
-                  {activeTab === 'Notes' && <div className="w-full h-full"><Notes courses={courses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} /></div>}
-                  {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} /></div>}
-                  {activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
-                  {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>} 
-                  {activeTab === 'Keynotes' && <div className="w-full h-full"><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} /></div>} 
-                  {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
+                  {activeTab === 'Notes' && <div className="w-full h-full"><Notes courses={courses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} user={user} /></div>}
+                  {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} user={user} /></div>}{activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
+                  {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>}
+                  {activeTab === 'Keynotes' && <div className="w-full h-full"><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>}                  {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
                   {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
                   {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
-                  {activeTab === 'Assessments' && (
-                    <div className="w-full h-full overflow-y-auto">
-                      <Assessments 
-                        token={token} 
-                        assessments={getFilteredAssessments()} 
-                        courses={courses} 
-                        fetchAssessments={fetchAssessments} 
-                        externalAddTrigger={addAssessmentTrigger} 
-                        viewAssessment={viewAssessment} 
-                        setViewAssessment={setViewAssessment} 
-                      />
-                    </div>
-                  )}
-                  
+
+
                   {activeTab === 'Datesheet' && activeExams.length > 0 && (
                     <div className="w-full h-full">
                       <Datesheet exams={activeExams} />
@@ -823,7 +756,7 @@ function AppLayout() {
                   )}
 
                   {['Announcements', 'Attendance', 'Submissions'].includes(activeTab) && <div className="w-full h-full"><CoursePortalView activeTab={activeTab} courses={courses} /></div>}
-                  {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>}
+                  {activeTab.startsWith('Cash-') && <div className="w-full h-full"><CashManager activeTab={activeTab} filters={filters} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>}
                   {activeTab === 'Bin' && <div className="w-full h-full"><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>}
                   {activeTab === 'Admin' && <div className="w-full h-full"><AdminDashboard currentUser={user} /></div>}
                   {activeTab === 'Profile' && <div className="w-full h-full"><MyProfile user={user} onUpdateProfilePic={handleUpdateProfilePic} /></div>}
@@ -879,10 +812,10 @@ function AppLayout() {
                       <div className="absolute inset-0 border-2 border-blue-500/20 rounded-full animate-ping"></div>
                       <Shield size={40} className="text-blue-500" />
                     </div>
-                    
+
                     <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">Session Locked</h2>
                     <p className="text-gray-500 dark:text-gray-400 mb-10 max-w-xs leading-relaxed">Your account has been secured due to inactivity. Click below to resume your workspace.</p>
-                    
+
                     <div className="w-full space-y-4">
                       <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-[#252525] rounded-2xl border border-gray-100 dark:border-[#333] mb-8">
                         {user?.profilePic ? (
@@ -896,7 +829,7 @@ function AppLayout() {
                         </div>
                       </div>
 
-                      <button 
+                      <button
                         onClick={() => setIsLocked(false)}
                         className="w-full py-4 bg-brand-blue hover:bg-blue-600 text-white font-bold rounded-2xl shadow-xl shadow-blue-500/25 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
                       >
@@ -904,7 +837,7 @@ function AppLayout() {
                         Unlock Workspace
                       </button>
 
-                      <button 
+                      <button
                         onClick={handleLogout}
                         className="w-full py-3 text-sm font-bold text-gray-500 hover:text-red-500 transition-colors"
                       >
@@ -926,9 +859,9 @@ function AppLayout() {
                   </div>
                   {toast.showSkip && (
                     <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#333] flex justify-end">
-                        <button onClick={skipPhase} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors bg-gray-50 dark:bg-[#252525] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#333]">
-                          <FastForward size={12} className="fill-current" /> SKIP BREAK
-                        </button>
+                      <button onClick={skipPhase} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors bg-gray-50 dark:bg-[#252525] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#333]">
+                        <FastForward size={12} className="fill-current" /> SKIP BREAK
+                      </button>
                     </div>
                   )}
                 </div>
@@ -937,7 +870,7 @@ function AppLayout() {
           ) : (
             <Navigate to="/login" replace />
           )
-        } 
+        }
       />
     </Routes>
   );
@@ -950,20 +883,20 @@ export default function App() {
   const [showSplash, setShowSplash] = React.useState(true);
 
   React.useEffect(() => {
-      const timer = setTimeout(() => {
-          setShowSplash(false);
-      }, 2500); 
-      return () => clearTimeout(timer);
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2500);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
     <Router>
       {showSplash && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black transition-opacity duration-1000">
-              <AnimatedLogo />
-          </div>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black transition-opacity duration-1000">
+          <AnimatedLogo />
+        </div>
       )}
-      <AppLayout/>
+      <AppLayout />
       <CustomToast />
     </Router>
   );

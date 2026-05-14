@@ -370,6 +370,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(initialNote?.isPrivate || false);
   
   const [isCourseDropdownOpen, setIsCourseDropdownOpen] = useState(false);
   const [isAlignDropdownOpen, setIsAlignDropdownOpen] = useState(false); 
@@ -543,7 +544,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         const activeCourse = courseId || generalCourses[0]?.id || courses[0]?.id || 'general-task';
         const contentHtml = editor.getHTML(); 
 
-        const noteData = { _id: noteIdRef.current, title: activeTitle, courseId: activeCourse, content: contentHtml, referenceFiles };
+        const noteData = { _id: noteIdRef.current, title: activeTitle, courseId: activeCourse, content: contentHtml, referenceFiles, isPrivate };
         const savedNote = await onSave(noteData, true); 
         
         if (savedNote && savedNote._id) {
@@ -664,7 +665,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     setSaveStatus('Saving...');
     const activeTitle = title.trim() || 'Untitled Note';
     const activeCourse = courseId || generalCourses[0]?.id || courses[0]?.id || 'general-task';
-    const noteData = { _id: noteIdRef.current, title: activeTitle, courseId: activeCourse, content: editor.getHTML(), referenceFiles };
+    const noteData = { _id: noteIdRef.current, title: activeTitle, courseId: activeCourse, content: editor.getHTML(), referenceFiles, isPrivate };
     await onSave(noteData, false); 
   };
 
@@ -875,6 +876,22 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
               </div>
             )}
           </div>
+
+          <button
+            onClick={() => {
+              setIsPrivate(!isPrivate);
+              setIsDirty(true);
+              setSaveStatus('Unsaved changes');
+            }}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+              isPrivate 
+                ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
+                : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#2C2C2C]'
+            }`}
+            title={isPrivate ? "Make Public" : "Make Private"}
+          >
+            {isPrivate ? 'Private' : 'Shared'}
+          </button>
 
           <button 
             onClick={() => setIsFullscreen(!isFullscreen)}

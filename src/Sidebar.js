@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History,
   GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2, Bell, ClipboardCheck, FileUp,
-  Link, Cloud, Globe, Mail, Target // <-- Added Target here for Assessments
+  Link, Cloud, Globe, Mail
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
@@ -26,7 +26,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Announcements', label: 'Announcements', icon: Bell },          
     { id: 'Attendance', label: 'Attendance', icon: ClipboardCheck },      
     { id: 'Submissions', label: 'Submissions', icon: FileUp },
-    { id: 'Assessments', label: 'Assessments', icon: Target }, // <-- NEW ADDITION            
+
     { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: History },
@@ -88,8 +88,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     if (isHabitsExpanded) setIsHabitsExpanded(false);
   };
 
-  // UPDATED: Added 'Assessments' to the active check
-  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Assessments', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
+  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
   const isCashActive = activeTab.startsWith('Cash');
   const isHabitsActive = activeTab.startsWith('Habits');
 

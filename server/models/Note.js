@@ -8,7 +8,8 @@ const noteSchema = new mongoose.Schema({
   referenceFiles: [{ fileName: String, fileUrl: String }],
   source: { type: String, enum: ['web', 'mobile'], default: 'web' },
   isDeleted: { type: Boolean, default: false },
-  deletedAt: { type: Date, default: null }
+  deletedAt: { type: Date, default: null },
+  isPrivate: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Note', noteSchema);

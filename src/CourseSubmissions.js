@@ -36,9 +36,24 @@ const CourseSubmissions = ({ submissions }) => {
     return { label: 'Active', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800', icon: Clock };
   };
 
+  const activeSubmissions = submissions.filter(task => {
+    const isExpired = new Date() > new Date(task.dueDate);
+    return !isExpired;
+  });
+
+  if (activeSubmissions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-gray-500 dark:text-gray-400 bg-white dark:bg-[#1E1E1E] border border-gray-100 dark:border-[#333] rounded-3xl shadow-sm">
+        <FileText size={48} className="opacity-20 mb-4" />
+        <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-1">No Active Submissions</h3>
+        <p className="text-sm">You are all caught up with your assignments.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5 animate-fadeIn">
-      {submissions.map((task, idx) => {
+      {activeSubmissions.map((task, idx) => {
         const status = getStatus(task.dueDate, task.status);
         const StatusIcon = status.icon;
         const timeLeft = getTimeLeft(task.dueDate);
@@ -105,16 +120,6 @@ const CourseSubmissions = ({ submissions }) => {
               
               {/* Action Buttons */}
               <div className="flex items-center gap-3 w-full lg:w-auto justify-end">
-                {attachmentLink ? (
-                  <a href={attachmentLink} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 dark:bg-[#2C2C2C] text-gray-700 dark:text-gray-200 rounded-xl text-sm font-bold hover:bg-gray-200 dark:hover:bg-[#333] transition-colors">
-                    <Download size={16} /> Attachments
-                  </a>
-                ) : (
-                  <span className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-[#1A1A1A] text-gray-400 dark:text-gray-600 rounded-xl text-sm font-bold cursor-not-allowed border border-gray-100 dark:border-[#252525]">
-                    <Download size={16} /> No File
-                  </span>
-                )}
-
                 {/* Conditional Submit Button */}
                 {isSubmitted ? (
                   <span className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 cursor-default">
@@ -125,13 +130,9 @@ const CourseSubmissions = ({ submissions }) => {
                     href={submitLink} 
                     target="_blank" 
                     rel="noreferrer"
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm ${
-                      status.label === 'Active' 
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25' 
-                        : 'bg-gray-200 dark:bg-[#333] text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-[#444]'
-                    }`}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25"
                   >
-                    <ExternalLink size={16} /> {status.label === 'Active' ? 'Submit on Portal' : 'View on Portal'}
+                    <ExternalLink size={16} /> Submit on Portal
                   </a>
                 )}
               </div>

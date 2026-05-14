@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, ChevronsUp, ChevronUp,
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
   X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle,
-  CalendarDays, Archive, CheckSquare as CheckSquareIcon
+  CalendarDays, Archive, CheckSquare as CheckSquareIcon, Lock, Globe, Shield
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 import EmptyState from './EmptyState';
@@ -90,7 +90,7 @@ const getStatusConfig = (s) => {
   switch (s) {
     case 'Scheduled': return { icon: CalendarIcon, color: 'text-gray-500 dark:text-gray-400', label: s };
     case 'In Progress': return { icon: Clock, color: 'text-yellow-600 dark:text-yellow-500', label: s };
-    case 'New task': return { icon: Mail, color: 'text-blue-600 dark:text-blue-400', label: 'New task' };
+    case 'New task':
     case 'New Assigned': return { icon: Mail, color: 'text-blue-600 dark:text-blue-400', label: 'New task' };
     case 'Completed': return { icon: CheckCircle2, color: 'text-green-600 dark:text-green-500', label: s };
     default: return { icon: CheckCircle2, color: 'text-gray-400', label: s };
@@ -103,47 +103,49 @@ const CourseIcon = ({ type, name }) => {
   return <Book size={18} className="text-gray-400" />;
 };
 
-// --- REUSABLE DROPDOWN FOR MODAL EDITING ---
-const ModalDropdown = ({ value, options, onChange, getConfig, placeholder }) => {
+// --- REUSABLE GENERIC DROPDOWN ---
+const EditDropdown = ({ value, options, onChange, getConfig, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
-  
+
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false);
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const currentConfig = getConfig ? getConfig(value) : null;
+  const currentConfig = getConfig ? getConfig(value) : { color: 'text-gray-700 dark:text-gray-200' };
   const CurrentIcon = currentConfig?.icon;
 
   return (
     <div className="relative w-full flex-1" ref={dropdownRef}>
-      <button 
-        onClick={() => setIsOpen(!isOpen)} 
-        className="w-full flex items-center justify-between bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-xs text-left transition-all focus:border-brand-blue outline-none"
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1.5 text-xs text-left transition-all focus:border-brand-blue outline-none"
       >
-        <span className={`flex items-center gap-2 truncate font-medium ${currentConfig?.color || 'text-gray-700 dark:text-gray-200'}`}>
-          {CurrentIcon && <CurrentIcon size={14} />} 
+        <span className={`flex items-center gap-2 truncate font-medium ${currentConfig?.color}`}>
+          {CurrentIcon && <CurrentIcon size={14} />}
           {value || placeholder}
         </span>
         <ChevronDown size={12} className="text-gray-400" />
       </button>
-      
+
       {isOpen && (
         <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 overflow-hidden max-h-40 overflow-y-auto custom-scrollbar">
           {options.map(opt => {
-            const config = getConfig ? getConfig(opt) : null;
+            const config = getConfig ? getConfig(opt) : { color: 'text-gray-700 dark:text-gray-200' };
             const Icon = config?.icon;
             return (
-              <div 
-                key={opt} 
-                onClick={() => { onChange(opt); setIsOpen(false); }} 
-                className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs ${config?.color || 'text-gray-700 dark:text-gray-200'}`}
+              <div
+                key={opt}
+                onClick={() => { onChange(opt); setIsOpen(false); }}
+                className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs ${config?.color}`}
               >
-                {Icon && <Icon size={14} />} 
+                {Icon && <Icon size={14} />}
                 <span>{opt}</span>
               </div>
             );
@@ -154,25 +156,83 @@ const ModalDropdown = ({ value, options, onChange, getConfig, placeholder }) => 
   );
 };
 
-// --- FULLY UPGRADED TASK SUMMARY MODAL ---
-const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
+// --- ADVANCED COURSE DROPDOWN ---
+const ModalCourseDropdown = ({ value, courses, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const uniCourses = courses?.filter(c => c.type === 'uni') || [];
+  const genCourses = courses?.filter(c => c.type !== 'uni') || [];
+
+  return (
+    <div className="relative w-full flex-1" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1.5 text-xs text-left transition-all focus:border-brand-blue outline-none"
+      >
+        <span className="flex items-center gap-2 truncate font-medium text-gray-700 dark:text-gray-200">
+          {value === 'Event' ? <CalendarDays size={14} className="text-rose-500" /> : (value ? <Book size={14} className="text-brand-blue" /> : <Book size={14} className="text-gray-400" />)}
+          {value || "Select Course"}
+        </span>
+        <ChevronDown size={12} className="text-gray-400" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-[150] overflow-hidden max-h-56 overflow-y-auto custom-scrollbar flex flex-col">
+          <div onClick={() => { onChange('Event'); setIsOpen(false); }} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs flex items-center gap-2 text-rose-600 dark:text-rose-500 font-medium shrink-0">
+            <CalendarDays size={14} /> Event
+          </div>
+
+          {uniCourses.length > 0 && (
+            <div className="shrink-0">
+              <div className="px-3 py-1.5 bg-gray-100 dark:bg-[#222] text-[10px] font-bold text-gray-500 uppercase tracking-wider border-y border-gray-200 dark:border-[#333] sticky top-0 z-10">University</div>
+              {uniCourses.map(c => (
+                <div key={c.id || c.name} onClick={() => { onChange(c.name); setIsOpen(false); }} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                  <UCPLogo className="w-3.5 h-3.5 text-blue-600 fill-current" /> <span className="truncate">{c.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {genCourses.length > 0 && (
+            <div className="shrink-0">
+              <div className="px-3 py-1.5 bg-gray-100 dark:bg-[#222] text-[10px] font-bold text-gray-500 uppercase tracking-wider border-y border-gray-200 dark:border-[#333] sticky top-0 z-10">General</div>
+              {genCourses.map(c => (
+                <div key={c.id || c.name} onClick={() => { onChange(c.name); setIsOpen(false); }} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                  <Book size={14} className="text-gray-400" /> <span className="truncate">{c.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- FULLY UPGRADED TASK SUMMARY MODAL (SLIDE-IN) ---
+const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [includeTime, setIncludeTime] = useState(false);
-  
+
   const [form, setForm] = useState({
-    name: '', description: '', date: '', time: '', priority: '', status: '', course: ''
+    name: '', description: '', date: '', time: '', priority: '', status: '', course: '', isPrivate: false
   });
 
   useEffect(() => {
     if (task) {
       setForm({
-        name: task.name || '',
-        description: task.description || '',
-        date: task.date || '',
-        time: task.time || '',
-        priority: task.priority || 'Medium',
-        status: task.status || 'New task',
-        course: task.course || ''
+        name: task.name || '', description: task.description || '', date: task.date || '',
+        time: task.time || '', priority: task.priority || 'Medium', status: task.status || 'New task',
+        course: task.course || '', isPrivate: task.isPrivate || false
       });
       setIncludeTime(!!task.time);
       setIsEditing(false);
@@ -185,16 +245,20 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
     if (form.name.trim() !== task.name) onUpdate(task.id, 'name', form.name);
     if (form.description.trim() !== task.description) onUpdate(task.id, 'description', form.description);
     if (form.date !== task.date) onUpdate(task.id, 'date', form.date);
-    
+
     const timeToSave = includeTime ? form.time : null;
     if (timeToSave !== task.time) onUpdate(task.id, 'time', timeToSave);
 
     if (form.priority !== task.priority) onUpdate(task.id, 'priority', form.priority);
     if (form.status !== task.status) onUpdate(task.id, 'status', form.status);
     if (form.course !== task.course) onUpdate(task.id, 'course', form.course);
-    
+    if (form.isPrivate !== task.isPrivate) onUpdate(task.id, 'isPrivate', form.isPrivate);
+
     setIsEditing(false);
   };
+
+  const isOwner = task?.userId ? (typeof task.userId === 'object' ? task.userId._id === user?.id : task.userId === user?.id) : true;
+  const canEdit = isOwner || user?.isAdmin;
 
   const showTimeCell = isEditing ? includeTime : !!task.time;
   const pConfig = getPriorityConfig(task.priority);
@@ -203,25 +267,11 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
   const courseType = currentCourse ? currentCourse.type : (task.course === 'Event' ? 'event' : 'general');
   const statusConfig = getStatusConfig(task.status);
   const StatusIcon = statusConfig.icon;
-  const courseOptions = ['Event', ...courses.map(c => c.name)];
-
-  // Helper to get Course Icons inside the generic ModalDropdown
-  const getCourseConfig = (courseName) => {
-    if (courseName === 'Event') return { icon: CalendarDays, color: 'text-rose-500' };
-    const courseObj = courses.find(c => c.name === courseName);
-    if (courseObj?.type === 'uni') {
-      return { 
-        icon: () => <UCPLogo className="w-3.5 h-3.5 fill-current" />, 
-        color: 'text-blue-600 dark:text-blue-400' 
-      };
-    }
-    return { icon: Book, color: 'text-gray-500 dark:text-gray-400' };
-  };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] animate-slideUp overflow-hidden flex flex-col max-h-[90vh]">
-        
+    <div className="fixed inset-0 z-[100] flex justify-end bg-black/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md h-full shadow-2xl overflow-hidden border-l border-gray-200 dark:border-[#2C2C2C] animate-slideInRight flex flex-col">
+
         <style>{`
           .custom-scrollbar-modal::-webkit-scrollbar { width: 6px; height: 6px; }
           .custom-scrollbar-modal::-webkit-scrollbar-track { background: transparent; }
@@ -231,30 +281,54 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
           .dark .custom-scrollbar-modal::-webkit-scrollbar-thumb:hover { background: #52525b; }
         `}</style>
 
+        {/* HEADER */}
         <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-brand-blue/10 rounded-xl"><Info className="text-brand-blue" size={20} /></div>
-            <h2 className="text-xl font-bold dark:text-white text-gray-800">Task Details</h2>
+            <div className="p-2 bg-brand-blue/10 rounded-xl">
+              <Info className="text-brand-blue" size={20} />
+            </div>
+            <h2 className="text-xl font-bold dark:text-white text-gray-800">
+              {isEditing ? 'Edit Task' : 'Task Summary'}
+            </h2>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={isEditing ? handleSave : () => setIsEditing(true)} className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${isEditing ? 'bg-brand-blue text-white hover:bg-blue-600' : 'bg-gray-100 dark:bg-[#333] text-gray-500 dark:text-gray-400 hover:text-brand-blue'}`}>
-              {isEditing ? <><Save size={14} /> Save</> : <><Edit2 size={14} /> Edit</>}
+          <div className="flex gap-2">
+            <button
+              onClick={isEditing ? handleSave : () => setIsEditing(true)}
+              className={`p-2 rounded-full transition-colors flex items-center justify-center ${isEditing ? 'bg-brand-blue text-white hover:bg-blue-600' : 'hover:bg-gray-100 dark:hover:bg-[#2C2C2C] text-gray-500 dark:text-gray-400'}`}
+              title={isEditing ? "Save Changes" : "Edit Task"}
+            >
+              {isEditing ? <Save size={18} /> : <Edit2 size={18} />}
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-full transition-colors text-gray-400"><X size={20} /></button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-full transition-colors text-gray-500 dark:text-gray-400">
+              <X size={20} />
+            </button>
           </div>
         </div>
 
+        {/* CONTENT */}
         <div className="p-8 overflow-y-auto custom-scrollbar-modal">
+
+          {/* TITLE & DESCRIPTION */}
           <div className="mb-8">
             {isEditing ? (
               <div className="space-y-4">
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Task Title</label>
-                  <input type="text" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} className="w-full text-2xl font-extrabold bg-transparent border-b border-gray-300 dark:border-[#333] focus:border-brand-blue text-gray-900 dark:text-white outline-none py-1" />
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="w-full text-2xl font-extrabold bg-transparent border-b border-gray-300 dark:border-[#333] focus:border-brand-blue text-gray-900 dark:text-white outline-none py-1"
+                  />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Description</label>
-                  <textarea value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} rows={4} className="w-full text-sm leading-relaxed bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#2C2C2C] rounded-xl p-3 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-brand-blue outline-none resize-none custom-scrollbar-modal" />
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    rows={6}
+                    className="w-full text-sm leading-relaxed bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#2C2C2C] rounded-xl p-3 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-brand-blue outline-none resize-none custom-scrollbar-modal"
+                  />
                 </div>
               </div>
             ) : (
@@ -268,19 +342,22 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
             )}
           </div>
 
+          {/* INFO GRID */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 pt-6 border-t border-gray-100 dark:border-[#2C2C2C]">
+
+            {/* LEFT COLUMN */}
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <CalendarIcon size={16} className="text-gray-400 shrink-0" /> 
-                <span className="text-gray-500 w-20 shrink-0 font-bold text-[10px] uppercase tracking-wider">Created</span>
+                <CalendarIcon size={16} className="text-gray-400 shrink-0" />
+                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Created</span>
                 <span className="dark:text-gray-200 font-medium">{new Date(task.createdAt || Date.now()).toLocaleDateString()}</span>
               </div>
-              
+
               <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <CalendarIcon className="text-brand-pink shrink-0" size={16} /> 
-                <span className="text-gray-500 w-20 shrink-0 font-bold text-[10px] uppercase tracking-wider">Due Date</span>
+                <CalendarIcon className="text-brand-pink shrink-0" size={16} />
+                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Due Date</span>
                 {isEditing ? (
-                  <input type="date" value={form.date} onChange={(e) => setForm({...form, date: e.target.value})} className="flex-1 bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue dark:text-white dark:[color-scheme:dark]" />
+                  <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="flex-1 bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue dark:text-white dark:[color-scheme:dark]" />
                 ) : (
                   <span className="dark:text-gray-200 font-medium">{task.date || "No date set"}</span>
                 )}
@@ -289,12 +366,12 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
               {(showTimeCell || isEditing) && (
                 <div className="flex items-center gap-3 text-sm min-h-[32px]">
                   <Clock className="text-purple-500 shrink-0" size={16} />
-                  <span className="text-gray-500 w-20 shrink-0 font-bold text-[10px] uppercase tracking-wider">Time</span>
+                  <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Time</span>
                   {isEditing ? (
                     includeTime ? (
                       <div className="flex items-center gap-2 flex-1">
-                        <input type="time" value={form.time} onChange={(e) => setForm({...form, time: e.target.value})} className="flex-1 bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue dark:text-white dark:[color-scheme:dark]" />
-                        <button onClick={() => { setIncludeTime(false); setForm({...form, time: ''}); }} className="text-[10px] text-red-500 hover:underline font-bold">Remove</button>
+                        <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} className="flex-1 bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue dark:text-white dark:[color-scheme:dark]" />
+                        <button onClick={() => { setIncludeTime(false); setForm({ ...form, time: '' }); }} className="text-[10px] text-red-500 hover:underline font-bold">Remove</button>
                       </div>
                     ) : (
                       <button onClick={() => setIncludeTime(true)} className="text-xs text-brand-blue font-bold hover:underline py-1 px-2 bg-blue-50 dark:bg-blue-900/20 rounded">+ Add Time</button>
@@ -304,43 +381,63 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
                   )}
                 </div>
               )}
+
+              {/* PRIVACY TOGGLE */}
+              {canEdit && (
+                <div className="flex items-center gap-3 text-sm min-h-[32px]">
+                  <Shield className="text-indigo-500 shrink-0" size={16} />
+                  <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Privacy</span>
+                  {isEditing ? (
+                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setForm({ ...form, isPrivate: !form.isPrivate })}>
+                      <input type="checkbox" checked={form.isPrivate || false} onChange={e => setForm({ ...form, isPrivate: e.target.checked })} className="w-4 h-4 cursor-pointer" />
+                      <span className="text-xs text-gray-700 dark:text-gray-300">Make Private</span>
+                    </div>
+                  ) : (
+                    <span className="dark:text-gray-200 font-medium">{task.isPrivate ? "Private" : "Shared"}</span>
+                  )}
+                </div>
+              )}
             </div>
 
+            {/* RIGHT COLUMN */}
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <Flag size={16} className="text-orange-500 shrink-0" /> 
-                <span className="text-gray-500 w-20 shrink-0 font-bold text-[10px] uppercase tracking-wider">Priority</span>
+                <Flag size={16} className="text-orange-500 shrink-0" />
+                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Priority</span>
                 {isEditing ? (
-                  <ModalDropdown value={form.priority} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => setForm({...form, priority: val})} getConfig={getPriorityConfig} />
+                  <EditDropdown value={form.priority} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => setForm({ ...form, priority: val })} getConfig={getPriorityConfig} />
                 ) : (
                   <span className={`font-medium flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs bg-gray-50 dark:bg-[#2C2C2C] ${pConfig.color}`}><PriorityIcon size={14} /> {task.priority}</span>
                 )}
               </div>
-              
+
               <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <Book size={16} className="text-brand-blue shrink-0" /> 
-                <span className="text-gray-500 w-20 shrink-0 font-bold text-[10px] uppercase tracking-wider">Course</span>
+                <Book size={16} className="text-brand-blue shrink-0" />
+                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Course</span>
                 {isEditing ? (
-                  <ModalDropdown value={form.course} options={courseOptions} onChange={(val) => setForm({...form, course: val})} getConfig={getCourseConfig} placeholder="Select Course" />
+                  <ModalCourseDropdown value={form.course} courses={courses} onChange={(val) => setForm({ ...form, course: val })} />
                 ) : (
                   <span className="dark:text-gray-200 font-medium flex items-center gap-1.5 truncate" title={task.course}><CourseIcon type={courseType} name={task.course} /> {task.course}</span>
                 )}
               </div>
 
               <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                 <CheckCircle2 className="text-green-500 shrink-0" size={16} />
-                 <span className="text-gray-500 w-20 shrink-0 font-bold text-[10px] uppercase tracking-wider">Status</span>
-                 {isEditing ? (
-                   <ModalDropdown value={form.status} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => setForm({...form, status: val})} getConfig={getStatusConfig} />
-                 ) : (
-                   <span className={`font-medium flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs bg-gray-50 dark:bg-[#2C2C2C] ${statusConfig.color}`}><StatusIcon size={14} /> {task.status}</span>
-                 )}
-               </div>
+                <CheckCircle2 className="text-green-500 shrink-0" size={16} />
+                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Status</span>
+                {isEditing ? (
+                  <EditDropdown value={form.status} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => setForm({ ...form, status: val })} getConfig={getStatusConfig} />
+                ) : (
+                  <span className={`font-medium flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs bg-gray-50 dark:bg-[#2C2C2C] ${statusConfig.color}`}><StatusIcon size={14} /> {task.status}</span>
+                )}
+              </div>
             </div>
           </div>
 
+          {/* SUB-TASKS SUMMARY */}
           <div className="bg-gray-50 dark:bg-[#181818] p-6 rounded-2xl border border-gray-100 dark:border-[#2C2C2C]">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Sub Tasks</h3>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <CheckSquare size={16} /> Sub Tasks
+            </h3>
             <div className="space-y-3">
               {task.subTasks?.map((sub, i) => (
                 <div key={i} className="flex items-center gap-3 text-sm">
@@ -357,7 +454,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate }) => {
   );
 };
 
-const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
+const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [showActive, setShowActive] = useState(true);
@@ -366,12 +463,26 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
   const [newSubTask, setNewSubTask] = useState({});
   const [showArchived, setShowArchived] = useState(false);
 
+  const [viewMode, setViewMode] = useState('private');
+  const [sharedTasks, setSharedTasks] = useState([]);
+
+  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+  useEffect(() => {
+    if (viewMode === 'shared' && user?.isAdmin) {
+      fetch(`${API_BASE}/api/admin/shared/tasks`, { headers: { 'x-auth-token': localStorage.getItem('token') } })
+        .then(res => res.json())
+        .then(data => setSharedTasks(data.map(t => ({ ...t, id: t._id }))));
+    }
+  }, [viewMode, tasks, user]);
+
   useEffect(() => {
     if (selectedTask) {
-      const updated = tasks.find(t => t.id === selectedTask.id);
+      const source = viewMode === 'shared' ? sharedTasks : tasks;
+      const updated = source.find(t => t.id === selectedTask.id);
       if (updated) setSelectedTask(updated);
     }
-  }, [tasks, selectedTask]);
+  }, [tasks, sharedTasks, selectedTask, viewMode]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -381,6 +492,11 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const handleUpdateTask = (id, field, value) => {
+    updateTask(id, field, value);
+    setSharedTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+  };
+
   const toggleExpand = (e, taskId) => {
     e.stopPropagation();
     setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
@@ -388,25 +504,28 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
 
   const handleAddSubTask = (taskId, text) => {
     if (!text.trim()) return;
-    const task = tasks.find(t => t.id === taskId);
+    const source = viewMode === 'shared' ? sharedTasks : tasks;
+    const task = source.find(t => t.id === taskId);
     const subTasks = [...(task.subTasks || []), { text, completed: false }];
-    updateTask(taskId, 'subTasks', subTasks);
+    handleUpdateTask(taskId, 'subTasks', subTasks);
     setNewSubTask(prev => ({ ...prev, [taskId]: '' }));
   };
 
   const handleDeleteSubTask = (taskId, index) => {
-    const task = tasks.find(t => t.id === taskId);
+    const source = viewMode === 'shared' ? sharedTasks : tasks;
+    const task = source.find(t => t.id === taskId);
     const updatedSubTasks = [...task.subTasks];
     updatedSubTasks.splice(index, 1);
-    updateTask(taskId, 'subTasks', updatedSubTasks);
+    handleUpdateTask(taskId, 'subTasks', updatedSubTasks);
   };
 
   const toggleSubTask = (e, taskId, index) => {
     e.stopPropagation();
-    const task = tasks.find(t => t.id === taskId);
+    const source = viewMode === 'shared' ? sharedTasks : tasks;
+    const task = source.find(t => t.id === taskId);
     const subTasks = [...task.subTasks];
     subTasks[index].completed = !subTasks[index].completed;
-    updateTask(taskId, 'subTasks', subTasks);
+    handleUpdateTask(taskId, 'subTasks', subTasks);
   };
 
   const sortTasks = (taskList) => {
@@ -424,8 +543,13 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
     return courses.some(c => c.name === t.course) || t.course === 'Event';
   };
 
-  const currentTasks = tasks.filter(isTaskCurrent);
-  const archivedTasks = tasks.filter(t => !isTaskCurrent(t));
+  // If Admin, ONLY show explicitly private tasks in 'My Workspace'
+  const activeSource = viewMode === 'shared'
+    ? sharedTasks
+    : tasks.filter(t => !user?.isAdmin || t.isPrivate === true);
+
+  const currentTasks = activeSource.filter(isTaskCurrent);
+  const archivedTasks = activeSource.filter(t => !isTaskCurrent(t));
 
   const activeTasks = sortTasks(currentTasks.filter(t => t.status !== 'Completed'));
   const completedTasks = sortTasks(currentTasks.filter(t => t.status === 'Completed'));
@@ -446,15 +570,22 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
       <div key={task.id} className="border-b border-gray-200 dark:border-[#2C2C2C]">
         <div onClick={() => setSelectedTask(task)} className={`group flex items-center py-3 px-0 transition-all cursor-pointer ${isCompleted ? 'bg-gray-50 dark:bg-[#121212]' : 'bg-white dark:bg-[#181818] hover:bg-gray-50 dark:hover:bg-[#202020]'}`}>
           <div className={`${COL.name} flex items-center gap-2 text-sm font-medium ${isCompleted ? 'line-through text-gray-500' : 'text-gray-800 dark:text-white'}`}>
-            <button onClick={(e) => toggleExpand(e, task.id)} className="text-gray-400 hover:text-brand-blue">
+            <button onClick={(e) => toggleExpand(e, task.id)} className="text-gray-400 hover:text-brand-blue shrink-0">
               {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
-            <span className="truncate">{task.name}</span>
-            {totalCount > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 rounded-md font-bold ml-1">{completedCount}/{totalCount}</span>}
+            <div className="flex flex-col truncate">
+              <div className="flex items-center gap-2">
+                <span className="truncate">{task.name}</span>
+                {totalCount > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 rounded-md font-bold shrink-0">{completedCount}/{totalCount}</span>}
+              </div>
+              {viewMode === 'shared' && task.userId && (
+                <span className="text-[10px] text-blue-500 font-bold truncate">By {task.userId?.name}</span>
+              )}
+            </div>
           </div>
 
           <div className={COL.status} onClick={(e) => e.stopPropagation()}>
-            <Dropdown id={`${task.id}-status`} value={isCompleted ? "Completed" : statusConfig.label} icon={statusConfig.icon} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => updateTask(task.id, 'status', val)} colorClass={isCompleted ? 'text-green-600 dark:text-green-500' : statusConfig.color} getOptionConfig={getStatusConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
+            <Dropdown id={`${task.id}-status`} value={isCompleted ? "Completed" : statusConfig.label} icon={statusConfig.icon} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => handleUpdateTask(task.id, 'status', val)} colorClass={isCompleted ? 'text-green-600 dark:text-green-500' : statusConfig.color} getOptionConfig={getStatusConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
           </div>
 
           <div className={COL.course} onClick={(e) => e.stopPropagation()}>
@@ -471,7 +602,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
 
               {openDropdownId === `${task.id}-course` && (
                 <div className="absolute top-full left-0 mt-1 w-[200px] bg-white dark:bg-[#1E1E1E] rounded-xl shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-[100] animate-fadeIn py-1">
-                  <div onClick={() => { updateTask(task.id, 'course', 'Event'); setOpenDropdownId(null); }} className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-3 text-rose-600 dark:text-rose-500 font-medium">
+                  <div onClick={() => { handleUpdateTask(task.id, 'course', 'Event'); setOpenDropdownId(null); }} className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-3 text-rose-600 dark:text-rose-500 font-medium">
                     <CalendarDays size={16} /> <span>Event</span>
                   </div>
 
@@ -483,8 +614,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                     <div className="hidden group-hover/uni:block absolute right-full top-0 w-[240px] pr-1 z-[110]">
                       <div className="bg-white dark:bg-[#1E1E1E] rounded-xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] max-h-[250px] overflow-y-auto custom-scrollbar py-1">
                         {uniCourses.length > 0 ? uniCourses.map((c) => (
-                          <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-3" title={c.name}>
-                            <UCPLogo className="w-5 h-5 text-blue-600 shrink-0" /> 
+                          <div key={c.id || c._id || c.name} onClick={() => { handleUpdateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-3" title={c.name}>
+                            <UCPLogo className="w-5 h-5 text-blue-600 shrink-0" />
                             <div className="flex flex-col overflow-hidden w-full">
                               <span className="font-bold text-xs text-gray-800 dark:text-gray-200 truncate">{getAbbreviation(c.name)}</span>
                               <span className="text-[10px] text-gray-400 truncate">{c.name}</span>
@@ -503,8 +634,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                     <div className="hidden group-hover/gen:block absolute right-full top-0 w-[240px] pr-1 z-[110]">
                       <div className="bg-white dark:bg-[#1E1E1E] rounded-xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] max-h-[250px] overflow-y-auto custom-scrollbar py-1">
                         {generalCourses.length > 0 ? generalCourses.map((c) => (
-                          <div key={c.id || c._id || c.name} onClick={() => { updateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-3" title={c.name}>
-                            <Book size={16} className="text-gray-400 shrink-0" /> 
+                          <div key={c.id || c._id || c.name} onClick={() => { handleUpdateTask(task.id, 'course', c.name); setOpenDropdownId(null); }} className="px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-3" title={c.name}>
+                            <Book size={16} className="text-gray-400 shrink-0" />
                             <div className="flex flex-col overflow-hidden w-full">
                               <span className="font-bold text-xs text-gray-800 dark:text-gray-200 truncate">{getAbbreviation(c.name)}</span>
                               <span className="text-[10px] text-gray-400 truncate">{c.name}</span>
@@ -520,14 +651,14 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
           </div>
 
           <div className={COL.date} onClick={(e) => e.stopPropagation()}>
-            <DateCell date={task.date} time={task.time} onChange={(val) => updateTask(task.id, 'date', val)} />
+            <DateCell date={task.date} time={task.time} onChange={(val) => handleUpdateTask(task.id, 'date', val)} />
           </div>
 
           <div className={`${COL.priority} flex items-center justify-between pr-4`} onClick={(e) => e.stopPropagation()}>
             <div className="flex-1">
-              <Dropdown id={`${task.id}-priority`} value={task.priority} icon={priorityConfig.icon} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => updateTask(task.id, 'priority', val)} colorClass={`font-medium ${priorityConfig.color}`} getOptionConfig={getPriorityConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
+              <Dropdown id={`${task.id}-priority`} value={task.priority} icon={priorityConfig.icon} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => handleUpdateTask(task.id, 'priority', val)} colorClass={`font-medium ${priorityConfig.color}`} getOptionConfig={getPriorityConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
             </div>
-            <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }} className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+            <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id); setSharedTasks(prev => prev.filter(t => t.id !== task.id)); }} className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
           </div>
         </div>
 
@@ -556,6 +687,13 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
 
   return (
     <div className="p-4 md:p-8 w-full animate-fadeIn pb-10">
+      {user?.isAdmin && (
+        <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl mb-6 w-max shrink-0 border border-gray-200 dark:border-[#333]">
+          <button onClick={() => setViewMode('private')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
+          <button onClick={() => setViewMode('shared')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Shared Hub</button>
+        </div>
+      )}
+
       <div className="mb-6">
         <button onClick={() => setShowActive(!showActive)} className="flex items-center gap-2 mb-3 group focus:outline-none">
           {showActive ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
@@ -573,9 +711,9 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
                 <div className={COL.date}>Due date</div>
                 <div className={COL.priority}>Priority</div>
 
-                </div>
+              </div>
               {activeTasks.length > 0 ? activeTasks.map(task => renderRow(task, false)) : (
-                <EmptyState 
+                <EmptyState
                   icon={CheckSquareIcon}
                   title="No active tasks"
                   message="You're all caught up! Enjoy your free time or add a new task."
@@ -627,7 +765,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask }) => {
         </div>
       )}
 
-      <TaskSummaryModal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} task={selectedTask} courses={courses} onUpdate={updateTask} />
+      <TaskSummaryModal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} task={selectedTask} courses={courses} onUpdate={handleUpdateTask} user={user} />
     </div>
   );
 };

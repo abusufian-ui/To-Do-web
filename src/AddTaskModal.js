@@ -20,6 +20,7 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initia
   const [priority, setPriority] = useState('Medium');
   const [subTasks, setSubTasks] = useState([]);
   const [subTaskInput, setSubTaskInput] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   
   const [showCourseList, setShowCourseList] = useState(false);
   const [errors, setErrors] = useState({}); 
@@ -174,7 +175,7 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initia
       return;
     }
 
-    onSave({ name, description, course, date, time: timeValue, priority, status, subTasks });
+    onSave({ name, description, course, date, time: timeValue, priority, status, subTasks, isPrivate });
     resetForm();
     onClose();
   };
@@ -182,6 +183,7 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initia
   const resetForm = () => {
     setName(''); setDescription(''); setCourse(''); setStatus('New task'); 
     setDate(''); setIncludeTime(false); setTime(''); setPriority('Medium'); setSubTasks([]);
+    setIsPrivate(false);
     setErrors({});
   };
 
@@ -365,6 +367,19 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initia
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-2"><AlignLeft size={14} /> Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add project details..." rows="2" className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#2C2C2C] rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none resize-none" />
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#121212] rounded-xl border border-gray-100 dark:border-[#2C2C2C]">
+            <div>
+              <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2"><AlertCircle size={16} className="text-blue-500" /> Make Private</p>
+              <p className="text-[10px] text-gray-500 mt-1">If enabled, this task will not be visible to other admins in the Shared Resources portal.</p>
+            </div>
+            <button 
+              onClick={() => setIsPrivate(!isPrivate)}
+              className={`w-12 h-6 rounded-full p-1 transition-colors relative flex items-center ${isPrivate ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+            >
+              <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${isPrivate ? 'translate-x-6' : 'translate-x-0'}`} />
+            </button>
           </div>
 
           <div className="pt-4 border-t border-gray-100 dark:border-[#2C2C2C]">

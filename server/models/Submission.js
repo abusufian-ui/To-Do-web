@@ -5,15 +5,17 @@ const submissionSchema = new mongoose.Schema({
     courseUrl: { type: String, required: true },
     courseName: { type: String, required: true },
     tasks: [{
-    title: String,
-    description: String,
-    startDate: String,
-    dueDate: String,
-    status: { type: String, default: 'Pending' },
-    attachmentUrl: String,  // <-- ADD THIS
-    submissionUrl: String   // <-- ADD THIS
-}],
+        title: String,
+        description: String,
+        startDate: String,
+        dueDate: String,
+        status: { type: String, default: 'Pending' },
+        attachmentUrl: String,
+        submissionUrl: String
+    }],
     lastUpdated: { type: Date, default: Date.now }
 });
+
+submissionSchema.index({ userId: 1, courseUrl: 1 }, { unique: true });
 
 module.exports = mongoose.model('Submission', submissionSchema);

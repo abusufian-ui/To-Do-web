@@ -7,6 +7,7 @@ const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [courseName, setCourseName] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   
   const [mediaFiles, setMediaFiles] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -83,6 +84,7 @@ const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
     formData.append('title', title);
     formData.append('courseName', courseName || 'General');
     formData.append('content', content);
+    formData.append('isPrivate', isPrivate);
 
     mediaFiles.forEach((m) => {
       formData.append('files', m.file);
@@ -94,6 +96,7 @@ const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
     setTitle('');
     setContent('');
     setCourseName('');
+    setIsPrivate(false);
     setMediaFiles([]);
     setIsSubmitting(false);
     onClose();
@@ -199,6 +202,19 @@ const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#2C2C2C] rounded-xl border border-gray-200 dark:border-[#3E3E3E]">
+            <div>
+              <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">Make Private</p>
+              <p className="text-[10px] text-gray-500 mt-1">If enabled, this keynote will not be visible to other admins.</p>
+            </div>
+            <button 
+              onClick={() => setIsPrivate(!isPrivate)}
+              className={`w-12 h-6 rounded-full p-1 transition-colors relative flex items-center ${isPrivate ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+            >
+              <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${isPrivate ? 'translate-x-6' : 'translate-x-0'}`} />
+            </button>
           </div>
         </div>
 

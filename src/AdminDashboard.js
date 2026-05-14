@@ -8,7 +8,6 @@ import { ToastConfig } from './CustomToast';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// --- HELPER (Moved up so components can use it) ---
 const formatBytes = (bytes) => {
   if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
@@ -17,9 +16,6 @@ const formatBytes = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// --- COMPONENTS ---
-
-// 1. Live Line Graph Component
 const LiveGraph = ({ data, color = "#3b82f6" }) => {
   const max = 100;
   const points = data.map((val, i) => {
@@ -47,7 +43,6 @@ const LiveGraph = ({ data, color = "#3b82f6" }) => {
   );
 };
 
-// 2. Storage Bar Component
 const StorageBar = ({ label, used, total, color, percentage, icon: Icon }) => {
   const pct = percentage !== undefined ? percentage : Math.min((used / total) * 100, 100);
 
@@ -55,7 +50,7 @@ const StorageBar = ({ label, used, total, color, percentage, icon: Icon }) => {
     <div className="mb-4 last:mb-0">
       <div className="flex justify-between text-xs mb-1.5">
         <span className="text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-            {Icon && <Icon size={12} className="text-gray-400" />} {label}
+          {Icon && <Icon size={12} className="text-gray-400" />} {label}
         </span>
         <span className="text-gray-700 dark:text-gray-300 font-bold">{used} <span className="text-gray-400 dark:text-gray-600">/ {total}</span></span>
       </div>
@@ -69,17 +64,21 @@ const StorageBar = ({ label, used, total, color, percentage, icon: Icon }) => {
   );
 };
 
-// 3. User Row Component
 const UserRow = ({ u, onInitiateDelete, isSuperAdmin, onToggleRole }) => {
   const superAdminEmail = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
   const isTargetSuperAdmin = u.email.toLowerCase() === superAdminEmail.toLowerCase();
+  const profileImg = u.originalPortalProfilePic || u.portalProfilePic || u.profilePic;
 
   return (
     <tr className="hover:bg-gray-50 dark:hover:bg-[#1c1c1f] transition-colors group border-b border-gray-100 dark:border-[#27272a]">
       <td className="px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-900 flex items-center justify-center text-gray-700 dark:text-white font-bold text-lg shadow-sm">
-            {u.name.charAt(0).toUpperCase()}
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-900 flex items-center justify-center text-gray-700 dark:text-white font-bold text-lg shadow-sm overflow-hidden">
+            {profileImg ? (
+              <img src={profileImg} alt={u.name} className="w-full h-full object-cover" />
+            ) : (
+              u.name.charAt(0).toUpperCase()
+            )}
           </div>
           <div>
             <p className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -109,33 +108,30 @@ const UserRow = ({ u, onInitiateDelete, isSuperAdmin, onToggleRole }) => {
       </td>
       <td className="px-6 py-4">
         {u.isPortalConnected ? (
-            <div className="flex flex-col">
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-200">
-                    {u.lastSyncAt 
-                        ? new Date(u.lastSyncAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) 
-                        : 'Waiting for extension...'}
-                </span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-1 uppercase tracking-wider font-bold">
-                    Extension Active
-                </span>
-            </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-gray-900 dark:text-gray-200">
+              {u.lastSyncAt
+                ? new Date(u.lastSyncAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+                : 'Waiting for extension...'}
+            </span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-1 uppercase tracking-wider font-bold">
+              Extension Active
+            </span>
+          </div>
         ) : (
-            <span className="text-sm text-gray-500 italic">No data synced</span>
+          <span className="text-sm text-gray-500 italic">No data synced</span>
         )}
       </td>
-      
-      {/* 🚨 NEW: PER-USER STORAGE COLUMN */}
       <td className="px-6 py-4">
         <div className="flex flex-col">
-            <span className="text-sm font-black text-gray-900 dark:text-white">
-                {formatBytes(u.storageUsed)}
-            </span>
-            <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider font-bold">
-                Local Footprint
-            </span>
+          <span className="text-sm font-black text-gray-900 dark:text-white">
+            {formatBytes(u.storageUsed)}
+          </span>
+          <span className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider font-bold">
+            Local Footprint
+          </span>
         </div>
       </td>
-
       <td className="px-6 py-4 text-right flex justify-end gap-2">
         {u.isAdmin ? (
           <span className="text-xs font-bold text-gray-400 dark:text-gray-600 flex items-center justify-end gap-1 px-2 py-2">
@@ -150,10 +146,9 @@ const UserRow = ({ u, onInitiateDelete, isSuperAdmin, onToggleRole }) => {
             <Trash2 size={18} />
           </button>
         )}
-        
         {isSuperAdmin && !isTargetSuperAdmin && (
           <button
-            onClick={() => onToggleRole(u._id)}
+            onClick={() => onToggleRole(u)}
             className={`p-2 rounded-lg transition-all ${u.isAdmin ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/10' : 'text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 dark:text-gray-500 dark:hover:text-yellow-500 dark:hover:bg-yellow-900/10'}`}
             title={u.isAdmin ? "Demote Admin" : "Promote to Admin"}
           >
@@ -165,21 +160,16 @@ const UserRow = ({ u, onInitiateDelete, isSuperAdmin, onToggleRole }) => {
   );
 };
 
-
-// --- MAIN DASHBOARD ---
 const AdminDashboard = ({ currentUser }) => {
   const superAdminEmail = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
   const isSuperAdmin = currentUser?.email?.toLowerCase() === superAdminEmail.toLowerCase();
   const token = localStorage.getItem('token');
 
-  // --- SECURITY PIN STATE ---
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState(['', '', '', '']);
   const [pinError, setPinError] = useState(false);
   const [isPinLoading, setIsPinLoading] = useState(false);
-  
-  const [changePinModal, setChangePinModal] = useState({ isOpen: false, step: 'otp' }); 
-  
+  const [changePinModal, setChangePinModal] = useState({ isOpen: false, step: 'otp' });
   const [otpInput, setOtpInput] = useState(['', '', '', '', '', '']);
   const [newPin, setNewPin] = useState(['', '', '', '']);
   const [modalError, setModalError] = useState('');
@@ -188,26 +178,23 @@ const AdminDashboard = ({ currentUser }) => {
   const newPinRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
   const otpRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
 
-  // --- DASHBOARD STATE ---
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [userToDelete, setUserToDelete] = useState(null);
+  const [roleToToggle, setRoleToToggle] = useState(null);
 
   const [cpuData, setCpuData] = useState(new Array(20).fill(0));
   const [memoryData, setMemoryData] = useState(new Array(20).fill(0));
-  
-  // 🚨 NEW STATES FOR METRICS
   const [realDbSize, setRealDbSize] = useState(0);
   const [totalMemory, setTotalMemory] = useState(1);
-  const [diskData, setDiskData] = useState({ used: 0, total: 30 * 1024 * 1024 * 1024 }); // Default 30GB
-
+  const [diskData, setDiskData] = useState({ used: 0, total: 30 * 1024 * 1024 * 1024 });
   const [systemHealth, setSystemHealth] = useState('Syncing...');
 
   useEffect(() => {
     if (isUnlocked) {
       fetchUsers();
-      fetchRealStats(); 
+      fetchRealStats();
       const interval = setInterval(fetchRealStats, 2000);
       return () => clearInterval(interval);
     }
@@ -230,13 +217,9 @@ const AdminDashboard = ({ currentUser }) => {
         setCpuData(prev => [...prev.slice(1), stats.cpu]);
         const memUsagePercent = (stats.memory.active / stats.memory.total) * 100;
         setMemoryData(prev => [...prev.slice(1), memUsagePercent]);
-        
         setTotalMemory(stats.memory.total);
         setRealDbSize(stats.dbSize);
-        
-        // Save Disk State
         if (stats.disk) setDiskData(stats.disk);
-
         setSystemHealth('Optimal');
       }
     } catch (e) { setSystemHealth('Offline'); }
@@ -250,22 +233,22 @@ const AdminDashboard = ({ currentUser }) => {
         headers: { 'x-auth-token': token }
       });
       setUsers(users.filter(u => u._id !== userToDelete));
-      setUserToDelete(null); 
+      setUserToDelete(null);
     } catch (error) {
       ToastConfig.show({ title: "Error", message: "Failed to delete user", type: "error" });
     }
   };
 
-  const toggleRole = async (userId) => {
-    if (!window.confirm("Are you sure you want to change this user's admin role?")) return;
+  const executeToggleRole = async () => {
+    if (!roleToToggle) return;
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${userId}/role`, {
+      const res = await fetch(`${API_BASE}/api/admin/users/${roleToToggle._id}/role`, {
         method: 'PUT',
         headers: { 'x-auth-token': token }
       });
       const data = await res.json();
       if (res.ok) {
-        setUsers(users.map(u => u._id === userId ? { ...u, isAdmin: data.isAdmin } : u));
+        setUsers(users.map(u => u._id === roleToToggle._id ? { ...u, isAdmin: data.isAdmin } : u));
         ToastConfig.show({ title: "Success", message: "User role updated", type: "success" });
       } else {
         ToastConfig.show({ title: "Error", message: data.message || "Failed to update role", type: "error" });
@@ -273,26 +256,21 @@ const AdminDashboard = ({ currentUser }) => {
     } catch (err) {
       ToastConfig.show({ title: "Error", message: "Failed to update role", type: "error" });
     }
+    setRoleToToggle(null);
   };
 
-  // --- PIN LOGIC (4 Digits) ---
   const handlePinChange = (index, value, refs, stateSetter, stateValue) => {
-    if (!/^\d*$/.test(value)) return; 
+    if (!/^\d*$/.test(value)) return;
     const newPinState = [...stateValue];
     newPinState[index] = value;
     stateSetter(newPinState);
     setPinError(false);
     setModalError('');
-
-    if (value && index < 3) {
-      refs[index + 1].current.focus();
-    }
+    if (value && index < 3) refs[index + 1].current.focus();
   };
 
   const handlePinKeyDown = (index, e, refs, stateSetter, stateValue) => {
-    if (e.key === 'Backspace' && !stateValue[index] && index > 0) {
-      refs[index - 1].current.focus();
-    }
+    if (e.key === 'Backspace' && !stateValue[index] && index > 0) refs[index - 1].current.focus();
     if (e.key === 'Enter' && index === 3 && stateValue.every(v => v !== '')) {
       if (refs === inputRefs) verifyPin(stateValue.join(''));
     }
@@ -306,37 +284,27 @@ const AdminDashboard = ({ currentUser }) => {
         headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
         body: JSON.stringify({ pin: fullPin })
       });
-      if (res.ok) {
-        setIsUnlocked(true);
-      } else {
+      if (res.ok) setIsUnlocked(true);
+      else {
         setPinError(true);
         setPinInput(['', '', '', '']);
         inputRefs[0].current.focus();
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsPinLoading(false);
-    }
+    } catch (err) { console.error(err); }
+    finally { setIsPinLoading(false); }
   };
 
-  // --- OTP LOGIC (6 Digits) ---
   const handleOtpChange = (index, value) => {
     if (!/^\d*$/.test(value)) return;
     const newOtp = [...otpInput];
     newOtp[index] = value;
     setOtpInput(newOtp);
     setModalError('');
-
-    if (value && index < 5) {
-      otpRefs[index + 1].current.focus();
-    }
+    if (value && index < 5) otpRefs[index + 1].current.focus();
   };
 
   const handleOtpKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !otpInput[index] && index > 0) {
-      otpRefs[index - 1].current.focus();
-    }
+    if (e.key === 'Backspace' && !otpInput[index] && index > 0) otpRefs[index - 1].current.focus();
   };
 
   const handleOtpPaste = (e) => {
@@ -344,9 +312,7 @@ const AdminDashboard = ({ currentUser }) => {
     const pastedData = e.clipboardData.getData('text').slice(0, 6).replace(/\D/g, '');
     if (pastedData) {
       const newOtp = [...otpInput];
-      for (let i = 0; i < pastedData.length; i++) {
-        if (i < 6) newOtp[i] = pastedData[i];
-      }
+      for (let i = 0; i < pastedData.length; i++) if (i < 6) newOtp[i] = pastedData[i];
       setOtpInput(newOtp);
       setModalError('');
       const nextFocusIndex = Math.min(pastedData.length, 5);
@@ -354,19 +320,14 @@ const AdminDashboard = ({ currentUser }) => {
     }
   };
 
-  // --- CHANGE PIN FLOW ---
   const requestChangePin = async () => {
     setModalError('');
     setOtpInput(['', '', '', '', '', '']);
     setNewPin(['', '', '', '']);
-    
     try {
       const res = await fetch(`${API_BASE}/api/admin/request-pin-otp`, { method: 'POST', headers: { 'x-auth-token': token } });
-      if (res.ok) {
-        setChangePinModal({ isOpen: true, step: 'otp' });
-      } else {
-        setModalError('Failed to send OTP.');
-      }
+      if (res.ok) setChangePinModal({ isOpen: true, step: 'otp' });
+      else setModalError('Failed to send OTP.');
     } catch (err) { console.error(err); }
   };
 
@@ -380,7 +341,6 @@ const AdminDashboard = ({ currentUser }) => {
   const confirmNewPin = async () => {
     const fullNewPin = newPin.join('');
     if (fullNewPin.length < 4) return setModalError("Please enter all 4 digits.");
-    
     setIsPinLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/admin/change-pin`, {
@@ -400,159 +360,67 @@ const AdminDashboard = ({ currentUser }) => {
     setIsPinLoading(false);
   };
 
-  // --- RENDER LOCK SCREEN ---
   if (!isUnlocked) {
     return (
       <div className="h-full w-full flex items-center justify-center bg-[#0A0A0A] relative overflow-hidden animate-fadeIn">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-900/20 rounded-full blur-[100px] animate-pulse"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-900/10 rounded-full blur-[100px] animate-pulse delay-1000"></div>
-        
         <div className={`relative z-10 w-full max-w-sm p-8 rounded-3xl bg-black/40 backdrop-blur-xl border border-[#222] shadow-2xl flex flex-col items-center transition-transform ${pinError ? 'animate-shake border-red-500/50 shadow-red-500/10' : ''}`}>
-          
-          <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mb-6 border border-red-500/20">
-            <ShieldAlert size={36} className="text-red-500" />
-          </div>
-          
+          <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mb-6 border border-red-500/20"><ShieldAlert size={36} className="text-red-500" /></div>
           <h2 className="text-2xl font-black text-white tracking-tight mb-2">Restricted Access</h2>
           <p className="text-gray-400 text-sm text-center mb-8">Enter your 4-digit security PIN to access the Admin Command Center.</p>
-          
           <div className="flex gap-4 mb-8">
             {pinInput.map((digit, i) => (
-              <input
-                key={i}
-                ref={inputRefs[i]}
-                type="password"
-                maxLength={1}
-                value={digit}
-                autoComplete="new-password"
-                name={`admin-pin-${i}`}
-                onChange={(e) => handlePinChange(i, e.target.value, inputRefs, setPinInput, pinInput)}
-                onKeyDown={(e) => handlePinKeyDown(i, e, inputRefs, setPinInput, pinInput)}
-                className={`w-14 h-16 text-center text-2xl font-black bg-[#121212] border-2 rounded-xl outline-none transition-all text-white
-                  ${digit ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#333] focus:border-red-500/50'}
-                  ${pinError ? 'border-red-600 bg-red-950/20 text-red-500' : ''}
-                `}
-                autoFocus={i === 0}
-              />
+              <input key={i} ref={inputRefs[i]} type="password" maxLength={1} value={digit} autoComplete="new-password" name={`admin-pin-${i}`} onChange={(e) => handlePinChange(i, e.target.value, inputRefs, setPinInput, pinInput)} onKeyDown={(e) => handlePinKeyDown(i, e, inputRefs, setPinInput, pinInput)} className={`w-14 h-16 text-center text-2xl font-black bg-[#121212] border-2 rounded-xl outline-none transition-all text-white ${digit ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#333] focus:border-red-500/50'} ${pinError ? 'border-red-600 bg-red-950/20 text-red-500' : ''}`} autoFocus={i === 0} />
             ))}
           </div>
-
-          <button 
-            onClick={() => verifyPin(pinInput.join(''))}
-            disabled={pinInput.some(v => v === '') || isPinLoading}
-            className="w-full py-4 rounded-xl font-bold bg-white hover:bg-gray-100 text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-black border-t-transparent rounded-full"></span> : <><Lock size={18}/> Authorize Access</>}
+          <button onClick={() => verifyPin(pinInput.join(''))} disabled={pinInput.some(v => v === '') || isPinLoading} className="w-full py-4 rounded-xl font-bold bg-white hover:bg-gray-100 text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-black border-t-transparent rounded-full"></span> : <><Lock size={18} /> Authorize Access</>}
           </button>
         </div>
-
-        <style>{`
-          @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-            20%, 40%, 60%, 80% { transform: translateX(5px); }
-          }
-          .animate-shake { animation: shake 0.4s ease-in-out; }
-        `}</style>
+        <style>{`@keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } } .animate-shake { animation: shake 0.4s ease-in-out; }`}</style>
       </div>
     );
   }
 
-  // --- RENDER UNLOCKED DASHBOARD ---
   const filteredUsers = users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
   const currentCpu = cpuData[cpuData.length - 1] || 0;
-  
-  // Storage Calculations
   const dbLimitBytes = 512 * 1024 * 1024;
   const dbPercentage = Math.min((realDbSize / dbLimitBytes) * 100, 100);
   const diskPercentage = Math.min((diskData.used / diskData.total) * 100, 100);
 
   return (
     <div className="p-8 w-full h-full overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#0c0c0c] text-gray-900 dark:text-white animate-fadeIn pb-24 transition-colors duration-300">
-
-      {/* DASHBOARD HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3 text-gray-900 dark:text-white">
-            <ShieldCheck className="text-red-600 fill-red-600/10" size={32} />
-            Admin Command Center
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 font-medium flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${systemHealth === 'Optimal' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-            System Status: <span className={systemHealth === 'Optimal' ? "text-green-600 dark:text-green-500" : "text-red-500"}>{systemHealth}</span>
-          </p>
+          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3 text-gray-900 dark:text-white"><ShieldCheck className="text-red-600 fill-red-600/10" size={32} />Admin Command Center</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 font-medium flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${systemHealth === 'Optimal' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>System Status: <span className={systemHealth === 'Optimal' ? "text-green-600 dark:text-green-500" : "text-red-500"}>{systemHealth}</span></p>
         </div>
         <div className="flex items-center gap-4 w-full md:w-auto">
-          <button 
-            onClick={requestChangePin}
-            className="flex items-center gap-2 bg-white dark:bg-[#18181b] hover:bg-gray-100 dark:hover:bg-[#27272a] border border-gray-200 dark:border-[#27272a] text-gray-700 dark:text-gray-300 px-4 py-2 rounded-xl font-medium transition-colors shadow-sm"
-          >
-            <KeyRound size={16} /> Security Settings
-          </button>
-          
+          <button onClick={requestChangePin} className="flex items-center gap-2 bg-white dark:bg-[#18181b] hover:bg-gray-100 dark:hover:bg-[#27272a] border border-gray-200 dark:border-[#27272a] text-gray-700 dark:text-gray-300 px-4 py-2 rounded-xl font-medium transition-colors shadow-sm"><KeyRound size={16} /> Security Settings</button>
           <div className="relative group w-full md:w-64">
             <Search className="absolute left-3 top-2.5 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={18} />
-            <input 
-              type="text" 
-              placeholder="Search students..." 
-              value={search} 
-              onChange={(e) => setSearch(e.target.value)} 
-              autoComplete="off"
-              name="admin-user-search"
-              className="w-full bg-white dark:bg-[#18181b] border border-gray-200 dark:border-[#27272a] rounded-xl pl-10 pr-4 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/20 transition-all shadow-sm" 
-            />
+            <input type="text" placeholder="Search students..." value={search} onChange={(e) => setSearch(e.target.value)} autoComplete="off" name="admin-user-search" className="w-full bg-white dark:bg-[#18181b] border border-gray-200 dark:border-[#27272a] rounded-xl pl-10 pr-4 py-2 text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/20 transition-all shadow-sm" />
           </div>
         </div>
       </div>
 
-      {/* METRICS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* CPU */}
         <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 relative overflow-hidden shadow-sm dark:shadow-lg transition-colors">
-          <div className="flex justify-between items-start mb-4 relative z-10">
-            <div>
-              <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Real-time Load</p>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1 flex items-center gap-2">
-                {currentCpu}% <span className="text-xs font-normal text-gray-500">CPU Usage</span>
-              </h3>
-            </div>
-            <div className="p-2 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-500 rounded-lg"><Cpu size={20} /></div>
-          </div>
+          <div className="flex justify-between items-start mb-4 relative z-10"><div><p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Real-time Load</p><h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1 flex items-center gap-2">{currentCpu}% <span className="text-xs font-normal text-gray-500">CPU Usage</span></h3></div><div className="p-2 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-500 rounded-lg"><Cpu size={20} /></div></div>
           <div className="absolute bottom-0 left-0 right-0 h-24 opacity-50"><LiveGraph data={cpuData} color="#3b82f6" /></div>
         </div>
-
-        {/* 🚨 UPDATED: STORAGE METRICS (Includes Azure VM) */}
         <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 shadow-sm dark:shadow-lg transition-colors flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Server Storage</p>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mt-1">Infrastructure Health</h3>
-            </div>
-            <div className="p-2 bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-500 rounded-lg"><HardDrive size={20} /></div>
-          </div>
-          <div className="space-y-1">
-             <StorageBar label="MongoDB Vault" used={formatBytes(realDbSize)} total="512 MB" color="bg-purple-500 dark:bg-purple-600" percentage={dbPercentage} icon={Server} />
-             <StorageBar label="Azure VM Disk (30GB)" used={formatBytes(diskData.used)} total={formatBytes(diskData.total)} color="bg-blue-500 dark:bg-blue-600" percentage={diskPercentage} icon={HardDrive} />
-          </div>
+          <div className="flex justify-between items-start mb-4"><div><p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Server Storage</p><h3 className="text-xl font-bold text-gray-900 dark:text-white mt-1">Infrastructure Health</h3></div><div className="p-2 bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-500 rounded-lg"><HardDrive size={20} /></div></div>
+          <div className="space-y-1"><StorageBar label="MongoDB Vault" used={formatBytes(realDbSize)} total="512 MB" color="bg-purple-500 dark:bg-purple-600" percentage={dbPercentage} icon={Server} /><StorageBar label="Azure VM Disk (30GB)" used={formatBytes(diskData.used)} total={formatBytes(diskData.total)} color="bg-blue-500 dark:bg-blue-600" percentage={diskPercentage} icon={HardDrive} /></div>
         </div>
-
-        {/* RAM */}
         <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 relative overflow-hidden shadow-sm dark:shadow-lg transition-colors">
-          <div className="flex justify-between items-start mb-4 relative z-10">
-            <div>
-              <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Active Memory</p>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1 flex items-center gap-2">
-                {Math.round(memoryData[memoryData.length - 1]) || 0}% <span className="text-xs font-normal text-gray-500">RAM Usage</span>
-              </h3>
-            </div>
-            <div className="p-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-500 rounded-lg"><Activity size={20} /></div>
-          </div>
+          <div className="flex justify-between items-start mb-4 relative z-10"><div><p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">Active Memory</p><h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1 flex items-center gap-2">{Math.round(memoryData[memoryData.length - 1]) || 0}% <span className="text-xs font-normal text-gray-500">RAM Usage</span></h3></div><div className="p-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-500 rounded-lg"><Activity size={20} /></div></div>
           <div className="absolute bottom-0 left-0 right-0 h-24 opacity-50"><LiveGraph data={memoryData} color="#10b981" /></div>
         </div>
       </div>
 
-      {/* USER TABLE */}
-      <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl shadow-lg overflow-hidden transition-colors">
+      <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl shadow-lg overflow-hidden transition-colors mb-6">
         <div className="p-5 border-b border-gray-200 dark:border-[#27272a] flex justify-between items-center bg-gray-50 dark:bg-[#151518]">
           <h3 className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2"><Users size={18} className="text-blue-500" /> User Directory</h3>
           <span className="text-xs font-mono text-gray-500 bg-white dark:bg-[#27272a] border border-gray-200 dark:border-transparent px-2 py-1 rounded">Total: {users.length}</span>
@@ -560,151 +428,70 @@ const AdminDashboard = ({ currentUser }) => {
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-gray-500 uppercase bg-gray-100 dark:bg-[#1c1c1f] border-b border-gray-200 dark:border-[#27272a]">
-              <tr>
-                <th className="px-6 py-4">User Identity</th>
-                <th className="px-6 py-4">Portal Status</th>
-                <th className="px-6 py-4">Last Sync Activity</th>
-                <th className="px-6 py-4">Storage Footprint</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
+              <tr><th className="px-6 py-4">User Identity</th><th className="px-6 py-4">Portal Status</th><th className="px-6 py-4">Last Sync Activity</th><th className="px-6 py-4">Storage Footprint</th><th className="px-6 py-4 text-right">Actions</th></tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-[#27272a]">
-              {loading ? (
-                <tr><td colSpan="5" className="text-center py-8 text-gray-500 animate-pulse">Loading data stream...</td></tr>
-              ) : filteredUsers.map((u) => <UserRow key={u._id} u={u} onInitiateDelete={setUserToDelete} isSuperAdmin={isSuperAdmin} onToggleRole={toggleRole} />)}
+              {loading ? <tr><td colSpan="5" className="text-center py-8 text-gray-500 animate-pulse">Loading data stream...</td></tr> : filteredUsers.map((u) => <UserRow key={u._id} u={u} onInitiateDelete={setUserToDelete} isSuperAdmin={isSuperAdmin} onToggleRole={setRoleToToggle} />)}
             </tbody>
           </table>
         </div>
         {!loading && filteredUsers.length === 0 && <div className="p-8 text-center text-gray-500">No users found matching "{search}"</div>}
       </div>
 
-      {/* --- CHANGE PIN MODAL --- */}
       {changePinModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-[#121212] w-full max-w-md rounded-3xl border border-[#333] shadow-2xl overflow-hidden animate-slideUp">
-            
-            <div className="p-6 border-b border-[#222] flex justify-between items-center bg-[#1A1A1A]">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2"><KeyRound size={20} className="text-blue-500" /> Update Security PIN</h3>
-              <button onClick={() => {
-                setChangePinModal({isOpen: false, step: 'otp'});
-                setOtpInput(['', '', '', '', '', '']);
-                setNewPin(['', '', '', '']);
-              }} className="text-gray-500 hover:text-white transition-colors"><X size={20}/></button>
-            </div>
-
+            <div className="p-6 border-b border-[#222] flex justify-between items-center bg-[#1A1A1A]"><h3 className="text-xl font-bold text-white flex items-center gap-2"><KeyRound size={20} className="text-blue-500" /> Update Security PIN</h3><button onClick={() => { setChangePinModal({ isOpen: false, step: 'otp' }); setOtpInput(['', '', '', '', '', '']); setNewPin(['', '', '', '']); }} className="text-gray-500 hover:text-white transition-colors"><X size={20} /></button></div>
             {changePinModal.step === 'otp' ? (
               <form onSubmit={verifyOtpAndProceed} className="p-6 space-y-6">
-                <div className="text-center">
-                  <div className="w-16 h-16 mx-auto bg-blue-500/10 rounded-full flex items-center justify-center mb-4"><Mail size={28} className="text-blue-500"/></div>
-                  <h4 className="text-lg font-bold text-white">Verification Required</h4>
-                  <p className="text-sm text-gray-400 mt-1">We sent a 6-digit OTP to your admin email address.</p>
-                </div>
-                
+                <div className="text-center"><div className="w-16 h-16 mx-auto bg-blue-500/10 rounded-full flex items-center justify-center mb-4"><Mail size={28} className="text-blue-500" /></div><h4 className="text-lg font-bold text-white">Verification Required</h4><p className="text-sm text-gray-400 mt-1">We sent a 6-digit OTP to your admin email address.</p></div>
                 <div>
                   <div className="flex justify-center gap-2">
-                    {otpInput.map((digit, i) => (
-                      <input
-                        key={`otp-${i}`}
-                        ref={otpRefs[i]}
-                        type="text"
-                        maxLength={1}
-                        value={digit}
-                        autoComplete="off"
-                        name={`otp-box-${i}`}
-                        onChange={(e) => handleOtpChange(i, e.target.value)}
-                        onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                        onPaste={handleOtpPaste}
-                        className={`w-11 h-14 text-center text-xl font-black bg-[#1A1A1A] border-2 rounded-xl outline-none transition-all text-white
-                          ${digit ? 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.1)]' : 'border-[#333] focus:border-blue-500/50'}
-                        `}
-                        autoFocus={i === 0}
-                      />
-                    ))}
+                    {otpInput.map((digit, i) => (<input key={`otp-${i}`} ref={otpRefs[i]} type="text" maxLength={1} value={digit} autoComplete="off" name={`otp-box-${i}`} onChange={(e) => handleOtpChange(i, e.target.value)} onKeyDown={(e) => handleOtpKeyDown(i, e)} onPaste={handleOtpPaste} className={`w-11 h-14 text-center text-xl font-black bg-[#1A1A1A] border-2 rounded-xl outline-none transition-all text-white ${digit ? 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.1)]' : 'border-[#333] focus:border-blue-500/50'}`} autoFocus={i === 0} />))}
                   </div>
                   {modalError && <p className="text-red-500 text-xs text-center font-bold mt-4">{modalError}</p>}
                 </div>
-
                 <button type="submit" className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all">Verify Identity</button>
               </form>
             ) : (
               <div className="p-6 space-y-6 text-center">
-                <div className="w-16 h-16 mx-auto bg-emerald-500/10 rounded-full flex items-center justify-center mb-4"><Lock size={28} className="text-emerald-500"/></div>
-                <h4 className="text-lg font-bold text-white">Set New PIN</h4>
-                <p className="text-sm text-gray-400 mt-1">Enter a new 4-digit code to secure the dashboard.</p>
-                
+                <div className="w-16 h-16 mx-auto bg-emerald-500/10 rounded-full flex items-center justify-center mb-4"><Lock size={28} className="text-emerald-500" /></div><h4 className="text-lg font-bold text-white">Set New PIN</h4><p className="text-sm text-gray-400 mt-1">Enter a new 4-digit code to secure the dashboard.</p>
                 <div className="flex justify-center gap-3 my-4">
-                  {newPin.map((digit, i) => (
-                    <input
-                      key={`newpin-${i}`}
-                      ref={newPinRefs[i]}
-                      type="password"
-                      maxLength={1}
-                      value={digit}
-                      autoComplete="new-password"
-                      name={`new-admin-pin-${i}`}
-                      onChange={(e) => handlePinChange(i, e.target.value, newPinRefs, setNewPin, newPin)}
-                      onKeyDown={(e) => handlePinKeyDown(i, e, newPinRefs, setNewPin, newPin)}
-                      className={`w-14 h-16 text-center text-2xl font-black bg-[#1A1A1A] border-2 rounded-xl outline-none transition-all text-white ${digit ? 'border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'border-[#333] focus:border-emerald-500/50'}`}
-                      autoFocus={i === 0}
-                    />
-                  ))}
+                  {newPin.map((digit, i) => (<input key={`newpin-${i}`} ref={newPinRefs[i]} type="password" maxLength={1} value={digit} autoComplete="new-password" name={`new-admin-pin-${i}`} onChange={(e) => handlePinChange(i, e.target.value, newPinRefs, setNewPin, newPin)} onKeyDown={(e) => handlePinKeyDown(i, e, newPinRefs, setNewPin, newPin)} className={`w-14 h-16 text-center text-2xl font-black bg-[#1A1A1A] border-2 rounded-xl outline-none transition-all text-white ${digit ? 'border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'border-[#333] focus:border-emerald-500/50'}`} autoFocus={i === 0} />))}
                 </div>
                 {modalError && <p className="text-red-500 text-xs text-center font-bold mt-2">{modalError}</p>}
-
-                <button 
-                  onClick={confirmNewPin} 
-                  disabled={newPin.some(v => v === '') || isPinLoading}
-                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all disabled:opacity-50 flex justify-center items-center"
-                >
-                  {isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></span> : 'Save Security PIN'}
-                </button>
+                <button onClick={confirmNewPin} disabled={newPin.some(v => v === '') || isPinLoading} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all disabled:opacity-50 flex justify-center items-center">{isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></span> : 'Save Security PIN'}</button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* --- CUSTOM DELETE CONFIRMATION MODAL --- */}
       {userToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] p-6 animate-slideUp relative">
-
-            <button
-              onClick={() => setUserToDelete(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-            >
-              <X size={20} />
-            </button>
-
+            <button onClick={() => setUserToDelete(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><X size={20} /></button>
             <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4 text-red-500 dark:text-red-400">
-                <AlertTriangle size={28} />
-              </div>
-
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete User?</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Are you sure you want to delete this user? This action is <strong className="text-red-500">irreversible</strong> and will wipe all their associated data.
-              </p>
-
-              <div className="flex gap-3 w-full">
-                <button
-                  onClick={() => setUserToDelete(null)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#2C2C2C] hover:bg-gray-200 dark:hover:bg-[#383838] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={executeDelete}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all"
-                >
-                  Delete User
-                </button>
-              </div>
+              <div className="w-14 h-14 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4 text-red-500 dark:text-red-400"><AlertTriangle size={28} /></div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete User?</h3><p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Are you sure you want to delete this user? This action is <strong className="text-red-500">irreversible</strong> and will wipe all their associated data.</p>
+              <div className="flex gap-3 w-full"><button onClick={() => setUserToDelete(null)} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#2C2C2C] hover:bg-gray-200 dark:hover:bg-[#383838] transition-colors">Cancel</button><button onClick={executeDelete} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all">Delete User</button></div>
             </div>
           </div>
         </div>
       )}
 
+      {roleToToggle && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] p-6 animate-slideUp relative">
+            <button onClick={() => setRoleToToggle(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><X size={20} /></button>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 bg-yellow-100 dark:bg-yellow-900/20 rounded-full flex items-center justify-center mb-4 text-yellow-600 dark:text-yellow-500"><ShieldAlert size={28} /></div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Change Role?</h3><p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Are you sure you want to {roleToToggle.isAdmin ? "demote" : "promote"} <strong className="text-gray-900 dark:text-white">{roleToToggle.name}</strong>? This modifies their access permissions.</p>
+              <div className="flex gap-3 w-full"><button onClick={() => setRoleToToggle(null)} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#2C2C2C] hover:bg-gray-200 dark:hover:bg-[#383838] transition-colors">Cancel</button><button onClick={executeToggleRole} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-yellow-600 hover:bg-yellow-700 shadow-lg shadow-yellow-600/20 transition-all">Confirm Change</button></div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
