@@ -1647,34 +1647,60 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res)
   try {
     const { courseCode, section } = req.params;
 
-    // 1. Find all grades/students enrolled in this specific course & section
-    // Adjust this query based on your actual Mongoose Schema!
-    const sectionGrades = await Grade.find({
-      courseCode: new RegExp(courseCode, 'i'),
-      section: new RegExp(section, 'i')
-    }).populate('userId', 'name rollNumber profilePic');
+    // 1. Clean course code for flexible matching (e.g., "CSAL3243" matches "CSAL 3243")
+    const cleanCourseCode = courseCode.replace(/\s+/g, '');
+    const courseRegex = new RegExp([...cleanCourseCode].join('\\s*'), 'i');
 
-    if (!sectionGrades || sectionGrades.length === 0) {
-      return res.status(404).json({ message: "No students found in this section yet." });
+    // 2. Search other courses in the DB for the same course code and section
+    const matchingCourses = await Course.find({
+      code: courseRegex,
+      section: new RegExp(`^${section}$`, 'i')
+    }).populate('userId', 'name portalId profilePic');
+
+    if (!matchingCourses || matchingCourses.length === 0) {
+      return res.status(404).json({ message: "No students found in this section." });
     }
 
-    // 2. Calculate absolute scores for everyone
-    let leaderboard = sectionGrades.map(g => {
-      // Adjust these fields to match your DB!
-      const score = g.totalMarks > 0 ? (g.obtainedMarks / g.totalMarks) * 100 : 0;
+    const userIds = matchingCourses.map(c => c.userId?._id).filter(Boolean);
+    const grades = await Grade.find({ userId: { $in: userIds } });
+
+    // 3. Calculate absolute scores for everyone
+    let leaderboard = matchingCourses.map(course => {
+      // Find matching grade document. We check if the grade courseName matches the Course name.
+      const userGrade = grades.find(g => 
+        g.userId.toString() === course.userId?._id.toString() && 
+        (g.courseName === course.name || (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase())))
+      );
+
+      // Calculate score dynamically from their assessments
+      let score = 0;
+      if (userGrade && Array.isArray(userGrade.assessments)) {
+        let totalMarkedWeight = 0;
+        let totalEarnedWeight = 0;
+        userGrade.assessments.forEach(cat => {
+          const wNum = parseFloat(cat.weight) || 0;
+          const pNum = parseFloat(cat.percentage) || 0;
+          totalMarkedWeight += wNum;
+          totalEarnedWeight += (pNum / 100) * wNum;
+        });
+        score = totalMarkedWeight > 0 ? (totalEarnedWeight / totalMarkedWeight) * 100 : 0;
+      }
 
       return {
-        id: g.userId?.rollNumber || 'Unknown',
-        name: g.userId?.name || 'Unknown Student',
-        score: score,
-        pic: g.userId?.profilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${g.userId?.name}`
+        id: course.userId?.portalId || 'Unknown ID',
+        name: course.userId?.name || 'Unknown Student',
+        score: score || 0,
+        pic: course.userId?.profilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}`
       };
     });
 
-    // 3. Sort descending (Highest score first)
+    // 4. Filter out any database anomalies 
+    leaderboard = leaderboard.filter(s => s.id !== 'Unknown ID');
+
+    // 5. Sort descending (Highest score first)
     leaderboard.sort((a, b) => b.score - a.score);
 
-    // 4. Assign Ranks and the UCP Relative Curve
+    // 6. Assign Ranks and the UCP Relative Curve
     const total = leaderboard.length;
     leaderboard = leaderboard.map((s, idx) => {
       const pctile = (idx / total) * 100;
