@@ -1001,22 +1001,134 @@ app.post('/api/groups', auth, async (req, res) => {
     const { name } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ message: "Group name is required" });
 
-    // Check if the user is already in a group
     const existingGroup = await Group.findOne({ members: req.user.id });
     if (existingGroup) {
-      return res.status(400).json({ message: "You are already a member of a group. You must leave it before creating a new one." });
+      return res.status(400).json({ message: "You are already a member of a group." });
     }
 
     const group = new Group({
       name: name.trim(),
       creatorId: req.user.id,
-      members: [req.user.id]
+      members: [req.user.id],
+      admins: [req.user.id] // Creator is also added to structural admins array
     });
     await group.save();
     res.status(201).json(group);
   } catch (error) {
-    console.error("Create Group Error:", error);
     res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// 🚀 REFACTORED ENDPOINT: TOGGLE MEMBER ROLE TO ADMIN/STUDENT (Creator Only)
+app.put('/api/groups/toggle-admin', auth, async (req, res) => {
+  try {
+    const { memberId } = req.body;
+    const group = await Group.findOne({ members: req.user.id });
+    if (!group) return res.status(404).json({ message: "Group not found." });
+
+    // Only original group creator can shift member permissions/roles
+    if (group.creatorId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Only the group creator can manage admin assignments." });
+    }
+
+    if (memberId === req.user.id) return res.status(400).json({ message: "Cannot alter creator role." });
+
+    const adminIds = group.admins.map(id => id.toString());
+    if (adminIds.includes(memberId)) {
+      group.admins = group.admins.filter(id => id.toString() !== memberId);
+    } else {
+      group.admins.push(memberId);
+    }
+
+    await group.save();
+    const updated = await Group.findById(group._id)
+      .populate('members', 'name email profilePic customProfilePic portalId createdAt')
+      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: "Server Error matching roles" });
+  }
+});
+
+// 🚀 REFACTORED ENDPOINT: UPDATE GROUP DETAILS/NAME (Creators & Admins)
+app.put('/api/groups/update-name', auth, async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ message: "Valid group name required." });
+
+    const group = await Group.findOne({ members: req.user.id });
+    if (!group) return res.status(404).json({ message: "Group assignment absent." });
+
+    const isAuthorizedAdmin = group.creatorId.toString() === req.user.id || group.admins.map(id => id.toString()).includes(req.user.id);
+    if (!isAuthorizedAdmin) {
+      return res.status(403).json({ message: "Access Denied: Only Group Admins can rename this workspace." });
+    }
+
+    group.name = name.trim();
+    await group.save();
+
+    const updated = await Group.findById(group._id)
+      .populate('members', 'name email profilePic customProfilePic portalId createdAt')
+      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: "Server error altering name." });
+  }
+});
+
+// 🚀 REFACTORED ENDPOINT: ANY MEMBER CAN INVITE STUDENTS DIRECTLY NOW
+app.post('/api/groups/invite', auth, async (req, res) => {
+  try {
+    const { receiverId } = req.body;
+    if (!receiverId) return res.status(400).json({ message: "Receiver ID is required" });
+
+    // Validate that sender belongs to the target active group
+    const group = await Group.findOne({ members: req.user.id });
+    if (!group) return res.status(400).json({ message: "You must belong to a group to dispatch invites." });
+
+    const receiverInGroup = await Group.findOne({ members: receiverId });
+    if (receiverInGroup) return res.status(400).json({ message: "This student is already a member of a study group." });
+
+    const existingInvite = await GroupInvitation.findOne({
+      groupId: group._id,
+      receiverId,
+      status: 'pending'
+    });
+    if (existingInvite) return res.status(400).json({ message: "An invitation is already pending for this student." });
+
+    const invite = new GroupInvitation({
+      groupId: group._id,
+      senderId: req.user.id,
+      receiverId
+    });
+    await invite.save();
+    res.status(201).json(invite);
+  } catch (error) {
+    res.status(500).json({ message: "Server Error dispatching invitation." });
+  }
+});
+
+// 8. Update Group Profile Pic (Creators & Structural Promoted Admins)
+app.put('/api/groups/:id/profile-pic', auth, async (req, res) => {
+  try {
+    const { profilePic } = req.body;
+    const group = await Group.findById(req.params.id);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    const isAuthorizedAdmin = group.creatorId.toString() === req.user.id || group.admins.map(id => id.toString()).includes(req.user.id);
+    if (!isAuthorizedAdmin) {
+      return res.status(403).json({ message: "Only group creators or promoted admins can modify the profile picture." });
+    }
+
+    group.profilePic = profilePic;
+    await group.save();
+
+    const updatedGroup = await Group.findById(group._id)
+      .populate('members', 'name email profilePic customProfilePic portalId createdAt')
+      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
+    res.json(updatedGroup);
+  } catch (error) {
+    res.status(500).json({ message: "Server Error setting canvas portrait" });
   }
 });
 
@@ -1097,38 +1209,6 @@ app.get('/api/users/community', auth, async (req, res) => {
   }
 });
 
-// 5. Send Study Group Invitation
-app.post('/api/groups/invite', auth, async (req, res) => {
-  try {
-    const { receiverId } = req.body;
-    if (!receiverId) return res.status(400).json({ message: "Receiver ID is required" });
-
-    const group = await Group.findOne({ creatorId: req.user.id });
-    if (!group) return res.status(400).json({ message: "You must be the group creator to send invitations." });
-
-    const receiverInGroup = await Group.findOne({ members: receiverId });
-    if (receiverInGroup) return res.status(400).json({ message: "This student is already a member of a study group." });
-
-    const existingInvite = await GroupInvitation.findOne({
-      groupId: group._id,
-      receiverId,
-      status: 'pending'
-    });
-    if (existingInvite) return res.status(400).json({ message: "An invitation is already pending for this student." });
-
-    const invite = new GroupInvitation({
-      groupId: group._id,
-      senderId: req.user.id,
-      receiverId
-    });
-    await invite.save();
-    res.status(201).json(invite);
-  } catch (error) {
-    console.error("Send Invite Error:", error);
-    res.status(500).json({ message: "Server Error" });
-  }
-});
-
 // 6. Fetch Received Pending Invitations
 app.get('/api/groups/invitations', auth, async (req, res) => {
   try {
@@ -1201,30 +1281,6 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
     res.json({ message: "Joined group successfully" });
   } catch (error) {
     console.error("Handle Invite Error:", error);
-    res.status(500).json({ message: "Server Error" });
-  }
-});
-
-// 8. Update Group Profile Pic (Admins only)
-app.put('/api/groups/:id/profile-pic', auth, async (req, res) => {
-  try {
-    const { profilePic } = req.body;
-    const group = await Group.findById(req.params.id);
-    if (!group) return res.status(404).json({ message: "Group not found" });
-
-    if (group.creatorId.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Only group creator can change the profile image." });
-    }
-
-    group.profilePic = profilePic;
-    await group.save();
-
-    const updatedGroup = await Group.findById(group._id)
-      .populate('members', 'name email profilePic customProfilePic portalId createdAt')
-      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
-    res.json(updatedGroup);
-  } catch (error) {
-    console.error("Group Profile Pic Error:", error);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -1379,21 +1435,50 @@ app.post('/api/debts/:id/pay', auth, async (req, res) => {
 // ==========================================
 app.post('/api/notes', auth, async (req, res) => {
   try {
-    const { _id, title, courseId, content, referenceFiles, source } = req.body;
+    const { _id, title, courseId, content, referenceFiles, source, isPrivate } = req.body;
 
-    // Secure the update to make sure it belongs to the authenticated user
-    if (_id) {
-      const updatedNote = await Note.findOneAndUpdate(
-        { _id, user: req.user.id },
-        { title, courseId, content, referenceFiles, source },
-        { new: true }
-      );
-      if (!updatedNote) return res.status(404).json({ error: "Note not found or access denied." });
-      return res.json(updatedNote);
+    let finalGroupId = null;
+    let finalIsPrivate = isPrivate !== undefined ? isPrivate : true;
+
+    if (finalIsPrivate === false) {
+      const userGroup = await Group.findOne({ members: req.user.id });
+      if (userGroup) {
+        finalGroupId = userGroup._id;
+      } else {
+        finalIsPrivate = true; // Fallback to private if user is not in a group
+      }
     }
 
-    const newNote = await new Note({ user: req.user.id, title, courseId, content: content || " ", referenceFiles, source }).save();
-    res.json(newNote);
+    if (_id) {
+      const note = await Note.findById(_id);
+      if (!note) return res.status(404).json({ error: "Note not found." });
+
+      const isCreator = note.user.toString() === req.user.id;
+      if (!isCreator) return res.status(403).json({ error: "Access Denied: Only creators can modify this note." });
+
+      note.title = title;
+      note.courseId = courseId;
+      note.content = content;
+      note.referenceFiles = referenceFiles;
+      note.source = source;
+      note.isPrivate = finalIsPrivate;
+      note.groupId = finalGroupId;
+      
+      if (finalIsPrivate) note.deletedByUsers = [];
+
+      await note.save();
+      await broadcastTaskUpdate(note.groupId, req.user.id);
+      return res.json(await Note.findById(note._id).populate('user', 'name email profilePic'));
+    }
+
+    const newNote = new Note({ 
+      user: req.user.id, title, courseId, content: content || " ", referenceFiles, source, 
+      isPrivate: finalIsPrivate, groupId: finalGroupId 
+    });
+    
+    await newNote.save();
+    await broadcastTaskUpdate(newNote.groupId, req.user.id);
+    res.json(await Note.findById(newNote._id).populate('user', 'name email profilePic'));
   } catch (error) {
     console.error("Note POST Error:", error);
     res.status(500).json({ error: error.message || "Failed to process note" });
@@ -1402,22 +1487,49 @@ app.post('/api/notes', auth, async (req, res) => {
 
 app.put('/api/notes/:id', auth, async (req, res) => {
   try {
-    const u = await User.findById(req.user.id);
-    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id };
+    const note = await Note.findById(req.params.id);
+    if (!note) return res.status(404).json({ message: "Note not found." });
 
-    const { title, courseId, content, referenceFiles, source, isPrivate } = req.body;
-    const updateObj = { title, courseId, content, referenceFiles, source };
-    if (isPrivate !== undefined) updateObj.isPrivate = isPrivate;
+    const isCreator = note.user.toString() === req.user.id;
+    if (!isCreator) return res.status(403).json({ message: "Access Denied: Only creators can modify this note." });
 
-    const note = await Note.findOneAndUpdate(q, updateObj, { new: true });
-    if (!note) return res.status(404).json({ message: "Note not found or access denied." });
+    if (req.body.isPrivate !== undefined) {
+      if (req.body.isPrivate === false) {
+        const userGroup = await Group.findOne({ members: req.user.id });
+        if (!userGroup) return res.status(400).json({ message: "No group found." });
+        note.groupId = userGroup._id;
+        note.isPrivate = false;
+      } else {
+        note.groupId = null;
+        note.isPrivate = true;
+        note.deletedByUsers = [];
+      }
+    }
+
+    if (req.body.title) note.title = req.body.title;
+    if (req.body.courseId) note.courseId = req.body.courseId;
+    if (req.body.content) note.content = req.body.content;
+    if (req.body.referenceFiles) note.referenceFiles = req.body.referenceFiles;
+
+    await note.save();
+    await broadcastTaskUpdate(note.groupId, req.user.id);
     res.json(note);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.get('/api/notes', auth, async (req, res) => {
   try {
-    res.json(await Note.find({ user: req.user.id, isDeleted: false }).sort({ createdAt: -1 }));
+    const userGroups = await Group.find({ members: req.user.id });
+    const groupIds = userGroups.map(g => g._id);
+
+    const notes = await Note.find({
+      $or: [
+        { user: req.user.id, groupId: null, isDeleted: false }, // Private Notes
+        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } // Active Group Notes
+      ]
+    }).populate('user', 'name email profilePic').sort({ createdAt: -1 });
+
+    res.json(notes);
   } catch (error) {
     res.status(500).json({ error: "Error fetching notes" });
   }
@@ -1425,34 +1537,70 @@ app.get('/api/notes', auth, async (req, res) => {
 
 app.put('/api/notes/:id/delete', auth, async (req, res) => {
   try {
-    const u = await User.findById(req.user.id);
-    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id };
-    // Transfer ownership (user) to deleting admin
-    await Note.findOneAndUpdate(q, { isDeleted: true, deletedAt: new Date(), user: req.user.id });
-    res.json({ message: 'Moved to Bin' });
+    const note = await Note.findById(req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    const isCreator = note.user.toString() === req.user.id;
+    const oldGroupId = note.groupId;
+
+    if (isCreator) {
+      // Owner Delete -> Global Bin Move
+      note.isDeleted = true;
+      note.deletedAt = new Date();
+    } else if (note.groupId) {
+      // Member Delete -> Isolated Local Array Only
+      if (!note.deletedByUsers.map(id => id.toString()).includes(req.user.id)) {
+        note.deletedByUsers.push(req.user.id);
+      }
+    } else {
+      return res.status(403).json({ error: "Unauthorized delete action." });
+    }
+
+    await note.save();
+    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    res.json({ message: 'Moved to Bin safely' });
   } catch (error) { res.status(500).json({ error: "Error moving note to bin" }); }
 });
 
 app.put('/api/notes/:id/restore', auth, async (req, res) => {
   try {
-    const u = await User.findById(req.user.id);
-    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id };
-    await Note.findOneAndUpdate(q, { isDeleted: false, deletedAt: null });
-    res.json({ message: 'Restored' });
-  } catch (error) {
-    res.status(500).json({ error: "Error restoring note" });
-  }
+    const note = await Note.findById(req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    const isCreator = note.user.toString() === req.user.id;
+
+    if (isCreator) {
+      note.isDeleted = false;
+      note.deletedAt = null;
+    }
+    
+    // Always clear from personal bin if member restores
+    note.deletedByUsers = note.deletedByUsers.filter(id => id.toString() !== req.user.id);
+
+    await note.save();
+    await broadcastTaskUpdate(note.groupId, req.user.id);
+    res.json({ message: 'Restored cleanly' });
+  } catch (error) { res.status(500).json({ error: "Error restoring note" }); }
 });
 
 app.delete('/api/notes/:id', auth, async (req, res) => {
   try {
-    const u = await User.findById(req.user.id);
-    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, user: req.user.id };
-    await Note.findOneAndDelete(q);
-    res.json({ message: 'Permanently Deleted' });
-  } catch (error) {
-    res.status(500).json({ error: "Error deleting note" });
-  }
+    const note = await Note.findById(req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    const isCreator = note.user.toString() === req.user.id;
+    const oldGroupId = note.groupId;
+
+    if (isCreator) {
+      await Note.findByIdAndDelete(req.params.id);
+    } else {
+      note.deletedByUsers.push(req.user.id);
+      await note.save();
+    }
+
+    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    res.json({ message: 'Permanently Purged' });
+  } catch (error) { res.status(500).json({ error: "Error deleting note" }); }
 });
 
 
@@ -1733,6 +1881,29 @@ app.get('/api/results-history', auth, async (req, res) => { try { res.json(await
 app.get('/api/focus-sessions', auth, async (req, res) => { try { res.json(await FocusSession.find({ userId: req.user.id }).sort({ completedAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await new FocusSession({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
+// ==========================================
+// 🚀 INSTANT WEBSOCKET BROADCAST HELPER
+// ==========================================
+const broadcastTaskUpdate = async (groupId, activeUserId) => {
+  // Notify the action initiator instantly
+  io.to(activeUserId.toString()).emit('live_db_update');
+  
+  // If it's a shared group task, instantly broadcast to all members in that group workspace
+  if (groupId) {
+    const group = await Group.findById(groupId);
+    if (group) {
+      group.members.forEach(memberId => {
+        io.to(memberId.toString()).emit('live_db_update');
+      });
+    }
+  }
+};
+
+// ==========================================
+// 📝 STRICT TASK MANAGEMENT ROUTES
+// ==========================================
+
+// 1. Fetch Active Dashboard Tasks (with status masking per member)
 app.get('/api/tasks', auth, async (req, res) => {
   try {
     const userGroups = await Group.find({ members: req.user.id });
@@ -1740,27 +1911,41 @@ app.get('/api/tasks', auth, async (req, res) => {
 
     const tasks = await Task.find({
       $or: [
-        { userId: req.user.id, groupId: null, isDeleted: false },
-        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } }
+        { userId: req.user.id, groupId: null, isDeleted: false }, // Private tasks owned by user
+        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } // Active Group tasks
       ]
     })
     .populate('userId', 'name email profilePic')
     .sort({ createdAt: -1 });
 
-    res.json(tasks);
-  } catch (err) { 
-    res.status(500).json({ message: err.message }); 
-  } 
+    // Map status out dynamically so group members see their personal overrides seamlessly
+    const localizedTasks = tasks.map(task => {
+      const taskObj = task.toObject();
+      if (taskObj.groupId) {
+        const personalStatusOverride = taskObj.memberStatuses?.find(ms => ms.userId.toString() === req.user.id);
+        if (personalStatusOverride) {
+          taskObj.status = personalStatusOverride.status;
+        }
+      }
+      return taskObj;
+    });
+
+    res.json(localizedTasks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 app.post('/api/tasks', auth, async (req, res) => {
   try {
     const task = new Task({ ...req.body, userId: req.user.id });
     await task.save();
+    
+    await broadcastTaskUpdate(task.groupId, req.user.id);
     res.json(await Task.findById(task._id).populate('userId', 'name email profilePic'));
-  } catch (err) { 
-    res.status(500).json({ message: err.message }); 
-  } 
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 app.put('/api/tasks/:id', auth, async (req, res) => {
@@ -1768,9 +1953,9 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    const u = await User.findById(req.user.id);
+    // STRICT RULE: Only the literal creator matches. Admin bypass completely removed.
     const isCreator = task.userId.toString() === req.user.id;
-    
+
     let isMember = false;
     if (task.groupId) {
       const group = await Group.findById(task.groupId);
@@ -1779,17 +1964,43 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       }
     }
 
-    const canEditFully = isCreator || u.isAdmin;
-
-    if (!canEditFully && !isMember) {
-      return res.status(403).json({ message: "Unauthorized to edit this task" });
+    if (!isCreator && !isMember) {
+      return res.status(403).json({ message: "Unauthorized interaction with workspace task." });
     }
 
-    if (canEditFully) {
-      // Creator or Admin - Full edit
+    // SCENARIO A: TASK CREATOR - Full modifications & privacy changes allowed
+    if (isCreator) {
+      const targetPrivacy = req.body.isPrivate;
+
+      if (targetPrivacy === true && task.isPrivate === false) {
+        task.groupId = null;
+        task.memberStatuses = [];
+        task.deletedByUsers = [];
+      } else if (targetPrivacy === false && task.isPrivate === true) {
+        const userGroup = await Group.findOne({ members: req.user.id });
+        if (!userGroup) return res.status(400).json({ message: "You must join a group before sharing this task." });
+        task.groupId = userGroup._id;
+      }
+
       Object.assign(task, req.body);
-      
-      // If creator is updating status, also set their private status
+
+      if (req.body.status !== undefined) {
+        const existingIdx = task.memberStatuses.findIndex(ms => ms.userId.toString() === req.user.id);
+        if (existingIdx > -1) task.memberStatuses[existingIdx].status = req.body.status;
+        else task.memberStatuses.push({ userId: req.user.id, status: req.body.status });
+      }
+    } 
+    // SCENARIO B: GROUP MEMBER - Strict View-Only (Status exceptions)
+    else {
+      // Members can only modify their personal isolated status
+      const allowedKeys = ['status', 'acknowledged']; // Safe keys for members
+      const modifications = Object.keys(req.body);
+      const isViolatingPermissions = modifications.some(key => !allowedKeys.includes(key));
+
+      if (isViolatingPermissions) {
+        return res.status(403).json({ message: "Permissions Denied: Group members are limited to changing status only." });
+      }
+
       if (req.body.status !== undefined) {
         const existingIdx = task.memberStatuses.findIndex(ms => ms.userId.toString() === req.user.id);
         if (existingIdx > -1) {
@@ -1798,63 +2009,51 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
           task.memberStatuses.push({ userId: req.user.id, status: req.body.status });
         }
       }
-    } else {
-      // Group Member - Can ONLY change status privately
-      if (req.body.status === undefined) {
-        return res.status(400).json({ message: "Group members can only update status on shared tasks." });
-      }
-
-      const existingIdx = task.memberStatuses.findIndex(ms => ms.userId.toString() === req.user.id);
-      if (existingIdx > -1) {
-        task.memberStatuses[existingIdx].status = req.body.status;
-      } else {
-        task.memberStatuses.push({ userId: req.user.id, status: req.body.status });
-      }
     }
 
     await task.save();
+    await broadcastTaskUpdate(task.groupId, req.user.id);
     res.json(await Task.findById(task._id).populate('userId', 'name email profilePic'));
-  } catch (err) { 
-    res.status(500).json({ message: err.message }); 
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
-app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => { 
-  try { 
-    await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true }); 
-    res.json({ success: true }); 
-  } catch (err) { 
-    res.status(500).json({ message: err.message }); 
-  } 
+app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => {
+  try {
+    await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true });
+    await broadcastTaskUpdate(null, req.user.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+// 5. Delete Task (Creator vs Member isolation rules)
 app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    const u = await User.findById(req.user.id);
+    // STRICT RULE: Admin bypass removed.
     const isCreator = task.userId.toString() === req.user.id;
-    const isShared = !!task.groupId;
+    const oldGroupId = task.groupId;
 
-    if (isCreator || u.isAdmin) {
-      // Creator deletes for everyone (Whatsapp-style)
+    if (isCreator) {
+      // Creator deletes: Master deletion flag triggers (Disappears from everyone's hub)
       task.isDeleted = true;
       task.deletedAt = new Date();
-    } else if (isShared) {
-      // Group member deletes only for themselves
+    } else if (task.groupId) {
+      // Member deletes: Stored purely in local deletion array on their side only
       if (!task.deletedByUsers.map(id => id.toString()).includes(req.user.id)) {
         task.deletedByUsers.push(req.user.id);
       }
     } else {
-      return res.status(403).json({ message: "Unauthorized" });
+      return res.status(403).json({ message: "Unauthorized delete action." });
     }
 
     await task.save();
+    await broadcastTaskUpdate(oldGroupId, req.user.id);
     res.json(task);
-  } catch (err) { 
-    res.status(500).json({ message: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.put('/api/tasks/:id/restore', auth, async (req, res) => {
@@ -1862,23 +2061,19 @@ app.put('/api/tasks/:id/restore', auth, async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    const u = await User.findById(req.user.id);
     const isCreator = task.userId.toString() === req.user.id;
 
-    if (isCreator || u.isAdmin) {
-      // Creator restores for everyone
+    if (isCreator) {
       task.isDeleted = false;
       task.deletedAt = null;
-    } else {
-      // Member restores for themselves
-      task.deletedByUsers = task.deletedByUsers.filter(id => id.toString() !== req.user.id);
-    }
+    } 
+    
+    task.deletedByUsers = task.deletedByUsers.filter(id => id.toString() !== req.user.id);
 
     await task.save();
+    await broadcastTaskUpdate(task.groupId, req.user.id);
     res.json(task);
-  } catch (err) { 
-    res.status(500).json({ message: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.delete('/api/tasks/:id', auth, async (req, res) => {
@@ -1886,20 +2081,21 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    const u = await User.findById(req.user.id);
     const isCreator = task.userId.toString() === req.user.id;
+    const oldGroupId = task.groupId;
 
-    if (isCreator || u.isAdmin) {
+    if (isCreator) {
       await Task.findByIdAndDelete(req.params.id);
-      res.json({ message: "Deleted" });
     } else {
-      // Member permanently deleting hides it forever (keeps in deletedByUsers)
-      res.json({ message: "Removed from bin" });
+      task.deletedByUsers.push(req.user.id);
+      await task.save();
     }
-  } catch (err) { 
-    res.status(500).json({ message: err.message }); 
-  }
+
+    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    res.json({ message: "Purge structural process completed cleanly." });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
+
 app.get('/api/transactions', auth, async (req, res) => { try { res.json(await Transaction.find({ userId: req.user.id, isDeleted: false }).sort({ date: -1, createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/transactions', auth, async (req, res) => { try { res.json(await new Transaction({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.put('/api/transactions/:id/delete', auth, async (req, res) => { try { res.json(await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
@@ -2008,6 +2204,8 @@ app.get('/api/bin', auth, async (req, res) => {
     const userGroups = await Group.find({ members: req.user.id });
     const groupIds = userGroups.map(g => g._id);
 
+    // Tasks are in bin if the user is the creator and it's marked master deleted,
+    // OR if it's a shared group task and the member explicitly trashed it on their side.
     const tasks = await Task.find({
       $or: [
         { userId: req.user.id, isDeleted: true },
@@ -2019,9 +2217,36 @@ app.get('/api/bin', auth, async (req, res) => {
     const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
     const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean();
     const keynotes = await Keynote.find({ userId: req.user.id, isDeleted: true }).lean();
+    
     res.json({ tasks, transactions, habits, notes, keynotes });
-  } catch (err) { res.status(500).json({ message: err.message }) }
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});app.get('/api/bin', auth, async (req, res) => {
+  try {
+    const userGroups = await Group.find({ members: req.user.id });
+    const groupIds = userGroups.map(g => g._id);
+
+    const tasks = await Task.find({
+      $or: [
+        { userId: req.user.id, isDeleted: true },
+        { groupId: { $in: groupIds }, deletedByUsers: req.user.id }
+      ]
+    }).populate('userId', 'name email profilePic').lean();
+
+    const notes = await Note.find({
+      $or: [
+        { user: req.user.id, isDeleted: true },
+        { groupId: { $in: groupIds }, deletedByUsers: req.user.id }
+      ]
+    }).populate('user', 'name email profilePic').lean();
+
+    const transactions = await Transaction.find({ userId: req.user.id, isDeleted: true }).lean();
+    const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
+    const keynotes = await Keynote.find({ userId: req.user.id, isDeleted: true }).lean();
+    
+    res.json({ tasks, transactions, habits, notes, keynotes });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
+
 app.put('/api/bin/restore-all', auth, async (req, res) => {
   try {
     const userGroups = await Group.find({ members: req.user.id });
@@ -2030,27 +2255,234 @@ app.put('/api/bin/restore-all', auth, async (req, res) => {
     await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Task.updateMany({ groupId: { $in: groupIds }, deletedByUsers: req.user.id }, { $pull: { deletedByUsers: req.user.id } });
 
+    await Note.updateMany({ user: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
+    await Note.updateMany({ groupId: { $in: groupIds }, deletedByUsers: req.user.id }, { $pull: { deletedByUsers: req.user.id } });
+
     await Transaction.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Habit.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
-    await Note.updateMany({ user: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Keynote.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
-    res.json({ message: "Restored" });
-  } catch (err) { res.status(500).json({ message: err.message }) }
+    
+    io.to(req.user.id.toString()).emit('live_db_update');
+    res.json({ message: "Restored all items successfully." });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
+
 app.delete('/api/bin/empty', auth, async (req, res) => {
   try {
     await Task.deleteMany({ userId: req.user.id, isDeleted: true });
-    // Keep group tasks permanently hidden for this user (nothing to change as they're already in deletedByUsers)
-
+    await Note.deleteMany({ user: req.user.id, isDeleted: true });
     await Transaction.deleteMany({ userId: req.user.id, isDeleted: true });
     await Habit.deleteMany({ userId: req.user.id, isDeleted: true });
-    await Note.deleteMany({ user: req.user.id, isDeleted: true });
     await Keynote.deleteMany({ userId: req.user.id, isDeleted: true });
-    res.json({ message: "Emptied" });
-  } catch (err) { res.status(500).json({ message: err.message }) }
+    
+    io.to(req.user.id.toString()).emit('live_db_update');
+    res.json({ message: "Recycle bin emptied safely." });
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
+
+// ==========================================
+// 🚨 COMMUNITY NOTES & WORKSPACE ROUTES
+// ==========================================
+
+app.get('/api/community/users', auth, async (req, res) => {
+  try {
+    // Fetch everyone except the current user
+    const users = await User.find({ _id: { $ne: req.user.id } }).select('name email profilePic');
+    res.json(users);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/notes/share', auth, async (req, res) => {
+  try {
+    const { noteIds, targetUserIds } = req.body;
+    const notesToShare = await Note.find({ _id: { $in: noteIds } });
+    
+    const newNotes = [];
+    for (let targetId of targetUserIds) {
+      for (let note of notesToShare) {
+        // Create a clone in the target user's Inbox
+        const newNote = new Note({
+          user: targetId,
+          title: note.title,
+          content: note.content,
+          courseId: note.courseId,
+          referenceFiles: note.referenceFiles,
+          source: note.source,
+          isPrivate: true, // Inherently private to the new user once accepted
+          groupId: null,
+          isInbox: true,   // Triggers the Inbox status
+          sender: req.user.id
+        });
+        await newNote.save();
+        newNotes.push(newNote);
+        io.to(targetId.toString()).emit('live_db_update');
+      }
+    }
+    res.json({ success: true, count: newNotes.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/notes/:id/accept', auth, async (req, res) => {
+  try {
+    const note = await Note.findById(req.params.id);
+    if (note.user.toString() !== req.user.id) return res.status(403).json({ error: "Unauthorized" });
+    
+    note.isInbox = false; // Move from Inbox to active workspace
+    await note.save();
+    
+    io.to(req.user.id.toString()).emit('live_db_update');
+    res.json(await Note.findById(note._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/notes', auth, async (req, res) => {
+  try {
+    const userGroups = await Group.find({ members: req.user.id });
+    const groupIds = userGroups.map(g => g._id);
+
+    const notes = await Note.find({
+      $or: [
+        { user: req.user.id, groupId: null, isDeleted: false }, // Private Notes & Inbox Notes
+        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } // Active Group Notes
+      ]
+    })
+    .populate('user', 'name email profilePic')
+    .populate('sender', 'name profilePic') // Hydrate the sender details for Inbox
+    .sort({ createdAt: -1 });
+
+    res.json(notes);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching notes" });
+  }
+});
+
+app.post('/api/notes', auth, async (req, res) => {
+  try {
+    const { _id, title, courseId, content, referenceFiles, source, isPrivate } = req.body;
+    let finalGroupId = null;
+    let finalIsPrivate = isPrivate !== undefined ? isPrivate : true;
+
+    if (finalIsPrivate === false) {
+      const userGroup = await Group.findOne({ members: req.user.id });
+      if (userGroup) {
+        finalGroupId = userGroup._id;
+      } else {
+        finalIsPrivate = true; 
+      }
+    }
+
+    if (_id) {
+      const note = await Note.findById(_id);
+      if (!note) return res.status(404).json({ error: "Note not found." });
+      if (note.user.toString() !== req.user.id) return res.status(403).json({ error: "Access Denied" });
+
+      note.title = title;
+      note.courseId = courseId;
+      note.content = content;
+      note.referenceFiles = referenceFiles;
+      note.source = source;
+      note.isPrivate = finalIsPrivate;
+      note.groupId = finalGroupId;
+      if (finalIsPrivate) note.deletedByUsers = [];
+
+      await note.save();
+      await broadcastTaskUpdate(note.groupId, req.user.id);
+      return res.json(await Note.findById(note._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
+    }
+
+    const newNote = new Note({ user: req.user.id, title, courseId, content: content || " ", referenceFiles, source, isPrivate: finalIsPrivate, groupId: finalGroupId });
+    await newNote.save();
+    await broadcastTaskUpdate(newNote.groupId, req.user.id);
+    res.json(await Note.findById(newNote._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
+  } catch (error) { res.status(500).json({ error: error.message || "Failed to process note" }); }
+});
+
+app.put('/api/notes/:id', auth, async (req, res) => {
+  try {
+    const note = await Note.findById(req.params.id);
+    if (!note) return res.status(404).json({ message: "Note not found." });
+    if (note.user.toString() !== req.user.id) return res.status(403).json({ message: "Access Denied" });
+
+    if (req.body.isPrivate !== undefined) {
+      if (req.body.isPrivate === false) {
+        const userGroup = await Group.findOne({ members: req.user.id });
+        if (!userGroup) return res.status(400).json({ message: "No group found." });
+        note.groupId = userGroup._id;
+        note.isPrivate = false;
+      } else {
+        note.groupId = null;
+        note.isPrivate = true;
+        note.deletedByUsers = [];
+      }
+    }
+
+    if (req.body.title) note.title = req.body.title;
+    if (req.body.courseId) note.courseId = req.body.courseId;
+    if (req.body.content) note.content = req.body.content;
+    if (req.body.referenceFiles) note.referenceFiles = req.body.referenceFiles;
+
+    await note.save();
+    await broadcastTaskUpdate(note.groupId, req.user.id);
+    res.json(note);
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.put('/api/notes/:id/delete', auth, async (req, res) => {
+  try {
+    const note = await Note.findById(req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    const isCreator = note.user.toString() === req.user.id;
+    const oldGroupId = note.groupId;
+
+    if (isCreator) {
+      note.isDeleted = true;
+      note.deletedAt = new Date();
+    } else if (note.groupId) {
+      if (!note.deletedByUsers.map(id => id.toString()).includes(req.user.id)) {
+        note.deletedByUsers.push(req.user.id);
+      }
+    } else { return res.status(403).json({ error: "Unauthorized delete action." }); }
+
+    await note.save();
+    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    res.json({ message: 'Moved to Bin safely' });
+  } catch (error) { res.status(500).json({ error: "Error moving note to bin" }); }
+});
+
+app.put('/api/notes/:id/restore', auth, async (req, res) => {
+  try {
+    const note = await Note.findById(req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    if (note.user.toString() === req.user.id) {
+      note.isDeleted = false;
+      note.deletedAt = null;
+    }
+    note.deletedByUsers = note.deletedByUsers.filter(id => id.toString() !== req.user.id);
+    await note.save();
+    await broadcastTaskUpdate(note.groupId, req.user.id);
+    res.json({ message: 'Restored cleanly' });
+  } catch (error) { res.status(500).json({ error: "Error restoring note" }); }
+});
+
+app.delete('/api/notes/:id', auth, async (req, res) => {
+  try {
+    const note = await Note.findById(req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    const isCreator = note.user.toString() === req.user.id;
+    const oldGroupId = note.groupId;
+
+    if (isCreator) await Note.findByIdAndDelete(req.params.id);
+    else { note.deletedByUsers.push(req.user.id); await note.save(); }
+
+    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    res.json({ message: 'Permanently Purged' });
+  } catch (error) { res.status(500).json({ error: "Error deleting note" }); }
+});
 
 // ==========================================
 // 🏆 RELATIVE GRADING & LEADERBOARD API
@@ -2079,8 +2511,8 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res)
     // 3. Calculate absolute scores for everyone
     let leaderboard = matchingCourses.map(course => {
       // Find matching grade document. We check if the grade courseName matches the Course name.
-      const userGrade = grades.find(g => 
-        g.userId.toString() === course.userId?._id.toString() && 
+      const userGrade = grades.find(g =>
+        g.userId.toString() === course.userId?._id.toString() &&
         (g.courseName === course.name || (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase())))
       );
 

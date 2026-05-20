@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
+import {
   Plus, Search, SlidersHorizontal, User, Inbox, Sun, Moon, Filter,
   Book, Mail, Clock, CheckCircle2, Calendar, Menu,
-  ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown, 
-  Settings, LogOut, FileText, X, Image as ImageIcon, Mic, FileArchive,
-  Timer, Download, Maximize2, Trash2, EyeOff, Activity, AlertCircle, Users
+  ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown,
+  FileText, X, Image as ImageIcon, Mic, FileArchive,
+  Timer, Download, Maximize2, EyeOff, Activity, AlertCircle, Users,
+  LogOut
 } from 'lucide-react';
-import UCPLogo from './UCPLogo'; 
+import UCPLogo from './UCPLogo';
 
-const Header = ({ 
-  activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout, 
+const Header = ({
+  activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout,
   tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, onToggleKeynoteRead, hfState, hfModes,
   exams, activeGroup, onOpenGroupInfo, onToggleRightSidebar, isRightSidebarOpen, pendingInvitations
 }) => {
@@ -21,18 +22,16 @@ const Header = ({
   const safeNotes = Array.isArray(notes) ? notes : [];
   const safeKeynotes = Array.isArray(keynotes) ? keynotes : [];
 
-
   const [showFilters, setShowFilters] = useState(false);
-  const [showCourseList, setShowCourseList] = useState(false); 
+  const [showCourseList, setShowCourseList] = useState(false);
   const [showStatusList, setShowStatusList] = useState(false);
   const [showPriorityList, setShowPriorityList] = useState(false);
   const [showMediaList, setShowMediaList] = useState(false);
-  const [showSourceList, setShowSourceList] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-  
+
   const [selectedNote, setSelectedNote] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
 
@@ -44,6 +43,11 @@ const Header = ({
   const searchRef = useRef(null);
 
   const isCashTab = activeTab && activeTab.startsWith('Cash');
+
+  // 🚀 CALCULATE THE ACTIVE USER'S GROUP STRUCTURAL PERMISSION ROLE
+  const isGroupCreator = activeGroup?.creatorId?._id === user?.id || activeGroup?.creatorId === user?.id || activeGroup?.creatorId?._id === user?._id || activeGroup?.creatorId === user?._id;
+  const isGroupAdmin = isGroupCreator || activeGroup?.admins?.some(adminId => adminId === user?.id || adminId?._id === user?.id || adminId === user?._id || adminId?._id === user?._id);
+  const groupRoleLabel = isGroupCreator ? 'Creator' : (isGroupAdmin ? 'Admin' : 'Member');
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -73,7 +77,6 @@ const Header = ({
       } else if (activeTab === 'Keynotes') {
         const results = safeKeynotes.filter(note => note?.title?.toLowerCase().includes(query.toLowerCase()) || note?.content?.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
         setSearchResults(results.map(n => ({ ...n, isNoteResult: true })));
-
       } else {
         const results = safeTasks.filter(task => task?.name?.toLowerCase().includes(query.toLowerCase()) || (task?.description && task.description.toLowerCase().includes(query.toLowerCase()))).slice(0, 6);
         setSearchResults(results.map(t => ({ ...t, isTaskResult: true })));
@@ -86,7 +89,7 @@ const Header = ({
   };
 
   const getStatusIcon = (s) => {
-    switch(s) {
+    switch (s) {
       case 'New task': return <Mail size={14} className="text-blue-500" />;
       case 'Scheduled': return <Calendar size={14} className="text-gray-500" />;
       case 'In Progress': return <Clock size={14} className="text-yellow-500" />;
@@ -97,7 +100,7 @@ const Header = ({
   };
 
   const getPriorityIcon = (p) => {
-    switch(p) {
+    switch (p) {
       case 'Critical': return <ChevronsUp size={14} className="text-red-500" />;
       case 'High': return <ChevronUp size={14} className="text-orange-500" />;
       case 'Medium': return <Minus size={14} className="text-yellow-500" />;
@@ -121,15 +124,14 @@ const Header = ({
   ].filter(Boolean).length;
 
   const unreadKeynotes = safeKeynotes.filter(k => !k?.isRead);
+  const today = new Date().setHours(0, 0, 0, 0);
 
-  const today = new Date().setHours(0,0,0,0);
-  
   const inboxSnaps = safeKeynotes.filter(note => {
-    const noteDate = new Date(note.createdAt).setHours(0,0,0,0);
-    return !note.isRead || noteDate === today; 
+    const noteDate = new Date(note.createdAt).setHours(0, 0, 0, 0);
+    return !note.isRead || noteDate === today;
   }).sort((a, b) => {
     if (a.isRead === b.isRead) return new Date(b.createdAt) - new Date(a.createdAt);
-    return a.isRead ? 1 : -1; 
+    return a.isRead ? 1 : -1;
   });
 
   const isAudio = (url) => url?.match(/\.(m4a|mp3|wav|ogg|aac|mp4|3gp)$/i) || url?.includes('video/upload');
@@ -154,20 +156,20 @@ const Header = ({
     if (!selectedNote) return;
     const newStatus = !selectedNote.isRead;
     setSelectedNote({ ...selectedNote, isRead: newStatus });
-    onToggleKeynoteRead(selectedNote._id, selectedNote.isRead); 
+    onToggleKeynoteRead(selectedNote._id, selectedNote.isRead);
   };
 
   return (
     <>
       <div className="w-full h-16 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-dark-border flex items-center justify-between px-4 md:px-8 transition-colors duration-300 relative z-[100]">
-        
+
         <div className="flex items-center gap-2 md:gap-4">
           <button onClick={onMenuClick} className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors">
             <Menu size={22} />
           </button>
 
-          <button 
-            onClick={onAddClick} 
+          <button
+            onClick={onAddClick}
             className="flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-600 text-white w-9 h-9 md:w-auto md:px-5 md:py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95"
           >
             <Plus size={18} />
@@ -181,7 +183,7 @@ const Header = ({
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search size={16} className="text-gray-400 group-focus-within:text-brand-blue transition-colors" />
               </div>
-              <input 
+              <input
                 type="text"
                 value={filters?.searchQuery || ''}
                 onChange={handleSearchChange}
@@ -198,12 +200,12 @@ const Header = ({
               <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl overflow-hidden z-[110] animate-fadeIn custom-scrollbar max-h-96 overflow-y-auto">
                 <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#252525]">Top Results</div>
                 {searchResults.map((item, index) => (
-                  <div 
-                    key={item?.id || item?._id || index} 
-                    onClick={() => { 
+                  <div
+                    key={item?.id || item?._id || index}
+                    onClick={() => {
                       if (item.isNoteResult) onOpenNote(item);
                       else onOpenTask(item);
-                      setShowSearchDropdown(false); 
+                      setShowSearchDropdown(false);
                     }}
                     className="px-4 py-3 hover:bg-blue-50 dark:hover:bg-[#2C2C2C] cursor-pointer border-b border-gray-100 dark:border-[#2C2C2C] last:border-0 flex items-start gap-3 group"
                   >
@@ -219,11 +221,10 @@ const Header = ({
                           {item.isNoteResult ? (safeCourses.find(c => (c.id || c._id) === item.courseId)?.name || 'General') : item.course}
                         </span>
                         {item.isTaskResult && (
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                            item.priority === 'Critical' ? 'border-red-500/30 text-red-500 bg-red-500/10' : 
-                            item.priority === 'High' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' : 
-                            'border-gray-500/30 text-gray-500 bg-gray-500/10'
-                          }`}>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded border ${item.priority === 'Critical' ? 'border-red-500/30 text-red-500 bg-red-500/10' :
+                            item.priority === 'High' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' :
+                              'border-gray-500/30 text-gray-500 bg-gray-500/10'
+                            }`}>
                             {item.priority}
                           </span>
                         )}
@@ -233,7 +234,7 @@ const Header = ({
                 ))}
               </div>
             )}
-            
+
             {(activeTab === 'Tasks' || activeTab === 'Notes' || activeTab === 'Keynotes' || activeTab === 'Cash-Transactions') && (
               <div className="relative" ref={filterRef}>
                 <button onClick={() => setShowFilters(!showFilters)} className={`p-2 rounded-full transition-all relative ${showFilters ? 'bg-blue-100 dark:bg-blue-900/30 text-brand-blue' : 'text-gray-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-dark-surface'}`}>
@@ -257,12 +258,12 @@ const Header = ({
                         </button>
                         {showCourseList && (
                           <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
-                            <div onClick={() => { setFilters({...filters, course: 'All'}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-2 text-gray-500"><Book size={14} /> All Courses</div>
+                            <div onClick={() => { setFilters({ ...filters, course: 'All' }); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center gap-2 text-gray-500"><Book size={14} /> All Courses</div>
                             <div className="max-h-[160px] overflow-y-auto custom-scrollbar">
                               {safeCourses.map((c, idx) => (
-                                <div key={c?.id || c?._id || idx} onClick={() => { setFilters({...filters, course: c.name}); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-[#2C2C2C]">
+                                <div key={c?.id || c?._id || idx} onClick={() => { setFilters({ ...filters, course: c.name }); setShowCourseList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-[#2C2C2C]">
                                   <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">
-                                    {c?.type === 'uni' ? <UCPLogo className="w-4 h-4"/> : <Book size={14} className="text-gray-400"/>}
+                                    {c?.type === 'uni' ? <UCPLogo className="w-4 h-4" /> : <Book size={14} className="text-gray-400" />}
                                     {c?.name}
                                   </span>
                                   {filters.course === c?.name && <CheckCircle2 size={12} className="text-brand-blue" />}
@@ -272,8 +273,6 @@ const Header = ({
                           </div>
                         )}
                       </div>
-
-
 
                       {activeTab === 'Keynotes' && (
                         <div className="relative">
@@ -290,7 +289,7 @@ const Header = ({
                           {showMediaList && (
                             <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
                               {['All', 'Image', 'Audio'].map(type => (
-                                <div key={type} onClick={() => { setFilters({...filters, mediaType: type}); setShowMediaList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                <div key={type} onClick={() => { setFilters({ ...filters, mediaType: type }); setShowMediaList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
                                   <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{type}</span>
                                   {filters.mediaType === type && <CheckCircle2 size={12} className="text-brand-blue" />}
                                 </div>
@@ -311,7 +310,7 @@ const Header = ({
                             {showStatusList && (
                               <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
                                 {['All', 'New task', 'Scheduled', 'In Progress', 'Completed'].map(status => (
-                                  <div key={status} onClick={() => { setFilters({...filters, status}); setShowStatusList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                  <div key={status} onClick={() => { setFilters({ ...filters, status }); setShowStatusList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
                                     <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getStatusIcon(status)}{status}</span>
                                     {filters.status === status && <CheckCircle2 size={12} className="text-brand-blue" />}
                                   </div>
@@ -328,7 +327,7 @@ const Header = ({
                             {showPriorityList && (
                               <div className="mt-2 w-full bg-white dark:bg-[#252525] border border-gray-100 dark:border-[#333] rounded-xl shadow-sm overflow-hidden animate-fadeIn">
                                 {['All', 'Critical', 'High', 'Medium', 'Low'].map(priority => (
-                                  <div key={priority} onClick={() => { setFilters({...filters, priority}); setShowPriorityList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
+                                  <div key={priority} onClick={() => { setFilters({ ...filters, priority }); setShowPriorityList(false); }} className="p-3 text-xs hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer flex items-center justify-between border-b border-gray-100 dark:border-[#2C2C2C] last:border-0">
                                     <span className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-medium">{getPriorityIcon(priority)}{priority}</span>
                                     {filters.priority === priority && <CheckCircle2 size={12} className="text-brand-blue" />}
                                   </div>
@@ -344,19 +343,19 @@ const Header = ({
                         <div className="flex items-center gap-3">
                           <div className="w-full relative">
                             <span className="absolute -top-2 left-3 bg-white dark:bg-[#1E1E1E] px-1 text-[9px] font-bold text-gray-400 z-10">START</span>
-                            <input 
-                              type="date" 
+                            <input
+                              type="date"
                               value={filters.startDate || ''}
-                              onChange={e => setFilters({...filters, startDate: e.target.value})}
+                              onChange={e => setFilters({ ...filters, startDate: e.target.value })}
                               className="w-full bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all relative z-0"
                             />
                           </div>
                           <div className="w-full relative">
                             <span className="absolute -top-2 left-3 bg-white dark:bg-[#1E1E1E] px-1 text-[9px] font-bold text-gray-400 z-10">END</span>
-                            <input 
-                              type="date" 
+                            <input
+                              type="date"
                               value={filters.endDate || ''}
-                              onChange={e => setFilters({...filters, endDate: e.target.value})}
+                              onChange={e => setFilters({ ...filters, endDate: e.target.value })}
                               className="w-full bg-gray-50 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3E3E3E] text-gray-700 dark:text-white text-xs rounded-xl p-3 focus:ring-2 focus:ring-brand-blue outline-none transition-all relative z-0"
                             />
                           </div>
@@ -369,7 +368,6 @@ const Header = ({
               </div>
             )}
 
-            {/* 🚀 MOVED THE RED ALERT EXAM BUTTON HERE */}
             {exams && exams.length > 0 && (
               <button
                 onClick={() => onNavigate('Datesheet')}
@@ -386,30 +384,27 @@ const Header = ({
 
         {/* --- RIGHT SIDE --- */}
         <div className="flex items-center gap-2 md:gap-4">
-          
-          <div className="hidden sm:flex items-center gap-1 border-r border-gray-200 dark:border-[#333] pr-2 mr-1">
-              
-              <button 
-                onClick={() => onNavigate('HyperFocus')}
-                className={`p-2 rounded-full transition-all relative ${
-                  activeTab === 'HyperFocus' ? 'bg-gray-200 dark:bg-dark-surface' : 'hover:bg-gray-100 dark:hover:bg-dark-surface'
-                }`}
-                title="Hyper Focus Automation"
-              >
-                {hfState?.isAutomated ? (
-                  <div className="relative flex items-center justify-center">
-                    <Activity size={20} className="animate-pulse" style={{ color: hfModes?.[hfState?.modeId || 'focus']?.color || '#3B82F6' }} />
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: hfModes?.[hfState?.modeId || 'focus']?.color || '#3B82F6' }}></span>
-                  </div>
-                ) : (
-                  <Timer size={20} className="text-gray-500 dark:text-gray-400" />
-                )}
-              </button>
 
+          <div className="hidden sm:flex items-center gap-1 border-r border-gray-200 dark:border-[#333] pr-2 mr-1">
+            <button
+              onClick={() => onNavigate('HyperFocus')}
+              className={`p-2 rounded-full transition-all relative ${activeTab === 'HyperFocus' ? 'bg-gray-200 dark:bg-dark-surface' : 'hover:bg-gray-100 dark:hover:bg-dark-surface'
+                }`}
+              title="Hyper Focus Automation"
+            >
+              {hfState?.isAutomated ? (
+                <div className="relative flex items-center justify-center">
+                  <Activity size={20} className="animate-pulse" style={{ color: hfModes?.[hfState?.modeId || 'focus']?.color || '#3B82F6' }} />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: hfModes?.[hfState?.modeId || 'focus']?.color || '#3B82F6' }}></span>
+                </div>
+              ) : (
+                <Timer size={20} className="text-gray-500 dark:text-gray-400" />
+              )}
+            </button>
           </div>
 
           <div className="relative">
-            <button 
+            <button
               onClick={() => setIsInboxOpen(true)}
               className="hidden md:flex items-center gap-2 bg-white dark:bg-dark-surface border border-brand-blue text-brand-blue px-4 py-1.5 rounded-full hover:bg-brand-blue hover:text-white dark:hover:bg-brand-blue dark:hover:shadow-[0_0_15px_rgba(59,130,246,0.4)] transition-all text-xs font-medium shadow-sm"
             >
@@ -423,11 +418,12 @@ const Header = ({
             </button>
           </div>
 
+          {/* 🚀 REQUEST 1 FIXED: ONLY PORTRAIT EMBED AND STRUCTURAL USER ROLE GIVEN (REMOVED GROUP TEXT NAME) */}
           {activeGroup && (
-            <button 
+            <button
               onClick={onOpenGroupInfo}
-              className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] p-1 px-3 rounded-full transition-all border border-gray-200 dark:border-[#333]"
-              title={`${activeGroup.name} - View Group Info`}
+              className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] p-1 px-2.5 rounded-full transition-all border border-gray-200 dark:border-[#333] shrink-0"
+              title="Open Group Settings"
             >
               {activeGroup.profilePic ? (
                 <img src={activeGroup.profilePic} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/10" />
@@ -436,19 +432,23 @@ const Header = ({
                   {activeGroup.name?.substring(0, 2).toUpperCase() || "SG"}
                 </div>
               )}
-              <span className="text-xs font-bold text-gray-700 dark:text-gray-200 hidden md:inline max-w-[80px] truncate">
-                {activeGroup.name}
+              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${isGroupCreator
+                ? 'bg-amber-500/10 text-amber-500 border border-amber-500/10'
+                : isGroupAdmin
+                  ? 'bg-blue-500/10 text-blue-500 border border-blue-500/10'
+                  : 'bg-gray-500/10 text-gray-400'
+                }`}>
+                {groupRoleLabel}
               </span>
             </button>
           )}
 
-          <button 
-            onClick={onToggleRightSidebar} 
-            className={`p-2 rounded-full transition-all relative ${
-              isRightSidebarOpen 
-                ? 'bg-blue-100 dark:bg-blue-900/30 text-brand-blue' 
-                : 'text-gray-500 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-dark-surface'
-            }`}
+          <button
+            onClick={onToggleRightSidebar}
+            className={`p-2 rounded-full transition-all relative ${isRightSidebarOpen
+              ? 'bg-blue-100 dark:bg-blue-900/30 text-brand-blue'
+              : 'text-gray-500 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-dark-surface'
+              }`}
             title="Community Directory"
           >
             <Users size={20} />
@@ -464,7 +464,7 @@ const Header = ({
           <div className="h-6 w-px bg-gray-200 dark:bg-dark-border"></div>
 
           <div className="relative" ref={profileDropdownRef}>
-            <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333]">
+            <button onClick={() => !isProfileOpen ? setIsProfileOpen(true) : setIsProfileOpen(false)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333]">
               {user?.profilePic ? (
                 <img src={user.profilePic} alt={user.name} className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/20" />
               ) : (
@@ -501,7 +501,7 @@ const Header = ({
       </div>
 
       {isInboxOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150] animate-fadeIn"
           onClick={() => setIsInboxOpen(false)}
         />
@@ -520,32 +520,31 @@ const Header = ({
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
           {inboxSnaps.length === 0 ? (
-             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 opacity-50">
-               <Inbox size={48} strokeWidth={1} />
-               <p className="text-sm font-medium">No active snaps right now.</p>
-             </div>
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 opacity-50">
+              <Inbox size={48} strokeWidth={1} />
+              <p className="text-sm font-medium">No active snaps right now.</p>
+            </div>
           ) : (
             inboxSnaps.map((note) => {
               const isUni = safeCourses.find(c => c.name === note.courseName)?.type === 'uni';
               return (
-                <div 
-                  key={note._id} 
+                <div
+                  key={note._id}
                   onClick={() => setSelectedNote(note)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer hover:shadow-lg relative overflow-hidden ${
-                    !note.isRead 
-                      ? 'bg-white dark:bg-[#1E1E1E] border-brand-blue/50 shadow-md shadow-brand-blue/10' 
-                      : 'bg-gray-100 dark:bg-[#1c1c24] border-transparent opacity-60 hover:opacity-100'
-                  }`}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer hover:shadow-lg relative overflow-hidden ${!note.isRead
+                    ? 'bg-white dark:bg-[#1E1E1E] border-brand-blue/50 shadow-md shadow-brand-blue/10'
+                    : 'bg-gray-100 dark:bg-[#1c1c24] border-transparent opacity-60 hover:opacity-100'
+                    }`}
                 >
                   {!note.isRead && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_12px_rgba(59,130,246,0.9)]"></div>}
 
                   <div className="flex justify-between items-start mb-2 gap-2 pl-1">
                     <span className="flex items-start gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-1">
-                      {isUni && <UCPLogo className="w-3 h-3 text-brand-blue shrink-0 mt-0.5" />} 
+                      {isUni && <UCPLogo className="w-3 h-3 text-brand-blue shrink-0 mt-0.5" />}
                       <span className="leading-snug">{note.courseName}</span>
                     </span>
                     <span className="text-[10px] font-bold text-gray-400 shrink-0">
-                      {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })}
+                      {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                   <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate pl-1">{note.title}</h4>
@@ -556,7 +555,7 @@ const Header = ({
         </div>
 
         <div className="p-5 border-t border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1E1E1E]">
-          <button onClick={() => { setIsInboxOpen(false); if(onNavigate) onNavigate('Keynotes'); }} className="w-full py-3 text-sm font-bold text-white bg-gray-900 dark:bg-brand-blue rounded-xl hover:shadow-lg transition-all">
+          <button onClick={() => { setIsInboxOpen(false); if (onNavigate) onNavigate('Keynotes'); }} className="w-full py-3 text-sm font-bold text-white bg-gray-900 dark:bg-brand-blue rounded-xl hover:shadow-lg transition-all">
             View All Keynotes
           </button>
         </div>
@@ -565,14 +564,14 @@ const Header = ({
       {selectedNote && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-fadeIn">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setSelectedNote(null)}></div>
-          
+
           <div className="relative bg-white dark:bg-[#1c1c24] w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh] overflow-hidden transform animate-slideUp">
-            
+
             <div className="p-5 sm:p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-start bg-gray-50 dark:bg-[#222230]">
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
-                   {safeCourses.find(c => c.name === selectedNote.courseName)?.type === 'uni' && <UCPLogo className="w-4 h-4 text-brand-blue" />}
-                   {selectedNote.courseName}
+                  {safeCourses.find(c => c.name === selectedNote.courseName)?.type === 'uni' && <UCPLogo className="w-4 h-4 text-brand-blue" />}
+                  {selectedNote.courseName}
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedNote.title}</h2>
               </div>
@@ -591,16 +590,16 @@ const Header = ({
               {selectedNote.mediaUrls && selectedNote.mediaUrls.length > 0 && (
                 <div className="space-y-4">
                   {selectedNote.mediaUrls.filter(url => !isAudio(url)).length > 0 && (
-                     <div className="grid grid-cols-2 gap-3">
-                       {selectedNote.mediaUrls.filter(url => !isAudio(url)).map((url, i) => (
-                         <div key={i} className="relative group rounded-xl overflow-hidden aspect-video bg-black/10 dark:bg-black/50 border border-gray-200 dark:border-gray-800 cursor-zoom-in" onClick={() => setPreviewImage(url)}>
-                           <img src={url} alt="snap" className="object-cover w-full h-full group-hover:opacity-75 transition-opacity" />
-                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                             <div className="bg-black/60 p-2 rounded-lg text-white"><Maximize2 size={20} /></div>
-                           </div>
-                         </div>
-                       ))}
-                     </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedNote.mediaUrls.filter(url => !isAudio(url)).map((url, i) => (
+                        <div key={i} className="relative group rounded-xl overflow-hidden aspect-video bg-black/10 dark:bg-black/50 border border-gray-200 dark:border-gray-800 cursor-zoom-in" onClick={() => setPreviewImage(url)}>
+                          <img src={url} alt="snap" className="object-cover w-full h-full group-hover:opacity-75 transition-opacity" />
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                            <div className="bg-black/60 p-2 rounded-lg text-white"><Maximize2 size={20} /></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
 
                   {selectedNote.mediaUrls.filter(url => isAudio(url)).map((url, i) => (
@@ -618,13 +617,12 @@ const Header = ({
             </div>
 
             <div className="p-5 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#15151a] flex justify-end">
-              <button 
+              <button
                 onClick={toggleModalReadStatus}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${
-                  selectedNote.isRead 
-                    ? 'bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-700' 
-                    : 'bg-brand-blue text-white hover:bg-blue-600'
-                }`}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${selectedNote.isRead
+                  ? 'bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-700'
+                  : 'bg-brand-blue text-white hover:bg-blue-600'
+                  }`}
               >
                 {selectedNote.isRead ? <EyeOff size={16} /> : <CheckCircle2 size={16} />}
                 {selectedNote.isRead ? 'Mark as Unread' : 'Mark as Read'}
@@ -639,7 +637,7 @@ const Header = ({
           <button onClick={() => setPreviewImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all">
             <X size={24} />
           </button>
-          
+
           <button onClick={(e) => handleDownload(e, previewImage)} className="absolute top-6 left-6 flex items-center gap-2 bg-brand-blue hover:bg-blue-600 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-all">
             <Download size={18} /> Download
           </button>

@@ -20,15 +20,12 @@ import {
   Paperclip, X, Book, ArrowLeft, ChevronDown, Copy, Trash2, CheckCircle2, 
   Undo2, Redo2, Loader2, Cloud, Highlighter, Bold, Italic, Image as ImageIcon, 
   Code, List, ListOrdered, Quote, AlignLeft, AlignCenter, AlignRight, Maximize2, Minimize2,
-  CheckSquare, Terminal, Superscript as SuperscriptIcon, Subscript as SubscriptIcon, Sigma, FileCode 
+  CheckSquare, Terminal, Superscript as SuperscriptIcon, Subscript as SubscriptIcon, Sigma, FileCode, Send, Globe, Lock
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// ==========================================
-// RESIZEOBSERVER ERROR KILLER
-// ==========================================
 if (typeof window !== 'undefined') {
   const _ResizeObserver = window.ResizeObserver;
   window.ResizeObserver = class ResizeObserver extends _ResizeObserver {
@@ -50,10 +47,8 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// ==========================================
-// 1. THE MONACO CODE BLOCK (INTELLISENSE)
-// ==========================================
-const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
+const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode, editor }) => {
+  const isEditable = editor.isEditable;
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
@@ -85,9 +80,7 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsLangDropdownOpen(false);
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsLangDropdownOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -110,19 +103,13 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
         { token: 'function', foreground: '61afef' },    
         { token: 'comment', foreground: '7f848e', fontStyle: 'italic' },
       ],
-      colors: {
-        'editor.background': '#1A1A1A', 
-        'editor.lineHighlightBackground': '#2C2C2C',
-      }
+      colors: { 'editor.background': '#1A1A1A', 'editor.lineHighlightBackground': '#2C2C2C' }
     });
   };
 
-  const handleEditorDidMount = (editor) => {
-    const updateHeight = () => {
-      const height = editor.getContentHeight();
-      setContentHeight(height);
-    };
-    editor.onDidContentSizeChange(updateHeight);
+  const handleEditorDidMount = (editorInstance) => {
+    const updateHeight = () => setContentHeight(editorInstance.getContentHeight());
+    editorInstance.onDidContentSizeChange(updateHeight);
     updateHeight();
   };
 
@@ -133,14 +120,14 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
       <div className="bg-gray-50 dark:bg-[#1A1A1A] flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-[#333]">
         <div className="relative" ref={dropdownRef}>
           <button
-            onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
-            className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-brand-blue dark:hover:text-white transition-colors text-xs font-bold px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]"
+            onClick={() => isEditable && setIsLangDropdownOpen(!isLangDropdownOpen)}
+            className={`flex items-center gap-2 text-gray-700 dark:text-gray-300 transition-colors text-xs font-bold px-2 py-1 rounded-md ${isEditable ? 'hover:text-brand-blue dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#2C2C2C]' : 'cursor-default'}`}
           >
             {currentLangLabel}
-            <ChevronDown size={14} className={`transition-transform ${isLangDropdownOpen ? 'rotate-180' : ''}`} />
+            {isEditable && <ChevronDown size={14} className={`transition-transform ${isLangDropdownOpen ? 'rotate-180' : ''}`} />}
           </button>
 
-          {isLangDropdownOpen && (
+          {isLangDropdownOpen && isEditable && (
             <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 py-1 animate-slideUp">
               {languages.map(lang => (
                 <button
@@ -168,9 +155,11 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
             {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />} 
             <span className="hidden sm:block">{copied ? 'Copied' : 'Copy'}</span>
           </button>
-          <button onClick={deleteNode} className="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]" title="Delete Block">
-            <Trash2 size={14} />
-          </button>
+          {isEditable && (
+            <button onClick={deleteNode} className="text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-[#2C2C2C]" title="Delete Block">
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -188,6 +177,7 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
           defaultValue={node.attrs.code}
           onChange={(value) => updateAttributes({ code: value })}
           options={{
+            readOnly: !isEditable,
             minimap: { enabled: false },
             fontSize: 14,
             fontFamily: "'Fira Code', 'JetBrains Mono', 'Courier New', monospace",
@@ -197,9 +187,9 @@ const InteractiveMonacoBlock = ({ node, updateAttributes, deleteNode }) => {
             cursorBlinking: "smooth",
             wordWrap: "on",
             scrollbar: { alwaysConsumeMouseWheel: !isExpanded, vertical: isExpanded ? 'hidden' : 'auto' },
-            quickSuggestions: true,
-            suggestOnTriggerCharacters: true,
-            parameterHints: { enabled: true }
+            quickSuggestions: isEditable,
+            suggestOnTriggerCharacters: isEditable,
+            parameterHints: { enabled: isEditable }
           }}
         />
       </div>
@@ -217,10 +207,8 @@ const MonacoCodeBlockExtension = Node.create({
   addNodeView() { return ReactNodeViewRenderer(InteractiveMonacoBlock); },
 });
 
-// ==========================================
-// 2. STATIC CODE BLOCK (LIGHTWEIGHT) WITH DELETE
-// ==========================================
-const StaticCodeBlockNode = ({ node, deleteNode }) => {
+const StaticCodeBlockNode = ({ node, deleteNode, editor }) => {
+  const isEditable = editor.isEditable;
   const [copied, setCopied] = useState(false);
   
   const handleCopy = () => {
@@ -241,9 +229,11 @@ const StaticCodeBlockNode = ({ node, deleteNode }) => {
             {copied ? <CheckCircle2 size={12} className="text-green-400"/> : <Copy size={12}/>}
             {copied ? 'Copied' : 'Copy'}
           </button>
-          <button contentEditable={false} onClick={deleteNode} className="text-gray-400 hover:text-red-500 transition-colors bg-[#3D3D3D] hover:bg-red-900/40 px-2 py-1 rounded" title="Delete Snippet">
-            <Trash2 size={12}/>
-          </button>
+          {isEditable && (
+            <button contentEditable={false} onClick={deleteNode} className="text-gray-400 hover:text-red-500 transition-colors bg-[#3D3D3D] hover:bg-red-900/40 px-2 py-1 rounded" title="Delete Snippet">
+              <Trash2 size={12}/>
+            </button>
+          )}
         </div>
       </div>
       <pre className="p-4 overflow-x-auto text-sm font-mono text-gray-200 m-0 bg-[#1E1E1E]">
@@ -257,11 +247,7 @@ const StaticCodeBlockExtension = CodeBlock.extend({
   addNodeView() { return ReactNodeViewRenderer(StaticCodeBlockNode); }
 });
 
-// ==========================================
-// 3. MS-WORD STYLE EQUATION BLOCK (ALIGNMENT SUPPORTED)
-// ==========================================
 const EquationBlockNode = ({ node }) => {
-  // Read alignment set by the Tiptap TextAlign extension
   const align = node.attrs.textAlign || 'center';
   const alignClass = align === 'left' ? 'justify-start' : align === 'right' ? 'justify-end' : 'justify-center';
   const textClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
@@ -285,17 +271,14 @@ const EquationExtension = Node.create({
   name: 'equationBlock',
   group: 'block',
   content: 'inline*',
-  // Allow alignment attribute to be read properly
   addAttributes() { return { textAlign: { default: 'center' } } },
   parseHTML() { return [{ tag: 'div[data-equation]' }] },
   renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-equation': '' }), 0] },
   addNodeView() { return ReactNodeViewRenderer(EquationBlockNode); }
 });
 
-// ==========================================
-// 4. THE CUSTOM IMAGE BLOCK
-// ==========================================
-const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) => {
+const InteractiveImageNode = ({ node, updateAttributes, selected, editor }) => {
+  const isEditable = editor.isEditable;
   const { src, caption, width, textAlign } = node.attrs;
   const imgRef = useRef(null);
   const currentAlign = textAlign || 'center';
@@ -326,9 +309,9 @@ const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) 
   return (
     <NodeViewWrapper className={`flex flex-col group relative max-w-full my-6 ${alignClass}`}>
       <div className="flex flex-col" style={{ width: width }}>
-        <div className={`relative inline-block ${selected ? 'border-[3px] border-blue-500' : 'border-[3px] border-transparent'}`}>
+        <div className={`relative inline-block ${selected && isEditable ? 'border-[3px] border-blue-500' : 'border-[3px] border-transparent'}`}>
           <img ref={imgRef} src={src} alt="Note attachment" className="w-full h-auto cursor-pointer" />
-          {selected && (
+          {selected && isEditable && (
             <>
               <div onMouseDown={(e) => handleDragStart(e, 'left')} className="absolute -left-2 -top-2 w-3 h-3 bg-blue-500 border border-white cursor-nwse-resize z-20"></div>
               <div onMouseDown={(e) => handleDragStart(e, 'right')} className="absolute -right-2 -top-2 w-3 h-3 bg-blue-500 border border-white cursor-nesw-resize z-20"></div>
@@ -339,8 +322,9 @@ const InteractiveImageNode = ({ node, updateAttributes, selected, deleteNode }) 
         </div>
         <input
           type="text"
-          className="w-full mt-2 bg-transparent border-none outline-none text-sm text-center text-gray-500 dark:text-gray-400 font-medium placeholder-gray-300 dark:placeholder-[#555] transition-all focus:text-gray-900 dark:focus:text-gray-200"
-          placeholder="Write a caption..."
+          readOnly={!isEditable}
+          className={`w-full mt-2 bg-transparent border-none outline-none text-sm text-center text-gray-500 dark:text-gray-400 font-medium placeholder-gray-300 dark:placeholder-[#555] transition-all focus:text-gray-900 dark:focus:text-gray-200 ${!isEditable ? 'pointer-events-none' : ''}`}
+          placeholder={isEditable ? "Write a caption..." : ""}
           value={caption}
           onChange={e => updateAttributes({ caption: e.target.value })}
         />
@@ -362,7 +346,7 @@ const CustomImageExtension = Image.extend({
 
 // ==========================================
 
-const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete }) => {
+const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete, onShare, readOnly = false, defaultIsPrivate = true }) => {
   const [currentNoteId, setCurrentNoteId] = useState(initialNote?._id || null);
   const [title, setTitle] = useState(initialNote?.title || '');
   const [courseId, setCourseId] = useState(initialNote?.courseId || '');
@@ -370,7 +354,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
-  const [isPrivate, setIsPrivate] = useState(initialNote?.isPrivate || false);
+  const [isPrivate, setIsPrivate] = useState(initialNote !== null ? initialNote.isPrivate : defaultIsPrivate);
   
   const [isCourseDropdownOpen, setIsCourseDropdownOpen] = useState(false);
   const [isAlignDropdownOpen, setIsAlignDropdownOpen] = useState(false); 
@@ -405,6 +389,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   }, []);
 
   const editor = useEditor({
+    editable: !readOnly,
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       MonacoCodeBlockExtension,
@@ -418,7 +403,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       Underline,
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ['heading', 'paragraph', 'image', 'equationBlock'] }), 
-      Placeholder.configure({ placeholder: 'Start typing your brilliance here...' }),
+      Placeholder.configure({ placeholder: readOnly ? '' : 'Start typing your brilliance here...' }),
     ],
     content: initialNote?.content || '',
     editorProps: {
@@ -426,6 +411,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         class: 'prose prose-sm sm:prose-base dark:prose-invert max-w-none focus:outline-none min-h-[calc(100vh-250px)] px-8 py-6',
       },
       handlePaste: (view, event, slice) => {
+        if (readOnly) return false;
         const items = event.clipboardData?.items;
         if (!items) return false;
         for (const item of items) {
@@ -440,6 +426,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       },
     },
     onUpdate: ({ editor }) => {
+      if (readOnly) return;
       setIsDirty(true);
       setSaveStatus('Unsaved changes');
       const text = editor.getText();
@@ -458,7 +445,11 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
   useEffect(() => {
     const updateMenu = () => {
-      if (!editor || !bubbleMenuRef.current) return;
+      if (!editor || !bubbleMenuRef.current || readOnly) {
+        if (bubbleMenuRef.current) bubbleMenuRef.current.style.display = 'none';
+        return;
+      }
+      
       const { view, state } = editor;
       const { selection } = state;
       const isHighlighted = editor.isActive('highlight');
@@ -483,22 +474,23 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       }
     };
 
-    if (editor) {
+    if (editor && !readOnly) {
       editor.on('selectionUpdate', updateMenu);
       editor.on('transaction', updateMenu);
       document.addEventListener('scroll', updateMenu, true);
     }
 
     return () => {
-      if (editor) {
+      if (editor && !readOnly) {
         editor.off('selectionUpdate', updateMenu);
         editor.off('transaction', updateMenu);
       }
       document.removeEventListener('scroll', updateMenu, true);
     };
-  }, [editor]);
+  }, [editor, readOnly]);
 
   const uploadImageToBackend = async (file) => {
+    if (readOnly) return;
     setSaveStatus('Uploading image...');
     const formData = new FormData();
     formData.append('files', file);
@@ -525,6 +517,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   };
 
   const imageHandler = () => {
+    if (readOnly) return;
     const input = document.createElement('input');
     input.setAttribute('type', 'file'); 
     input.setAttribute('accept', 'image/*'); 
@@ -535,7 +528,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   };
 
   useEffect(() => {
-    if (isDirty && editor) {
+    if (!readOnly && isDirty && editor) {
       if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
       
       autoSaveTimeoutRef.current = setTimeout(async () => {
@@ -559,7 +552,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         }
       }, 1500);
     }
-  }, [editor?.getHTML(), title, courseId, referenceFiles, isDirty, courses, generalCourses, onSave]);
+  }, [editor?.getHTML(), title, courseId, referenceFiles, isDirty, courses, generalCourses, onSave, readOnly]);
 
   const handleCopyText = () => {
     if (editor) {
@@ -569,10 +562,8 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     }
   };
 
-  // =========================================================================
-  // MULTIPLE FILE UPLOADS
-  // =========================================================================
   const handleFileUpload = async (e) => {
+    if (readOnly) return;
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
     
@@ -580,10 +571,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     setSaveStatus(`Uploading ${files.length} attachment(s)...`);
     
     const formData = new FormData(); 
-    
-    files.forEach(file => {
-      formData.append('files', file); 
-    });
+    files.forEach(file => formData.append('files', file));
     
     try {
       const token = localStorage.getItem('token'); 
@@ -605,7 +593,6 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         setSaveStatus('Error uploading files');
       }
     } catch (error) { 
-      console.error('Upload failed', error); 
       setSaveStatus('Error uploading files');
     } finally {
       setIsUploadingFile(false); 
@@ -613,49 +600,33 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     }
   };
 
-  // =========================================================================
-  // 🚀 BULLETPROOF BLOB DOWNLOADER (Bypasses School Network Proxies)
-  // =========================================================================
   const handleDownload = async (e, url, filename) => {
     e.preventDefault();
-    
-    // Extract the backend-generated filename (e.g. files-12345.pdf)
     const storedFilename = url.split('/').pop();
-    
-    // Construct the URL to our new dedicated download API endpoint
     const downloadUrl = `${API_BASE}/api/download/${storedFilename}?name=${encodeURIComponent(filename)}`;
     
     try {
       const token = localStorage.getItem('token');
-      
-      // Fetch as a raw Blob to bypass strict browser CORS & proxy modifications
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: { 'x-auth-token': token }
-      });
-      
+      const response = await fetch(downloadUrl, { method: 'GET', headers: { 'x-auth-token': token } });
       if (!response.ok) throw new Error("Network error during download");
       
       const blob = await response.blob();
       const objectUrl = window.URL.createObjectURL(blob);
-      
       const link = document.createElement('a');
       link.href = objectUrl;
-      link.setAttribute('download', filename); // Forces the exact original name
+      link.setAttribute('download', filename); 
       document.body.appendChild(link);
       link.click();
-      
       document.body.removeChild(link);
       window.URL.revokeObjectURL(objectUrl);
       
     } catch (error) {
-      console.error("Blob download failed, falling back to direct tab:", error);
-      // Fallback: Just open it in a new tab if fetch fails completely
       window.open(url, '_blank');
     }
   };
 
   const removeFile = (indexToRemove) => {
+    if (readOnly) return;
     setReferenceFiles(prev => prev.filter((_, index) => index !== indexToRemove));
     setIsDirty(true); 
     setSaveStatus('Unsaved changes');
@@ -680,89 +651,38 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   return (
     <div className={`flex flex-col bg-white dark:bg-[#121212] overflow-hidden ${isFullscreen ? 'fixed inset-0 z-[9999]' : 'h-full w-full relative'}`}>
       <style>{`
-        /* WORKING TEXT SIZES & HEADINGS FIX */
         .ProseMirror h1 { font-size: 2.25rem !important; font-weight: 800 !important; line-height: 1.2 !important; margin-top: 0.5em; margin-bottom: 0.25em; }
         .ProseMirror h2 { font-size: 1.875rem !important; font-weight: 700 !important; line-height: 1.3 !important; margin-top: 0.5em; margin-bottom: 0.25em; }
         .ProseMirror h3 { font-size: 1.5rem !important; font-weight: 600 !important; line-height: 1.4 !important; margin-top: 0.5em; margin-bottom: 0.25em; }
         .ProseMirror p { font-size: 1rem !important; line-height: 1.6 !important; }
-
         .dark .ProseMirror { color: #e5e7eb !important; }
         .dark .ProseMirror p { color: #e5e7eb !important; }
         .dark .ProseMirror h1, .dark .ProseMirror h2, .dark .ProseMirror h3 { color: #ffffff !important; }
-
-        .ProseMirror p.is-editor-empty:first-child::before {
-          content: attr(data-placeholder); float: left; color: #9ca3af; pointer-events: none; height: 0; font-style: italic;
-        }
-
+        .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #9ca3af; pointer-events: none; height: 0; font-style: italic; }
         .ProseMirror mark { background-color: #fef08a !important; color: #111827 !important; border-radius: 4px; padding: 0 2px; }
         .dark .ProseMirror mark { background-color: rgba(234, 179, 8, 0.3) !important; color: #fde047 !important; }
-        
         .ProseMirror blockquote { border-left: 3px solid #e5e7eb; padding-left: 1rem; margin-left: 0; color: #6b7280; font-style: italic; }
         .dark .ProseMirror blockquote { border-left-color: #444; color: #9ca3af; }
         .ProseMirror ul { list-style-type: disc; padding-left: 1.5rem; }
         .ProseMirror ol { list-style-type: decimal; padding-left: 1.5rem; }
-        
-        /* ==========================================
-           BEAUTIFUL CUSTOM CHECKLIST STYLING 
-           ========================================== */
         .ProseMirror ul[data-type="taskList"] { list-style: none; padding: 0; }
-        .ProseMirror ul[data-type="taskList"] li { 
-          display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.25rem; 
-        }
-        
-        /* FIX FOR ALIGNMENT: Tiptap wraps text in a <p>, which has default margins */
-        .ProseMirror ul[data-type="taskList"] li > div > p {
-          margin: 0 !important;
-        }
-        
-        .ProseMirror ul[data-type="taskList"] li > label { 
-          margin-top: 0.15rem; /* Perfect alignment with first line of text */
-          flex-shrink: 0; user-select: none; 
-        }
-        
-        /* Custom Checkbox Design (Minimalist unfilled style) */
-        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"] { 
-          appearance: none; -webkit-appearance: none;
-          width: 1.2rem; height: 1.2rem;
-          border: 2px solid #9ca3af; 
-          border-radius: 4px;
-          cursor: pointer; display: inline-grid; place-content: center;
-          transition: all 0.2s ease; background-color: transparent;
-          margin: 0;
-        }
+        .ProseMirror ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.25rem; }
+        .ProseMirror ul[data-type="taskList"] li > div > p { margin: 0 !important; }
+        .ProseMirror ul[data-type="taskList"] li > label { margin-top: 0.15rem; flex-shrink: 0; user-select: none; }
+        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 1.2rem; height: 1.2rem; border: 2px solid #9ca3af; border-radius: 4px; cursor: pointer; display: inline-grid; place-content: center; transition: all 0.2s ease; background-color: transparent; margin: 0; }
         .dark .ProseMirror ul[data-type="taskList"] li input[type="checkbox"] { border-color: #6b7280; }
-
-        /* The Checkmark */
-        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]::before {
-          content: ""; width: 0.75em; height: 0.75em;
-          transform: scale(0); transition: 120ms transform ease-in-out;
-          background-color: #3b82f6; 
-          transform-origin: center;
-          clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
-        }
+        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]::before { content: ""; width: 0.75em; height: 0.75em; transform: scale(0); transition: 120ms transform ease-in-out; background-color: #3b82f6; transform-origin: center; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); }
         .dark .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]::before { background-color: #60a5fa; }
-
-        /* Checked Box State */
-        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked {
-          border-color: #3b82f6; 
-          background-color: transparent; 
-        }
+        .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked { border-color: #3b82f6; background-color: transparent; }
         .dark .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked { border-color: #60a5fa; }
         .ProseMirror ul[data-type="taskList"] li input[type="checkbox"]:checked::before { transform: scale(1); }
-
-        /* Strikethrough Text when Checked */
         .ProseMirror ul[data-type="taskList"] li > div { flex: 1; transition: all 0.2s ease; margin-top: 0; }
         .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { text-decoration: line-through; color: #9ca3af; }
         .dark .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { color: #6b7280; }
-        
-        /* INLINE CODE STYLES */
         .ProseMirror code { background-color: #f3f4f6; color: #ef4444; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.875em; }
         .dark .ProseMirror code { background-color: #2d3748; color: #fca5a5; }
 
-        #custom-toolbar {
-          border-bottom: 1px solid #e5e7eb !important; padding: 8px 24px !important; background-color: #f9fafb;
-          display: flex; flex-wrap: wrap; gap: 4px; align-items: center; position: sticky; top: 0; z-index: 40;
-        }
+        #custom-toolbar { border-bottom: 1px solid #e5e7eb !important; padding: 8px 24px !important; background-color: #f9fafb; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; position: sticky; top: 0; z-index: 40; }
         .dark #custom-toolbar { border-bottom-color: #2C2C2C !important; background-color: #1A1A1A; }
         .toolbar-btn { padding: 6px; border-radius: 6px; transition: all 0.2s; color: #4b5563; display: flex; align-items: center; justify-content: center; }
         .toolbar-btn:hover { background-color: #e5e7eb; color: #111827; }
@@ -784,10 +704,11 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
             type="text" placeholder="Untitled Note..." 
             className="w-full max-w-[400px] text-2xl font-black bg-transparent text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-[#444] outline-none transition-colors tracking-tight" 
             value={title} 
+            readOnly={readOnly}
             onChange={(e) => { setTitle(e.target.value); setIsDirty(true); setSaveStatus('Unsaved changes'); }} 
           />
           
-          {saveStatus && (
+          {saveStatus && !readOnly && (
             <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors hidden md:flex ${
               saveStatus.includes('Saving') || saveStatus.includes('Uploading') ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20' :
               saveStatus === 'Saved to cloud' ? 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20' :
@@ -806,8 +727,8 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           
           <div className="relative group shrink-0" ref={dropdownRef}>
             <button 
-              onClick={() => setIsCourseDropdownOpen(!isCourseDropdownOpen)}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-all outline-none focus:ring-2 focus:ring-brand-blue"
+              onClick={() => !readOnly && setIsCourseDropdownOpen(!isCourseDropdownOpen)}
+              className={`flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-all outline-none ${readOnly ? 'cursor-default' : 'hover:border-blue-500 focus:ring-2 focus:ring-brand-blue'}`}
             >
               <span className="flex items-start gap-2">
                 {selectedCourse ? (
@@ -825,17 +746,14 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
                   <><Book size={16} className="text-gray-400 shrink-0" /> <span>Link Course</span></>
                 )}
               </span>
-              <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${isCourseDropdownOpen ? 'rotate-180' : ''}`} />
+              {!readOnly && <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${isCourseDropdownOpen ? 'rotate-180' : ''}`} />}
             </button>
 
-            {isCourseDropdownOpen && (
+            {isCourseDropdownOpen && !readOnly && (
               <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-[100] animate-fadeIn custom-scrollbar max-h-[350px] overflow-y-auto">
-                
                 {uniCourses.length > 0 && (
                   <>
-                    <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C]">
-                       University Courses
-                    </div>
+                    <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C]">University Courses</div>
                     {uniCourses.map(c => (
                       <button 
                         key={c._id || c.id} 
@@ -851,12 +769,9 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
                     ))}
                   </>
                 )}
-                
                 {generalCourses.length > 0 && (
                   <>
-                    <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C] border-t border-t-gray-100 dark:border-t-[#2C2C2C]">
-                        General / Manual
-                    </div>
+                    <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C] border-t border-t-gray-100 dark:border-t-[#2C2C2C]">General / Manual</div>
                     {generalCourses.map(c => (
                       <button 
                         key={c._id || c.id} 
@@ -872,26 +787,35 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
                     ))}
                   </>
                 )}
-
               </div>
             )}
           </div>
 
-          <button
-            onClick={() => {
-              setIsPrivate(!isPrivate);
-              setIsDirty(true);
-              setSaveStatus('Unsaved changes');
-            }}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
-              isPrivate 
-                ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
-                : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#2C2C2C]'
-            }`}
-            title={isPrivate ? "Make Public" : "Make Private"}
-          >
-            {isPrivate ? 'Private' : 'Shared'}
-          </button>
+          {!readOnly && (
+            <div className="flex items-center gap-2">
+              {onShare && initialNote && (
+                <button
+                  onClick={onShare}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-brand-blue hover:border-brand-blue dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] text-xs font-bold transition-all"
+                  title="Share to specific users in the community"
+                >
+                  <Send size={14} /> Share
+                </button>
+              )}
+
+              <button
+                onClick={() => { setIsPrivate(!isPrivate); setIsDirty(true); setSaveStatus('Unsaved changes'); }}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                  isPrivate 
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
+                    : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#2C2C2C]'
+                }`}
+                title={isPrivate ? "Make Shared with Workspace Group" : "Make Private"}
+              >
+                {isPrivate ? <Lock size={14} /> : <Globe size={14} />} {isPrivate ? 'Private' : 'Shared Group'}
+              </button>
+            </div>
+          )}
 
           <button 
             onClick={() => setIsFullscreen(!isFullscreen)}
@@ -904,7 +828,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         </div> 
       </div>
 
-      {editor && (
+      {editor && !readOnly && (
         <div id="custom-toolbar">
           <button title="Undo" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} className="toolbar-btn"><Undo2 size={16}/></button>
           <button title="Redo" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} className="toolbar-btn"><Redo2 size={16}/></button>
@@ -951,15 +875,9 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
             </button>
             {isAlignDropdownOpen && (
               <div className="absolute top-full mt-1 left-0 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-[100] py-1 min-w-[140px] animate-slideUp">
-                <button onClick={() => { editor.chain().focus().setTextAlign('left').run(); setIsAlignDropdownOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-colors ${editor.isActive({ textAlign: 'left' }) ? 'text-brand-blue font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
-                  <AlignLeft size={14}/> Left Align
-                </button>
-                <button onClick={() => { editor.chain().focus().setTextAlign('center').run(); setIsAlignDropdownOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-colors ${editor.isActive({ textAlign: 'center' }) ? 'text-brand-blue font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
-                  <AlignCenter size={14}/> Center Align
-                </button>
-                <button onClick={() => { editor.chain().focus().setTextAlign('right').run(); setIsAlignDropdownOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-colors ${editor.isActive({ textAlign: 'right' }) ? 'text-brand-blue font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
-                  <AlignRight size={14}/> Right Align
-                </button>
+                <button onClick={() => { editor.chain().focus().setTextAlign('left').run(); setIsAlignDropdownOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-colors ${editor.isActive({ textAlign: 'left' }) ? 'text-brand-blue font-bold' : 'text-gray-700 dark:text-gray-300'}`}><AlignLeft size={14}/> Left Align</button>
+                <button onClick={() => { editor.chain().focus().setTextAlign('center').run(); setIsAlignDropdownOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-colors ${editor.isActive({ textAlign: 'center' }) ? 'text-brand-blue font-bold' : 'text-gray-700 dark:text-gray-300'}`}><AlignCenter size={14}/> Center Align</button>
+                <button onClick={() => { editor.chain().focus().setTextAlign('right').run(); setIsAlignDropdownOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-colors ${editor.isActive({ textAlign: 'right' }) ? 'text-brand-blue font-bold' : 'text-gray-700 dark:text-gray-300'}`}><AlignRight size={14}/> Right Align</button>
               </div>
             )}
           </div>
@@ -1010,25 +928,36 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
                   <button onClick={(e) => handleDownload(e, file.fileUrl, file.fileName)} className="truncate max-w-[120px] text-gray-700 dark:text-gray-300 font-medium hover:text-brand-blue dark:hover:text-blue-400 cursor-pointer text-left">
                     {file.fileName}
                   </button>
-                  <button onClick={() => removeFile(index)} className="text-gray-400 hover:text-red-500 ml-1 shrink-0"><X size={14} /></button>
+                  {!readOnly && (
+                    <button onClick={() => removeFile(index)} className="text-gray-400 hover:text-red-500 ml-1 shrink-0"><X size={14} /></button>
+                  )}
                 </div>
               ))}
             </div>
 
-            <input type="file" ref={fileInputRef} multiple onChange={handleFileUpload} className="hidden" />
-            
-            <button 
-              onClick={() => fileInputRef.current.click()} 
-              disabled={isUploadingFile}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold shrink-0 transition-all ${isUploadingFile ? 'bg-blue-50 text-brand-blue cursor-not-allowed dark:bg-blue-900/20' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#2C2C2C] dark:text-gray-300 dark:hover:bg-[#333]'}`}
-            >
-              {isUploadingFile ? <Loader2 size={14} className="animate-spin text-brand-blue" /> : <Paperclip size={14} />} 
-              {isUploadingFile ? 'Uploading...' : 'Attach'}
-            </button>
+            {!readOnly && (
+              <>
+                <input type="file" ref={fileInputRef} multiple onChange={handleFileUpload} className="hidden" />
+                <button 
+                  onClick={() => fileInputRef.current.click()} 
+                  disabled={isUploadingFile}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold shrink-0 transition-all ${isUploadingFile ? 'bg-blue-50 text-brand-blue cursor-not-allowed dark:bg-blue-900/20' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#2C2C2C] dark:text-gray-300 dark:hover:bg-[#333]'}`}
+                >
+                  {isUploadingFile ? <Loader2 size={14} className="animate-spin text-brand-blue" /> : <Paperclip size={14} />} 
+                  {isUploadingFile ? 'Uploading...' : 'Attach'}
+                </button>
+              </>
+            )}
 
-            <button onClick={handleManualSave} disabled={saveStatus === 'Saving...'} className="flex items-center gap-1.5 bg-brand-blue hover:bg-blue-600 disabled:bg-blue-400 text-white font-bold py-2 px-5 rounded-lg transition-all shadow-sm active:scale-95 shrink-0 text-sm">
-              <CheckCircle2 size={16} /> Finish & Close
-            </button>
+            {readOnly ? (
+              <button onClick={onBack} className="flex items-center gap-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-[#333] dark:hover:bg-[#444] text-gray-800 dark:text-gray-200 font-bold py-2 px-5 rounded-lg transition-all shadow-sm active:scale-95 shrink-0 text-sm">
+                <X size={16} /> Close
+              </button>
+            ) : (
+              <button onClick={handleManualSave} disabled={saveStatus === 'Saving...'} className="flex items-center gap-1.5 bg-brand-blue hover:bg-blue-600 disabled:bg-blue-400 text-white font-bold py-2 px-5 rounded-lg transition-all shadow-sm active:scale-95 shrink-0 text-sm">
+                <CheckCircle2 size={16} /> Finish & Close
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1038,22 +967,12 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         className="fixed z-[9999] hidden items-center gap-1 bg-white dark:bg-[#2C2C2C] shadow-xl rounded-lg border border-gray-200 dark:border-[#444] p-1.5 transition-opacity"
         style={{ display: 'none' }}
       >
-        {editor && (
+        {editor && !readOnly && (
           <>
-            <button 
-              onClick={() => editor.chain().focus().toggleBold().run()} 
-              className={`w-8 h-8 flex items-center justify-center rounded-md text-sm font-bold transition-colors ${editor.isActive('bold') ? 'bg-gray-200 dark:bg-[#444] text-brand-blue' : 'hover:bg-gray-100 dark:hover:bg-[#333] text-gray-700 dark:text-gray-300'}`}
-            >B</button>
-            <button 
-              onClick={() => editor.chain().focus().toggleItalic().run()} 
-              className={`w-8 h-8 flex items-center justify-center rounded-md text-sm italic font-serif transition-colors ${editor.isActive('italic') ? 'bg-gray-200 dark:bg-[#444] text-brand-blue' : 'hover:bg-gray-100 dark:hover:bg-[#333] text-gray-700 dark:text-gray-300'}`}
-            >I</button>
+            <button onClick={() => editor.chain().focus().toggleBold().run()} className={`w-8 h-8 flex items-center justify-center rounded-md text-sm font-bold transition-colors ${editor.isActive('bold') ? 'bg-gray-200 dark:bg-[#444] text-brand-blue' : 'hover:bg-gray-100 dark:hover:bg-[#333] text-gray-700 dark:text-gray-300'}`}>B</button>
+            <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`w-8 h-8 flex items-center justify-center rounded-md text-sm italic font-serif transition-colors ${editor.isActive('italic') ? 'bg-gray-200 dark:bg-[#444] text-brand-blue' : 'hover:bg-gray-100 dark:hover:bg-[#333] text-gray-700 dark:text-gray-300'}`}>I</button>
             <div className="w-px h-5 bg-gray-300 dark:bg-[#555] mx-1"></div>
-            
-            <button 
-              onClick={toggleHighlight} 
-              className={`px-3 py-1.5 rounded-md font-bold text-xs flex items-center gap-1.5 transition-colors ${editor.isActive('highlight') ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400' : 'hover:bg-gray-100 text-gray-700 dark:text-gray-300 dark:hover:bg-[#333]'}`}
-            >
+            <button onClick={toggleHighlight} className={`px-3 py-1.5 rounded-md font-bold text-xs flex items-center gap-1.5 transition-colors ${editor.isActive('highlight') ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400' : 'hover:bg-gray-100 text-gray-700 dark:text-gray-300 dark:hover:bg-[#333]'}`}>
               <Highlighter size={14}/> {editor.isActive('highlight') ? 'Remove' : 'Highlight'}
             </button>
           </>
