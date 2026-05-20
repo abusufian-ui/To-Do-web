@@ -9,7 +9,7 @@ import UCPLogo from './UCPLogo';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initialDate, tasks = [] }) => {
+const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initialDate, tasks = [], activeGroup }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [course, setCourse] = useState(''); 
@@ -175,7 +175,18 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initia
       return;
     }
 
-    onSave({ name, description, course, date, time: timeValue, priority, status, subTasks, isPrivate });
+    onSave({ 
+      name, 
+      description, 
+      course, 
+      date, 
+      time: timeValue, 
+      priority, 
+      status, 
+      subTasks, 
+      isPrivate: activeGroup ? isPrivate : true,
+      groupId: (activeGroup && !isPrivate) ? activeGroup._id : null
+    });
     resetForm();
     onClose();
   };
@@ -371,15 +382,25 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initia
 
           <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#121212] rounded-xl border border-gray-100 dark:border-[#2C2C2C]">
             <div>
-              <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2"><AlertCircle size={16} className="text-blue-500" /> Make Private</p>
-              <p className="text-[10px] text-gray-500 mt-1">If enabled, this task will not be visible to other admins in the Shared Resources portal.</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <AlertCircle size={16} className="text-blue-500" /> 
+                {activeGroup ? "Group Sharing" : "Workspace Visibility"}
+              </p>
+              <p className="text-[10px] text-gray-500 mt-1">
+                {activeGroup 
+                  ? (isPrivate ? "Private Task (only visible to you)" : `Shared Task (visible to group: ${activeGroup.name})`) 
+                  : "Private Task (saved in your personal workspace)"}
+              </p>
             </div>
-            <button 
-              onClick={() => setIsPrivate(!isPrivate)}
-              className={`w-12 h-6 rounded-full p-1 transition-colors relative flex items-center ${isPrivate ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-            >
-              <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${isPrivate ? 'translate-x-6' : 'translate-x-0'}`} />
-            </button>
+            {activeGroup && (
+              <button 
+                type="button"
+                onClick={() => setIsPrivate(!isPrivate)}
+                className={`w-12 h-6 rounded-full p-1 transition-colors relative flex items-center ${!isPrivate ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform ${!isPrivate ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            )}
           </div>
 
           <div className="pt-4 border-t border-gray-100 dark:border-[#2C2C2C]">

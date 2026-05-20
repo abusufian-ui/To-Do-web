@@ -22,6 +22,12 @@ const TaskSchema = new mongoose.Schema({
   isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null },
   isPrivate: { type: Boolean, default: false },
+  groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
+  deletedByUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  memberStatuses: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    status: { type: String }
+  }]
 }, { timestamps: true });
 
 module.exports = mongoose.model('Task', TaskSchema);

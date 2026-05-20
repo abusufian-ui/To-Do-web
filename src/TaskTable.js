@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  CheckCircle2, Calendar as CalendarIcon, Mail, Clock,
+  CheckCircle2, Calendar as CalendarIcon, Clock, Mail, AlertTriangle,
   ChevronDown, ChevronRight, ChevronLeft, ChevronsUp, ChevronUp,
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
-  X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save, AlertTriangle,
-  CalendarDays, Archive, CheckSquare as CheckSquareIcon, Lock, Globe, Shield
+  X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save,
+  CalendarDays, Lock, Globe, Shield
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
-import EmptyState from './EmptyState';
 
 // --- HELPER: CONVERT LONG NAMES TO ABBREVIATIONS ---
 const getAbbreviation = (name) => {
@@ -219,9 +218,20 @@ const ModalCourseDropdown = ({ value, courses, onChange }) => {
 };
 
 // --- FULLY UPGRADED TASK SUMMARY MODAL (SLIDE-IN) ---
-const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) => {
+const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, activeGroup }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [includeTime, setIncludeTime] = useState(false);
+
+  const getTaskStatus = (t) => {
+    if (!t) return 'New task';
+    if (t.groupId && t.memberStatuses && user) {
+      const override = t.memberStatuses.find(s => s.userId === user.id || s.userId === user._id);
+      if (override) return override.status;
+    }
+    return t.status || 'New task';
+  };
+
+  const currentStatus = getTaskStatus(task);
 
   const [form, setForm] = useState({
     name: '', description: '', date: '', time: '', priority: '', status: '', course: '', isPrivate: false
@@ -231,13 +241,13 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
     if (task) {
       setForm({
         name: task.name || '', description: task.description || '', date: task.date || '',
-        time: task.time || '', priority: task.priority || 'Medium', status: task.status || 'New task',
+        time: task.time || '', priority: task.priority || 'Medium', status: currentStatus,
         course: task.course || '', isPrivate: task.isPrivate || false
       });
       setIncludeTime(!!task.time);
       setIsEditing(false);
     }
-  }, [task, isOpen]);
+  }, [task, isOpen, currentStatus]);
 
   if (!isOpen || !task) return null;
 
@@ -250,7 +260,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
     if (timeToSave !== task.time) onUpdate(task.id, 'time', timeToSave);
 
     if (form.priority !== task.priority) onUpdate(task.id, 'priority', form.priority);
-    if (form.status !== task.status) onUpdate(task.id, 'status', form.status);
+    if (form.status !== currentStatus) onUpdate(task.id, 'status', form.status);
     if (form.course !== task.course) onUpdate(task.id, 'course', form.course);
     if (form.isPrivate !== task.isPrivate) onUpdate(task.id, 'isPrivate', form.isPrivate);
 
@@ -265,7 +275,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
   const PriorityIcon = pConfig.icon;
   const currentCourse = courses.find(c => c.name === task.course);
   const courseType = currentCourse ? currentCourse.type : (task.course === 'Event' ? 'event' : 'general');
-  const statusConfig = getStatusConfig(task.status);
+  const statusConfig = getStatusConfig(currentStatus);
   const StatusIcon = statusConfig.icon;
 
   return (
@@ -427,7 +437,11 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
                 {isEditing ? (
                   <EditDropdown value={form.status} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => setForm({ ...form, status: val })} getConfig={getStatusConfig} />
                 ) : (
-                  <span className={`font-medium flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs bg-gray-50 dark:bg-[#2C2C2C] ${statusConfig.color}`}><StatusIcon size={14} /> {task.status}</span>
+                  task.groupId ? (
+                    <EditDropdown value={currentStatus} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => onUpdate(task.id, 'status', val)} getConfig={getStatusConfig} />
+                  ) : (
+                    <span className={`font-medium flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs bg-gray-50 dark:bg-[#2C2C2C] ${statusConfig.color}`}><StatusIcon size={14} /> {currentStatus}</span>
+                  )
                 )}
               </div>
             </div>
@@ -454,7 +468,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
   );
 };
 
-const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
+const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, pendingInvitations, fetchActiveGroup, fetchPendingInvitations, fetchTasks, toast, setToast }) => {
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [showActive, setShowActive] = useState(true);
@@ -464,25 +478,20 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
   const [showArchived, setShowArchived] = useState(false);
 
   const [viewMode, setViewMode] = useState('private');
-  const [sharedTasks, setSharedTasks] = useState([]);
-
-  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
-    if (viewMode === 'shared' && user?.isAdmin) {
-      fetch(`${API_BASE}/api/admin/shared/tasks`, { headers: { 'x-auth-token': localStorage.getItem('token') } })
-        .then(res => res.json())
-        .then(data => setSharedTasks(data.map(t => ({ ...t, id: t._id }))));
+    if (viewMode === 'shared') {
+      if (fetchActiveGroup) fetchActiveGroup();
+      if (fetchPendingInvitations) fetchPendingInvitations();
     }
-  }, [viewMode, tasks, user]);
+  }, [viewMode]);
 
   useEffect(() => {
     if (selectedTask) {
-      const source = viewMode === 'shared' ? sharedTasks : tasks;
-      const updated = source.find(t => t.id === selectedTask.id);
+      const updated = tasks.find(t => t.id === selectedTask.id);
       if (updated) setSelectedTask(updated);
     }
-  }, [tasks, sharedTasks, selectedTask, viewMode]);
+  }, [tasks, selectedTask]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -494,7 +503,6 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
 
   const handleUpdateTask = (id, field, value) => {
     updateTask(id, field, value);
-    setSharedTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
 
   const toggleExpand = (e, taskId) => {
@@ -504,16 +512,15 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
 
   const handleAddSubTask = (taskId, text) => {
     if (!text.trim()) return;
-    const source = viewMode === 'shared' ? sharedTasks : tasks;
-    const task = source.find(t => t.id === taskId);
+    const task = tasks.find(t => t.id === taskId);
     const subTasks = [...(task.subTasks || []), { text, completed: false }];
     handleUpdateTask(taskId, 'subTasks', subTasks);
     setNewSubTask(prev => ({ ...prev, [taskId]: '' }));
   };
 
   const handleDeleteSubTask = (taskId, index) => {
-    const source = viewMode === 'shared' ? sharedTasks : tasks;
-    const task = source.find(t => t.id === taskId);
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
     const updatedSubTasks = [...task.subTasks];
     updatedSubTasks.splice(index, 1);
     handleUpdateTask(taskId, 'subTasks', updatedSubTasks);
@@ -521,11 +528,20 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
 
   const toggleSubTask = (e, taskId, index) => {
     e.stopPropagation();
-    const source = viewMode === 'shared' ? sharedTasks : tasks;
-    const task = source.find(t => t.id === taskId);
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
     const subTasks = [...task.subTasks];
     subTasks[index].completed = !subTasks[index].completed;
     handleUpdateTask(taskId, 'subTasks', subTasks);
+  };
+
+  const getTaskStatus = (t) => {
+    if (!t) return 'New task';
+    if (t.groupId && t.memberStatuses && user) {
+      const override = t.memberStatuses.find(s => s.userId === user.id || s.userId === user._id);
+      if (override) return override.status;
+    }
+    return t.status || 'New task';
   };
 
   const sortTasks = (taskList) => {
@@ -543,28 +559,33 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
     return courses.some(c => c.name === t.course) || t.course === 'Event';
   };
 
-  // If Admin, ONLY show explicitly private tasks in 'My Workspace'
+  // Separates private vs group shared tasks in real-time
   const activeSource = viewMode === 'shared'
-    ? sharedTasks
-    : tasks.filter(t => !user?.isAdmin || t.isPrivate === true);
+    ? tasks.filter(t => !!t.groupId)
+    : tasks.filter(t => !t.groupId);
 
   const currentTasks = activeSource.filter(isTaskCurrent);
   const archivedTasks = activeSource.filter(t => !isTaskCurrent(t));
 
-  const activeTasks = sortTasks(currentTasks.filter(t => t.status !== 'Completed'));
-  const completedTasks = sortTasks(currentTasks.filter(t => t.status === 'Completed'));
+  const activeTasks = sortTasks(currentTasks.filter(t => getTaskStatus(t) !== 'Completed'));
+  const completedTasks = sortTasks(currentTasks.filter(t => getTaskStatus(t) === 'Completed'));
 
   const uniCourses = courses.filter(c => c.type === 'uni');
   const generalCourses = courses.filter(c => c.type !== 'uni');
 
   const renderRow = (task, isCompleted = false) => {
-    const statusConfig = getStatusConfig(task.status);
+    const statusVal = getTaskStatus(task);
+    const statusConfig = getStatusConfig(statusVal);
     const priorityConfig = getPriorityConfig(task.priority);
     const currentCourse = courses.find(c => c && c.name === task.course);
     const courseType = currentCourse ? currentCourse.type : (task.course === 'Event' ? 'event' : 'general');
     const isExpanded = expandedTasks[task.id];
     const completedCount = task.subTasks?.filter(s => s.completed).length || 0;
     const totalCount = task.subTasks?.length || 0;
+
+    const isSharedTask = !!task.groupId;
+    const isCreator = task.userId ? (typeof task.userId === 'object' ? task.userId._id === user?.id : task.userId === user?.id) : true;
+    const canEditAll = !isSharedTask || isCreator || user?.isAdmin;
 
     return (
       <div key={task.id} className="border-b border-gray-200 dark:border-[#2C2C2C]">
@@ -578,8 +599,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
                 <span className="truncate">{task.name}</span>
                 {totalCount > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 rounded-md font-bold shrink-0">{completedCount}/{totalCount}</span>}
               </div>
-              {viewMode === 'shared' && task.userId && (
-                <span className="text-[10px] text-blue-500 font-bold truncate">By {task.userId?.name}</span>
+              {task.groupId && task.userId && (
+                <span className="text-[10px] text-blue-500 font-bold truncate">By {task.userId?.name || 'Group Member'}</span>
               )}
             </div>
           </div>
@@ -591,16 +612,16 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
           <div className={COL.course} onClick={(e) => e.stopPropagation()}>
             <div className="relative custom-dropdown w-full">
               {task.course === 'Course Deleted' ? (
-                <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} className="flex items-center gap-2 text-sm text-red-500 hover:opacity-80 text-left w-full font-medium py-1 truncate">
+                <button onClick={(e) => { e.stopPropagation(); if (canEditAll) setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} className="flex items-center gap-2 text-sm text-red-500 hover:opacity-80 text-left w-full font-medium py-1 truncate">
                   <AlertTriangle size={16} /> Deleted
                 </button>
               ) : (
-                <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:opacity-80 text-left w-full font-medium py-1 truncate" title={task.course}>
+                <button onClick={(e) => { e.stopPropagation(); if (canEditAll) setOpenDropdownId(openDropdownId === `${task.id}-course` ? null : `${task.id}-course`); }} className={`flex items-center gap-2 text-sm ${canEditAll ? 'hover:opacity-80' : 'cursor-default'} text-gray-600 dark:text-gray-300 text-left w-full font-medium py-1 truncate`} title={task.course}>
                   <CourseIcon type={courseType} name={task.course} /> {getAbbreviation(task.course) || "Select"}
                 </button>
               )}
 
-              {openDropdownId === `${task.id}-course` && (
+              {canEditAll && openDropdownId === `${task.id}-course` && (
                 <div className="absolute top-full left-0 mt-1 w-[200px] bg-white dark:bg-[#1E1E1E] rounded-xl shadow-xl border border-gray-200 dark:border-[#2C2C2C] z-[100] animate-fadeIn py-1">
                   <div onClick={() => { handleUpdateTask(task.id, 'course', 'Event'); setOpenDropdownId(null); }} className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-sm flex items-center gap-3 text-rose-600 dark:text-rose-500 font-medium">
                     <CalendarDays size={16} /> <span>Event</span>
@@ -651,14 +672,14 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
           </div>
 
           <div className={COL.date} onClick={(e) => e.stopPropagation()}>
-            <DateCell date={task.date} time={task.time} onChange={(val) => handleUpdateTask(task.id, 'date', val)} />
+            <DateCell date={task.date} time={task.time} onChange={(val) => handleUpdateTask(task.id, 'date', val)} disabled={!canEditAll} />
           </div>
 
           <div className={`${COL.priority} flex items-center justify-between pr-4`} onClick={(e) => e.stopPropagation()}>
             <div className="flex-1">
-              <Dropdown id={`${task.id}-priority`} value={task.priority} icon={priorityConfig.icon} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => handleUpdateTask(task.id, 'priority', val)} colorClass={`font-medium ${priorityConfig.color}`} getOptionConfig={getPriorityConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} />
+              <Dropdown id={`${task.id}-priority`} value={task.priority} icon={priorityConfig.icon} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => handleUpdateTask(task.id, 'priority', val)} colorClass={`font-medium ${priorityConfig.color}`} getOptionConfig={getPriorityConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} disabled={!canEditAll} />
             </div>
-            <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id); setSharedTasks(prev => prev.filter(t => t.id !== task.id)); }} className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+            <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }} className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
           </div>
         </div>
 
@@ -666,19 +687,25 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
           <div className="pl-12 pr-8 py-3 space-y-2.5 bg-gray-50/50 dark:bg-white/5 animate-slideUp" onClick={(e) => e.stopPropagation()}>
             {task.subTasks?.map((sub, index) => (
               <div key={index} className="flex items-center gap-3 group/sub">
-                <button onClick={(e) => toggleSubTask(e, task.id, index)} className={sub.completed ? 'text-green-500' : 'text-gray-400'}>
+                <button onClick={(e) => { if (canEditAll) toggleSubTask(e, task.id, index); }} className={`${sub.completed ? 'text-green-500' : 'text-gray-400'} ${!canEditAll ? 'cursor-default' : ''}`} disabled={!canEditAll}>
                   {sub.completed ? <CheckSquare size={16} /> : <Square size={16} />}
                 </button>
                 <span className={`text-xs ${sub.completed ? 'line-through text-gray-500 italic' : 'text-gray-700 dark:text-gray-300'}`}>{sub.text}</span>
-                <button onClick={() => handleDeleteSubTask(task.id, index)} className="ml-auto text-gray-400 hover:text-red-500 opacity-0 group-hover/sub:opacity-100 transition-all p-1 rounded-md" title="Remove subtask">
-                  <X size={14} />
-                </button>
+                {canEditAll && (
+                  <button onClick={() => handleDeleteSubTask(task.id, index)} className="ml-auto text-gray-400 hover:text-red-500 opacity-0 group-hover/sub:opacity-100 transition-all p-1 rounded-md" title="Remove subtask">
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             ))}
-            <div className="flex items-center gap-3 pt-1 group/input">
-              <PlusIcon size={14} className="text-brand-blue" />
-              <input type="text" value={newSubTask[task.id] || ''} onChange={(e) => setNewSubTask(prev => ({ ...prev, [task.id]: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && handleAddSubTask(task.id, e.target.value)} placeholder="Add a sub-task..." className="bg-transparent border-none text-xs text-brand-blue outline-none focus:ring-0 placeholder-gray-500 italic w-full" />
-            </div>
+            {canEditAll ? (
+              <div className="flex items-center gap-3 pt-1 group/input">
+                <PlusIcon size={14} className="text-brand-blue" />
+                <input type="text" value={newSubTask[task.id] || ''} onChange={(e) => setNewSubTask(prev => ({ ...prev, [task.id]: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && handleAddSubTask(task.id, e.target.value)} placeholder="Add a sub-task..." className="bg-transparent border-none text-xs text-brand-blue outline-none focus:ring-0 placeholder-gray-500 italic w-full" />
+              </div>
+            ) : (
+              (task.subTasks || []).length === 0 && <p className="text-[11px] text-gray-400 italic">No subtasks created for this task.</p>
+            )}
           </div>
         )}
       </div>
@@ -687,95 +714,75 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user }) => {
 
   return (
     <div className="p-4 md:p-8 w-full animate-fadeIn pb-10">
-      {user?.isAdmin && (
-        <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl mb-6 w-max shrink-0 border border-gray-200 dark:border-[#333]">
-          <button onClick={() => setViewMode('private')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
-          <button onClick={() => setViewMode('shared')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Shared Hub</button>
-        </div>
-      )}
-
-      <div className="mb-6">
-        <button onClick={() => setShowActive(!showActive)} className="flex items-center gap-2 mb-3 group focus:outline-none">
-          {showActive ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
-          <h2 className="text-gray-800 dark:text-white font-bold text-sm">Active tasks</h2>
-          <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{activeTasks.length}</span>
-        </button>
-
-        {showActive && (
-          <div className="w-full overflow-x-auto lg:overflow-visible pb-6">
-            <div className="min-w-[750px]">
-              <div className="flex text-xs text-gray-500 dark:text-[#71717A] border-b border-gray-200 dark:border-[#2C2C2C] pb-2 px-0">
-                <div className={COL.name}>Task Name</div>
-                <div className={COL.status}>Status</div>
-                <div className={COL.course}>Course</div>
-                <div className={COL.date}>Due date</div>
-                <div className={COL.priority}>Priority</div>
-
-              </div>
-              {activeTasks.length > 0 ? activeTasks.map(task => renderRow(task, false)) : (
-                <EmptyState
-                  icon={CheckSquareIcon}
-                  title="No active tasks"
-                  message="You're all caught up! Enjoy your free time or add a new task."
-                />
-              )}
-            </div>
-          </div>
-        )}
+      <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl mb-6 w-max shrink-0 border border-gray-200 dark:border-[#333]">
+        <button onClick={() => setViewMode('private')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
+        <button onClick={() => setViewMode('shared')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Group Shared</button>
       </div>
 
-      {completedTasks.length > 0 && (
-        <div className="animate-fadeIn mb-6">
-          <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 mb-3 group focus:outline-none">
-            {showCompleted ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
-            <h2 className="text-gray-800 dark:text-white font-bold text-sm">Completed tasks</h2>
-            <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{completedTasks.length}</span>
-          </button>
-          {showCompleted && (
-            <div className="w-full overflow-x-auto lg:overflow-visible pb-6">
-              <div className="min-w-[750px]">
-                {completedTasks.map(task => renderRow(task, true))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="w-full">
+        {/* TASKS LISTS - occupying 100% width */}
+        <div className="w-full">
+          <div className="mb-6">
+            <button onClick={() => setShowActive(!showActive)} className="flex items-center gap-2 mb-3 group focus:outline-none">
+              {showActive ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
+              <h2 className="text-gray-800 dark:text-white font-bold text-sm">Active tasks</h2>
+              <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{activeTasks.length}</span>
+            </button>
 
-      {archivedTasks.length > 0 && (
-        <div className="animate-fadeIn pt-4 border-t border-dashed border-gray-200 dark:border-[#2C2C2C]">
-          <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-2 w-full group focus:outline-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-            <Archive size={18} />
-            <h2 className="font-bold text-sm">Past Semester / Archived</h2>
-            <span className="bg-gray-100 dark:bg-[#2C2C2C] text-gray-500 text-xs px-2 py-0.5 rounded-full">{archivedTasks.length}</span>
-            <span className="ml-auto text-xs">{showArchived ? "Hide" : "Show"}</span>
-          </button>
-
-          {showArchived && (
-            <div className="mt-3 opacity-75">
-              <div className="p-3 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-700 dark:text-yellow-500 text-xs rounded-lg mb-2 flex items-center gap-2">
-                <AlertTriangle size={14} /> These tasks belong to deleted courses or past semesters.
-              </div>
+            {showActive && (
               <div className="w-full overflow-x-auto lg:overflow-visible pb-6">
                 <div className="min-w-[750px]">
-                  {archivedTasks.map(task => renderRow(task, task.status === 'Completed'))}
+                  {activeTasks.map(task => renderRow(task, getTaskStatus(task) === 'Completed'))}
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
 
-      <TaskSummaryModal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} task={selectedTask} courses={courses} onUpdate={handleUpdateTask} user={user} />
+          <div className="mb-6">
+            <button onClick={() => setShowCompleted(!showCompleted)} className="flex items-center gap-2 mb-3 group focus:outline-none">
+              {showCompleted ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
+              <h2 className="text-gray-800 dark:text-white font-bold text-sm">Completed tasks</h2>
+              <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{completedTasks.length}</span>
+            </button>
+
+            {showCompleted && (
+              <div className="w-full overflow-x-auto lg:overflow-visible pb-6">
+                <div className="min-w-[750px]">
+                  {completedTasks.map(task => renderRow(task, getTaskStatus(task) === 'Completed'))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mb-6">
+            <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-2 mb-3 group focus:outline-none">
+              {showArchived ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
+              <h2 className="text-gray-800 dark:text-white font-bold text-sm">Archived tasks</h2>
+              <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{archivedTasks.length}</span>
+            </button>
+
+            {showArchived && (
+              <div className="w-full overflow-x-auto lg:overflow-visible pb-6">
+                <div className="min-w-[750px]">
+                  {archivedTasks.map(task => renderRow(task, getTaskStatus(task) === 'Completed'))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <TaskSummaryModal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} task={selectedTask} courses={courses} onUpdate={handleUpdateTask} user={user} activeGroup={activeGroup} />
     </div>
   );
 };
 
-const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOptionConfig, openDropdownId, setOpenDropdownId }) => {
-  const isOpen = openDropdownId === id;
+const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOptionConfig, openDropdownId, setOpenDropdownId, disabled }) => {
+  const isOpen = openDropdownId === id && !disabled;
   const handleSelect = (opt) => { onChange(opt); setOpenDropdownId(null); };
   return (
     <div className="relative custom-dropdown w-full">
-      <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(isOpen ? null : id); }} className={`flex items-center gap-2 text-sm ${colorClass} hover:opacity-80 text-left w-full font-medium py-1 truncate`}>
+      <button onClick={(e) => { e.stopPropagation(); if (!disabled) setOpenDropdownId(isOpen ? null : id); }} className={`flex items-center gap-2 text-sm ${colorClass} ${disabled ? 'cursor-default opacity-80' : 'hover:opacity-80'} text-left w-full font-medium py-1 truncate`}>
         {Icon && <Icon size={16} />} {value}
       </button>
       {isOpen && (
@@ -794,15 +801,15 @@ const Dropdown = ({ id, value, options, onChange, colorClass, icon: Icon, getOpt
   );
 };
 
-const DateCell = ({ date, time, onChange }) => {
+const DateCell = ({ date, time, onChange, disabled }) => {
   const inputRef = useRef(null);
   const displayDate = formatDate(date);
   return (
-    <div className="relative cursor-pointer hover:opacity-80 group h-full flex flex-col justify-center" onClick={(e) => { e.stopPropagation(); inputRef.current.showPicker(); }}>
+    <div className={`relative ${disabled ? 'cursor-default' : 'cursor-pointer hover:opacity-80'} group h-full flex flex-col justify-center`} onClick={(e) => { e.stopPropagation(); if (!disabled) inputRef.current.showPicker(); }}>
       <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
         {displayDate}{time && <span className="text-xs text-gray-400 ml-1 font-normal">{time}</span>}
       </span>
-      <input ref={inputRef} type="date" value={date} onChange={(e) => onChange(e.target.value)} className="absolute opacity-0 w-0 h-0 dark:[color-scheme:dark]" />
+      {!disabled && <input ref={inputRef} type="date" value={date} onChange={(e) => onChange(e.target.value)} className="absolute opacity-0 w-0 h-0 dark:[color-scheme:dark]" />}
     </div>
   );
 };

@@ -1,9 +1,10 @@
 import React from 'react';
-import { User, Calendar, Shield, Link2, CheckCircle2, XCircle, Activity, Mail, Camera, Loader2 } from 'lucide-react';
+import { User, Calendar, Shield, Link2, CheckCircle2, XCircle, Activity, Mail, Camera, Loader2, X } from 'lucide-react';
 import { ToastConfig } from './CustomToast';
 
 const MyProfile = ({ user, onUpdateProfilePic }) => {
   const [isUploading, setIsUploading] = React.useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false); // 🚀 Profile picture full screen preview state
   const fileInputRef = React.useRef(null);
   if (!user) return null;
 
@@ -62,7 +63,7 @@ const MyProfile = ({ user, onUpdateProfilePic }) => {
         <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-8 border border-gray-200 dark:border-[#333] shadow-sm flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
           <div 
             className="relative group cursor-pointer"
-            onClick={() => !isUploading && fileInputRef.current.click()}
+            onClick={() => setIsPreviewOpen(true)}
           >
             {user.profilePic ? (
               <img 
@@ -134,37 +135,7 @@ const MyProfile = ({ user, onUpdateProfilePic }) => {
             </div>
           </div>
 
-          {/* OFFICIAL PORTAL RECORD */}
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 border border-gray-200 dark:border-[#333] shadow-sm">
-            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6 flex items-center gap-2">
-              <Camera size={16} /> Official Record
-            </h3>
-            <div className="flex flex-col items-center gap-4">
-              {user.originalPortalProfilePic ? (
-                <div className="relative group">
-                  <img 
-                    src={user.originalPortalProfilePic} 
-                    alt="Portal Record" 
-                    className="w-32 h-32 rounded-xl object-cover border-2 border-gray-100 dark:border-[#333] shadow-md"
-                  />
-                  <div className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg uppercase">
-                    Official
-                  </div>
-                </div>
-              ) : (
-                <div className="w-32 h-32 bg-gray-100 dark:bg-[#252525] rounded-xl flex items-center justify-center text-gray-400">
-                  <Loader2 className="animate-spin" size={24} />
-                </div>
-              )}
-              <div className="text-center">
-                <p className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px]">
-                  This is your primary identity scrapped from the university portal for official records.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* UNIVERSITY PORTAL INFO */}
+          {/* UNIVERSITY PORTAL INFO (PORTAL CONNECTION SWAPPED & SPACED) */}
           <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 border border-gray-200 dark:border-[#333] shadow-sm">
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6 flex items-center gap-2">
               <Link2 size={16} /> Portal Connection
@@ -210,6 +181,52 @@ const MyProfile = ({ user, onUpdateProfilePic }) => {
 
         </div>
       </div>
+
+      {/* FULL SCREEN PROFILE PIC PREVIEW */}
+      {isPreviewOpen && (
+        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl animate-fadeIn">
+          {/* Close Button */}
+          <button 
+            onClick={() => setIsPreviewOpen(false)} 
+            className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all hover:rotate-90 animate-slide-up-fade"
+            title="Close Preview"
+          >
+            <X size={24} />
+          </button>
+          
+          {/* Profile Pic Container */}
+          <div className="relative max-w-[90vw] max-h-[75vh] flex flex-col items-center justify-center">
+            {user.profilePic ? (
+              <img 
+                src={user.profilePic} 
+                alt={user.name} 
+                className="max-w-full max-h-[65vh] object-contain rounded-2xl shadow-2xl border border-white/10" 
+              />
+            ) : (
+              <div className="w-64 h-64 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center text-8xl text-white font-bold shadow-2xl uppercase border border-white/10">
+                {user.name.charAt(0)}
+              </div>
+            )}
+            
+            {/* Edit / Change Picture Button */}
+            <div className="mt-6 flex gap-3">
+              <button 
+                onClick={(e) => {
+                  setIsPreviewOpen(false);
+                  if (!isUploading && fileInputRef.current) {
+                    fileInputRef.current.click();
+                  }
+                }}
+                disabled={isUploading}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-all active:scale-95"
+              >
+                {isUploading ? <Loader2 className="animate-spin" size={18} /> : <Camera size={18} />}
+                <span>Change Picture</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -18,17 +18,8 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-  useEffect(() => {
-    if (viewMode === 'shared' && user?.isAdmin) {
-      fetch(`${API_BASE}/api/admin/shared/keynotes`, { headers: { 'x-auth-token': localStorage.getItem('token') } })
-        .then(res => res.json())
-        .then(data => setSharedKeynotes(data));
-    }
-  }, [viewMode, keynotes, user]);
-
-  const displayKeynotes = viewMode === 'shared'
-    ? sharedKeynotes
-    : keynotes.filter(k => !user?.isAdmin || k.isPrivate === true);
+  // Keynotes operate on user's private workspace
+  const displayKeynotes = keynotes;
 
   const isAudio = (url) => url?.match(/\.(m4a|mp3|wav|ogg|aac|mp4|3gp)$/i) || url?.includes('video/upload');
 
@@ -93,12 +84,6 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Keynotes</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">Your quick captures, snaps, and voice notes from mobile.</p>
-          {user?.isAdmin && (
-            <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl w-max shrink-0 border border-gray-200 dark:border-[#333]">
-              <button onClick={() => setViewMode('private')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
-              <button onClick={() => setViewMode('shared')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Shared Hub</button>
-            </div>
-          )}
         </div>
         <div className="flex items-center gap-3">
           {displayKeynotes.length > 0 && (

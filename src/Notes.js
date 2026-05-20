@@ -16,18 +16,8 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
   const [viewMode, setViewMode] = useState('private');
   const [sharedNotes, setSharedNotes] = useState([]);
 
-  useEffect(() => {
-    if (viewMode === 'shared' && user?.isAdmin) {
-      fetch(`${API_BASE}/api/admin/shared/notes`, { headers: { 'x-auth-token': localStorage.getItem('token') } })
-        .then(res => res.json())
-        .then(data => setSharedNotes(data));
-    }
-  }, [viewMode, notes, user]);
-
-  // Hide shared notes from My Workspace for admins
-  const displayNotes = viewMode === 'shared'
-    ? sharedNotes
-    : notes.filter(n => !user?.isAdmin || n.isPrivate === true);
+  // Notes operate on user's private workspace
+  const displayNotes = notes;
 
   // Bulletproof HTML to Plain Text Converter (Preserves formatting!)
   const getPlainText = (html) => {
@@ -135,12 +125,6 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
             ) : (
               <div className="w-full flex justify-between items-end">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Notes</h2>
-                {user?.isAdmin && (
-                  <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl w-max shrink-0 border border-gray-200 dark:border-[#333]">
-                    <button onClick={() => setViewMode('private')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
-                    <button onClick={() => setViewMode('shared')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Shared Hub</button>
-                  </div>
-                )}
               </div>
             )}
           </div>

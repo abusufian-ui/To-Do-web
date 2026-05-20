@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import RightSidebar from './RightSidebar';
+import GroupInfoModal from './GroupInfoModal';
 import TaskTable from './TaskTable';
 import Settings from './Settings';
 import AddTaskModal from './AddTaskModal';
@@ -139,6 +141,10 @@ function AppLayout() {
   const [isAddingNewNote, setIsAddingNewNote] = useState(false);
   const [isAddingNewTransaction, setIsAddingNewTransaction] = useState(false);
   const [binItems, setBinItems] = useState([]);
+  const [activeGroup, setActiveGroup] = useState(null);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
   const [filters, setFilters] = useState({
     course: 'All', status: 'All', priority: 'All', startDate: '', endDate: '', searchQuery: '', mediaType: 'All', source: 'All'
   });
@@ -386,6 +392,32 @@ function AppLayout() {
     } catch (error) { console.error("Error fetching bin:", error); }
   }, [authHeaders, handleLogout]);
 
+  const fetchActiveGroup = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/groups/my`, { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
+      if (res.ok) {
+        const data = await res.json();
+        setActiveGroup(data);
+      } else {
+        setActiveGroup(null);
+      }
+    } catch (error) { console.error("Error fetching group:", error); }
+  }, [authHeaders, handleLogout]);
+
+  const fetchPendingInvitations = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/groups/invitations`, { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
+      if (res.ok) {
+        const data = await res.json();
+        setPendingInvitations(data);
+      } else {
+        setPendingInvitations([]);
+      }
+    } catch (error) { console.error("Error fetching invitations:", error); }
+  }, [authHeaders, handleLogout]);
+
   const fetchCourses = useCallback(async () => {
     let fetchedCourses = [];
     try {
@@ -407,8 +439,10 @@ function AppLayout() {
       fetchBin();
       fetchCourses();
       fetchExams();
+      fetchActiveGroup();
+      fetchPendingInvitations();
     }
-  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses, fetchExams]);
+  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
 
   const handleLiveUpdate = useCallback(() => {
     if (token && isAuthenticated) {
@@ -721,6 +755,35 @@ function AppLayout() {
                   hfState={hfState}
                   hfModes={HF_MODES}
                   exams={activeExams}
+                  activeGroup={activeGroup}
+                  onOpenGroupInfo={() => setIsGroupInfoOpen(true)}
+                  onToggleRightSidebar={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                  isRightSidebarOpen={isRightSidebarOpen}
+                  pendingInvitations={pendingInvitations}
+                />
+
+                <RightSidebar
+                  isOpen={isRightSidebarOpen}
+                  onClose={() => setIsRightSidebarOpen(false)}
+                  user={user}
+                  activeGroup={activeGroup}
+                  pendingInvitations={pendingInvitations}
+                  fetchActiveGroup={fetchActiveGroup}
+                  fetchPendingInvitations={fetchPendingInvitations}
+                  fetchTasks={fetchTasks}
+                  API_BASE={API_BASE}
+                  authHeaders={authHeaders}
+                />
+
+                <GroupInfoModal
+                  isOpen={isGroupInfoOpen}
+                  onClose={() => setIsGroupInfoOpen(false)}
+                  user={user}
+                  activeGroup={activeGroup}
+                  fetchActiveGroup={fetchActiveGroup}
+                  fetchTasks={fetchTasks}
+                  API_BASE={API_BASE}
+                  authHeaders={authHeaders}
                 />
                 <div className="flex-1 overflow-auto p-0 relative custom-scrollbar-hide flex items-center justify-center">
 
@@ -742,7 +805,7 @@ function AppLayout() {
 
                   {activeTab === 'HyperFocus' && <div className="w-full h-full"><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>}
                   {activeTab === 'Notes' && <div className="w-full h-full"><Notes courses={courses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} user={user} /></div>}
-                  {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} user={user} /></div>}{activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
+                  {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} /></div>}{activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
                   {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>}
                   {activeTab === 'Keynotes' && <div className="w-full h-full"><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>}                  {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
                   {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
@@ -773,8 +836,8 @@ function AppLayout() {
               `}</style>
 
               {/* --- MODALS --- */}
-              <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} tasks={tasks} />
-              <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={courses} onUpdate={updateTask} />
+              <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} tasks={tasks} activeGroup={activeGroup} />
+              <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={courses} onUpdate={updateTask} user={user} activeGroup={activeGroup} />
               <AddKeynoteModal isOpen={isAddKeynoteOpen} onClose={() => setIsAddKeynoteOpen(false)} onSave={handleAddKeynoteSubmit} courses={courses} />
 
               <ConfirmationModal isOpen={!!taskToDelete} onClose={() => setTaskToDelete(null)} onConfirm={executeDelete} title="Move to Bin?" message="Are you sure you want to move this task to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />

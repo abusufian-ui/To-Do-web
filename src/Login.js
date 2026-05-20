@@ -25,12 +25,13 @@ export default function Login() {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState(''); // 🚀 NEW CONFIRM PASSWORD STATE
     const [flowType, setFlowType] = useState(''); 
+    const [activeEmail, setActiveEmail] = useState(''); // 🚀 Locked verified email to prevent middle-execution modifications
 
     // Visibility States
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-    const email = `${rollNumber.toLowerCase().trim()}@ucp.edu.pk`;
+    const email = activeEmail || `${rollNumber.toLowerCase().trim()}@ucp.edu.pk`;
     const otp = otpValues.join('');
     const otpRefs = useRef([]);
 
@@ -45,12 +46,17 @@ export default function Login() {
     };
     const passwordStrength = getPasswordStrength(newPassword);
 
-    // Helper to reset and go back
+    // Helper to reset and go back sequentially
     const handleGoBack = () => {
-        setStep('EMAIL');
         setError('');
         setSuccessMsg('');
-        setOtpValues(Array(6).fill(''));
+        if (step === 'NEW_PASSWORD') {
+            setStep('OTP');
+        } else {
+            setStep('EMAIL');
+            setActiveEmail('');
+            setOtpValues(Array(6).fill(''));
+        }
     };
 
     // 1. Check Email
@@ -58,20 +64,23 @@ export default function Login() {
         e.preventDefault();
         if (!rollNumber) return setError("Please enter your Roll Number.");
         
+        const currentEmail = `${rollNumber.toLowerCase().trim()}@ucp.edu.pk`;
         setIsLoading(true);
         setError('');
         try {
-            const res = await axios.post(`${API_BASE}/api/web/check-email`, { email });
+            const res = await axios.post(`${API_BASE}/api/web/check-email`, { email: currentEmail });
             
             if (!res.data.exists) {
                 setStep('NOT_FOUND');
             } else if (res.data.hasPassword) {
                 setFirstName(res.data.name);
+                setActiveEmail(currentEmail);
                 setStep('PASSWORD');
             } else {
                 setFirstName(res.data.name);
                 setFlowType('setup');
-                await sendOtp('setup');
+                setActiveEmail(currentEmail);
+                await sendOtp('setup', currentEmail);
                 setStep('OTP');
             }
         } catch (err) {
@@ -82,12 +91,13 @@ export default function Login() {
     };
 
     // 2. Send OTP
-    const sendOtp = async (type) => {
+    const sendOtp = async (type, emailOverride = null) => {
+        const targetEmail = emailOverride || email;
         setIsLoading(true);
         setError('');
         setSuccessMsg('');
         try {
-            await axios.post(`${API_BASE}/api/web/send-otp`, { email, type });
+            await axios.post(`${API_BASE}/api/web/send-otp`, { email: targetEmail, type });
             setSuccessMsg('OTP sent successfully. Please check your inbox.');
             setTimeout(() => setSuccessMsg(''), 5000);
         } catch (err) {
@@ -208,7 +218,7 @@ export default function Login() {
             <FloatingBackground />
 
             {/* Main Card */}
-            <div className="relative z-10 w-full max-w-[420px] bg-[#050505] rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.03)] border border-[#222] overflow-hidden transition-all duration-700 animate-fade-in-up">
+            <div className="relative z-30 w-full max-w-[420px] bg-[#050505] rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.03)] border border-[#222] overflow-hidden transition-all duration-700 animate-fade-in-up">
                 
                 {/* Progress Bar (Loading State) */}
                 <div className="absolute top-0 left-0 w-full h-[2px] bg-transparent z-20">
@@ -268,9 +278,11 @@ export default function Login() {
                                         type="text"
                                         placeholder="L1F23BSCS0000"
                                         value={rollNumber}
-                                        onChange={(e) => setRollNumber(e.target.value.toUpperCase())}
-                                        className="w-full px-5 py-4 bg-transparent outline-none font-bold text-white uppercase placeholder-[#555] transition-colors"
+                                        onChange={(e) => setRollNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                                        disabled={isLoading}
+                                        className="w-full px-5 py-4 bg-transparent outline-none font-bold text-white uppercase placeholder-[#555] transition-colors disabled:opacity-50"
                                         autoFocus
+                                        name="portal-roll-number-input"
                                     />
                                     <div className="px-5 py-4 border-l border-[#333] text-[#666] font-semibold select-none group-focus-within:text-[#999] transition-colors">
                                         @ucp.edu.pk

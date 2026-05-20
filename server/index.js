@@ -45,6 +45,8 @@ const Announcement = require('./models/Announcement');
 const Feedback = require('./models/Feedback');
 const Assessment = require('./models/Assessment');
 const Exam = require('./models/Exam'); // 🚨 NEW: DATESHEET EXAM MODEL
+const Group = require('./models/Group');
+const GroupInvitation = require('./models/GroupInvitation');
 const { spawn } = require('child_process');
 
 // --- CONFIGURATION ---
@@ -989,35 +991,300 @@ app.get('/api/admin/system-stats', async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Failed" }); }
 });
 
-// --- ADMIN SHARED RESOURCES ---
-app.get('/api/admin/shared/tasks', auth, adminAuth, async (req, res) => {
+// ==========================================
+// 👥 MULTI-USER STUDY GROUP & COMMUNITY SYSTEM API
+// ==========================================
+
+// 1. Create a Study Group
+app.post('/api/groups', auth, async (req, res) => {
   try {
-    const adminIds = (await User.find({ isAdmin: true })).map(u => u._id);
-    const tasks = await Task.find({ userId: { $in: adminIds }, isPrivate: false, isDeleted: false })
-      .populate('userId', 'name email profilePic originalPortalProfilePic portalProfilePic')
-      .sort({ createdAt: -1 });
-    res.json(tasks);
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+    const { name } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ message: "Group name is required" });
+
+    // Check if the user is already in a group
+    const existingGroup = await Group.findOne({ members: req.user.id });
+    if (existingGroup) {
+      return res.status(400).json({ message: "You are already a member of a group. You must leave it before creating a new one." });
+    }
+
+    const group = new Group({
+      name: name.trim(),
+      creatorId: req.user.id,
+      members: [req.user.id]
+    });
+    await group.save();
+    res.status(201).json(group);
+  } catch (error) {
+    console.error("Create Group Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
 });
 
-app.get('/api/admin/shared/notes', auth, adminAuth, async (req, res) => {
+// 2. Fetch User's Active Group
+app.get('/api/groups/my', auth, async (req, res) => {
   try {
-    const adminIds = (await User.find({ isAdmin: true })).map(u => u._id);
-    const notes = await Note.find({ user: { $in: adminIds }, isPrivate: false, isDeleted: false })
-      .populate('user', 'name email profilePic originalPortalProfilePic portalProfilePic')
-      .sort({ createdAt: -1 });
-    res.json(notes);
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+    const group = await Group.findOne({ members: req.user.id })
+      .populate('members', 'name email profilePic customProfilePic portalId createdAt')
+      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
+    res.json(group);
+  } catch (error) {
+    console.error("Fetch My Group Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
 });
 
-app.get('/api/admin/shared/keynotes', auth, adminAuth, async (req, res) => {
+// 3. Leave or Disband Group
+app.post('/api/groups/leave', auth, async (req, res) => {
   try {
-    const adminIds = (await User.find({ isAdmin: true })).map(u => u._id);
-    const keynotes = await Keynote.find({ userId: { $in: adminIds }, isPrivate: false, isDeleted: false })
-      .populate('userId', 'name email profilePic originalPortalProfilePic portalProfilePic')
-      .sort({ createdAt: -1 });
-    res.json(keynotes);
-  } catch (error) { res.status(500).json({ message: "Server Error" }); }
+    const group = await Group.findOne({ members: req.user.id });
+    if (!group) return res.status(400).json({ message: "You are not a member of any group." });
+
+    if (group.creatorId.toString() === req.user.id) {
+      // Disband Group (Creator Exit)
+      await Group.findByIdAndDelete(group._id);
+      await GroupInvitation.deleteMany({ groupId: group._id });
+      // Revert shared tasks back to private
+      await Task.updateMany({ groupId: group._id }, { groupId: null, memberStatuses: [] });
+      res.json({ message: "Group disbanded successfully." });
+    } else {
+      // Leave Group (Member Exit)
+      group.members = group.members.filter(m => m.toString() !== req.user.id);
+      await group.save();
+      // Clean up member-specific states
+      await Task.updateMany(
+        { groupId: group._id },
+        { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
+      );
+      res.json({ message: "Left group successfully." });
+    }
+  } catch (error) {
+    console.error("Leave Group Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// 4. Fetch Community Students
+app.get('/api/users/community', auth, async (req, res) => {
+  try {
+    const users = await User.find({ _id: { $ne: req.user.id } })
+      .select('name email profilePic portalId customProfilePic createdAt isAdmin')
+      .sort({ name: 1 });
+
+    const allGroups = await Group.find();
+    const groupedUserIds = new Set();
+    allGroups.forEach(g => g.members.forEach(m => groupedUserIds.add(m.toString())));
+
+    const sentInvites = await GroupInvitation.find({ senderId: req.user.id, status: 'pending' });
+    const invitedUserIds = new Set(sentInvites.map(i => i.receiverId.toString()));
+
+    const formattedUsers = users.map(u => ({
+      _id: u._id,
+      name: u.name,
+      email: u.email,
+      profilePic: u.profilePic,
+      portalId: u.portalId,
+      customProfilePic: u.customProfilePic,
+      createdAt: u.createdAt,
+      isAdmin: u.isAdmin,
+      isInGroup: groupedUserIds.has(u._id.toString()),
+      isInvited: invitedUserIds.has(u._id.toString())
+    }));
+
+    res.json(formattedUsers);
+  } catch (error) {
+    console.error("Fetch Community Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// 5. Send Study Group Invitation
+app.post('/api/groups/invite', auth, async (req, res) => {
+  try {
+    const { receiverId } = req.body;
+    if (!receiverId) return res.status(400).json({ message: "Receiver ID is required" });
+
+    const group = await Group.findOne({ creatorId: req.user.id });
+    if (!group) return res.status(400).json({ message: "You must be the group creator to send invitations." });
+
+    const receiverInGroup = await Group.findOne({ members: receiverId });
+    if (receiverInGroup) return res.status(400).json({ message: "This student is already a member of a study group." });
+
+    const existingInvite = await GroupInvitation.findOne({
+      groupId: group._id,
+      receiverId,
+      status: 'pending'
+    });
+    if (existingInvite) return res.status(400).json({ message: "An invitation is already pending for this student." });
+
+    const invite = new GroupInvitation({
+      groupId: group._id,
+      senderId: req.user.id,
+      receiverId
+    });
+    await invite.save();
+    res.status(201).json(invite);
+  } catch (error) {
+    console.error("Send Invite Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// 6. Fetch Received Pending Invitations
+app.get('/api/groups/invitations', auth, async (req, res) => {
+  try {
+    const invites = await GroupInvitation.find({ receiverId: req.user.id, status: 'pending' })
+      .populate('senderId', 'name email profilePic')
+      .populate('groupId', 'name');
+    res.json(invites);
+  } catch (error) {
+    console.error("Fetch Invites Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// 7. Accept or Decline Invitation
+app.put('/api/groups/invitations/:id', auth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['accepted', 'rejected'].includes(status)) return res.status(400).json({ message: "Invalid status" });
+
+    const invite = await GroupInvitation.findById(req.params.id);
+    if (!invite) return res.status(404).json({ message: "Invitation not found" });
+
+    if (invite.receiverId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    if (status === 'rejected') {
+      invite.status = 'rejected';
+      await invite.save();
+      return res.json({ message: "Invitation declined successfully" });
+    }
+
+    // Accepting
+    // If the user is already in a group, automatically exit (leave/disband) it since they confirmed the warning in the UI
+    const userInGroup = await Group.findOne({ members: req.user.id });
+    if (userInGroup) {
+      if (userInGroup.creatorId.toString() === req.user.id) {
+        // Disband Group
+        await Group.findByIdAndDelete(userInGroup._id);
+        await GroupInvitation.deleteMany({ groupId: userInGroup._id });
+        await Task.updateMany({ groupId: userInGroup._id }, { groupId: null, memberStatuses: [] });
+      } else {
+        // Leave Group
+        userInGroup.members = userInGroup.members.filter(m => m.toString() !== req.user.id);
+        await userInGroup.save();
+        await Task.updateMany(
+          { groupId: userInGroup._id },
+          { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
+        );
+      }
+    }
+
+    const group = await Group.findById(invite.groupId);
+    if (!group) return res.status(404).json({ message: "Associated study group no longer exists." });
+
+    // Add to group
+    group.members.push(req.user.id);
+    await group.save();
+
+    // Mark as accepted
+    invite.status = 'accepted';
+    await invite.save();
+
+    // Reject all other pending invitations for this user
+    await GroupInvitation.updateMany(
+      { receiverId: req.user.id, status: 'pending' },
+      { status: 'rejected' }
+    );
+
+    res.json({ message: "Joined group successfully" });
+  } catch (error) {
+    console.error("Handle Invite Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// 8. Update Group Profile Pic (Admins only)
+app.put('/api/groups/:id/profile-pic', auth, async (req, res) => {
+  try {
+    const { profilePic } = req.body;
+    const group = await Group.findById(req.params.id);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    if (group.creatorId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Only group creator can change the profile image." });
+    }
+
+    group.profilePic = profilePic;
+    await group.save();
+
+    const updatedGroup = await Group.findById(group._id)
+      .populate('members', 'name email profilePic customProfilePic portalId createdAt')
+      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
+    res.json(updatedGroup);
+  } catch (error) {
+    console.error("Group Profile Pic Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// 9. Add Member Directly (Admins only)
+app.post('/api/groups/add-member', auth, async (req, res) => {
+  try {
+    const { memberId } = req.body;
+    if (!memberId) return res.status(400).json({ message: "Member ID is required" });
+
+    const group = await Group.findOne({ creatorId: req.user.id });
+    if (!group) return res.status(403).json({ message: "Only the group creator can add members." });
+
+    const memberInGroup = await Group.findOne({ members: memberId });
+    if (memberInGroup) return res.status(400).json({ message: "This user is already in a study group." });
+
+    group.members.push(memberId);
+    await group.save();
+
+    // delete any pending invitations for this user
+    await GroupInvitation.deleteMany({ receiverId: memberId, status: 'pending' });
+
+    const updatedGroup = await Group.findById(group._id)
+      .populate('members', 'name email profilePic customProfilePic portalId createdAt')
+      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
+    res.json(updatedGroup);
+  } catch (error) {
+    console.error("Group Add Member Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// 10. Remove Member Directly (Admins only)
+app.post('/api/groups/remove-member', auth, async (req, res) => {
+  try {
+    const { memberId } = req.body;
+    if (!memberId) return res.status(400).json({ message: "Member ID is required" });
+
+    const group = await Group.findOne({ creatorId: req.user.id });
+    if (!group) return res.status(403).json({ message: "Only the group creator can remove members." });
+
+    if (memberId === req.user.id) return res.status(400).json({ message: "Creator cannot be removed. You can disband the group instead." });
+
+    group.members = group.members.filter(m => m.toString() !== memberId);
+    await group.save();
+
+    // Clean up member-specific states in tasks
+    await Task.updateMany(
+      { groupId: group._id },
+      { $pull: { deletedByUsers: memberId, memberStatuses: { userId: memberId } } }
+    );
+
+    const updatedGroup = await Group.findById(group._id)
+      .populate('members', 'name email profilePic customProfilePic portalId createdAt')
+      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
+    res.json(updatedGroup);
+  } catch (error) {
+    console.error("Group Remove Member Error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
 });
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
@@ -1466,43 +1733,172 @@ app.get('/api/results-history', auth, async (req, res) => { try { res.json(await
 app.get('/api/focus-sessions', auth, async (req, res) => { try { res.json(await FocusSession.find({ userId: req.user.id }).sort({ completedAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await new FocusSession({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-app.get('/api/tasks', auth, async (req, res) => { try { res.json(await Task.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.post('/api/tasks', auth, async (req, res) => { try { res.json(await new Task({ ...req.body, userId: req.user.id }).save()); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.get('/api/tasks', auth, async (req, res) => {
+  try {
+    const userGroups = await Group.find({ members: req.user.id });
+    const groupIds = userGroups.map(g => g._id);
+
+    const tasks = await Task.find({
+      $or: [
+        { userId: req.user.id, groupId: null, isDeleted: false },
+        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } }
+      ]
+    })
+    .populate('userId', 'name email profilePic')
+    .sort({ createdAt: -1 });
+
+    res.json(tasks);
+  } catch (err) { 
+    res.status(500).json({ message: err.message }); 
+  } 
+});
+
+app.post('/api/tasks', auth, async (req, res) => {
+  try {
+    const task = new Task({ ...req.body, userId: req.user.id });
+    await task.save();
+    res.json(await Task.findById(task._id).populate('userId', 'name email profilePic'));
+  } catch (err) { 
+    res.status(500).json({ message: err.message }); 
+  } 
+});
 
 app.put('/api/tasks/:id', auth, async (req, res) => {
   try {
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
     const u = await User.findById(req.user.id);
-    // Allow admins to bypass user ownership check
-    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
-    res.json(await Task.findOneAndUpdate(q, req.body, { new: true }));
-  } catch (err) { res.status(500).json({ message: err.message }); }
+    const isCreator = task.userId.toString() === req.user.id;
+    
+    let isMember = false;
+    if (task.groupId) {
+      const group = await Group.findById(task.groupId);
+      if (group && group.members.map(m => m.toString()).includes(req.user.id)) {
+        isMember = true;
+      }
+    }
+
+    const canEditFully = isCreator || u.isAdmin;
+
+    if (!canEditFully && !isMember) {
+      return res.status(403).json({ message: "Unauthorized to edit this task" });
+    }
+
+    if (canEditFully) {
+      // Creator or Admin - Full edit
+      Object.assign(task, req.body);
+      
+      // If creator is updating status, also set their private status
+      if (req.body.status !== undefined) {
+        const existingIdx = task.memberStatuses.findIndex(ms => ms.userId.toString() === req.user.id);
+        if (existingIdx > -1) {
+          task.memberStatuses[existingIdx].status = req.body.status;
+        } else {
+          task.memberStatuses.push({ userId: req.user.id, status: req.body.status });
+        }
+      }
+    } else {
+      // Group Member - Can ONLY change status privately
+      if (req.body.status === undefined) {
+        return res.status(400).json({ message: "Group members can only update status on shared tasks." });
+      }
+
+      const existingIdx = task.memberStatuses.findIndex(ms => ms.userId.toString() === req.user.id);
+      if (existingIdx > -1) {
+        task.memberStatuses[existingIdx].status = req.body.status;
+      } else {
+        task.memberStatuses.push({ userId: req.user.id, status: req.body.status });
+      }
+    }
+
+    await task.save();
+    res.json(await Task.findById(task._id).populate('userId', 'name email profilePic'));
+  } catch (err) { 
+    res.status(500).json({ message: err.message }); 
+  }
 });
 
-app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => { try { await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true }); res.json({ success: true }); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => { 
+  try { 
+    await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true }); 
+    res.json({ success: true }); 
+  } catch (err) { 
+    res.status(500).json({ message: err.message }); 
+  } 
+});
 
 app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   try {
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
     const u = await User.findById(req.user.id);
-    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
-    // Transfer ownership (userId) to deleting admin so it goes to THEIR bin
-    res.json(await Task.findOneAndUpdate(q, { isDeleted: true, deletedAt: new Date(), userId: req.user.id }, { new: true }));
-  } catch (err) { res.status(500).json({ message: err.message }) }
+    const isCreator = task.userId.toString() === req.user.id;
+    const isShared = !!task.groupId;
+
+    if (isCreator || u.isAdmin) {
+      // Creator deletes for everyone (Whatsapp-style)
+      task.isDeleted = true;
+      task.deletedAt = new Date();
+    } else if (isShared) {
+      // Group member deletes only for themselves
+      if (!task.deletedByUsers.map(id => id.toString()).includes(req.user.id)) {
+        task.deletedByUsers.push(req.user.id);
+      }
+    } else {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    await task.save();
+    res.json(task);
+  } catch (err) { 
+    res.status(500).json({ message: err.message }); 
+  }
 });
 
 app.put('/api/tasks/:id/restore', auth, async (req, res) => {
   try {
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
     const u = await User.findById(req.user.id);
-    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
-    res.json(await Task.findOneAndUpdate(q, { isDeleted: false, deletedAt: null }, { new: true }));
-  } catch (err) { res.status(500).json({ message: err.message }) }
+    const isCreator = task.userId.toString() === req.user.id;
+
+    if (isCreator || u.isAdmin) {
+      // Creator restores for everyone
+      task.isDeleted = false;
+      task.deletedAt = null;
+    } else {
+      // Member restores for themselves
+      task.deletedByUsers = task.deletedByUsers.filter(id => id.toString() !== req.user.id);
+    }
+
+    await task.save();
+    res.json(task);
+  } catch (err) { 
+    res.status(500).json({ message: err.message }); 
+  }
 });
+
 app.delete('/api/tasks/:id', auth, async (req, res) => {
   try {
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
     const u = await User.findById(req.user.id);
-    const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
-    await Task.findOneAndDelete(q);
-    res.json({ message: "Deleted" });
-  } catch (err) { res.status(500).json({ message: err.message }) }
+    const isCreator = task.userId.toString() === req.user.id;
+
+    if (isCreator || u.isAdmin) {
+      await Task.findByIdAndDelete(req.params.id);
+      res.json({ message: "Deleted" });
+    } else {
+      // Member permanently deleting hides it forever (keeps in deletedByUsers)
+      res.json({ message: "Removed from bin" });
+    }
+  } catch (err) { 
+    res.status(500).json({ message: err.message }); 
+  }
 });
 app.get('/api/transactions', auth, async (req, res) => { try { res.json(await Transaction.find({ userId: req.user.id, isDeleted: false }).sort({ date: -1, createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/transactions', auth, async (req, res) => { try { res.json(await new Transaction({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
@@ -1609,7 +2005,16 @@ app.post('/api/namaz/offer', auth, async (req, res) => {
 
 app.get('/api/bin', auth, async (req, res) => {
   try {
-    const tasks = await Task.find({ userId: req.user.id, isDeleted: true }).lean();
+    const userGroups = await Group.find({ members: req.user.id });
+    const groupIds = userGroups.map(g => g._id);
+
+    const tasks = await Task.find({
+      $or: [
+        { userId: req.user.id, isDeleted: true },
+        { groupId: { $in: groupIds }, deletedByUsers: req.user.id }
+      ]
+    }).populate('userId', 'name email profilePic').lean();
+
     const transactions = await Transaction.find({ userId: req.user.id, isDeleted: true }).lean();
     const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
     const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean();
@@ -1619,7 +2024,12 @@ app.get('/api/bin', auth, async (req, res) => {
 });
 app.put('/api/bin/restore-all', auth, async (req, res) => {
   try {
+    const userGroups = await Group.find({ members: req.user.id });
+    const groupIds = userGroups.map(g => g._id);
+
     await Task.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
+    await Task.updateMany({ groupId: { $in: groupIds }, deletedByUsers: req.user.id }, { $pull: { deletedByUsers: req.user.id } });
+
     await Transaction.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Habit.updateMany({ userId: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
     await Note.updateMany({ user: req.user.id, isDeleted: true }, { isDeleted: false, deletedAt: null });
@@ -1630,6 +2040,8 @@ app.put('/api/bin/restore-all', auth, async (req, res) => {
 app.delete('/api/bin/empty', auth, async (req, res) => {
   try {
     await Task.deleteMany({ userId: req.user.id, isDeleted: true });
+    // Keep group tasks permanently hidden for this user (nothing to change as they're already in deletedByUsers)
+
     await Transaction.deleteMany({ userId: req.user.id, isDeleted: true });
     await Habit.deleteMany({ userId: req.user.id, isDeleted: true });
     await Note.deleteMany({ user: req.user.id, isDeleted: true });
@@ -1655,7 +2067,7 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res)
     const matchingCourses = await Course.find({
       code: courseRegex,
       section: new RegExp(`^${section}$`, 'i')
-    }).populate('userId', 'name portalId profilePic');
+    }).populate('userId', 'name portalId profilePic portalProfilePic');
 
     if (!matchingCourses || matchingCourses.length === 0) {
       return res.status(404).json({ message: "No students found in this section." });
@@ -1690,7 +2102,7 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res)
         id: course.userId?.portalId || 'Unknown ID',
         name: course.userId?.name || 'Unknown Student',
         score: score || 0,
-        pic: course.userId?.profilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}`
+        pic: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}`
       };
     });
 

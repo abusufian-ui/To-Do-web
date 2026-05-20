@@ -4,14 +4,14 @@ import {
   Book, Mail, Clock, CheckCircle2, Calendar, Menu,
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown, 
   Settings, LogOut, FileText, X, Image as ImageIcon, Mic, FileArchive,
-  Timer, Download, Maximize2, Trash2, EyeOff, Activity, AlertCircle
+  Timer, Download, Maximize2, Trash2, EyeOff, Activity, AlertCircle, Users
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
 const Header = ({ 
   activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout, 
   tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, onToggleKeynoteRead, hfState, hfModes,
-  exams 
+  exams, activeGroup, onOpenGroupInfo, onToggleRightSidebar, isRightSidebarOpen, pendingInvitations
 }) => {
   const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
   const isSuperAdmin = user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
@@ -422,6 +422,40 @@ const Header = ({
               )}
             </button>
           </div>
+
+          {activeGroup && (
+            <button 
+              onClick={onOpenGroupInfo}
+              className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] p-1 px-3 rounded-full transition-all border border-gray-200 dark:border-[#333]"
+              title={`${activeGroup.name} - View Group Info`}
+            >
+              {activeGroup.profilePic ? (
+                <img src={activeGroup.profilePic} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/10" />
+              ) : (
+                <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-brand-blue/15 text-brand-blue font-bold text-xs md:text-sm flex items-center justify-center uppercase shadow-md">
+                  {activeGroup.name?.substring(0, 2).toUpperCase() || "SG"}
+                </div>
+              )}
+              <span className="text-xs font-bold text-gray-700 dark:text-gray-200 hidden md:inline max-w-[80px] truncate">
+                {activeGroup.name}
+              </span>
+            </button>
+          )}
+
+          <button 
+            onClick={onToggleRightSidebar} 
+            className={`p-2 rounded-full transition-all relative ${
+              isRightSidebarOpen 
+                ? 'bg-blue-100 dark:bg-blue-900/30 text-brand-blue' 
+                : 'text-gray-500 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-dark-surface'
+            }`}
+            title="Community Directory"
+          >
+            <Users size={20} />
+            {pendingInvitations && pendingInvitations.length > 0 && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-dark-bg animate-pulse"></span>
+            )}
+          </button>
 
           <button onClick={toggleTheme} className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface transition-all active:rotate-12">
             {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
