@@ -58,15 +58,16 @@ const CourseAnnouncements = ({ announcements }) => {
       {/* 2. OLDER ANNOUNCEMENTS TIMELINE */}
       {olderNews.length > 0 && (
         <div className="relative pt-2">
-          {/* Vertical Timeline Line */}
-          <div className="absolute left-[1.35rem] md:left-[2.1rem] top-2 bottom-8 w-0.5 bg-gradient-to-b from-blue-500 to-gray-200 dark:from-indigo-500 dark:to-[#333]"></div>
+          {/* FIXED: Shifted absolute left to precisely [22px] to map directly to the true center of the w-11 icons */}
+          <div className="absolute left-[22px] top-2 bottom-8 w-0.5 bg-gradient-to-b from-blue-500 to-gray-200 dark:from-indigo-500 dark:to-[#333]"></div>
 
           <div className="space-y-6">
             {olderNews.map((news, idx) => (
               <div key={idx} className="relative flex items-start gap-4 md:gap-6 group">
                 
                 {/* Timeline Node/Icon */}
-                <div className="relative z-10 w-11 h-11 shrink-0 bg-white dark:bg-[#1E1E1E] border-4 border-gray-50 dark:border-dark-bg rounded-full flex items-center justify-center shadow-sm group-hover:border-blue-50 dark:group-hover:border-indigo-900/30 transition-colors duration-300">
+                {/* FIXED: Added mt-1 to align perfectly with the first line of text content within the card */}
+                <div className="relative z-10 w-11 h-11 shrink-0 bg-white dark:bg-[#1E1E1E] border-4 border-gray-50 dark:border-dark-bg rounded-full flex items-center justify-center shadow-sm group-hover:border-blue-50 dark:group-hover:border-indigo-900/30 transition-colors duration-300 mt-1">
                   <div className="w-8 h-8 bg-blue-50 dark:bg-indigo-900/20 rounded-full flex items-center justify-center">
                     <Megaphone size={14} className="text-blue-600 dark:text-indigo-400" />
                   </div>

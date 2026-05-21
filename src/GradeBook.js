@@ -111,7 +111,7 @@ const GradeCategoryRow = ({ category, onBestOfChange }) => {
                 <Target size={14} className="text-indigo-500" /> Evaluation Rule
               </span>
               <select
-                className="bg-white dark:bg-[#1A1A1D] border border-indigo-200 dark:border-indigo-500/30 text-sm font-bold text-indigo-700 dark:text-indigo-400 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer"
+                className="bg-white dark:bg-[#1A1A1D] border-2 border-indigo-200 dark:border-indigo-500/30 text-sm font-bold text-indigo-700 dark:text-indigo-400 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 shadow-sm cursor-pointer transition-all hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
                 value={category.bestOf}
                 onChange={(e) => onBestOfChange(category.name, parseInt(e.target.value))}
               >
@@ -150,8 +150,7 @@ const GradeCategoryRow = ({ category, onBestOfChange }) => {
                         <span className="text-[14px] font-black text-gray-400 dark:text-gray-600">-</span>
                       ) : (
                         <span className={`text-[14px] font-black flex items-center justify-center gap-1.5 ${isLowScore && !isDropped ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
-                          {isLowScore && !isDropped && <AlertCircle size={14} className="text-red-500" />}
-                          {det.obtainedMarks} <span className="text-[11px] font-medium text-gray-400 dark:text-gray-600">/ {det.maxMarks}</span>
+                          {det.obtainedMarks} <span className={`text-[11px] font-medium ${isLowScore && !isDropped ? 'text-red-400/80' : 'text-gray-400 dark:text-gray-600'}`}>/ {det.maxMarks}</span>
                         </span>
                       )}
                     </td>
@@ -171,7 +170,7 @@ const GradeCategoryRow = ({ category, onBestOfChange }) => {
 };
 
 
-const GradeBook = ({ courses, isMainSidebarOpen }) => {
+const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   const [allGrades, setAllGrades] = useState([]);
   const [stats, setStats] = useState({ cgpa: "0.00", credits: "0", inprogressCr: "0" });
   const [loading, setLoading] = useState(true);
@@ -242,6 +241,7 @@ const GradeBook = ({ courses, isMainSidebarOpen }) => {
 
   // ─── LEADERBOARD DATA FETCHER ───
   useEffect(() => {
+    setLeaderboard([]);
     const fetchLeaderboard = async () => {
       if (!selectedCourse || !matchingCourseInfo || !matchingCourseInfo.code || !matchingCourseInfo.section) {
         setLeaderboard([]);
@@ -588,10 +588,6 @@ const GradeBook = ({ courses, isMainSidebarOpen }) => {
                         <p className="text-3xl font-black">{courseGradingStats.currentStandingPct.toFixed(1)}<span className="text-sm opacity-70">%</span></p>
                       </div>
                       <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl text-center min-w-[100px]">
-                        <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-widest mb-1 whitespace-nowrap">Class Rank</p>
-                        <p className="text-3xl font-black">{myRankData ? `#${myRankData.rank}` : '-'}</p>
-                      </div>
-                      <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl text-center min-w-[100px]">
                         <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-widest mb-1 whitespace-nowrap">Proj. Grade</p>
                         {/* 🚀 BUG FIXED: Always guaranteed to have a fallback projected grade */}
                         <p className="text-3xl font-black text-emerald-300 drop-shadow-sm">
@@ -602,6 +598,7 @@ const GradeBook = ({ courses, isMainSidebarOpen }) => {
                   </div>
 
                   {/* LEADERBOARD TABLE */}
+                  {user?.isAdmin && (
                   <div className="bg-white dark:bg-[#121214] border border-gray-200 dark:border-gray-800/80 rounded-3xl overflow-hidden shadow-sm mt-8">
                     <div 
                       className="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors"
@@ -686,6 +683,7 @@ const GradeBook = ({ courses, isMainSidebarOpen }) => {
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               )}
 

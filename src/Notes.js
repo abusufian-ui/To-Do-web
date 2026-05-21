@@ -109,6 +109,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
   const [noteToDelete, setNoteToDelete] = useState(null);
   const [selectedNotes, setSelectedNotes] = useState([]);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false); // 🚀 NEW: Controls the selection mode overlay
 
   const [showShareDrawer, setShowShareDrawer] = useState(false);
   const [notesToShare, setNotesToShare] = useState([]);
@@ -164,6 +165,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     } catch (error) { console.error(error); }
   };
 
+  // 🚀 BULK ACTION: Delete All Selected
   const executeBulkDelete = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -172,6 +174,39 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
       if (typeof fetchBin === 'function') fetchBin();
       setSelectedNotes([]);
       setShowBulkDelete(false);
+      setIsSelectionMode(false);
+    } catch (error) { console.error(error); }
+  };
+
+  // 🚀 BULK ACTION: Accept All Inbox Snaps
+  const acceptBulkInbox = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await Promise.all(selectedNotes.map(id => fetch(`${API_BASE}/api/notes/${id}/accept`, { method: 'PUT', headers: { 'x-auth-token': token } })));
+      if (typeof fetchNotes === 'function') fetchNotes();
+      setSelectedNotes([]);
+      setIsSelectionMode(false);
+    } catch (error) { console.error(error); }
+  };
+
+  // 🚀 BULK ACTION: Toggle Privacy (Make Public / Make Private)
+  const toggleBulkPrivacy = async (targetPrivacy) => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Optimistic update for instant layout switch
+      setNotes(prev => prev.map(n => selectedNotes.includes(n._id) ? { ...n, isPrivate: targetPrivacy, groupId: targetPrivacy ? null : 'optimistic_group' } : n));
+      
+      await Promise.all(selectedNotes.map(id =>
+        fetch(`${API_BASE}/api/notes/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+          body: JSON.stringify({ isPrivate: targetPrivacy })
+        })
+      ));
+      if (typeof fetchNotes === 'function') fetchNotes();
+      setSelectedNotes([]);
+      setIsSelectionMode(false);
     } catch (error) { console.error(error); }
   };
 
@@ -198,10 +233,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
   const togglePrivacy = async (e, note) => {
     e.stopPropagation();
     const newIsPrivate = !note.isPrivate;
-    
-    // 🚀 BUG FIXED: Optimistically update instantly so no reload is required
     setNotes(prev => prev.map(n => n._id === note._id ? { ...n, isPrivate: newIsPrivate, groupId: newIsPrivate ? null : 'optimistic_group' } : n));
-    
     try {
       const token = localStorage.getItem('token');
       await fetch(`${API_BASE}/api/notes/${note._id}`, {
@@ -229,7 +261,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
 
   return (
     <>
-      <ShareDrawer isOpen={showShareDrawer} onClose={() => setShowShareDrawer(false)} noteIds={notesToShare} />
+      <ShareDrawer isOpen={showShareDrawer} onClose={() => { setShowShareDrawer(false); setIsSelectionMode(false); setSelectedNotes([]); }} noteIds={notesToShare} />
 
       {isAddingNew || editingNote ? (
         <NoteEditor
@@ -245,43 +277,78 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
       ) : (
         <div className="p-4 md:p-8 animate-fadeIn h-full overflow-y-auto custom-scrollbar relative">
           
-          <div className="flex bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl mb-6 w-max shrink-0 border border-gray-200 dark:border-[#333]">
-            <button onClick={() => setViewMode('private')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
-            <button onClick={() => setViewMode('shared')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Group Shared</button>
-            <button onClick={() => setViewMode('inbox')} className={`px-5 py-1.5 text-sm font-bold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'inbox' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+          {/* TAB BAR NAVIGATION */}
+          <div className="flex overflow-x-auto custom-scrollbar bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl mb-6 w-full md:w-max shrink-0 border border-gray-200 dark:border-[#333]">
+            <button onClick={() => { setViewMode('private'); setIsSelectionMode(false); setSelectedNotes([]); }} className={`whitespace-nowrap px-5 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
+            <button onClick={() => { setViewMode('shared'); setIsSelectionMode(false); setSelectedNotes([]); }} className={`whitespace-nowrap px-5 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Group Shared</button>
+            <button onClick={() => { setViewMode('inbox'); setIsSelectionMode(false); setSelectedNotes([]); }} className={`whitespace-nowrap px-5 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'inbox' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
               Inbox {inboxCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{inboxCount}</span>}
             </button>
           </div>
 
-          <div className="flex flex-col justify-between items-start mb-8 gap-4 min-h-[48px]">
-            {selectedNotes.length > 0 ? (
-              <div className="w-full flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/50 p-3 rounded-xl shadow-sm animate-fadeIn">
-                <span className="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-2">
-                  <CheckSquare size={18} /> {selectedNotes.length} Notes Selected
-                </span>
-                <div className="flex gap-3">
-                  <button onClick={() => setSelectedNotes([])} className="text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Cancel</button>
-                  <button onClick={(e) => openShareDrawer(e, selectedNotes)} className="flex items-center gap-1.5 px-4 py-1.5 bg-brand-blue hover:bg-blue-600 text-white text-sm font-bold rounded-lg transition-colors shadow-sm">
-                    <Send size={14} /> Share
+          {/* 🚀 DYNAMIC TITLE & ACTION BAR */}
+          {isSelectionMode ? (
+            <div className="w-full flex flex-col xl:flex-row xl:items-center justify-between bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 p-4 rounded-2xl shadow-sm animate-fadeIn gap-4 mb-6">
+              <span className="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-2 text-sm sm:text-base whitespace-nowrap">
+                <CheckSquare size={18} /> {selectedNotes.length} Notes Selected
+              </span>
+              
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full xl:w-auto">
+                <button onClick={() => { setIsSelectionMode(false); setSelectedNotes([]); }} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+                  Cancel
+                </button>
+
+                {/* Contextual Action Button 1 */}
+                {viewMode === 'private' && (
+                  <button onClick={() => toggleBulkPrivacy(false)} className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm">
+                    <Globe size={16} /> Make Public
                   </button>
-                  <button onClick={() => setShowBulkDelete(true)} className="flex items-center gap-1.5 px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg transition-colors shadow-sm">
-                    <Trash2 size={14} /> Delete
+                )}
+                {viewMode === 'shared' && (
+                  <button onClick={() => toggleBulkPrivacy(true)} className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm">
+                    <Lock size={16} /> Make Private
                   </button>
-                </div>
+                )}
+                {viewMode === 'inbox' && (
+                  <button onClick={acceptBulkInbox} className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm">
+                    <Check size={16} /> Accept All
+                  </button>
+                )}
+
+                {/* Universal Action Button 2 */}
+                <button onClick={() => setShowBulkDelete(true)} className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold rounded-xl transition-all shadow-sm">
+                  <Trash2 size={16} /> Delete All
+                </button>
+
+                {/* Exclusive Action Button 3 */}
+                {viewMode === 'private' && (
+                  <button onClick={(e) => openShareDrawer(e, selectedNotes)} disabled={selectedNotes.length === 0} className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 text-white text-sm font-bold rounded-xl transition-all shadow-sm ${selectedNotes.length > 0 ? 'bg-brand-blue hover:bg-blue-600' : 'bg-blue-400 cursor-not-allowed opacity-70'}`}>
+                    <Send size={16} /> Share All
+                  </button>
+                )}
               </div>
-            ) : (
-              <div className="w-full flex justify-between items-end">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Notes</h2>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="w-full flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Notes</h2>
+              {displayNotes.length > 0 && (
+                <button 
+                  onClick={() => setIsSelectionMode(true)} 
+                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-brand-blue dark:hover:border-brand-blue rounded-xl text-sm font-bold text-gray-700 dark:text-gray-200 transition-colors shadow-sm"
+                >
+                  <CheckSquare size={16} className="text-brand-blue" /> Select
+                </button>
+              )}
+            </div>
+          )}
 
           {displayNotes.length === 0 ? (
             <div className="mt-16 w-full flex justify-center">
               <EmptyState icon={viewMode === 'inbox' ? InboxIcon : FileText} title={viewMode === 'inbox' ? "Inbox Zero" : "No notes in here, sorry!"} message={viewMode === 'inbox' ? "You have no pending notes from the community." : "Your notebook is empty. Tap 'New Note' to start writing your first idea or lecture!"} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            // 🚀 SMART GRID: Makes Inbox tiles wider (grid-cols-2) and Notes standard (grid-cols-3)
+            <div className={`grid gap-6 ${viewMode === 'inbox' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
               {displayNotes.map(note => {
                 const isSelected = selectedNotes.includes(note._id);
                 const currentUserId = String(user?.id || user?._id || '');
@@ -298,63 +365,81 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                 return (
                   <div
                     key={note._id}
-                    className={`bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border shadow-sm transition-all flex flex-col h-64 group relative cursor-pointer
-                      ${isSelected ? 'border-blue-500 dark:border-blue-500 shadow-md ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-[#2C2C2C] hover:shadow-xl hover:-translate-y-1.5'}
+                    className={`bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border transition-all flex flex-col h-[280px] relative cursor-pointer
+                      ${isSelected ? 'border-brand-blue ring-4 ring-brand-blue/20 shadow-lg scale-[1.02]' : 'border-gray-200 dark:border-[#2C2C2C] hover:shadow-xl hover:-translate-y-1'}
                     `}
                     onClick={() => {
-                      if (selectedNotes.length > 0) toggleSelect(note._id);
+                      if (isSelectionMode) toggleSelect(note._id);
                       else {
                         setIsReadOnlyMode(!canEditAll || note.isInbox);
                         setEditingNote(note);
                       }
                     }}
                   >
-                    {!note.isInbox && (
-                      <div className={`absolute top-4 right-4 z-10 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                        <input type="checkbox" checked={isSelected} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); toggleSelect(note._id); }} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                      </div>
-                    )}
 
-                    {!note.isInbox && canEditAll && (
-                      <div className="absolute top-4 right-12 z-20 opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity bg-white/80 dark:bg-[#1E1E1E]/80 backdrop-blur-sm rounded-lg p-1">
-                        <button onClick={(e) => openShareDrawer(e, [note._id])} className="p-1.5 text-gray-400 hover:text-brand-blue rounded-md transition-colors" title="Share with Community"><Send size={16} /></button>
-                        <button onClick={(e) => togglePrivacy(e, note)} className="p-1.5 text-gray-400 hover:text-indigo-500 rounded-md transition-colors" title={note.isPrivate ? "Move to Shared Group Workspace" : "Make Private"}>
-                          {note.isPrivate ? <Lock size={16} /> : <Globe size={16} />}
-                        </button>
-                      </div>
-                    )}
+                    {/* 🚀 PREMIUM CARD HEADER: Fixed geometry, no squishing */}
+                    <div className="flex justify-between items-start gap-4 mb-3">
+                      <h3 className="font-black text-xl text-gray-900 dark:text-white line-clamp-2 flex-1 min-h-[56px] leading-tight">
+                        {note.title || 'Untitled Note'}
+                      </h3>
 
-                    <div className="flex-1 flex flex-col mt-2">
-                      <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-1 group-hover:text-blue-500 transition-colors line-clamp-2 pr-16">{note.title || 'Untitled Note'}</h3>
-
-                      {note.isInbox && note.sender ? (
-                        <div className="text-[11px] text-green-600 font-bold mb-2 flex items-center gap-1.5 bg-green-50 dark:bg-green-900/20 w-max px-2 py-0.5 rounded-full"><Send size={10} /> Sent by {note.sender.name}</div>
-                      ) : (
-                        viewMode === 'shared' && note.user && <div className="text-[10px] text-blue-500 font-bold mb-3">By {note.user.name}</div>
-                      )}
-
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 line-clamp-4 flex-1 whitespace-pre-wrap">
-                        {getPlainText(note.content) || 'Empty note...'}
-                      </p>
-
-                      <div className="flex items-end justify-between mt-auto pt-4 border-t border-gray-100 dark:border-[#333] gap-2">
-                        <div className="flex items-start gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1.5 rounded-lg min-w-0 max-w-[75%]">
-                          {isUni ? <UCPLogo className="w-3.5 h-3.5 shrink-0 mt-[2px]" /> : <Book size={14} className="shrink-0 mt-[2px]" />}
-                          <span className="whitespace-normal break-words leading-snug text-left">{courseName}</span>
-                        </div>
-                        
-                        {note.isInbox ? (
-                          <div className="flex gap-2 shrink-0">
-                            <button onClick={(e) => acceptInboxNote(e, note._id)} className="p-1.5 bg-brand-blue text-white rounded-md hover:bg-blue-600" title="Accept to Workspace"><Check size={14} /></button>
-                            <button onClick={(e) => discardInboxNote(e, note._id)} className="p-1.5 bg-red-500 text-white rounded-md hover:bg-red-600" title="Discard"><Trash2 size={14} /></button>
+                      {/* Explicit Fixed Size Box for Actions to prevent alignment breaking */}
+                      <div className="flex items-center shrink-0 h-8">
+                        {isSelectionMode ? (
+                          <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-brand-blue border-brand-blue text-white' : 'border-gray-300 dark:border-gray-600'}`}>
+                            {isSelected && <Check strokeWidth={3} size={14} />}
                           </div>
                         ) : (
-                          <span className="flex items-center justify-end gap-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider shrink-0 mb-1">
-                            <Clock size={12} className="shrink-0" />
-                            {new Date(note.createdAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
-                          </span>
+                          !note.isInbox && canEditAll && (
+                            <div className="flex items-center gap-1.5 opacity-100 sm:opacity-50 sm:hover:opacity-100 transition-opacity">
+                              <button onClick={(e) => openShareDrawer(e, [note._id])} className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-brand-blue dark:bg-[#252525] dark:hover:bg-brand-blue/20 rounded-lg transition-colors" title="Share">
+                                <Send size={15} />
+                              </button>
+                              <button onClick={(e) => togglePrivacy(e, note)} className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-indigo-50 text-gray-400 hover:text-indigo-500 dark:bg-[#252525] dark:hover:bg-indigo-500/20 rounded-lg transition-colors" title={note.isPrivate ? "Make Public" : "Make Private"}>
+                                {note.isPrivate ? <Lock size={15} /> : <Globe size={15} />}
+                              </button>
+                            </div>
+                          )
                         )}
                       </div>
+                    </div>
+
+                    {/* Sender Identity Ribbon */}
+                    {note.isInbox && note.sender ? (
+                      <div className="text-[11px] text-emerald-600 font-bold mb-2 flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 w-max px-2.5 py-1 rounded-md"><Send size={10} /> Sent by {note.sender.name}</div>
+                    ) : (
+                      viewMode === 'shared' && note.user && <div className="text-[10px] text-brand-blue font-bold mb-3 uppercase tracking-wider">By {note.user.name}</div>
+                    )}
+
+                    {/* Content Excerpt */}
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 line-clamp-3 flex-1 whitespace-pre-wrap leading-relaxed">
+                      {getPlainText(note.content) || 'Empty note...'}
+                    </p>
+
+                    {/* 🚀 PREMIUM CARD FOOTER: Strictly aligned flexbox rules */}
+                    <div className="mt-auto pt-4 border-t border-gray-100 dark:border-[#2C2C2C] flex items-center justify-between gap-3 h-12">
+                      
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-brand-blue/10 text-brand-blue rounded-lg min-w-0 max-w-[60%]">
+                        {isUni ? <UCPLogo className="w-3.5 h-3.5 shrink-0" /> : <Book size={14} className="shrink-0" />}
+                        <span className="truncate text-xs font-bold">{courseName}</span>
+                      </div>
+                      
+                      {note.isInbox ? (
+                        <div className="flex gap-2 shrink-0">
+                          <button onClick={(e) => acceptInboxNote(e, note._id)} className="w-8 h-8 flex items-center justify-center bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors shadow-sm" title="Accept">
+                            <Check size={16} />
+                          </button>
+                          <button onClick={(e) => discardInboxNote(e, note._id)} className="w-8 h-8 flex items-center justify-center bg-rose-500 hover:bg-rose-600 text-white rounded-lg transition-colors shadow-sm" title="Discard">
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider shrink-0">
+                          <Clock size={12} className="shrink-0" />
+                          {new Date(note.createdAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
+
                     </div>
                   </div>
                 );

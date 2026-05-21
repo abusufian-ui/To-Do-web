@@ -276,11 +276,18 @@ function AppLayout() {
 
   // 🚨 FIXED: Now explicitly uses react-router to kick you back to login
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    localStorage.clear();
     sessionStorage.clear();
     setToken(null);
     setUser(null);
+    setTasks([]);
+    setNotes([]);
+    setKeynotes([]);
+    setExams([]);
+    setCourses([]);
+    setBinItems([]);
+    setActiveGroup(null);
+    setPendingInvitations([]);
     setActiveTab('Welcome');
     navigate('/login');
   }, [navigate]);
@@ -454,35 +461,50 @@ function AppLayout() {
     if (token && isAuthenticated) {
       if (window.liveSyncTimeout) clearTimeout(window.liveSyncTimeout);
       window.liveSyncTimeout = setTimeout(() => {
+        fetchUser();
         fetchTasks();
         fetchNotes();
         fetchKeynotes();
         fetchBin();
         fetchCourses();
         fetchExams();
+        fetchActiveGroup();
+        fetchPendingInvitations();
       }, 500);
     }
-  }, [token, isAuthenticated, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses, fetchExams]);
+  }, [token, isAuthenticated, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
 
-  useLiveSync(handleLiveUpdate, user?.id);
+  useLiveSync(handleLiveUpdate, handleLogout, user?.id);
 
   const handleAddTask = async (newTaskData) => {
     try {
       const res = await fetch(`${API_BASE}/api/tasks`, { method: 'POST', headers: authHeaders, body: JSON.stringify(newTaskData) });
-      if (!res.ok) throw new Error("Server Error");
-      const savedTask = await res.json();
-      setTasks(prev => [{ ...savedTask, id: savedTask._id }, ...prev]);
-      if (activeTab !== 'Tasks' && activeTab !== 'Calendar') setActiveTab('Tasks');
-    } catch (error) { ToastConfig.show({ title: "Error", message: "Failed to save task.", type: "error" }); }
+      if (res.ok) {
+        ToastConfig.show({ title: "Success", message: "Task created successfully!", type: "success" });
+        fetchTasks();
+      } else {
+        const err = await res.json();
+        ToastConfig.show({ title: "Error", message: err.message || "Failed to save task.", type: "error" });
+      }
+    } catch (error) { 
+      ToastConfig.show({ title: "Error", message: "Network error saving task.", type: "error" }); 
+    }
   };
 
   const deleteTask = (taskId) => setTaskToDelete(taskId);
   const executeDelete = async () => {
     if (!taskToDelete) return;
     try {
-      await fetch(`${API_BASE}/api/tasks/${taskToDelete}/delete`, { method: 'PUT', headers: authHeaders });
-      fetchTasks(); fetchBin(); setTaskToDelete(null);
-    } catch (error) { console.error("Error deleting task:", error); }
+      const res = await fetch(`${API_BASE}/api/tasks/${taskToDelete}/delete`, { method: 'PUT', headers: authHeaders });
+      if (res.ok) {
+        ToastConfig.show({ title: "Success", message: "Task moved to Bin.", type: "success" });
+        fetchTasks(); fetchBin(); setTaskToDelete(null);
+      } else {
+        ToastConfig.show({ title: "Error", message: "Failed to move task to Bin.", type: "error" });
+      }
+    } catch (error) { 
+      ToastConfig.show({ title: "Error", message: "Network error deleting task.", type: "error" }); 
+    }
   };
 
   const handleToggleKeynoteRead = async (id, currentStatus) => {
@@ -558,14 +580,23 @@ function AppLayout() {
   };
 
   const updateTask = async (id, field, value) => {
-    setTasks(prevTasks => prevTasks.map(task => task.id === id ? { ...task, [field]: value } : task));
+    setTasks(prevTasks => prevTasks.map(task => (task.id === id || task._id === id) ? { ...task, [field]: value } : task));
     try { 
       const res = await fetch(`${API_BASE}/api/tasks/${id}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ [field]: value }) }); 
       if (res.ok) {
         const updatedTask = await res.json();
-        setTasks(prevTasks => prevTasks.map(task => task.id === id ? updatedTask : task));
+        setTasks(prevTasks => prevTasks.map(task => (task.id === id || task._id === id) ? updatedTask : task));
+        if (field === 'status' && value === 'Completed') {
+          ToastConfig.show({ title: "Task Completed", message: "Great job finishing this task!", type: "success" });
+        } else {
+          ToastConfig.show({ title: "Updated", message: "Task updated successfully.", type: "success" });
+        }
+      } else {
+        ToastConfig.show({ title: "Error", message: "Failed to update task.", type: "error" });
       }
-    } catch (error) { console.error("Error updating task:", error); }
+    } catch (error) { 
+      ToastConfig.show({ title: "Error", message: "Network error updating task.", type: "error" }); 
+    }
   };
 
   const openAddTaskWithDate = (dateString) => { setPrefilledDate(dateString); setIsAddTaskOpen(true); };
@@ -629,21 +660,32 @@ function AppLayout() {
 
   const handleDisconnect = async () => {
     try {
-      await fetch(`${API_BASE}/api/user/unlink-portal`, { method: 'POST', headers: authHeaders });
-      const updatedUser = { ...user, isPortalConnected: false, portalId: null };
-      setUser(updatedUser); localStorage.setItem('user', JSON.stringify(updatedUser));
-      setCourses(prev => prev.filter(c => c.type !== 'uni'));
-    } catch (e) { console.error(e); }
+      const res = await fetch(`${API_BASE}/api/user/unlink-portal`, { method: 'POST', headers: authHeaders });
+      if (res.ok) {
+        ToastConfig.show({ title: "Success", message: "Portal unlinked successfully.", type: "success" });
+        fetchUser();
+        fetchCourses();
+      } else {
+        const err = await res.json();
+        ToastConfig.show({ title: "Error", message: err.message || "Failed to unlink portal.", type: "error" });
+      }
+    } catch (e) { 
+      ToastConfig.show({ title: "Error", message: "Network error during unlink.", type: "error" }); 
+    }
   };
 
   const handleLinkPortal = async (portalId, portalPassword) => {
     try {
       const res = await fetch(`${API_BASE}/api/user/link-portal`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ portalId, portalPassword }) });
       if (res.ok) {
+        ToastConfig.show({ title: "Success", message: "Portal linked successfully!", type: "success" });
         const updatedUser = { ...user, isPortalConnected: true, portalId };
         setUser(updatedUser); localStorage.setItem('user', JSON.stringify(updatedUser)); fetchCourses();
-      } else { throw new Error("Failed to link"); }
-    } catch (e) { throw e; }
+      } else { 
+        const data = await res.json();
+        ToastConfig.show({ title: "Error", message: data.message || "Failed to link portal.", type: "error" });
+      }
+    } catch (e) { ToastConfig.show({ title: "Error", message: "Network error linking portal.", type: "error" }); }
   };
 
   const handleUpdateProfile = async (name) => {
@@ -688,8 +730,14 @@ function AppLayout() {
     if (!courseName || !courseName.trim()) return;
     try {
       const res = await fetch(`${API_BASE}/api/courses`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ name: courseName.trim() }) });
-      if (res.ok) fetchCourses();
-    } catch (e) { console.error("Add course failed", e); }
+      if (res.ok) {
+        ToastConfig.show({ title: "Success", message: "Course added successfully.", type: "success" });
+        fetchCourses();
+      } else {
+        const err = await res.json();
+        ToastConfig.show({ title: "Error", message: err.message || "Failed to add course.", type: "error" });
+      }
+    } catch (e) { ToastConfig.show({ title: "Error", message: "Network error adding course.", type: "error" }); }
   };
 
   const removeCourse = async (courseId) => {
@@ -820,7 +868,7 @@ function AppLayout() {
                   {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} /></div>}{activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
                   {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>}
                   {activeTab === 'Keynotes' && <div className="w-full h-full"><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>}                  {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
-                  {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook courses={courses} /></div>}
+                  {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook courses={courses} user={user} activeGroup={activeGroup} /></div>}
                   {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
 
 

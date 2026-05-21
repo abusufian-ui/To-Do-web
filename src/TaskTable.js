@@ -57,7 +57,7 @@ const getAbbreviation = (name) => {
 };
 
 const COL = {
-  name: "flex-1 pl-4", status: "w-[160px]", course: "w-[150px]", date: "w-[140px]", priority: "w-[100px]",
+  name: "flex-1 pl-4", status: "w-[160px]", course: "w-[150px]", date: "w-[140px]", priority: "w-[140px]",
 };
 
 const formatDate = (dateString) => {

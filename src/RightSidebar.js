@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   X, Search, Check, Users, Plus, Award, BookOpen, Mail, AlertCircle
 } from 'lucide-react';
+import ConfirmationModal from './ConfirmationModal';
+import { ToastConfig } from './CustomToast';
 
 const RightSidebar = ({
   isOpen,
@@ -22,7 +24,7 @@ const RightSidebar = ({
   const [creatingGroupUserId, setCreatingGroupUserId] = useState(null);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [actionSuccess, setActionSuccess] = useState('');
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', action: null });
 
   const fetchCommunity = async () => {
     if (!isOpen) return;
@@ -61,27 +63,31 @@ const RightSidebar = ({
       ? "Accepting this invitation will automatically exit your current group. Are you sure you want to proceed?"
       : "Are you sure you want to join this group?";
 
-    if (window.confirm(confirmMessage)) {
-      try {
-        const res = await fetch(`${API_BASE}/api/groups/invitations/${inviteId}`, {
-          method: 'PUT',
-          headers: authHeaders,
-          body: JSON.stringify({ status: 'accepted' })
-        });
-        if (res.ok) {
-          setActionSuccess("Successfully joined the study group!");
-          setTimeout(() => setActionSuccess(''), 4000);
-          fetchActiveGroup();
-          fetchPendingInvitations();
-          fetchTasks();
-        } else {
-          const err = await res.json();
-          alert(err.message || "Failed to accept invitation");
+    setConfirmModal({
+      isOpen: true,
+      title: 'Accept Invitation',
+      message: confirmMessage,
+      action: async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/groups/invitations/${inviteId}`, {
+            method: 'PUT',
+            headers: authHeaders,
+            body: JSON.stringify({ status: 'accepted' })
+          });
+          if (res.ok) {
+            ToastConfig.show({ title: "Success", message: "Successfully joined the study group!", type: "success" });
+            fetchActiveGroup();
+            fetchPendingInvitations();
+            fetchTasks();
+          } else {
+            const err = await res.json();
+            ToastConfig.show({ title: "Error", message: err.message || "Failed to accept invitation", type: "error" });
+          }
+        } catch (e) {
+          ToastConfig.show({ title: "Error", message: "Failed to accept invitation", type: "error" });
         }
-      } catch (e) {
-        console.error(e);
       }
-    }
+    });
   };
 
   const handleRejectInvite = async (inviteId) => {
@@ -114,8 +120,7 @@ const RightSidebar = ({
           body: JSON.stringify({ receiverId: creatingGroupUserId, groupId: group._id })
         });
         if (inviteRes.ok) {
-          setActionSuccess("Group created and invitation sent!");
-          setTimeout(() => setActionSuccess(''), 4000);
+          ToastConfig.show({ title: "Success", message: "Group created and invitation sent!", type: "success" });
           setCreatingGroupUserId(null);
           setSelectedUser(null);
           setGroupNameInput('');
@@ -142,13 +147,12 @@ const RightSidebar = ({
         body: JSON.stringify({ receiverId })
       });
       if (res.ok) {
-        setActionSuccess("Invitation sent successfully!");
-        setTimeout(() => setActionSuccess(''), 4000);
+        ToastConfig.show({ title: "Success", message: "Invitation sent successfully!", type: "success" });
         fetchCommunity();
         setSelectedUser(null);
       } else {
         const err = await res.json();
-        alert(err.message || "Failed to send invitation");
+        ToastConfig.show({ title: "Error", message: err.message || "Failed to send invitation", type: "error" });
       }
     } catch (e) {
       console.error(e);
@@ -225,10 +229,6 @@ const RightSidebar = ({
           </div>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-full transition-colors"><X size={20} /></button>
         </div>
-
-        {actionSuccess && (
-          <div className="mx-4 mt-3 p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 rounded-xl text-emerald-600 text-xs font-semibold flex items-center gap-2"><Check size={16} />{actionSuccess}</div>
-        )}
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
           {pendingInvitations.length > 0 && (
@@ -349,6 +349,16 @@ const RightSidebar = ({
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+        onConfirm={confirmModal.action}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText="Confirm"
+        confirmStyle="danger"
+      />
     </>
   );
 };

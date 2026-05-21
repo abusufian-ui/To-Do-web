@@ -5,6 +5,7 @@ import {
   ShieldAlert, Lock, ShieldCheck, Mail, KeyRound, CheckCircle2, Server
 } from 'lucide-react';
 import { ToastConfig } from './CustomToast';
+import ConfirmationModal from './ConfirmationModal';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -211,7 +212,7 @@ const AdminDashboard = ({ currentUser }) => {
 
   const fetchRealStats = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/system-stats`);
+      const res = await fetch(`${API_BASE}/api/admin/system-stats`, { headers: { 'x-auth-token': token } });
       if (res.ok) {
         const stats = await res.json();
         setCpuData(prev => [...prev.slice(1), stats.cpu]);
@@ -467,31 +468,25 @@ const AdminDashboard = ({ currentUser }) => {
         </div>
       )}
 
-      {userToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] p-6 animate-slideUp relative">
-            <button onClick={() => setUserToDelete(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><X size={20} /></button>
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4 text-red-500 dark:text-red-400"><AlertTriangle size={28} /></div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Delete User?</h3><p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Are you sure you want to delete this user? This action is <strong className="text-red-500">irreversible</strong> and will wipe all their associated data.</p>
-              <div className="flex gap-3 w-full"><button onClick={() => setUserToDelete(null)} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#2C2C2C] hover:bg-gray-200 dark:hover:bg-[#383838] transition-colors">Cancel</button><button onClick={executeDelete} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all">Delete User</button></div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationModal
+        isOpen={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        onConfirm={executeDelete}
+        title="Delete User?"
+        message="Are you sure you want to delete this user? This action is irreversible and will wipe all their associated data."
+        confirmText="Delete User"
+        confirmStyle="danger"
+      />
 
-      {roleToToggle && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] p-6 animate-slideUp relative">
-            <button onClick={() => setRoleToToggle(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><X size={20} /></button>
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 bg-yellow-100 dark:bg-yellow-900/20 rounded-full flex items-center justify-center mb-4 text-yellow-600 dark:text-yellow-500"><ShieldAlert size={28} /></div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Change Role?</h3><p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Are you sure you want to {roleToToggle.isAdmin ? "demote" : "promote"} <strong className="text-gray-900 dark:text-white">{roleToToggle.name}</strong>? This modifies their access permissions.</p>
-              <div className="flex gap-3 w-full"><button onClick={() => setRoleToToggle(null)} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#2C2C2C] hover:bg-gray-200 dark:hover:bg-[#383838] transition-colors">Cancel</button><button onClick={executeToggleRole} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-yellow-600 hover:bg-yellow-700 shadow-lg shadow-yellow-600/20 transition-all">Confirm Change</button></div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationModal
+        isOpen={!!roleToToggle}
+        onClose={() => setRoleToToggle(null)}
+        onConfirm={executeToggleRole}
+        title="Change Role?"
+        message={`Are you sure you want to ${roleToToggle?.isAdmin ? "demote" : "promote"} ${roleToToggle?.name}? This modifies their access permissions.`}
+        confirmText="Confirm Change"
+        confirmStyle="warning"
+      />
     </div>
   );
 };

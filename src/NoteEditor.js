@@ -8,6 +8,7 @@ import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import { Node, mergeAttributes } from '@tiptap/core';
 import Editor from '@monaco-editor/react';
+import { ToastConfig } from './CustomToast';
 
 // New Extensions
 import TaskList from '@tiptap/extension-task-list';
@@ -507,12 +508,15 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       if (response.ok && data.urls && data.urls.length > 0 && editor) {
         editor.chain().focus().setImage({ src: data.urls[0], width: '100%' }).setTextAlign('center').run();
         setIsDirty(true);
-        setSaveStatus('Unsaved changes');
+        setSaveStatus('Saved');
+        ToastConfig.show({ title: "Success", message: "Image uploaded and inserted.", type: "success" });
       } else {
-        setSaveStatus('Error saving');
+        ToastConfig.show({ title: "Error", message: "Image upload failed.", type: "error" });
+        setSaveStatus('Saved');
       }
     } catch (error) {
-      setSaveStatus('Error saving');
+      ToastConfig.show({ title: "Error", message: "Network error uploading image.", type: "error" });
+      setSaveStatus('Saved');
     }
   };
 
@@ -588,12 +592,15 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         
         setReferenceFiles(prev => [...prev, ...newAttachments]);
         setIsDirty(true); 
-        setSaveStatus('Unsaved changes');
+        ToastConfig.show({ title: "Success", message: `${files.length} attachment(s) uploaded.`, type: "success" });
+        setSaveStatus('Saved');
       } else {
-        setSaveStatus('Error uploading files');
+        ToastConfig.show({ title: "Error", message: "File upload failed.", type: "error" });
+        setSaveStatus('Saved');
       }
     } catch (error) { 
-      setSaveStatus('Error uploading files');
+      ToastConfig.show({ title: "Error", message: "Network error uploading files.", type: "error" });
+      setSaveStatus('Saved');
     } finally {
       setIsUploadingFile(false); 
       e.target.value = ''; 
@@ -694,22 +701,24 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         .dark .toolbar-divider { background-color: #444; }
       `}</style>
         
-      <div className="bg-white dark:bg-[#121212] px-6 py-3 border-b border-gray-200 dark:border-[#2C2C2C] z-50 shrink-0 flex items-center gap-4 shadow-sm">
-        <button onClick={onBack} className="flex items-center justify-center p-2 text-gray-400 hover:text-brand-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors shrink-0">
-          <ArrowLeft size={20} />
-        </button>
+      {/* 🚀 BUG FIXED: Responsive Toolbars & Flexible Wrapped Headings */}
+      <div className="bg-white dark:bg-[#121212] px-4 md:px-6 py-3 border-b border-gray-200 dark:border-[#2C2C2C] z-50 shrink-0 flex flex-col md:flex-row md:items-center gap-3 md:gap-4 shadow-sm">
         
-        <div className="flex-1 flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto flex-1 min-w-0">
+          <button onClick={onBack} className="flex items-center justify-center p-2 text-gray-400 hover:text-brand-blue hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors shrink-0">
+            <ArrowLeft size={20} />
+          </button>
+          
           <input 
             type="text" placeholder="Untitled Note..." 
-            className="w-full max-w-[400px] text-2xl font-black bg-transparent text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-[#444] outline-none transition-colors tracking-tight" 
+            className="w-full text-xl md:text-2xl font-black bg-transparent text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-[#444] outline-none transition-colors tracking-tight min-w-0" 
             value={title} 
             readOnly={readOnly}
             onChange={(e) => { setTitle(e.target.value); setIsDirty(true); setSaveStatus('Unsaved changes'); }} 
           />
           
           {saveStatus && !readOnly && (
-            <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors hidden md:flex ${
+            <div className={`flex items-center gap-1.5 text-[10px] sm:text-xs font-medium px-2 py-1 rounded-full transition-colors whitespace-nowrap shrink-0 ${
               saveStatus.includes('Saving') || saveStatus.includes('Uploading') ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20' :
               saveStatus === 'Saved to cloud' ? 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20' :
               saveStatus.includes('Error') ? 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20' :
@@ -718,27 +727,28 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
               {(saveStatus.includes('Saving') || saveStatus.includes('Uploading')) && <Loader2 size={12} className="animate-spin" />}
               {saveStatus === 'Saved to cloud' && <Cloud size={12} />}
               {saveStatus === 'Unsaved changes' && <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div>}
-              {saveStatus}
+              <span className="hidden sm:inline">{saveStatus}</span>
             </div>
           )}
         </div>
         
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Scrollable action bar for smaller devices so nothing overflows */}
+        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0 w-full md:w-auto shrink-0">
           
           <div className="relative group shrink-0" ref={dropdownRef}>
             <button 
               onClick={() => !readOnly && setIsCourseDropdownOpen(!isCourseDropdownOpen)}
-              className={`flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-all outline-none ${readOnly ? 'cursor-default' : 'hover:border-blue-500 focus:ring-2 focus:ring-brand-blue'}`}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 text-xs sm:text-sm font-bold rounded-lg transition-all outline-none whitespace-nowrap ${readOnly ? 'cursor-default' : 'hover:border-blue-500 focus:ring-2 focus:ring-brand-blue'}`}
             >
-              <span className="flex items-start gap-2">
+              <span className="flex items-center gap-2">
                 {selectedCourse ? (
                   <>
                     {selectedCourse.type === 'uni' ? (
-                      <UCPLogo className="w-4 h-4 text-blue-500 shrink-0 mt-[2px]" />
+                      <UCPLogo className="w-4 h-4 text-blue-500 shrink-0 mt-[1px]" />
                     ) : (
-                      <Book size={16} className="text-gray-400 shrink-0 mt-[2px]" />
+                      <Book size={16} className="text-gray-400 shrink-0" />
                     )}
-                    <span className="text-left whitespace-normal break-words leading-snug max-w-[200px] sm:max-w-[300px]">
+                    <span className="truncate max-w-[120px] sm:max-w-[200px]">
                       {selectedCourse.name}
                     </span>
                   </>
@@ -750,7 +760,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
             </button>
 
             {isCourseDropdownOpen && !readOnly && (
-              <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-[100] animate-fadeIn custom-scrollbar max-h-[350px] overflow-y-auto">
+              <div className="absolute top-full right-0 mt-2 w-64 sm:w-72 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-[100] animate-fadeIn custom-scrollbar max-h-[350px] overflow-y-auto">
                 {uniCourses.length > 0 && (
                   <>
                     <div className="px-4 py-1.5 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C]">University Courses</div>
@@ -792,34 +802,35 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           </div>
 
           {!readOnly && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {onShare && initialNote && (
                 <button
                   onClick={onShare}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-brand-blue hover:border-brand-blue dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] text-xs font-bold transition-all"
+                  className="flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg border bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-brand-blue hover:border-brand-blue dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] text-xs font-bold transition-all whitespace-nowrap"
                   title="Share to specific users in the community"
                 >
-                  <Send size={14} /> Share
+                  <Send size={14} /> <span className="hidden sm:inline">Share</span>
                 </button>
               )}
 
               <button
                 onClick={() => { setIsPrivate(!isPrivate); setIsDirty(true); setSaveStatus('Unsaved changes'); }}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${
                   isPrivate 
                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
                     : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#2C2C2C]'
                 }`}
                 title={isPrivate ? "Make Shared with Workspace Group" : "Make Private"}
               >
-                {isPrivate ? <Lock size={14} /> : <Globe size={14} />} {isPrivate ? 'Private' : 'Shared Group'}
+                {isPrivate ? <Lock size={14} /> : <Globe size={14} />} 
+                <span className="hidden sm:inline">{isPrivate ? 'Private' : 'Shared Group'}</span>
               </button>
             </div>
           )}
 
           <button 
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 flex items-center justify-center text-gray-500 hover:text-brand-blue bg-gray-50 hover:bg-blue-50 dark:bg-[#1E1E1E] dark:hover:bg-blue-900/20 border border-gray-200 dark:border-[#333] rounded-lg transition-colors"
+            className="p-2 flex items-center justify-center text-gray-500 hover:text-brand-blue bg-gray-50 hover:bg-blue-50 dark:bg-[#1E1E1E] dark:hover:bg-blue-900/20 border border-gray-200 dark:border-[#333] rounded-lg transition-colors shrink-0"
             title={isFullscreen ? "Exit Fullscreen" : "Expand Editor"}
           >
             {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
@@ -902,30 +913,31 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         <EditorContent editor={editor} />
       </div>
 
-      <div className="bg-white dark:bg-[#1A1A1A] border-t border-gray-200 dark:border-[#333] px-6 py-3 z-40 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      {/* 🚀 BUG FIXED: Footer correctly stacked to avoid button-squishing */}
+      <div className="bg-white dark:bg-[#1A1A1A] border-t border-gray-200 dark:border-[#333] px-4 md:px-6 py-3 z-40 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           
-          <div className="flex items-center gap-4">
-            <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-3 md:gap-4 flex-wrap w-full sm:w-auto">
+            <div className="text-[11px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
               <span className="text-gray-900 dark:text-gray-200 font-bold">{wordCount}</span> words &nbsp;|&nbsp; <span className="text-gray-900 dark:text-gray-200 font-bold">{charCount}</span> chars
             </div>
-            <div className="w-px h-4 bg-gray-300 dark:bg-[#444]"></div>
-            <button onClick={handleCopyText} className={`flex items-center gap-1 text-xs font-bold transition-all ${copied ? 'text-green-600' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}>
+            <div className="w-px h-4 bg-gray-300 dark:bg-[#444] hidden md:block"></div>
+            <button onClick={handleCopyText} className={`flex items-center gap-1 text-[11px] sm:text-xs font-bold transition-all whitespace-nowrap ${copied ? 'text-green-600' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}>
               {copied ? <><CheckCircle2 size={14}/> Copied</> : <><Copy size={14}/> Copy</>}
             </button>
             {initialNote && onDelete && (
-              <button onClick={() => onDelete(initialNote)} className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 transition-colors ml-2">
+              <button onClick={() => onDelete(initialNote)} className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-red-500 hover:text-red-700 transition-colors whitespace-nowrap md:ml-2">
                 <Trash2 size={14} /> Delete
               </button>
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-3 w-full md:w-auto flex-1 min-w-0">
-            <div className="flex flex-wrap items-center justify-end gap-2 max-h-[80px] overflow-y-auto custom-scrollbar pr-1">
+          <div className="flex items-center justify-start sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+            <div className="flex flex-nowrap items-center gap-2 max-w-[200px] sm:max-w-none overflow-x-auto custom-scrollbar pr-1">
               {referenceFiles.map((file, index) => (
-                <div key={index} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-brand-blue/40 rounded-lg text-xs transition-all shadow-sm">
+                <div key={index} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-brand-blue/40 rounded-lg text-xs transition-all shadow-sm shrink-0">
                   <Paperclip size={12} className="text-gray-400 shrink-0" />
-                  <button onClick={(e) => handleDownload(e, file.fileUrl, file.fileName)} className="truncate max-w-[120px] text-gray-700 dark:text-gray-300 font-medium hover:text-brand-blue dark:hover:text-blue-400 cursor-pointer text-left">
+                  <button onClick={(e) => handleDownload(e, file.fileUrl, file.fileName)} className="truncate max-w-[80px] sm:max-w-[120px] text-gray-700 dark:text-gray-300 font-medium hover:text-brand-blue dark:hover:text-blue-400 cursor-pointer text-left">
                     {file.fileName}
                   </button>
                   {!readOnly && (
@@ -944,18 +956,18 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold shrink-0 transition-all ${isUploadingFile ? 'bg-blue-50 text-brand-blue cursor-not-allowed dark:bg-blue-900/20' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#2C2C2C] dark:text-gray-300 dark:hover:bg-[#333]'}`}
                 >
                   {isUploadingFile ? <Loader2 size={14} className="animate-spin text-brand-blue" /> : <Paperclip size={14} />} 
-                  {isUploadingFile ? 'Uploading...' : 'Attach'}
+                  <span className="hidden sm:inline">{isUploadingFile ? 'Uploading...' : 'Attach'}</span>
                 </button>
               </>
             )}
 
             {readOnly ? (
-              <button onClick={onBack} className="flex items-center gap-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-[#333] dark:hover:bg-[#444] text-gray-800 dark:text-gray-200 font-bold py-2 px-5 rounded-lg transition-all shadow-sm active:scale-95 shrink-0 text-sm">
+              <button onClick={onBack} className="flex items-center gap-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-[#333] dark:hover:bg-[#444] text-gray-800 dark:text-gray-200 font-bold py-2 px-4 sm:px-5 rounded-lg transition-all shadow-sm active:scale-95 shrink-0 text-sm whitespace-nowrap">
                 <X size={16} /> Close
               </button>
             ) : (
-              <button onClick={handleManualSave} disabled={saveStatus === 'Saving...'} className="flex items-center gap-1.5 bg-brand-blue hover:bg-blue-600 disabled:bg-blue-400 text-white font-bold py-2 px-5 rounded-lg transition-all shadow-sm active:scale-95 shrink-0 text-sm">
-                <CheckCircle2 size={16} /> Finish & Close
+              <button onClick={handleManualSave} disabled={saveStatus === 'Saving...'} className="flex items-center gap-1.5 bg-brand-blue hover:bg-blue-600 disabled:bg-blue-400 text-white font-bold py-2 px-4 sm:px-5 rounded-lg transition-all shadow-sm active:scale-95 shrink-0 text-sm whitespace-nowrap">
+                <CheckCircle2 size={16} /> <span className="hidden sm:inline">Finish & Close</span><span className="sm:hidden">Save</span>
               </button>
             )}
           </div>

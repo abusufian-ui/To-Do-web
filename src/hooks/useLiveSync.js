@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-const useLiveSync = (onUpdateCallback, userId) => {
+const useLiveSync = (onUpdateCallback, onAccountDeletedCallback, userId) => {
   useEffect(() => {
     if (!userId) return; // Wait until we have a userId
 
@@ -25,6 +25,13 @@ const useLiveSync = (onUpdateCallback, userId) => {
       }
     });
 
+    socket.on('account_deleted', () => {
+      console.log('🔴 Account deleted by admin. Logging out...');
+      if (onAccountDeletedCallback) {
+        onAccountDeletedCallback();
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log('🔴 Disconnected from Live Data Sync');
     });
@@ -33,7 +40,7 @@ const useLiveSync = (onUpdateCallback, userId) => {
     return () => {
       socket.disconnect();
     };
-  }, [onUpdateCallback, userId]); // Re-run if the callback or userId changes
+  }, [onUpdateCallback, onAccountDeletedCallback, userId]); // Re-run if the callback or userId changes
 };
 
 export default useLiveSync;

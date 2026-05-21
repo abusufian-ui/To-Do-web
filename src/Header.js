@@ -44,7 +44,7 @@ const Header = ({
 
   const isCashTab = activeTab && activeTab.startsWith('Cash');
 
-  // 🚀 CALCULATE THE ACTIVE USER'S GROUP STRUCTURAL PERMISSION ROLE
+  // Calculate Group Roles
   const isGroupCreator = activeGroup?.creatorId?._id === user?.id || activeGroup?.creatorId === user?.id || activeGroup?.creatorId?._id === user?._id || activeGroup?.creatorId === user?._id;
   const isGroupAdmin = isGroupCreator || activeGroup?.admins?.some(adminId => adminId === user?.id || adminId?._id === user?.id || adminId === user?._id || adminId?._id === user?._id);
   const groupRoleLabel = isGroupCreator ? 'Creator' : (isGroupAdmin ? 'Admin' : 'Member');
@@ -418,28 +418,30 @@ const Header = ({
             </button>
           </div>
 
-          {/* 🚀 REQUEST 1 FIXED: ONLY PORTRAIT EMBED AND STRUCTURAL USER ROLE GIVEN (REMOVED GROUP TEXT NAME) */}
+          {/* 🚀 FIXED: ELEGANT GROUP AVATAR WITH SUBTLE ROLE INDICATOR */}
           {activeGroup && (
             <button
               onClick={onOpenGroupInfo}
-              className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] p-1 px-2.5 rounded-full transition-all border border-gray-200 dark:border-[#333] shrink-0"
-              title="Open Group Settings"
+              className="relative flex items-center justify-center hover:scale-105 transition-transform shrink-0 outline-none group"
+              title={`${activeGroup.name} (${groupRoleLabel})`}
             >
               {activeGroup.profilePic ? (
-                <img src={activeGroup.profilePic} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/10" />
+                <img src={activeGroup.profilePic} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-gray-200 dark:ring-[#333]" />
               ) : (
-                <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-brand-blue/15 text-brand-blue font-bold text-xs md:text-sm flex items-center justify-center uppercase shadow-md">
+                <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xs md:text-sm flex items-center justify-center uppercase shadow-md ring-2 ring-transparent">
                   {activeGroup.name?.substring(0, 2).toUpperCase() || "SG"}
                 </div>
               )}
-              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${isGroupCreator
-                ? 'bg-amber-500/10 text-amber-500 border border-amber-500/10'
-                : isGroupAdmin
-                  ? 'bg-blue-500/10 text-blue-500 border border-blue-500/10'
-                  : 'bg-gray-500/10 text-gray-400'
-                }`}>
-                {groupRoleLabel}
-              </span>
+              
+              {isGroupCreator ? (
+                <div className="absolute -bottom-0.5 -right-0.5 bg-amber-500 text-white rounded-full p-0.5 border-2 border-white dark:border-dark-bg shadow-sm" title="Creator">
+                  <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/></svg>
+                </div>
+              ) : isGroupAdmin ? (
+                <div className="absolute -bottom-0.5 -right-0.5 bg-blue-500 text-white rounded-full p-0.5 border-2 border-white dark:border-dark-bg shadow-sm" title="Admin">
+                   <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                </div>
+              ) : null}
             </button>
           )}
 

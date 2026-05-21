@@ -147,9 +147,22 @@ const profilePicUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit 
 });
 
+const cloudinaryGeneralStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    const identifier = req.user?.rollNumber || req.user?.id || 'user';
+    const cleanIdentifier = identifier.toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+    return {
+      folder: 'myportal/general',
+      resource_type: 'auto',
+      public_id: `file_${cleanIdentifier}_${Date.now()}`
+    };
+  },
+});
+
 const generalUpload = multer({
-  storage: localDiskStorage,
-  limits: { fileSize: 10 * 1024 * 1024 }
+  storage: cloudinaryGeneralStorage,
+  limits: { fileSize: 25 * 1024 * 1024 }
 });
 
 const upload = generalUpload;
@@ -322,9 +335,31 @@ app.use(cors(corsOptions));
 // Serve static media files
 app.use('/media', express.static(uploadDir));
 
-// 🚨 THIS IS YOUR GLOBAL 50MB LIMIT
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// 🚨 NEW: Global WebSocket Notification Middleware
+app.use((req, res, next) => {
+  const originalJson = res.json;
+  res.json = function (data) {
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && req.user && typeof io !== 'undefined') {
+      const activeUserId = req.user.id;
+      io.to(activeUserId.toString()).emit('live_db_update');
+      
+      Group.find({ members: activeUserId }).then(groups => {
+        groups.forEach(group => {
+          group.members.forEach(memberId => {
+            if (memberId.toString() !== activeUserId.toString()) {
+              io.to(memberId.toString()).emit('live_db_update');
+            }
+          });
+        });
+      }).catch(err => console.error("Broadcast error:", err));
+    }
+    return originalJson.call(this, data);
+  };
+  next();
+});
 
 const auth = (req, res, next) => {
   const token = req.header('x-auth-token');
@@ -899,7 +934,7 @@ app.post('/api/upload', auth, (req, res) => {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
     try {
       const baseUrl = getBaseUrl(req);
-      const urls = req.files.map(file => `${baseUrl}/media/${file.filename}`);
+      const urls = req.files.map(file => file.path || file.secure_url || `${baseUrl}/media/${file.filename}`);
       res.json({ urls });
     } catch (error) {
       res.status(500).json({ error: 'Failed to process files after upload' });
@@ -972,7 +1007,7 @@ app.delete('/api/keynotes/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-app.get('/api/admin/system-stats', async (req, res) => {
+app.get('/api/admin/system-stats', auth, adminAuth, async (req, res) => {
   try {
     const cpuLoad = await si.currentLoad();
     const mem = await si.mem();
@@ -1085,9 +1120,6 @@ app.post('/api/groups/invite', auth, async (req, res) => {
     // Validate that sender belongs to the target active group
     const group = await Group.findOne({ members: req.user.id });
     if (!group) return res.status(400).json({ message: "You must belong to a group to dispatch invites." });
-
-    const receiverInGroup = await Group.findOne({ members: receiverId });
-    if (receiverInGroup) return res.status(400).json({ message: "This student is already a member of a study group." });
 
     const existingInvite = await GroupInvitation.findOne({
       groupId: group._id,
@@ -1374,6 +1406,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
+        profilePic: user.profilePic,
         isAdmin: user.isAdmin,
         isPortalConnected: user.isPortalConnected,
         portalId: user.portalId,
@@ -1394,6 +1427,8 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
     if (user.isAdmin) return res.status(400).json({ message: "Admin accounts cannot be deleted!" });
 
     await Promise.all([User.findByIdAndDelete(userId), Grade.deleteMany({ userId }), ResultHistory.deleteMany({ userId }), StudentStats.deleteMany({ userId }), Task.deleteMany({ userId }), Transaction.deleteMany({ userId }), Budget.deleteMany({ userId }), Timetable.deleteMany({ userId }), Habit.deleteMany({ userId }), Course.deleteMany({ userId }), Note.deleteMany({ user: userId }), Keynote.deleteMany({ userId }), FocusSession.deleteMany({ userId }), Attendance.deleteMany({ userId }), Submission.deleteMany({ userId }), Announcement.deleteMany({ userId }), Assessment.deleteMany({ userId }), Exam.deleteMany({ userId })]);
+
+    io.to(userId.toString()).emit('account_deleted');
 
     res.json({ message: "User deleted" });
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -1473,7 +1508,7 @@ app.post('/api/notes', auth, async (req, res) => {
       if (finalIsPrivate) note.deletedByUsers = [];
 
       await note.save();
-      await broadcastTaskUpdate(note.groupId, req.user.id);
+      await broadcastLiveUpdate(note.groupId, req.user.id);
       return res.json(await Note.findById(note._id).populate('user', 'name email profilePic'));
     }
 
@@ -1483,7 +1518,7 @@ app.post('/api/notes', auth, async (req, res) => {
     });
     
     await newNote.save();
-    await broadcastTaskUpdate(newNote.groupId, req.user.id);
+    await broadcastLiveUpdate(newNote.groupId, req.user.id);
     res.json(await Note.findById(newNote._id).populate('user', 'name email profilePic'));
   } catch (error) {
     console.error("Note POST Error:", error);
@@ -1518,7 +1553,7 @@ app.put('/api/notes/:id', auth, async (req, res) => {
     if (req.body.referenceFiles) note.referenceFiles = req.body.referenceFiles;
 
     await note.save();
-    await broadcastTaskUpdate(note.groupId, req.user.id);
+    await broadcastLiveUpdate(note.groupId, req.user.id);
     res.json(note);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
@@ -1563,7 +1598,7 @@ app.put('/api/notes/:id/delete', auth, async (req, res) => {
     }
 
     await note.save();
-    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    await broadcastLiveUpdate(oldGroupId, req.user.id);
     res.json({ message: 'Moved to Bin safely' });
   } catch (error) { res.status(500).json({ error: "Error moving note to bin" }); }
 });
@@ -1584,7 +1619,7 @@ app.put('/api/notes/:id/restore', auth, async (req, res) => {
     note.deletedByUsers = note.deletedByUsers.filter(id => id.toString() !== req.user.id);
 
     await note.save();
-    await broadcastTaskUpdate(note.groupId, req.user.id);
+    await broadcastLiveUpdate(note.groupId, req.user.id);
     res.json({ message: 'Restored cleanly' });
   } catch (error) { res.status(500).json({ error: "Error restoring note" }); }
 });
@@ -1604,7 +1639,7 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
       await note.save();
     }
 
-    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    await broadcastLiveUpdate(oldGroupId, req.user.id);
     res.json({ message: 'Permanently Purged' });
   } catch (error) { res.status(500).json({ error: "Error deleting note" }); }
 });
@@ -1841,6 +1876,19 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
 
 app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
+app.put('/api/user/security-settings', auth, async (req, res) => {
+  try {
+    const { autoLockEnabled, autoLockTimer } = req.body;
+    await User.findByIdAndUpdate(req.user.id, {
+      'securitySettings.autoLockEnabled': autoLockEnabled,
+      'securitySettings.autoLockTimer': autoLockTimer
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 app.put('/api/user/password', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -1890,7 +1938,7 @@ app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await
 // ==========================================
 // 🚀 INSTANT WEBSOCKET BROADCAST HELPER
 // ==========================================
-const broadcastTaskUpdate = async (groupId, activeUserId) => {
+const broadcastLiveUpdate = async (groupId, activeUserId) => {
   // Notify the action initiator instantly
   io.to(activeUserId.toString()).emit('live_db_update');
   
@@ -1947,7 +1995,7 @@ app.post('/api/tasks', auth, async (req, res) => {
     const task = new Task({ ...req.body, userId: req.user.id });
     await task.save();
     
-    await broadcastTaskUpdate(task.groupId, req.user.id);
+    await broadcastLiveUpdate(task.groupId, req.user.id);
     res.json(await Task.findById(task._id).populate('userId', 'name email profilePic'));
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -2018,8 +2066,19 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
     }
 
     await task.save();
-    await broadcastTaskUpdate(task.groupId, req.user.id);
-    res.json(await Task.findById(task._id).populate('userId', 'name email profilePic'));
+    await broadcastLiveUpdate(task.groupId, req.user.id);
+    
+    const populatedTask = await Task.findById(task._id).populate('userId', 'name email profilePic');
+    const taskObj = populatedTask.toObject();
+    
+    if (taskObj.groupId) {
+      const personalStatusOverride = taskObj.memberStatuses.find(ms => ms.userId.toString() === req.user.id);
+      if (personalStatusOverride) {
+        taskObj.status = personalStatusOverride.status;
+      }
+    }
+
+    res.json(taskObj);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -2028,7 +2087,7 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
 app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => {
   try {
     await Task.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { acknowledged: true });
-    await broadcastTaskUpdate(null, req.user.id);
+    await broadcastLiveUpdate(null, req.user.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2057,7 +2116,7 @@ app.put('/api/tasks/:id/delete', auth, async (req, res) => {
     }
 
     await task.save();
-    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    await broadcastLiveUpdate(oldGroupId, req.user.id);
     res.json(task);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2077,7 +2136,7 @@ app.put('/api/tasks/:id/restore', auth, async (req, res) => {
     task.deletedByUsers = task.deletedByUsers.filter(id => id.toString() !== req.user.id);
 
     await task.save();
-    await broadcastTaskUpdate(task.groupId, req.user.id);
+    await broadcastLiveUpdate(task.groupId, req.user.id);
     res.json(task);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2097,7 +2156,7 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
       await task.save();
     }
 
-    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    await broadcastLiveUpdate(oldGroupId, req.user.id);
     res.json({ message: "Purge structural process completed cleanly." });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2394,13 +2453,13 @@ app.post('/api/notes', auth, async (req, res) => {
       if (finalIsPrivate) note.deletedByUsers = [];
 
       await note.save();
-      await broadcastTaskUpdate(note.groupId, req.user.id);
+      await broadcastLiveUpdate(note.groupId, req.user.id);
       return res.json(await Note.findById(note._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
     }
 
     const newNote = new Note({ user: req.user.id, title, courseId, content: content || " ", referenceFiles, source, isPrivate: finalIsPrivate, groupId: finalGroupId });
     await newNote.save();
-    await broadcastTaskUpdate(newNote.groupId, req.user.id);
+    await broadcastLiveUpdate(newNote.groupId, req.user.id);
     res.json(await Note.findById(newNote._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
   } catch (error) { res.status(500).json({ error: error.message || "Failed to process note" }); }
 });
@@ -2430,7 +2489,7 @@ app.put('/api/notes/:id', auth, async (req, res) => {
     if (req.body.referenceFiles) note.referenceFiles = req.body.referenceFiles;
 
     await note.save();
-    await broadcastTaskUpdate(note.groupId, req.user.id);
+    await broadcastLiveUpdate(note.groupId, req.user.id);
     res.json(note);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
@@ -2453,7 +2512,7 @@ app.put('/api/notes/:id/delete', auth, async (req, res) => {
     } else { return res.status(403).json({ error: "Unauthorized delete action." }); }
 
     await note.save();
-    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    await broadcastLiveUpdate(oldGroupId, req.user.id);
     res.json({ message: 'Moved to Bin safely' });
   } catch (error) { res.status(500).json({ error: "Error moving note to bin" }); }
 });
@@ -2469,7 +2528,7 @@ app.put('/api/notes/:id/restore', auth, async (req, res) => {
     }
     note.deletedByUsers = note.deletedByUsers.filter(id => id.toString() !== req.user.id);
     await note.save();
-    await broadcastTaskUpdate(note.groupId, req.user.id);
+    await broadcastLiveUpdate(note.groupId, req.user.id);
     res.json({ message: 'Restored cleanly' });
   } catch (error) { res.status(500).json({ error: "Error restoring note" }); }
 });
@@ -2485,7 +2544,7 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
     if (isCreator) await Note.findByIdAndDelete(req.params.id);
     else { note.deletedByUsers.push(req.user.id); await note.save(); }
 
-    await broadcastTaskUpdate(oldGroupId, req.user.id);
+    await broadcastLiveUpdate(oldGroupId, req.user.id);
     res.json({ message: 'Permanently Purged' });
   } catch (error) { res.status(500).json({ error: "Error deleting note" }); }
 });
