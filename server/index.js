@@ -808,7 +808,24 @@ app.post('/api/extension-sync', auth, async (req, res) => {
           const { id, ...classData } = classItem;
           if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
 
-          await new Timetable({ ...classData, userId, lastUpdated: new Date() }).save();
+          const isMakeup = classData.instructor && classData.instructor.toLowerCase().includes('makeup');
+          let expiresAt = undefined;
+          
+          if (isMakeup) {
+            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const targetDayIndex = dayNames.indexOf(classData.day);
+            if (targetDayIndex !== -1) {
+              const now = new Date();
+              const currentDayIndex = now.getDay();
+              let daysDiff = targetDayIndex - currentDayIndex;
+              const targetDate = new Date(now);
+              targetDate.setDate(now.getDate() + daysDiff);
+              targetDate.setHours(23, 59, 59, 999);
+              expiresAt = targetDate;
+            }
+          }
+
+          await new Timetable({ ...classData, isMakeup, expiresAt, userId, lastUpdated: new Date() }).save();
 
           if (!courseMap.has(classItem.courseName)) courseMap.set(classItem.courseName, { name: classItem.courseName, code: classItem.courseCode || '', color: classItem.color || '#3498db', instructors: new Set(), rooms: new Set() });
           const course = courseMap.get(classItem.courseName);
@@ -1927,7 +1944,7 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
 });
 app.get('/api/user/portal-status', auth, async (req, res) => { try { const user = await User.findById(req.user.id); res.json({ isConnected: !!user.portalId && user.isPortalConnected, portalId: user.portalId }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-app.get('/api/timetable', auth, async (req, res) => { try { res.json((await Timetable.find({ userId: req.user.id })).map(i => ({ ...i.toObject(), id: i._id }))); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/timetable', auth, async (req, res) => { try { const now = new Date(); res.json((await Timetable.find({ userId: req.user.id, $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }] })).map(i => ({ ...i.toObject(), id: i._id }))); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await StudentStats.findOne({ userId: req.user.id }) || { cgpa: "0.00", credits: "0", inprogressCr: "0" }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/results-history', auth, async (req, res) => { try { res.json(await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
