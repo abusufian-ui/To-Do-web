@@ -642,19 +642,18 @@ app.post('/api/extension-sync', auth, async (req, res) => {
 
     // ── Extract enrolled sections from courseMap and ensure Courses exist ──
     const enrolledSections = [];
-    const sectionLookup = {}; // courseName -> courseSection code
-    const baseCodeLookup = {}; // courseName -> full course code
+    const sectionLookup = {}; 
+    const baseCodeLookup = {}; 
     if (clientCourseMap && typeof clientCourseMap === 'object') {
       for (const [url, info] of Object.entries(clientCourseMap)) {
         const fullCode = (info.code || '').trim();
         const courseName = (info.name || '').trim();
+        const creditHours = info.creditHours || 3; // 🚨 Capture credit hours
 
         let sectionCode = '';
         if (fullCode) {
-          // Extract section from fullCode (e.g., CSAL3243-S26-BS-CS-F23-F4 -> F4)
           const parts = fullCode.split('-');
           sectionCode = parts.length > 1 ? parts[parts.length - 1] : fullCode;
-
           enrolledSections.push(sectionCode);
           sectionLookup[url] = sectionCode;
         }
@@ -662,14 +661,15 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         if (courseName) {
           if (sectionCode) {
             sectionLookup[courseName] = sectionCode;
-            sectionLookup[`${courseName} - Lab`] = sectionCode; // Map lab too
+            sectionLookup[`${courseName} - Lab`] = sectionCode; 
           }
           if (fullCode) {
             baseCodeLookup[courseName] = fullCode;
-            baseCodeLookup[`${courseName} - Lab`] = fullCode; // Map lab too
+            baseCodeLookup[`${courseName} - Lab`] = fullCode; 
           }
 
-          const updatePayload = { userId, name: courseName, type: 'university' };
+          // 🚨 Save creditHours to DB
+          const updatePayload = { userId, name: courseName, type: 'university', creditHours };
           if (fullCode) updatePayload.code = fullCode;
           if (sectionCode) updatePayload.section = sectionCode;
 
@@ -681,7 +681,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         }
       }
     }
-
+    
     if (attendanceData && attendanceData.length > 0) {
       for (const att of attendanceData) {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
@@ -1109,9 +1109,8 @@ app.post('/api/groups/invite', auth, async (req, res) => {
 });
 
 // 8. Update Group Profile Pic (Creators & Structural Promoted Admins)
-app.put('/api/groups/:id/profile-pic', auth, async (req, res) => {
+app.put('/api/groups/:id/profile-pic', auth, profilePicUpload.single('profilePic'), async (req, res) => {
   try {
-    const { profilePic } = req.body;
     const group = await Group.findById(req.params.id);
     if (!group) return res.status(404).json({ message: "Group not found" });
 
@@ -1120,7 +1119,13 @@ app.put('/api/groups/:id/profile-pic', auth, async (req, res) => {
       return res.status(403).json({ message: "Only group creators or promoted admins can modify the profile picture." });
     }
 
-    group.profilePic = profilePic;
+    if (!req.file && !req.body.profilePic) {
+      return res.status(400).json({ message: "No file or URL provided" });
+    }
+
+    const fileUrl = req.file ? req.file.path : req.body.profilePic;
+
+    group.profilePic = fileUrl;
     await group.save();
 
     const updatedGroup = await Group.findById(group._id)
@@ -1128,6 +1133,7 @@ app.put('/api/groups/:id/profile-pic', auth, async (req, res) => {
       .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
     res.json(updatedGroup);
   } catch (error) {
+
     res.status(500).json({ message: "Server Error setting canvas portrait" });
   }
 });
@@ -1972,11 +1978,11 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
     if (isCreator) {
       const targetPrivacy = req.body.isPrivate;
 
-      if (targetPrivacy === true && task.isPrivate === false) {
+      if (targetPrivacy === true && task.groupId !== null) {
         task.groupId = null;
         task.memberStatuses = [];
         task.deletedByUsers = [];
-      } else if (targetPrivacy === false && task.isPrivate === true) {
+      } else if (targetPrivacy === false && !task.groupId) {
         const userGroup = await Group.findOne({ members: req.user.id });
         if (!userGroup) return res.status(400).json({ message: "You must join a group before sharing this task." });
         task.groupId = userGroup._id;
@@ -2485,21 +2491,20 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
 });
 
 // ==========================================
-// 🏆 RELATIVE GRADING & LEADERBOARD API
+// 🏆 RELATIVE GRADING & LEADERBOARD API (SECURED)
 // ==========================================
 app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res) => {
   try {
     const { courseCode, section } = req.params;
 
-    // 1. Clean course code for flexible matching (e.g., "CSAL3243" matches "CSAL 3243")
     const cleanCourseCode = courseCode.replace(/\s+/g, '');
     const courseRegex = new RegExp([...cleanCourseCode].join('\\s*'), 'i');
 
-    // 2. Search other courses in the DB for the same course code and section
+    // 🚨 PRIVACY FIX: Only populate customProfilePic, NEVER the primary profilePic
     const matchingCourses = await Course.find({
       code: courseRegex,
       section: new RegExp(`^${section}$`, 'i')
-    }).populate('userId', 'name portalId profilePic portalProfilePic');
+    }).populate('userId', 'name portalId customProfilePic'); 
 
     if (!matchingCourses || matchingCourses.length === 0) {
       return res.status(404).json({ message: "No students found in this section." });
@@ -2508,15 +2513,12 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res)
     const userIds = matchingCourses.map(c => c.userId?._id).filter(Boolean);
     const grades = await Grade.find({ userId: { $in: userIds } });
 
-    // 3. Calculate absolute scores for everyone
     let leaderboard = matchingCourses.map(course => {
-      // Find matching grade document. We check if the grade courseName matches the Course name.
       const userGrade = grades.find(g =>
         g.userId.toString() === course.userId?._id.toString() &&
         (g.courseName === course.name || (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase())))
       );
 
-      // Calculate score dynamically from their assessments
       let score = 0;
       if (userGrade && Array.isArray(userGrade.assessments)) {
         let totalMarkedWeight = 0;
@@ -2534,17 +2536,14 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res)
         id: course.userId?.portalId || 'Unknown ID',
         name: course.userId?.name || 'Unknown Student',
         score: score || 0,
-        pic: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}`
+        // 🚨 PRIVACY FIX: Strictly mapping the custom picture or safe fallback
+        pic: course.userId?.customProfilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}&backgroundColor=4f46e5`
       };
     });
 
-    // 4. Filter out any database anomalies 
     leaderboard = leaderboard.filter(s => s.id !== 'Unknown ID');
-
-    // 5. Sort descending (Highest score first)
     leaderboard.sort((a, b) => b.score - a.score);
 
-    // 6. Assign Ranks and the UCP Relative Curve
     const total = leaderboard.length;
     leaderboard = leaderboard.map((s, idx) => {
       const pctile = (idx / total) * 100;
@@ -2563,7 +2562,6 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res)
 
     res.status(200).json(leaderboard);
   } catch (error) {
-    console.error("[LEADERBOARD ERROR]:", error);
     res.status(500).json({ error: "Failed to generate relative grading leaderboard" });
   }
 });

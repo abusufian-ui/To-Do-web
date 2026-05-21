@@ -424,7 +424,13 @@ function AppLayout() {
       const res = await fetch(`${API_BASE}/api/courses`, { headers: authHeaders });
       if (res.ok) {
         const customData = await res.json();
-        fetchedCourses = (Array.isArray(customData) ? customData : []).map(c => ({ id: c._id, name: c.name, type: c.type === 'university' ? 'uni' : 'general' }));
+        fetchedCourses = (Array.isArray(customData) ? customData : []).map(c => ({ 
+          id: c._id, 
+          name: c.name, 
+          type: c.type === 'university' ? 'uni' : 'general',
+          code: c.code,
+          section: c.section
+        }));
       }
     } catch (error) { console.error("Error fetching courses:", error); }
     setCourses(fetchedCourses);
@@ -553,7 +559,13 @@ function AppLayout() {
 
   const updateTask = async (id, field, value) => {
     setTasks(prevTasks => prevTasks.map(task => task.id === id ? { ...task, [field]: value } : task));
-    try { await fetch(`${API_BASE}/api/tasks/${id}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ [field]: value }) }); } catch (error) { console.error("Error updating task:", error); }
+    try { 
+      const res = await fetch(`${API_BASE}/api/tasks/${id}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ [field]: value }) }); 
+      if (res.ok) {
+        const updatedTask = await res.json();
+        setTasks(prevTasks => prevTasks.map(task => task.id === id ? updatedTask : task));
+      }
+    } catch (error) { console.error("Error updating task:", error); }
   };
 
   const openAddTaskWithDate = (dateString) => { setPrefilledDate(dateString); setIsAddTaskOpen(true); };
@@ -808,7 +820,7 @@ function AppLayout() {
                   {activeTab === 'Tasks' && <div className="w-full h-full"><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} /></div>}{activeTab === 'Calendar' && <div className="w-full h-full"><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>}
                   {activeTab === 'Timetable' && <div className="w-full h-full"><Timetable /></div>}
                   {activeTab === 'Keynotes' && <div className="w-full h-full"><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>}                  {activeTab.startsWith('Habits') && <div className="w-full h-full"><HabitTracker activeTab={activeTab} /></div>}
-                  {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook /></div>}
+                  {activeTab === 'Grade Book' && <div className="w-full h-full"><GradeBook courses={courses} /></div>}
                   {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
 
 

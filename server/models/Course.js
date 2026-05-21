@@ -10,14 +10,14 @@ const CourseSchema = new mongoose.Schema({
 
   // --- UNIVERSITY COURSE CLASSIFICATION ---
   code: { type: String, default: '' }, 
-  section: { type: String, default: '' }, // 🚨 NEW: Store course section
+  section: { type: String, default: '' }, 
+  creditHours: { type: Number, default: 3 }, // 🚨 NEW: Store course credit hours
   instructors: [{ type: String }],     
   rooms: [{ type: String }],           
 
   createdAt: { type: Date, default: Date.now }
 });
 
-// Create a composite Primary Key: A user cannot have two courses with the exact same name.
 CourseSchema.index({ userId: 1, name: 1 }, { unique: true });
 
 module.exports = mongoose.model('Course', CourseSchema);

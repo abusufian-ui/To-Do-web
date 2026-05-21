@@ -45,22 +45,12 @@ const GroupInfoModal = ({
       setSuccessMsg('');
 
       const formData = new FormData();
-      formData.append('files', file);
-
-      const uploadRes = await fetch(`${API_BASE}/api/upload`, {
-        method: 'POST',
-        headers: { 'x-auth-token': localStorage.getItem('token') },
-        body: formData
-      });
-
-      if (!uploadRes.ok) throw new Error("Image upload failed");
-      const uploadData = await uploadRes.json();
-      const imageUrl = uploadData.urls[0];
+      formData.append('profilePic', file);
 
       const updateRes = await fetch(`${API_BASE}/api/groups/${activeGroup._id}/profile-pic`, {
         method: 'PUT',
-        headers: authHeaders,
-        body: JSON.stringify({ profilePic: imageUrl })
+        headers: { 'x-auth-token': localStorage.getItem('token') },
+        body: formData
       });
 
       if (updateRes.ok) {

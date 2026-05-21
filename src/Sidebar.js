@@ -13,26 +13,22 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
   const [isHabitsExpanded, setIsHabitsExpanded] = useState(false);
   const [isLinksExpanded, setIsLinksExpanded] = useState(false); 
 
-  // 1. WORK TOOLS
   const menuItems = [
     { name: 'Tasks', icon: CheckSquare },
     { name: 'Calendar', icon: Calendar },
     { name: 'Notes', icon: StickyNote },
   ];
 
-  // 2. ACADEMICS SUB-ITEMS
   const academicsSubItems = [
     { id: 'Timetable', label: 'Timetable', icon: Clock },
     { id: 'Announcements', label: 'Announcements', icon: Bell },          
     { id: 'Attendance', label: 'Attendance', icon: ClipboardCheck },      
     { id: 'Submissions', label: 'Submissions', icon: FileUp },
-
     { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: History },
   ];
 
-  // 3. CASH MANAGER SUB-ITEMS
   const cashSubItems = [
     { id: 'Cash-Overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'Cash-Transactions', label: 'Transactions', icon: CreditCard },
@@ -41,7 +37,6 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Cash-Debts', label: 'Debts & Loans', icon: ArrowRightLeft },
   ];
 
-  // 4. HABITS SUB-ITEMS
   const habitsSubItems = [
     { id: 'Habits-Overview', label: 'Protocol Overview', icon: LayoutDashboard },
     { id: 'Habits-Namaz', label: 'Namaz Tracker', icon: Shield },
@@ -49,7 +44,6 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Habits-Analytics', label: 'Analytics Engine', icon: BarChart3 },
   ];
 
-  // 5. EXTERNAL LINKS SUB-ITEMS 
   const linksSubItems = [
     { id: 'Link-Horizon', label: 'Horizon Portal', icon: Globe, url: 'https://horizon.ucp.edu.pk' },
     { id: 'Link-Email', label: 'Uni Email', icon: Mail, url: 'https://outlook.office.com/mail/' },
@@ -86,6 +80,14 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     if (isCashExpanded) setIsCashExpanded(false);
     if (isAcademicsExpanded) setIsAcademicsExpanded(false);
     if (isHabitsExpanded) setIsHabitsExpanded(false);
+  };
+
+  // 🚨 SMART CLICK HANDLER: Automatically slides away sidebar if Grade Book is selected
+  const handleSubItemClick = (id) => {
+    setActiveTab(id);
+    if (id === 'Grade Book' && isOpen) {
+      toggleSidebar();
+    }
   };
 
   const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
@@ -165,7 +167,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
             {academicsSubItems.map((sub) => (
               <button
                 key={sub.id}
-                onClick={() => setActiveTab(sub.id)}
+                onClick={() => handleSubItemClick(sub.id)}
                 className={`
                   w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
                   ${activeTab === sub.id 
@@ -206,7 +208,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
             {cashSubItems.map((sub) => (
               <button
                 key={sub.id}
-                onClick={() => setActiveTab(sub.id)}
+                onClick={() => handleSubItemClick(sub.id)}
                 className={`
                   w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
                   ${activeTab === sub.id 
@@ -247,7 +249,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
             {habitsSubItems.map((sub) => (
               <button
                 key={sub.id}
-                onClick={() => setActiveTab(sub.id)}
+                onClick={() => handleSubItemClick(sub.id)}
                 className={`
                   w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
                   ${activeTab === sub.id 
@@ -301,7 +303,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
         {/* --- ADMIN SECTION --- */}
         {user && user.isAdmin && (
           <button
-            onClick={() => setActiveTab('Admin')}
+            onClick={() => handleSubItemClick('Admin')}
             className={`
               w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
               ${activeTab === 'Admin' 
@@ -320,7 +322,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
 
       <div className="mt-auto w-full pt-4 border-t border-gray-200 dark:border-[#2C2C2C] flex flex-col gap-2 shrink-0 bg-white dark:bg-[#1E1E1E]">
         <button
-          onClick={() => setActiveTab('Settings')}
+          onClick={() => handleSubItemClick('Settings')}
           className={`
             flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative w-full
             ${activeTab === 'Settings' 
@@ -336,7 +338,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
         </button>
 
         <button
-           onClick={() => setActiveTab('Bin')}
+           onClick={() => handleSubItemClick('Bin')}
            className={`
              w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
              ${activeTab === 'Bin' 

@@ -170,10 +170,10 @@ const Header = ({
 
           <button
             onClick={onAddClick}
-            className="flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-600 text-white w-9 h-9 md:w-auto md:px-5 md:py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+            className="flex items-center justify-center gap-2 bg-brand-blue hover:bg-blue-600 text-white w-9 h-9 md:w-auto md:px-5 md:py-2 rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95 whitespace-nowrap shrink-0"
           >
-            <Plus size={18} />
-            <span className="hidden md:inline text-sm font-semibold">
+            <Plus size={18} className="shrink-0" />
+            <span className="hidden md:inline text-sm font-semibold whitespace-nowrap">
               {activeTab === 'Notes' ? 'New Note' : activeTab === 'Keynotes' ? 'Add Snap' : isCashTab ? 'Add Transaction' : 'Add new'}
             </span>
           </button>
@@ -463,20 +463,20 @@ const Header = ({
 
           <div className="h-6 w-px bg-gray-200 dark:bg-dark-border"></div>
 
-          <div className="relative" ref={profileDropdownRef}>
-            <button onClick={() => !isProfileOpen ? setIsProfileOpen(true) : setIsProfileOpen(false)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333]">
+          <div className="relative shrink-0" ref={profileDropdownRef}>
+            <button onClick={() => !isProfileOpen ? setIsProfileOpen(true) : setIsProfileOpen(false)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333] whitespace-nowrap shrink-0">
               {user?.profilePic ? (
-                <img src={user.profilePic} alt={user.name} className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/20" />
+                <img src={user.profilePic} alt={user.name} className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/20 shrink-0" />
               ) : (
-                <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase">
+                <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase shrink-0">
                   {user?.name?.charAt(0) || 'U'}
                 </div>
               )}
-              <div className="text-left hidden md:block">
-                <p className="text-sm font-bold text-gray-700 dark:text-white leading-none">{user?.name || 'User'}</p>
-                <p className="text-[10px] text-gray-400 font-medium">{isSuperAdmin ? 'Super Admin' : user?.isAdmin ? 'Admin' : 'Student'}</p>
+              <div className="text-left hidden md:block whitespace-nowrap">
+                <p className="text-sm font-bold text-gray-700 dark:text-white leading-none whitespace-nowrap">{user?.name || 'User'}</p>
+                <p className="text-[10px] text-gray-400 font-medium whitespace-nowrap mt-1">{isSuperAdmin ? 'Super Admin' : user?.isAdmin ? 'Admin' : 'Student'}</p>
               </div>
-              <ChevronDown size={16} className="text-gray-400 hidden md:block" />
+              <ChevronDown size={16} className="text-gray-400 hidden md:block shrink-0" />
             </button>
 
             {isProfileOpen && (
