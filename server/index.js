@@ -657,7 +657,7 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
 
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
-    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode } = req.body;
+    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic } = req.body;
     const userId = req.user.id;
     const user = await User.findById(userId);
 
@@ -892,15 +892,19 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       );
     }
 
+    const updateFields = {
+      isPortalConnected: true,
+      lastSyncAt: new Date(),
+      lastScrapedAt: new Date(),
+      portalId: user.portalId,
+      ucpCookie: ucpCookie || user.ucpCookie,
+      ...(enrolledSections.length > 0 ? { enrolledSections } : {})
+    };
+    if (studentName && studentName !== 'UCP Student') updateFields.name = studentName;
+    if (profilePic) updateFields.portalProfilePic = profilePic;
+
     await User.updateOne({ _id: userId }, {
-      $set: {
-        isPortalConnected: true,
-        lastSyncAt: new Date(),
-        lastScrapedAt: new Date(),
-        portalId: user.portalId,
-        ucpCookie: ucpCookie || user.ucpCookie,
-        ...(enrolledSections.length > 0 ? { enrolledSections } : {})
-      }
+      $set: updateFields
     });
 
     res.json({ message: "Sync & Diffing complete securely!" });
