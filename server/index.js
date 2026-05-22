@@ -683,7 +683,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       for (const [url, info] of Object.entries(clientCourseMap)) {
         const fullCode = (info.code || '').trim();
         const courseName = (info.name || '').trim();
-        const creditHours = info.creditHours || 3; // ✅ Front-end fix will ensure this is accurate now
+        const creditHours = info.creditHours !== undefined ? info.creditHours : 3; 
 
         let sectionCode = '';
         if (fullCode) {
@@ -836,19 +836,28 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         const fullCode = baseCodeLookup[courseName] || data.code || '';
 
         const courseUpdatePayload = {
-          userId, name: data.name, type: 'university',
-          color: data.color || '#3498db',
-          instructors: Array.from(data.instructors),
-          rooms: Array.from(data.rooms)
-        };
-        if (fullCode) courseUpdatePayload.code = fullCode;
-        if (sectionCode) courseUpdatePayload.section = sectionCode;
+  userId, 
+  name: data.name, 
+  type: 'university',
+  color: data.color || '#3498db'
+};
 
-        await Course.findOneAndUpdate(
-          { userId, name: courseName },
-          { $set: courseUpdatePayload },
-          { upsert: true }
-        );
+if (fullCode) courseUpdatePayload.code = fullCode;
+if (sectionCode) courseUpdatePayload.section = sectionCode;
+
+// 🚨 CRITICAL FIX: Only overwrite instructors/rooms if the scraper actually found them in the timetable
+if (data.instructors && data.instructors.size > 0) {
+  courseUpdatePayload.instructors = Array.from(data.instructors);
+}
+if (data.rooms && data.rooms.size > 0) {
+  courseUpdatePayload.rooms = Array.from(data.rooms);
+}
+
+await Course.findOneAndUpdate(
+  { userId, name: courseName },
+  { $set: courseUpdatePayload },
+  { upsert: true }
+);
       }
     }
 
