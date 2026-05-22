@@ -683,7 +683,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       for (const [url, info] of Object.entries(clientCourseMap)) {
         const fullCode = (info.code || '').trim();
         const courseName = (info.name || '').trim();
-        const creditHours = info.creditHours || 3; // 🚨 Capture credit hours
+        const creditHours = info.creditHours || 3; // ✅ Front-end fix will ensure this is accurate now
 
         let sectionCode = '';
         if (fullCode) {
@@ -703,7 +703,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             baseCodeLookup[`${courseName} - Lab`] = fullCode; 
           }
 
-          // 🚨 Save creditHours to DB
+          // ✅ Save creditHours to DB dynamically
           const updatePayload = { userId, name: courseName, type: 'university', creditHours };
           if (fullCode) updatePayload.code = fullCode;
           if (sectionCode) updatePayload.section = sectionCode;
@@ -717,6 +717,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
     
+    // ── Attendance Sync & Push Notifications ──
     if (attendanceData && attendanceData.length > 0) {
       for (const att of attendanceData) {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
@@ -737,6 +738,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
+    // ── Announcements Sync ──
     if (announcementsData && announcementsData.length > 0) {
       for (const ann of announcementsData) {
         if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
@@ -752,6 +754,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
+    // ── Submissions & Peer Syncing ──
     if (submissionsData && submissionsData.length > 0) {
       for (const sub of submissionsData) {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
@@ -792,6 +795,64 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
+    // ── FIXED: Timetable Sync (Pulled OUT of LOGIN_SYNC to allow background updates) ──
+    // By using deleteMany on EVERY sync where we have data, we completely wipe out 
+    // old makeup classes, dropped courses, and garbage data, ensuring a 1:1 mirror.
+    if (timetableData && timetableData.length > 0) {
+      await Timetable.deleteMany({ userId });
+      const courseMapLocal = new Map();
+
+      for (const classItem of timetableData) {
+        const { id, ...classData } = classItem;
+        if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
+
+        const isMakeup = classData.instructor && classData.instructor.toLowerCase().includes('makeup');
+        let expiresAt = undefined;
+        
+        if (isMakeup) {
+          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          const targetDayIndex = dayNames.indexOf(classData.day);
+          if (targetDayIndex !== -1) {
+            const now = new Date();
+            const currentDayIndex = now.getDay();
+            let daysDiff = targetDayIndex - currentDayIndex;
+            const targetDate = new Date(now);
+            targetDate.setDate(now.getDate() + daysDiff);
+            targetDate.setHours(23, 59, 59, 999);
+            expiresAt = targetDate;
+          }
+        }
+
+        await new Timetable({ ...classData, isMakeup, expiresAt, userId, lastUpdated: new Date() }).save();
+
+        if (!courseMapLocal.has(classItem.courseName)) courseMapLocal.set(classItem.courseName, { name: classItem.courseName, code: classItem.courseCode || '', color: classItem.color || '#3498db', instructors: new Set(), rooms: new Set() });
+        const course = courseMapLocal.get(classItem.courseName);
+        if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
+        if (classItem.room && !classItem.room.includes('Unknown') && !classItem.room.includes('TBA')) course.rooms.add(classItem.room);
+      }
+
+      for (const [courseName, data] of courseMapLocal.entries()) {
+        const sectionCode = sectionLookup[courseName] || '';
+        const fullCode = baseCodeLookup[courseName] || data.code || '';
+
+        const courseUpdatePayload = {
+          userId, name: data.name, type: 'university',
+          color: data.color || '#3498db',
+          instructors: Array.from(data.instructors),
+          rooms: Array.from(data.rooms)
+        };
+        if (fullCode) courseUpdatePayload.code = fullCode;
+        if (sectionCode) courseUpdatePayload.section = sectionCode;
+
+        await Course.findOneAndUpdate(
+          { userId, name: courseName },
+          { $set: courseUpdatePayload },
+          { upsert: true }
+        );
+      }
+    }
+
+    // ── Datesheet Sync ──
     if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC') {
       if (datesheetData && datesheetData.length > 0) {
         await Exam.deleteMany({ userId });
@@ -799,62 +860,9 @@ app.post('/api/extension-sync', auth, async (req, res) => {
           await new Exam({ ...exam, userId, lastUpdated: new Date() }).save();
         }
       }
-
-      if (timetableData && timetableData.length > 0) {
-        await Timetable.deleteMany({ userId });
-        const courseMap = new Map();
-
-        for (const classItem of timetableData) {
-          const { id, ...classData } = classItem;
-          if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
-
-          const isMakeup = classData.instructor && classData.instructor.toLowerCase().includes('makeup');
-          let expiresAt = undefined;
-          
-          if (isMakeup) {
-            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const targetDayIndex = dayNames.indexOf(classData.day);
-            if (targetDayIndex !== -1) {
-              const now = new Date();
-              const currentDayIndex = now.getDay();
-              let daysDiff = targetDayIndex - currentDayIndex;
-              const targetDate = new Date(now);
-              targetDate.setDate(now.getDate() + daysDiff);
-              targetDate.setHours(23, 59, 59, 999);
-              expiresAt = targetDate;
-            }
-          }
-
-          await new Timetable({ ...classData, isMakeup, expiresAt, userId, lastUpdated: new Date() }).save();
-
-          if (!courseMap.has(classItem.courseName)) courseMap.set(classItem.courseName, { name: classItem.courseName, code: classItem.courseCode || '', color: classItem.color || '#3498db', instructors: new Set(), rooms: new Set() });
-          const course = courseMap.get(classItem.courseName);
-          if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
-          if (classItem.room && !classItem.room.includes('Unknown')) course.rooms.add(classItem.room);
-        }
-
-        for (const [courseName, data] of courseMap.entries()) {
-          const sectionCode = sectionLookup[courseName] || '';
-          const fullCode = baseCodeLookup[courseName] || data.code || '';
-
-          const courseUpdatePayload = {
-            userId, name: data.name, type: 'university',
-            color: data.color || '#3498db',
-            instructors: Array.from(data.instructors),
-            rooms: Array.from(data.rooms)
-          };
-          if (fullCode) courseUpdatePayload.code = fullCode;
-          if (sectionCode) courseUpdatePayload.section = sectionCode;
-
-          await Course.findOneAndUpdate(
-            { userId, name: courseName },
-            { $set: courseUpdatePayload },
-            { upsert: true }
-          );
-        }
-      }
     }
 
+    // ── Grades Sync ──
     if (gradesData && gradesData.length > 0) {
       if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
@@ -863,6 +871,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
+    // ── History Sync ──
     if (historyData && historyData.length > 0) {
       if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
       for (const sem of historyData) {
@@ -876,6 +885,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
+    // ── Stats Sync ──
     if (statsData && Object.keys(statsData).length > 0) {
       const existingStats = await StudentStats.findOne({ userId });
       const updatePayload = { ...statsData, userId, lastUpdated: new Date() };
@@ -892,6 +902,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       );
     }
 
+    // ── User Profile Sync ──
     const updateFields = {
       isPortalConnected: true,
       lastSyncAt: new Date(),
