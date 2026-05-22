@@ -115,9 +115,9 @@ const GradeCategoryRow = ({ category, onBestOfChange }) => {
                 value={category.bestOf}
                 onChange={(e) => onBestOfChange(category.name, parseInt(e.target.value))}
               >
-                <option value={category.totalItems}>Count All ({category.totalItems})</option>
+                <option value={category.totalItems} className="bg-white dark:bg-[#1A1A1D] text-gray-900 dark:text-gray-100">Count All ({category.totalItems})</option>
                 {Array.from({ length: category.totalItems - 1 }, (_, i) => category.totalItems - 1 - i).map(num => (
-                  <option key={num} value={num}>Best {num}</option>
+                  <option key={num} value={num} className="bg-white dark:bg-[#1A1A1D] text-gray-900 dark:text-gray-100">Best {num}</option>
                 ))}
               </select>
             </div>
@@ -359,7 +359,9 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   const myRankData = useMemo(() => combinedLeaderboard.find(s => s.isMe), [combinedLeaderboard]);
 
   // Ensure every course has a projected grade, falling back to absolute if relative is missing
-  const activeProjectedGrade = myRankData ? myRankData.grade : getAbsoluteGrade(courseGradingStats.currentStandingPct).grade;
+  const activeProjectedGrade = leaderboardLoading
+    ? '-' 
+    : (myRankData ? myRankData.grade : getAbsoluteGrade(courseGradingStats.currentStandingPct).grade);
 
   // ─── PROJECTED CGPA CALCULATOR (CREDIT-AWARE) ───
   const projectedCgpa = useMemo(() => {
@@ -371,7 +373,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     grades.forEach(courseGrade => {
         // Find matching course to get credits
         const cInfo = courses.find(c => c.name === courseGrade.courseName);
-        const credits = cInfo?.creditHours || 3; // Use real credits or fallback to 3
+        const credits = cInfo?.creditHours || 0; // Use real credits or fallback to 0
 
         const cScore = calculateTrueScore(courseGrade.assessments);
         
@@ -424,7 +426,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
               // 🚀 Calculating live score & fetching exact credit hours
               const totalScore = calculateTrueScore(course.assessments);
               const courseInfo = courses.find(c => c.name === course.courseName);
-              const credits = courseInfo?.creditHours || 3;
+              const credits = courseInfo?.creditHours ?? 0;
               
               return (
                 <button
@@ -518,7 +520,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                 <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 ml-2 flex items-center gap-2">
                   <Award size={18} className="text-blue-500" /> {selectedCourse.courseName}
                   <span className="ml-2 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20 shadow-sm whitespace-nowrap">
-                    {matchingCourseInfo?.creditHours || 3} Cr. Hrs
+                    {matchingCourseInfo?.creditHours ?? 0} Cr. Hrs
                   </span>
                 </h3>
 
@@ -610,7 +612,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                         </div>
                         <div>
                           <h4 className="text-sm font-bold text-gray-900 dark:text-white">Live Section Leaderboard</h4>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">See where you stand among your peers</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">See where you stand among your classmates</p>
                         </div>
                       </div>
                       <ChevronDown size={20} className={`transition-transform duration-300 ${isLeaderboardExpanded ? 'rotate-180 text-indigo-500' : 'text-gray-400'}`} />

@@ -806,7 +806,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         const { id, ...classData } = classItem;
         if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
 
-        const isMakeup = classData.instructor && classData.instructor.toLowerCase().includes('makeup');
+        const isMakeup = classData.isMakeup || (classData.instructor && classData.instructor.toLowerCase().includes('makeup'));
         let expiresAt = undefined;
         
         if (isMakeup) {
@@ -1606,10 +1606,13 @@ app.get('/api/notes', auth, async (req, res) => {
 
     const notes = await Note.find({
       $or: [
-        { user: req.user.id, groupId: null, isDeleted: false }, // Private Notes
+        { user: req.user.id, groupId: null, isDeleted: false }, // Private Notes & Inbox Notes
         { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } // Active Group Notes
       ]
-    }).populate('user', 'name email profilePic').sort({ createdAt: -1 });
+    })
+    .populate('user', 'name email profilePic')
+    .populate('sender', 'name profilePic') // Hydrate the sender details for Inbox
+    .sort({ createdAt: -1 });
 
     res.json(notes);
   } catch (error) {
@@ -2443,26 +2446,7 @@ app.put('/api/notes/:id/accept', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/notes', auth, async (req, res) => {
-  try {
-    const userGroups = await Group.find({ members: req.user.id });
-    const groupIds = userGroups.map(g => g._id);
 
-    const notes = await Note.find({
-      $or: [
-        { user: req.user.id, groupId: null, isDeleted: false }, // Private Notes & Inbox Notes
-        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } // Active Group Notes
-      ]
-    })
-    .populate('user', 'name email profilePic')
-    .populate('sender', 'name profilePic') // Hydrate the sender details for Inbox
-    .sort({ createdAt: -1 });
-
-    res.json(notes);
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching notes" });
-  }
-});
 
 app.post('/api/notes', auth, async (req, res) => {
   try {

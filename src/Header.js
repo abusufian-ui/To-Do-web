@@ -411,7 +411,7 @@ const Header = ({
               <Inbox size={14} />
               <span>Inbox</span>
               {unreadKeynotes.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-md border-[2.5px] border-white dark:border-dark-bg">
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-lg border-2 border-white dark:border-dark-bg">
                   {unreadKeynotes.length}
                 </span>
               )}
@@ -455,7 +455,7 @@ const Header = ({
           >
             <Users size={20} />
             {pendingInvitations && pendingInvitations.length > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-dark-bg animate-pulse"></span>
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-lg border-2 border-white dark:border-dark-bg animate-pulse"></span>
             )}
           </button>
 
@@ -549,7 +549,14 @@ const Header = ({
                       {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate pl-1">{note.title}</h4>
+                  <div className="flex flex-col gap-0.5 mb-1 pl-1">
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate">{note.title}</h4>
+                    {note.sender && (
+                      <span className="text-[11px] text-brand-blue font-bold flex items-center gap-1 opacity-90">
+                        Sent by {note.sender.name || 'Unknown'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })

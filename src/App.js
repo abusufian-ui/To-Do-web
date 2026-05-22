@@ -436,7 +436,8 @@ function AppLayout() {
           name: c.name, 
           type: c.type === 'university' ? 'uni' : 'general',
           code: c.code,
-          section: c.section
+          section: c.section,
+          creditHours: c.creditHours
         }));
       }
     } catch (error) { console.error("Error fetching courses:", error); }

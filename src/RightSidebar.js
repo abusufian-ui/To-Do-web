@@ -83,12 +83,14 @@ const RightSidebar = ({
             const err = await res.json();
             ToastConfig.show({ title: "Error", message: err.message || "Failed to accept invitation", type: "error" });
           }
-        } catch (e) {
-          ToastConfig.show({ title: "Error", message: "Failed to accept invitation", type: "error" });
+          } catch (e) {
+            ToastConfig.show({ title: "Error", message: "Failed to accept invitation", type: "error" });
+          } finally {
+            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          }
         }
-      }
-    });
-  };
+      });
+    };
 
   const handleRejectInvite = async (inviteId) => {
     try {
@@ -334,12 +336,12 @@ const RightSidebar = ({
                     <button onClick={() => setCreatingGroupUserId(selectedUser._id)} className="w-full py-3 bg-brand-blue text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2"><Plus size={14} />Create Group & Invite</button>
                   ) : (
                     <div className="w-full">
-                      {selectedUser.isInGroup ? (
-                        <button disabled className="w-full py-3 bg-gray-100 text-gray-400 text-xs font-bold rounded-xl cursor-not-allowed">Already in a Study Group</button>
-                      ) : selectedUser.isInvited ? (
+                      {selectedUser.isInvited ? (
                         <button disabled className="w-full py-3 bg-blue-50 text-blue-400 text-xs font-bold rounded-xl cursor-not-allowed">Invitation Pending</button>
                       ) : (
-                        <button onClick={() => handleSendInvite(selectedUser._id)} className="w-full py-3 bg-brand-blue text-white text-xs font-bold rounded-xl shadow-xl">Send Invite</button>
+                        <button onClick={() => handleSendInvite(selectedUser._id)} className="w-full py-3 bg-brand-blue text-white text-xs font-bold rounded-xl shadow-xl">
+                          {selectedUser.isInGroup ? 'Send Invite (Change Group)' : 'Send Invite'}
+                        </button>
                       )}
                     </div>
                   )}

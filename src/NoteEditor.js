@@ -21,7 +21,7 @@ import {
   Paperclip, X, Book, ArrowLeft, ChevronDown, Copy, Trash2, CheckCircle2, 
   Undo2, Redo2, Loader2, Cloud, Highlighter, Bold, Italic, Image as ImageIcon, 
   Code, List, ListOrdered, Quote, AlignLeft, AlignCenter, AlignRight, Maximize2, Minimize2,
-  CheckSquare, Terminal, Superscript as SuperscriptIcon, Subscript as SubscriptIcon, Sigma, FileCode, Send, Globe, Lock
+  CheckSquare, Terminal, Superscript as SuperscriptIcon, Subscript as SubscriptIcon, Sigma, FileCode, Send, Globe, Lock, Strikethrough
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
@@ -733,12 +733,12 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         </div>
         
         {/* Scrollable action bar for smaller devices so nothing overflows */}
-        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0 w-full md:w-auto shrink-0">
+        <div className="flex items-center gap-2 flex-wrap pb-1 md:pb-0 w-full md:w-auto shrink-0">
           
           <div className="relative group shrink-0" ref={dropdownRef}>
             <button 
               onClick={() => !readOnly && setIsCourseDropdownOpen(!isCourseDropdownOpen)}
-              className={`flex items-center gap-2 px-3 sm:px-4 py-2 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 text-xs sm:text-sm font-bold rounded-lg transition-all outline-none whitespace-nowrap ${readOnly ? 'cursor-default' : 'hover:border-blue-500 focus:ring-2 focus:ring-brand-blue'}`}
+              className={`flex items-center gap-2 px-3 sm:px-4 h-10 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 text-xs sm:text-sm font-bold rounded-lg transition-all outline-none whitespace-nowrap ${readOnly ? 'cursor-default' : 'hover:border-blue-500 focus:ring-2 focus:ring-brand-blue'}`}
             >
               <span className="flex items-center gap-2">
                 {selectedCourse ? (
@@ -806,7 +806,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
               {onShare && initialNote && (
                 <button
                   onClick={onShare}
-                  className="flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg border bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-brand-blue hover:border-brand-blue dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] text-xs font-bold transition-all whitespace-nowrap"
+                  className="flex items-center gap-1.5 px-3 h-10 rounded-lg border bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-brand-blue hover:border-brand-blue dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-[#2C2C2C] text-xs font-bold transition-all whitespace-nowrap"
                   title="Share to specific users in the community"
                 >
                   <Send size={14} /> <span className="hidden sm:inline">Share</span>
@@ -815,7 +815,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
               <button
                 onClick={() => { setIsPrivate(!isPrivate); setIsDirty(true); setSaveStatus('Unsaved changes'); }}
-                className={`flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 h-10 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${
                   isPrivate 
                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
                     : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#2C2C2C]'
@@ -830,7 +830,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
           <button 
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 flex items-center justify-center text-gray-500 hover:text-brand-blue bg-gray-50 hover:bg-blue-50 dark:bg-[#1E1E1E] dark:hover:bg-blue-900/20 border border-gray-200 dark:border-[#333] rounded-lg transition-colors shrink-0"
+            className="flex items-center justify-center h-10 w-10 text-gray-500 hover:text-brand-blue bg-gray-50 hover:bg-blue-50 dark:bg-[#1E1E1E] dark:hover:bg-blue-900/20 border border-gray-200 dark:border-[#333] rounded-lg transition-colors shrink-0"
             title={isFullscreen ? "Exit Fullscreen" : "Expand Editor"}
           >
             {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
@@ -848,6 +848,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           <button title="Bold (Ctrl+B)" onClick={() => editor.chain().focus().toggleBold().run()} className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`}><Bold size={16}/></button>
           <button title="Italic (Ctrl+I)" onClick={() => editor.chain().focus().toggleItalic().run()} className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`}><Italic size={16}/></button>
           <button title="Underline (Ctrl+U)" onClick={() => editor.chain().focus().toggleUnderline().run()} className={`toolbar-btn ${editor.isActive('underline') ? 'active' : ''}`}><span className="font-serif font-bold underline">U</span></button>
+          <button title="Strikethrough" onClick={() => editor.chain().focus().toggleStrike().run()} className={`toolbar-btn ${editor.isActive('strike') ? 'active' : ''}`}><Strikethrough size={16}/></button>
           <button title="Superscript" onClick={() => editor.chain().focus().toggleSuperscript().run()} className={`toolbar-btn ${editor.isActive('superscript') ? 'active' : ''}`}><SuperscriptIcon size={16}/></button>
           <button title="Subscript" onClick={() => editor.chain().focus().toggleSubscript().run()} className={`toolbar-btn ${editor.isActive('subscript') ? 'active' : ''}`}><SubscriptIcon size={16}/></button>
           <button title="Inline Code" onClick={() => editor.chain().focus().toggleCode().run()} className={`toolbar-btn ${editor.isActive('code') ? 'active' : ''}`}><Terminal size={16}/></button>

@@ -151,7 +151,10 @@ const TimeTable = () => {
                     .filter(c => c.day === day)
                     .map(c => {
                       const style = getPositionStyles(c.startTime, c.endTime);
-                      const theme = getTheme(c.courseName);
+                      let theme = getTheme(c.courseName);
+                      if (c.isMakeup || c.ismakeup) {
+                        theme = { bg: 'bg-red-50 dark:bg-red-900/20 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,rgba(239,68,68,0.05)_10px,rgba(239,68,68,0.05)_20px)]', border: 'border-red-400 border-dashed dark:border-red-500/50 border-2', text: 'text-red-900 dark:text-red-100', icon: 'text-red-600 dark:text-red-400 animate-pulse', hoverRing: 'hover:ring-red-400 dark:hover:ring-red-600/50', accent: 'bg-red-600 shadow-[0_0_10px_rgba(239,68,68,0.5)]' };
+                      }
                       
                       return (
                         <div
@@ -167,6 +170,7 @@ const TimeTable = () => {
                               <div className={`text-[9px] font-black tracking-widest uppercase flex items-center gap-1 opacity-90 mb-0.5 shrink-0 ${theme.text}`}>
                                 <Clock size={10} strokeWidth={2.5} />
                                 {c.startTime} - {c.endTime}
+                                {(c.isMakeup || c.ismakeup) && <span className="ml-1 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1 rounded-sm text-[8px] font-black uppercase shadow-sm">Makeup</span>}
                               </div>
                               
                               <h4 className={`text-[10px] md:text-[11px] font-bold leading-tight mb-1 flex-1 line-clamp-2 ${theme.text}`}>

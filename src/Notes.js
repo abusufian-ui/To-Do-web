@@ -4,7 +4,7 @@ import { FileText, Clock, Trash2, CheckSquare, Book, Lock, Globe, Send, Inbox as
 import ConfirmationModal from './ConfirmationModal';
 import UCPLogo from './UCPLogo';
 import EmptyState from './EmptyState';
-
+import { ToastConfig } from './CustomToast';
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // --- RIGHT SIDE COMMUNITY SHARE DRAWER ---
@@ -107,6 +107,7 @@ const ShareDrawer = ({ isOpen, onClose, noteIds }) => {
 const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNotes, fetchBin, user }) => {
   const [editingNote, setEditingNote] = useState(null);
   const [noteToDelete, setNoteToDelete] = useState(null);
+  const [noteToReject, setNoteToReject] = useState(null);
   const [selectedNotes, setSelectedNotes] = useState([]);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false); // 🚀 NEW: Controls the selection mode overlay
@@ -212,6 +213,9 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
 
   const acceptInboxNote = async (e, noteId) => {
     e.stopPropagation();
+    // Optimistic UI update
+    setNotes(prev => prev.map(n => n._id === noteId ? { ...n, isInbox: false } : n));
+    ToastConfig.show({ title: 'Accepted', message: 'Note has been added to your workspace.', type: 'success' });
     try {
       const token = localStorage.getItem('token');
       await fetch(`${API_BASE}/api/notes/${noteId}/accept`, { method: 'PUT', headers: { 'x-auth-token': token } });
@@ -219,8 +223,18 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     } catch (error) { console.error(error); }
   };
 
-  const discardInboxNote = async (e, noteId) => {
+  const discardInboxNote = (e, noteId) => {
     e.stopPropagation();
+    setNoteToReject(noteId);
+  };
+
+  const confirmRejectNote = async () => {
+    if (!noteToReject) return;
+    const noteId = noteToReject;
+    setNoteToReject(null);
+    // Optimistic UI update
+    setNotes(prev => prev.filter(n => n._id !== noteId));
+    ToastConfig.show({ title: 'Rejected', message: 'Note has been discarded.', type: 'success' });
     try {
       const token = localStorage.getItem('token');
       await fetch(`${API_BASE}/api/notes/${noteId}`, { method: 'DELETE', headers: { 'x-auth-token': token } });
@@ -282,7 +296,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
             <button onClick={() => { setViewMode('private'); setIsSelectionMode(false); setSelectedNotes([]); }} className={`whitespace-nowrap px-5 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
             <button onClick={() => { setViewMode('shared'); setIsSelectionMode(false); setSelectedNotes([]); }} className={`whitespace-nowrap px-5 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Group Shared</button>
             <button onClick={() => { setViewMode('inbox'); setIsSelectionMode(false); setSelectedNotes([]); }} className={`whitespace-nowrap px-5 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === 'inbox' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-              Inbox {inboxCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{inboxCount}</span>}
+              Inbox {inboxCount > 0 && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-[10px] shadow-sm">{inboxCount}</span>}
             </button>
           </div>
 
@@ -451,6 +465,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
 
       <ConfirmationModal isOpen={!!noteToDelete} onClose={() => setNoteToDelete(null)} onConfirm={confirmDelete} title="Move Note to Bin?" message="Are you sure you want to move this note to the Recycle Bin? You can restore it later." confirmText="Move to Bin" confirmStyle="danger" />
       <ConfirmationModal isOpen={showBulkDelete} onClose={() => setShowBulkDelete(false)} onConfirm={executeBulkDelete} title="Move Selected to Bin?" message={`Are you sure you want to move ${selectedNotes.length} note(s) to the Recycle Bin? You can restore them later.`} confirmText="Move to Bin" confirmStyle="danger" />
+      <ConfirmationModal isOpen={!!noteToReject} onClose={() => setNoteToReject(null)} onConfirm={confirmRejectNote} title="Discard Note?" message="Are you sure you want to discard this note? This action cannot be undone." confirmText="Discard" confirmStyle="danger" />
     </>
   );
 };
