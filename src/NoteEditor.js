@@ -609,12 +609,9 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
   const handleDownload = async (e, url, filename) => {
     e.preventDefault();
-    const storedFilename = url.split('/').pop();
-    const downloadUrl = `${API_BASE}/api/download/${storedFilename}?name=${encodeURIComponent(filename)}`;
     
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(downloadUrl, { method: 'GET', headers: { 'x-auth-token': token } });
+      const response = await fetch(url);
       if (!response.ok) throw new Error("Network error during download");
       
       const blob = await response.blob();
@@ -628,6 +625,15 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       window.URL.revokeObjectURL(objectUrl);
       
     } catch (error) {
+      if (url.includes('cloudinary.com/')) {
+        const parts = url.split('/upload/');
+        if (parts.length === 2) {
+           const safeName = encodeURIComponent(filename.replace(/[^a-zA-Z0-9.\-_]/g, '_'));
+           const downloadUrl = `${parts[0]}/upload/fl_attachment:${safeName}/${parts[1]}`;
+           window.open(downloadUrl, '_blank');
+           return;
+        }
+      }
       window.open(url, '_blank');
     }
   };

@@ -1089,6 +1089,7 @@ app.post('/api/groups', auth, async (req, res) => {
       admins: [req.user.id] // Creator is also added to structural admins array
     });
     await group.save();
+    await broadcastLiveUpdate(group._id, req.user.id);
     res.status(201).json(group);
   } catch (error) {
     res.status(500).json({ message: "Server Error" });
@@ -1117,6 +1118,7 @@ app.put('/api/groups/toggle-admin', auth, async (req, res) => {
     }
 
     await group.save();
+    await broadcastLiveUpdate(group._id, req.user.id);
     const updated = await Group.findById(group._id)
       .populate('members', 'name email profilePic customProfilePic portalId createdAt')
       .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
@@ -1142,6 +1144,7 @@ app.put('/api/groups/update-name', auth, async (req, res) => {
 
     group.name = name.trim();
     await group.save();
+    await broadcastLiveUpdate(group._id, req.user.id);
 
     const updated = await Group.findById(group._id)
       .populate('members', 'name email profilePic customProfilePic portalId createdAt')
@@ -1175,6 +1178,8 @@ app.post('/api/groups/invite', auth, async (req, res) => {
       receiverId
     });
     await invite.save();
+    await broadcastLiveUpdate(group._id, req.user.id);
+    io.to(receiverId.toString()).emit('live_db_update');
     res.status(201).json(invite);
   } catch (error) {
     res.status(500).json({ message: "Server Error dispatching invitation." });
@@ -1200,6 +1205,7 @@ app.put('/api/groups/:id/profile-pic', auth, profilePicUpload.single('profilePic
 
     group.profilePic = fileUrl;
     await group.save();
+    await broadcastLiveUpdate(group._id, req.user.id);
 
     const updatedGroup = await Group.findById(group._id)
       .populate('members', 'name email profilePic customProfilePic portalId createdAt')
@@ -1236,6 +1242,7 @@ app.post('/api/groups/leave', auth, async (req, res) => {
       await GroupInvitation.deleteMany({ groupId: group._id });
       // Revert shared tasks back to private
       await Task.updateMany({ groupId: group._id }, { groupId: null, memberStatuses: [] });
+      await broadcastLiveUpdate(group._id, req.user.id);
       res.json({ message: "Group disbanded successfully." });
     } else {
       // Leave Group (Member Exit)
@@ -1246,6 +1253,7 @@ app.post('/api/groups/leave', auth, async (req, res) => {
         { groupId: group._id },
         { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
       );
+      await broadcastLiveUpdate(group._id, req.user.id);
       res.json({ message: "Left group successfully." });
     }
   } catch (error) {
@@ -1317,6 +1325,7 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
     if (status === 'rejected') {
       invite.status = 'rejected';
       await invite.save();
+      await broadcastLiveUpdate(invite.groupId, req.user.id);
       return res.json({ message: "Invitation declined successfully" });
     }
 
@@ -1356,6 +1365,7 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
       { receiverId: req.user.id, status: 'pending' },
       { status: 'rejected' }
     );
+    await broadcastLiveUpdate(group._id, req.user.id);
 
     res.json({ message: "Joined group successfully" });
   } catch (error) {
@@ -1381,6 +1391,8 @@ app.post('/api/groups/add-member', auth, async (req, res) => {
 
     // delete any pending invitations for this user
     await GroupInvitation.deleteMany({ receiverId: memberId, status: 'pending' });
+    await broadcastLiveUpdate(group._id, req.user.id);
+    io.to(memberId.toString()).emit('live_db_update');
 
     const updatedGroup = await Group.findById(group._id)
       .populate('members', 'name email profilePic customProfilePic portalId createdAt')
@@ -1411,6 +1423,8 @@ app.post('/api/groups/remove-member', auth, async (req, res) => {
       { groupId: group._id },
       { $pull: { deletedByUsers: memberId, memberStatuses: { userId: memberId } } }
     );
+    await broadcastLiveUpdate(group._id, req.user.id);
+    io.to(memberId.toString()).emit('live_db_update');
 
     const updatedGroup = await Group.findById(group._id)
       .populate('members', 'name email profilePic customProfilePic portalId createdAt')
