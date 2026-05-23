@@ -83,28 +83,6 @@ async function getLahorePrayerTimes(todayStr) {
   return cachedPrayerTimes;
 }
 
-// 🚀 GROUP NOTIFICATION HELPER
-async function createGroupNotification(groupId, userId, type, title, message) {
-  try {
-    const group = await Group.findById(groupId);
-    if (!group) return;
-
-    for (const memberId of group.members) {
-      if (memberId.toString() !== userId.toString()) {
-        await new Notification({
-          userId: memberId,
-          groupId,
-          type,
-          title,
-          message,
-          read: false
-        }).save();
-      }
-    }
-  } catch (err) {
-    console.error("Group Notification Error:", err);
-  }
-}
 
 // --- API URL CONFIG ---
 const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp.online' : 'http://localhost:5000';
@@ -288,14 +266,7 @@ const otpSchema = new mongoose.Schema({
 });
 const OTP = mongoose.model('OTP', otpSchema);
 
-const focusSessionSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  durationMinutes: { type: Number, required: true },
-  type: { type: String, enum: ['focus', 'short_break', 'long_break'], required: true },
-  relatedCourse: { type: String },
-  completedAt: { type: Date, default: Date.now }
-});
-const FocusSession = mongoose.model('FocusSession', focusSessionSchema);
+
 
 const app = express();
 
