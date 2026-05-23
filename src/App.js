@@ -29,7 +29,7 @@ import AnimatedLogo from './Animation'; // 🚀 IMPORTED YOUR NEW LOGO ANIMATION
 import { CustomToast, ToastConfig } from './CustomToast';
 
 import useLiveSync from './hooks/useLiveSync';
-import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock } from 'lucide-react';
+import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock, Users } from 'lucide-react';
 // 🚨 Notice we imported a few extra router tools here
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 

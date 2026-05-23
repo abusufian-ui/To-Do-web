@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Plus, Search, SlidersHorizontal, User, Inbox, Sun, Moon, Filter,
+  Plus, Search, SlidersHorizontal, User, Sun, Moon, Filter,
   Book, Mail, Clock, CheckCircle2, Calendar, Menu,
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown,
   FileText, X, Image as ImageIcon, Mic, FileArchive,
@@ -126,9 +126,7 @@ const Header = ({
     filters?.source !== 'All'
   ].filter(Boolean).length;
 
-  const unreadKeynotes = safeKeynotes.filter(k => !k?.isRead);
   const unreadNotifications = safeNotifications.filter(n => !n?.isRead);
-  const today = new Date().setHours(0, 0, 0, 0);
 
   const isAudio = (url) => url?.match(/\.(m4a|mp3|wav|ogg|aac|mp4|3gp)$/i) || url?.includes('video/upload');
 
