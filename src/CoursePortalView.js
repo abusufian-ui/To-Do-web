@@ -33,8 +33,6 @@ const CoursePortalView = ({ activeTab, courses }) => {
 
   // Fetch ALL data on mount to power the instant switching and dropdown badges
   useEffect(() => {
-    if (uniCourses.length === 0) return;
-    
     const fetchAllData = async () => {
       setLoading(true);
       try {
@@ -60,17 +58,22 @@ const CoursePortalView = ({ activeTab, courses }) => {
     fetchAllData();
   }, []); // Run once on mount
 
+  // Helper for robust string matching
+  const normalize = (name) => name?.toLowerCase().replace(/[^a-z0-9]/g, '');
+
   // Derive the current course data instantly from the pre-fetched state
   const courseData = {
-    announcements: allAnnouncements.find(a => a.courseName === selectedCourse)?.news || [],
-    attendance: allAttendance.find(a => a.courseName === selectedCourse) || { summary: { conducted: 0, attended: 0 }, records: [] },
-    submissions: allSubmissions.find(s => s.courseName === selectedCourse)?.tasks || []
+    announcements: allAnnouncements.find(a => normalize(a.courseName) === normalize(selectedCourse))?.news || [],
+    attendance: allAttendance.find(a => normalize(a.courseName) === normalize(selectedCourse)) || { summary: { conducted: 0, attended: 0 }, records: [] },
+    submissions: allSubmissions.find(s => normalize(s.courseName) === normalize(selectedCourse))?.tasks || []
   };
 
   // 🎨 DYNAMIC BADGE RENDERER
   const renderBadge = (courseName) => {
+    const normName = normalize(courseName);
+
     if (activeTab === 'Announcements') {
-      const courseAnns = allAnnouncements.find(a => a.courseName === courseName)?.news || [];
+      const courseAnns = allAnnouncements.find(a => normalize(a.courseName) === normName)?.news || [];
       if (courseAnns.length === 0) return null;
       return (
         <span className="shrink-0 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs font-bold px-2.5 py-1 rounded-md">
@@ -80,7 +83,7 @@ const CoursePortalView = ({ activeTab, courses }) => {
     }
     
     if (activeTab === 'Attendance') {
-      const courseAtt = allAttendance.find(a => a.courseName === courseName);
+      const courseAtt = allAttendance.find(a => normalize(a.courseName) === normName);
       if (!courseAtt || !courseAtt.records || courseAtt.records.length === 0) return (
         <span className="shrink-0 bg-gray-100 text-gray-500 dark:bg-[#333] dark:text-gray-400 text-xs font-bold px-2.5 py-1 rounded-md">
           N/A
@@ -103,7 +106,7 @@ const CoursePortalView = ({ activeTab, courses }) => {
     }
     
     if (activeTab === 'Submissions') {
-       const courseSubs = allSubmissions.find(s => s.courseName === courseName)?.tasks || [];
+       const courseSubs = allSubmissions.find(s => normalize(s.courseName) === normName)?.tasks || [];
        const activeTasks = courseSubs.filter(t => {
           const isExpired = new Date() > new Date(t.dueDate);
           return !isExpired && t.status !== 'Submitted';

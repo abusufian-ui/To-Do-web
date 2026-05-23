@@ -27,7 +27,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: Award },
-    { id: 'Sync Diagnostics', label: 'Diagnostics', icon: Activity },
+    { id: 'Sync Diagnostics', label: 'Diagnostics', icon: Activity, adminOnly: true },
   ];
 
   const cashSubItems = [
@@ -165,7 +165,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
 
         {isOpen && isAcademicsExpanded && (
           <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
-            {academicsSubItems.map((sub) => (
+            {academicsSubItems.filter(sub => !sub.adminOnly || (user && user.isAdmin)).map((sub) => (
               <button
                 key={sub.id}
                 onClick={() => handleSubItemClick(sub.id)}
