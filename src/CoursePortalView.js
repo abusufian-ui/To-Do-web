@@ -11,6 +11,13 @@ const CoursePortalView = ({ activeTab, courses }) => {
   const uniCourses = courses.filter(c => c.type === 'uni');
   const [selectedCourse, setSelectedCourse] = useState(uniCourses.length > 0 ? uniCourses[0].name : null);
   
+  useEffect(() => {
+    const uni = courses.filter(c => c.type === 'uni');
+    if (!selectedCourse && uni.length > 0) {
+      setSelectedCourse(uni[0].name);
+    }
+  }, [courses, selectedCourse]);
+
   // New States to hold ALL data at once for the badges
   const [allAnnouncements, setAllAnnouncements] = useState([]);
   const [allAttendance, setAllAttendance] = useState([]);
@@ -163,7 +170,7 @@ const CoursePortalView = ({ activeTab, courses }) => {
             <span className="flex items-center gap-3 w-full pr-2">
               <UCPLogo className="w-5 h-5 text-blue-500 shrink-0" />
               <span className="font-bold text-sm whitespace-normal leading-snug text-left">
-                {selectedCourse || "Select a course"}
+                {selectedCourse || "Loading courses..."}
               </span>
             </span>
             <ChevronDown size={18} className={`text-gray-400 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />

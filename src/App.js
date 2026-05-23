@@ -783,6 +783,16 @@ function AppLayout() {
   // ==========================================
   // 🛡️ SECURE ROUTES RETURN
   // ==========================================
+  
+  const visibleCourses = courses.filter(c => {
+    if (c.type === 'uni') {
+      const explicitPref = user?.coursePreferences?.[c.name];
+      if (explicitPref === false) return false;
+      if (explicitPref === undefined && c.creditHrs === 0) return false;
+    }
+    return true;
+  });
+
   return (
     <Routes>
       {/* 🚀 ADDED THIS ROUTE JUST FOR TESTING THE LOGO */}
@@ -815,7 +825,7 @@ function AppLayout() {
                   toggleTheme={toggleTheme}
                   filters={filters}
                   setFilters={setFilters}
-                  courses={courses}
+                  courses={visibleCourses}
                   onAddClick={triggerAddClick}
                   user={user}
                   onLogout={handleLogout}
@@ -880,13 +890,13 @@ function AppLayout() {
                   </div>
 
                   <div className={`w-full h-full ${activeTab === 'HyperFocus' ? 'block' : 'hidden'}`}><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Notes' ? 'block' : 'hidden'}`}><Notes courses={courses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} user={user} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Tasks' ? 'block' : 'hidden'}`}><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={courses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Calendar' ? 'block' : 'hidden'}`}><Calendar tasks={tasks} courses={courses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Notes' ? 'block' : 'hidden'}`}><Notes courses={visibleCourses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} user={user} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Tasks' ? 'block' : 'hidden'}`}><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={visibleCourses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Calendar' ? 'block' : 'hidden'}`}><Calendar tasks={tasks} courses={visibleCourses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>
                   <div className={`w-full h-full ${activeTab === 'Timetable' ? 'block' : 'hidden'}`}><Timetable /></div>
-                  <div className={`w-full h-full ${activeTab === 'Keynotes' ? 'block' : 'hidden'}`}><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Keynotes' ? 'block' : 'hidden'}`}><Keynote keynotes={getFilteredKeynotes()} courses={visibleCourses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Habits') ? 'block' : 'hidden'}`}><HabitTracker activeTab={activeTab} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Grade Book' ? 'block' : 'hidden'}`}><GradeBook courses={courses} user={user} activeGroup={activeGroup} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Grade Book' ? 'block' : 'hidden'}`}><GradeBook courses={visibleCourses} user={user} activeGroup={activeGroup} /></div>
                   {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
                   {activeTab === 'Sync Diagnostics' && <div className="w-full h-full"><SyncDiagnostics /></div>}
 
@@ -894,7 +904,7 @@ function AppLayout() {
                     <Datesheet exams={activeExams} />
                   </div>
 
-                  <div className={`w-full h-full ${['Announcements', 'Attendance', 'Submissions'].includes(activeTab) ? 'block' : 'hidden'}`}><CoursePortalView activeTab={activeTab} courses={courses} /></div>
+                  <div className={`w-full h-full ${['Announcements', 'Attendance', 'Submissions'].includes(activeTab) ? 'block' : 'hidden'}`}><CoursePortalView activeTab={activeTab} courses={visibleCourses} user={user} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Cash-') ? 'block' : 'hidden'}`}><CashManager activeTab={activeTab} filters={filters} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>
                   <div className={`w-full h-full ${activeTab === 'Bin' ? 'block' : 'hidden'}`}><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>
                   <div className={`w-full h-full ${activeTab === 'Admin' ? 'block' : 'hidden'}`}><AdminDashboard currentUser={user} /></div>
@@ -911,9 +921,9 @@ function AppLayout() {
               `}</style>
 
               {/* --- MODALS --- */}
-              <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={courses} initialDate={prefilledDate} tasks={tasks} activeGroup={activeGroup} />
-              <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={courses} onUpdate={updateTask} user={user} activeGroup={activeGroup} />
-              <AddKeynoteModal isOpen={isAddKeynoteOpen} onClose={() => setIsAddKeynoteOpen(false)} onSave={handleAddKeynoteSubmit} courses={courses} />
+              <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={visibleCourses} initialDate={prefilledDate} tasks={tasks} activeGroup={activeGroup} />
+              <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={visibleCourses} onUpdate={updateTask} user={user} activeGroup={activeGroup} />
+              <AddKeynoteModal isOpen={isAddKeynoteOpen} onClose={() => setIsAddKeynoteOpen(false)} onSave={handleAddKeynoteSubmit} courses={visibleCourses} />
 
               <ConfirmationModal isOpen={!!taskToDelete} onClose={() => setTaskToDelete(null)} onConfirm={executeDelete} title="Move to Bin?" message="Are you sure you want to move this task to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
               <ConfirmationModal isOpen={!!keynoteToDelete} onClose={() => setKeynoteToDelete(null)} onConfirm={executeDeleteKeynote} title="Move Snap to Bin?" message="Are you sure you want to move this Keynote to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />

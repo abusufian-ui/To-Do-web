@@ -1237,8 +1237,9 @@ app.post('/api/groups/leave', auth, async (req, res) => {
     const group = await Group.findOne({ members: req.user.id });
     if (!group) return res.status(400).json({ message: "You are not a member of any group." });
 
-    if (group.creatorId.toString() === req.user.id) {
-      // Disband Group (Creator Exit)
+    const isGroupAdmin = group.admins.includes(req.user.id) || group.creatorId.toString() === req.user.id;
+    if (isGroupAdmin) {
+      // Disband Group (Admin Exit)
       await Group.findByIdAndDelete(group._id);
       await GroupInvitation.deleteMany({ groupId: group._id });
       // Revert shared tasks back to private
@@ -1331,18 +1332,24 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
     }
 
     // Accepting
-    // If the user is already in a group, automatically exit (leave/disband) it since they confirmed the warning in the UI
+    // If the user is already in a group, automatically exit it and handle admin promotion
     const userInGroup = await Group.findOne({ members: req.user.id });
     if (userInGroup) {
-      if (userInGroup.creatorId.toString() === req.user.id) {
+      userInGroup.members = userInGroup.members.filter(m => m.toString() !== req.user.id);
+      userInGroup.admins = userInGroup.admins.filter(a => a.toString() !== req.user.id);
+      
+      if (userInGroup.members.length === 0) {
         // Disband Group
         await Group.findByIdAndDelete(userInGroup._id);
         await GroupInvitation.deleteMany({ groupId: userInGroup._id });
         await Task.updateMany({ groupId: userInGroup._id }, { groupId: null, memberStatuses: [] });
       } else {
-        // Leave Group
-        userInGroup.members = userInGroup.members.filter(m => m.toString() !== req.user.id);
-        userInGroup.save();
+        // Leave Group and Auto-promote random member if no admins left
+        if (userInGroup.admins.length === 0) {
+           const randomMember = userInGroup.members[Math.floor(Math.random() * userInGroup.members.length)];
+           userInGroup.admins.push(randomMember);
+        }
+        await userInGroup.save();
         await Task.updateMany(
           { groupId: userInGroup._id },
           { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
@@ -1381,8 +1388,10 @@ app.post('/api/groups/add-member', auth, async (req, res) => {
     const { memberId } = req.body;
     if (!memberId) return res.status(400).json({ message: "Member ID is required" });
 
-    const group = await Group.findOne({ creatorId: req.user.id });
-    if (!group) return res.status(403).json({ message: "Only the group creator can add members." });
+    const group = await Group.findOne({ members: req.user.id });
+    if (!group) return res.status(404).json({ message: "Group not found" });
+    const isGroupAdmin = group.admins.includes(req.user.id) || group.creatorId.toString() === req.user.id;
+    if (!isGroupAdmin) return res.status(403).json({ message: "Only group admins can add members." });
 
     const memberInGroup = await Group.findOne({ members: memberId });
     if (memberInGroup) return res.status(400).json({ message: "This user is already in a study group." });
@@ -1411,10 +1420,12 @@ app.post('/api/groups/remove-member', auth, async (req, res) => {
     const { memberId } = req.body;
     if (!memberId) return res.status(400).json({ message: "Member ID is required" });
 
-    const group = await Group.findOne({ creatorId: req.user.id });
-    if (!group) return res.status(403).json({ message: "Only the group creator can remove members." });
+    const group = await Group.findOne({ members: req.user.id });
+    if (!group) return res.status(404).json({ message: "Group not found" });
+    const isGroupAdmin = group.admins.includes(req.user.id) || group.creatorId.toString() === req.user.id;
+    if (!isGroupAdmin) return res.status(403).json({ message: "Only group admins can remove members." });
 
-    if (memberId === req.user.id) return res.status(400).json({ message: "Creator cannot be removed. You can disband the group instead." });
+    if (memberId === req.user.id) return res.status(400).json({ message: "Cannot remove yourself this way. Use Disband Workspace." });
 
     group.members = group.members.filter(m => m.toString() !== memberId);
     await group.save();
@@ -2014,6 +2025,27 @@ app.post('/api/user/push-token', auth, async (req, res) => {
 });
 
 app.put('/api/user/preferences', auth, async (req, res) => { try { await User.findByIdAndUpdate(req.user.id, { prayerNotifs: req.body.prayerNotifs }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+
+// Course visibility toggle
+app.put('/api/user/course-preferences', auth, async (req, res) => {
+  try {
+    const { courseName, isVisible } = req.body;
+    if (!courseName) return res.status(400).json({ message: "Course name is required" });
+    
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    
+    if (!user.coursePreferences) {
+      user.coursePreferences = new Map();
+    }
+    user.coursePreferences.set(courseName, isVisible);
+    await user.save();
+    
+    res.json({ success: true, coursePreferences: user.coursePreferences });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
 
 app.post('/api/user/link-portal', auth, async (req, res) => {
   try { await User.findByIdAndUpdate(req.user.id, { portalId: req.body.portalId, isPortalConnected: true }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); }

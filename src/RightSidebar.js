@@ -207,7 +207,7 @@ const RightSidebar = ({
         <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           {isSelfRow ? (
             <span className="text-[8px] font-extrabold px-2.5 py-1 bg-brand-blue/10 text-brand-blue rounded-lg uppercase">Active</span>
-          ) : item.isInGroup ? (
+          ) : (activeGroup && activeGroup.members?.some(m => m._id === item._id || m === item._id)) ? (
             <span className="text-[9px] font-bold px-2.5 py-1 bg-gray-100 dark:bg-dark-border text-gray-400 rounded-lg">In Group</span>
           ) : item.isInvited ? (
             <span className="text-[9px] font-bold px-2.5 py-1 bg-blue-500/10 text-blue-500 rounded-lg flex items-center gap-0.5"><Check size={10} /> Invited</span>
@@ -242,6 +242,9 @@ const RightSidebar = ({
                   <div key={inv._id} className="p-3 bg-orange-50/50 dark:bg-orange-950/10 border border-orange-100 rounded-xl">
                     <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Join <span className="font-extrabold text-brand-blue">"{inv.groupId?.name}"</span></p>
                     <p className="text-[10px] text-gray-400 mt-0.5 truncate">Invited by {inv.senderId?.name}</p>
+                    {activeGroup && (
+                      <p className="text-[9px] font-bold text-red-500 mt-1 flex items-center gap-1"><AlertCircle size={10} /> Accepting will remove you from your current group.</p>
+                    )}
                     <div className="flex gap-2 mt-3">
                       <button onClick={() => handleAcceptInvite(inv._id)} className="flex-1 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-bold shadow-sm">Accept Join</button>
                       <button onClick={() => handleRejectInvite(inv._id)} className="py-1.5 px-3 bg-gray-100 dark:bg-dark-border text-gray-600 dark:text-gray-300 rounded-lg text-[10px] font-bold">Decline</button>
@@ -266,9 +269,15 @@ const RightSidebar = ({
             <div className="space-y-5">
               {user && (
                 <div className="space-y-2">
-                  {/* 🚀 REQUEST 2 FIXED: TEXT HEADING (NO DIVIDER LINES BELOW) */}
-                  <div className="text-[10px] font-black uppercase tracking-wider text-brand-blue">My Workspace Profile</div>
-                  {renderUserRow({ _id: user.id || user._id, name: user.name, email: user.email, customProfilePic: user.customProfilePic || user.profilePic }, null, true)}
+                  <div className="text-[10px] font-black uppercase tracking-wider text-brand-blue">Your Workspace & Group</div>
+                  {renderUserRow({ _id: user.id || user._id, name: user.name, email: user.email, profilePic: user.customProfilePic || user.profilePic }, null, true)}
+                  
+                  {/* Show other group members */}
+                  {activeGroup && activeGroup.members?.filter(m => (m._id !== user.id && m._id !== user._id && m !== user.id)).map(memberId => {
+                    const memberObj = filteredUsers.find(u => u._id === memberId || u._id === memberId._id) || memberId;
+                    if (!memberObj.name) return null; // Wait for full population or if not in filtered
+                    return renderUserRow(memberObj, activeGroup.admins?.includes(memberObj._id) ? 'Admin' : null);
+                  })}
                 </div>
               )}
 
@@ -336,7 +345,9 @@ const RightSidebar = ({
                     <button onClick={() => setCreatingGroupUserId(selectedUser._id)} className="w-full py-3 bg-brand-blue text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2"><Plus size={14} />Create Group & Invite</button>
                   ) : (
                     <div className="w-full">
-                      {selectedUser.isInvited ? (
+                      {(activeGroup && activeGroup.members?.some(m => m._id === selectedUser._id || m === selectedUser._id)) ? (
+                        <button disabled className="w-full py-3 bg-gray-100 text-gray-500 text-xs font-bold rounded-xl cursor-not-allowed">Already in your group</button>
+                      ) : selectedUser.isInvited ? (
                         <button disabled className="w-full py-3 bg-blue-50 text-blue-400 text-xs font-bold rounded-xl cursor-not-allowed">Invitation Pending</button>
                       ) : (
                         <button onClick={() => handleSendInvite(selectedUser._id)} className="w-full py-3 bg-brand-blue text-white text-xs font-bold rounded-xl shadow-xl">

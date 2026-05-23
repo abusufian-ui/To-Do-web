@@ -24,7 +24,8 @@ const userSchema = new mongoose.Schema({
   lastScrapedAt: { type: Date, default: null }, // When this user last ran a full foreground scrape
   pushTokens: [{ type: String }],
   prayerNotifs: { type: Boolean, default: false },
-  lastSyncAt: { type: Date, default: null }
+  lastSyncAt: { type: Date, default: null },
+  coursePreferences: { type: Map, of: Boolean, default: {} } // true = visible, false = hidden
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

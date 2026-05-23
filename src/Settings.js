@@ -5,7 +5,7 @@ import {
     Calendar, GraduationCap,
     Book, Linkedin, Github, Puzzle, School, ExternalLink, Download,
     ChevronDown, FileText, Activity, CheckSquare, Camera,
-    Smartphone, Monitor
+    Smartphone, Monitor, Eye, EyeOff
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 import { StaticLogo } from './StaticLogo';
@@ -467,10 +467,34 @@ const SyncingStatusSection = ({ user, showToast }) => {
 };
 
 // --- 4. COURSE MANAGER TAB ---
-const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) => {
+const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, user }) => {
     const [newCourse, setNewCourse] = useState("");
     const [type, setType] = useState('uni');
     const [deleteModal, setDeleteModal] = useState(null);
+    const [localPreferences, setLocalPreferences] = useState(user?.coursePreferences || {});
+
+    const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+    const toggleVisibility = async (courseName, currentHidden) => {
+        const isVisible = currentHidden; // If currently hidden, we want to make it visible
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_BASE}/api/user/course-preferences`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                body: JSON.stringify({ courseName, isVisible })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setLocalPreferences(data.coursePreferences || {});
+                showToast(isVisible ? "Course unhidden" : "Course hidden", "success");
+                // Trigger a global reload to update the sidebar/views if necessary
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        } catch (error) {
+            showToast("Failed to update visibility", "error");
+        }
+    };
 
     const handleAdd = () => {
         if (!newCourse.trim()) return;
@@ -562,12 +586,35 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast }) =
                         <div className="flex items-center gap-3">
                             {type === 'uni' ? <UCPLogo className="w-8 h-8 text-brand-blue" /> : <Book size={24} className="text-gray-400 group-hover:text-brand-blue transition-colors" />}
                             <div>
-                                <span className="font-bold text-gray-800 dark:text-gray-200 block">{c.name}</span>
+                                <span className="font-bold text-gray-800 dark:text-gray-200 block">
+                                    {c.name}
+                                    {type === 'uni' && c.creditHrs === 0 && <span className="ml-2 text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200">0 CR</span>}
+                                </span>
                                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{type === 'uni' ? 'Synced Course' : 'Personal Course'}</span>
                             </div>
                         </div>
                         {type === 'uni' ? (
-                            <span className="text-[10px] bg-gray-100 dark:bg-[#252525] text-gray-500 px-2 py-1 rounded border border-gray-200 dark:border-[#444] flex items-center gap-1"><Lock size={10} /> Synced</span>
+                            <div className="flex items-center gap-2">
+                                {(() => {
+                                    const explicitPref = localPreferences[c.name];
+                                    // Hidden if explicitPref is exactly false, OR if no explicit pref and 0 credit hours
+                                    const isHidden = explicitPref === false || (explicitPref === undefined && c.creditHrs === 0);
+                                    
+                                    return (
+                                        <button 
+                                            onClick={() => toggleVisibility(c.name, isHidden)}
+                                            className={`text-[10px] px-3 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition-colors ${
+                                                isHidden 
+                                                ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-800/30 dark:text-red-400' 
+                                                : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800/30 dark:text-emerald-400'
+                                            }`}
+                                        >
+                                            {isHidden ? <><EyeOff size={12} /> Hidden</> : <><Eye size={12} /> Visible</>}
+                                        </button>
+                                    );
+                                })()}
+                                <span className="text-[10px] bg-gray-100 dark:bg-[#252525] text-gray-500 px-2 py-1 rounded border border-gray-200 dark:border-[#444] flex items-center gap-1 hidden sm:flex"><Lock size={10} /> Synced</span>
+                            </div>
                         ) : (
                             // THE FIX: Protect the specific General course from rendering a delete button
                             !isProtectedGeneralCourse(c) && (
@@ -879,7 +926,7 @@ const Settings = ({
                     }} />}
                     {activeTab === 'security' && <SecuritySection user={user} showToast={showToast} />}
                     {activeTab === 'portal' && <SyncingStatusSection user={user} showToast={showToast} />}
-                    {activeTab === 'courses' && <CourseSection courses={courses} addCourse={addCourse} removeCourse={removeCourse} tasks={tasks} showToast={showToast} />}
+                    {activeTab === 'courses' && <CourseSection courses={courses} addCourse={addCourse} removeCourse={removeCourse} tasks={tasks} showToast={showToast} user={user} />}
                     {activeTab === 'help' && <HelpSection />}
                     {activeTab === 'about' && <AboutSection />}
                 </div>

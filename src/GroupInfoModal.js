@@ -26,8 +26,7 @@ const GroupInfoModal = ({
 
   if (!isOpen || !activeGroup) return null;
 
-  const isCreator = activeGroup.creatorId?._id === user?.id || activeGroup.creatorId === user?.id || activeGroup.creatorId?._id === user?._id || activeGroup.creatorId === user?._id;
-  const isGroupAdmin = isCreator || activeGroup.admins?.some(adminId => adminId === user?.id || adminId?._id === user?.id || adminId === user?._id || adminId?._id === user?._id);
+  const isGroupAdmin = activeGroup.admins?.some(adminId => adminId === user?.id || adminId?._id === user?.id || adminId === user?._id || adminId?._id === user?._id) || (activeGroup.creatorId?._id === user?.id || activeGroup.creatorId === user?.id);
 
   const creationDate = activeGroup.createdAt
     ? new Date(activeGroup.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
@@ -144,15 +143,15 @@ const GroupInfoModal = ({
   };
 
   const handleLeaveGroup = async () => {
-    const confirmMessage = isCreator
+    const confirmMessage = isGroupAdmin
       ? "Disbanding the group will delete it and unshare all group tasks. Are you sure you want to proceed?"
       : "Are you sure you want to leave the study group? You will lose access to all shared tasks.";
 
     setConfirmModal({
       isOpen: true,
-      title: isCreator ? 'Disband Group' : 'Leave Group',
+      title: isGroupAdmin ? 'Disband Group' : 'Leave Group',
       message: confirmMessage,
-      confirmText: isCreator ? 'Disband Group' : 'Leave Group',
+      confirmText: isGroupAdmin ? 'Disband Group' : 'Leave Group',
       action: async () => {
         try {
           const res = await fetch(`${API_BASE}/api/groups/leave`, {
@@ -163,7 +162,7 @@ const GroupInfoModal = ({
             fetchActiveGroup();
             fetchTasks();
             onClose();
-            ToastConfig.show({ title: "Success", message: isCreator ? "Group disbanded" : "You have left the group", type: "success" });
+            ToastConfig.show({ title: "Success", message: isGroupAdmin ? "Group disbanded" : "You have left the group", type: "success" });
           } else {
             const err = await res.json();
             ToastConfig.show({ title: "Error", message: err.message || "Failed to exit group", type: "error" });
@@ -281,8 +280,7 @@ const GroupInfoModal = ({
               <h4 className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400">Enrolled Members ({activeGroup.members?.length || 0})</h4>
               <div className="space-y-2">
                 {activeGroup.members?.map((member) => {
-                  const isMemberCreator = member._id === activeGroup.creatorId?._id || member._id === activeGroup.creatorId;
-                  const isMemberAdmin = activeGroup.admins?.some(id => id === member._id || id?._id === member._id);
+                  const isMemberAdmin = activeGroup.admins?.some(id => id === member._id || id?._id === member._id) || (activeGroup.creatorId?._id === member._id || activeGroup.creatorId === member._id);
                   const isSelf = member._id === user?.id || member._id === user?._id;
 
                   return (
@@ -299,9 +297,7 @@ const GroupInfoModal = ({
                           </p>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <p className="text-[10px] text-gray-400 truncate">{member.email}</p>
-                            {isMemberCreator ? (
-                              <span className="text-[8px] font-bold uppercase text-amber-500 bg-amber-500/10 px-1.5 rounded">Owner</span>
-                            ) : isMemberAdmin ? (
+                            {isMemberAdmin ? (
                               <span className="text-[8px] font-bold uppercase text-blue-500 bg-blue-500/10 px-1.5 rounded">Admin</span>
                             ) : (
                               <span className="text-[8px] font-bold uppercase text-gray-400 bg-gray-400/10 px-1.5 rounded">Student</span>
@@ -311,7 +307,7 @@ const GroupInfoModal = ({
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
-                        {isCreator && !isMemberCreator && (
+                        {isGroupAdmin && !isSelf && (
                           <button
                             onClick={() => handleToggleAdminRole(member._id, member.name)}
                             className={`p-1.5 rounded-lg transition-all border ${isMemberAdmin ? 'text-orange-500 bg-orange-500/10 border-orange-500/20' : 'text-gray-400 hover:text-brand-blue bg-transparent border-transparent'}`}
@@ -320,7 +316,7 @@ const GroupInfoModal = ({
                             <ShieldAlert size={14} />
                           </button>
                         )}
-                        {!isMemberCreator && isGroupAdmin && !isSelf && (
+                        {isGroupAdmin && !isSelf && !isMemberAdmin && (
                           <button onClick={() => handleRemoveMember(member._id, member.name)} className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-gray-400 hover:text-rose-500 rounded-lg transition-colors">
                             <Trash2 size={14} />
                           </button>
@@ -338,7 +334,7 @@ const GroupInfoModal = ({
             <button onClick={onClose} className="flex-1 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-xl transition-colors">Dismiss</button>
             <button onClick={handleLeaveGroup} className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-1.5">
               <LogOut size={13} />
-              {isCreator ? "Disband Workspace" : "Leave Group"}
+              {isGroupAdmin ? "Disband Workspace" : "Leave Group"}
             </button>
           </div>
         </div>
