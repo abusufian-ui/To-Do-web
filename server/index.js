@@ -2890,5 +2890,60 @@ cron.schedule('0 8 * * *', () => sendSyncPromptToAll("⚠️ Pending Submissions
 // 6:00 PM PKT = 1:00 PM UTC
 cron.schedule('0 13 * * *', () => sendSyncPromptToAll("📊 End of Day Sync", "Your portal data might have changed. Keep your dashboard up to date before tomorrow!"));
 
+// ==========================================
+// 🚀 THE MASTER BACKGROUND SCRAPER ENGINE (CRON)
+// ==========================================
+const { scrapeServerSide } = require('./services/scraperEngine');
+
+// Run every 2 hours between 8 AM and 6 PM PKT (3 AM - 1 PM UTC)
+cron.schedule('0 3-13/2 * * *', async () => {
+  console.log("[CRON] 🌐 Starting Background Server-Side Scrape Engine...");
+  try {
+    const activeUsers = await User.find({
+      isPortalConnected: true,
+      ucpCookie: { $exists: true, $ne: null }
+    });
+
+    console.log(`[CRON] Found ${activeUsers.length} users with cookies for background sync.`);
+
+    for (let user of activeUsers) {
+      try {
+        console.log(`[CRON] Scraping for ${user.email} (${user.portalId || 'Unknown'})...`);
+        const scrapedPayload = await scrapeServerSide(user.ucpCookie, 'HIGH', user.portalId);
+
+        // Generate an internal token to call our own endpoint
+        const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
+        
+        const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
+        
+        await axios.post(syncUrl, scrapedPayload, {
+          headers: {
+            'x-auth-token': token,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log(`[CRON] Successfully background synced ${user.email}`);
+      } catch (err) {
+        console.error(`[CRON] Failed to background sync ${user.email}:`, err.message);
+        // If session expired, notify user
+        if (err.message === "Session Expired") {
+          await User.findByIdAndUpdate(user._id, { isPortalConnected: false });
+          await sendPush(
+            user,
+            "UCP Session Expired ⚠️",
+            "Your background sync failed because your session expired. Tap here to log in again.",
+            { type: "session_expired", action: "OPEN_APP" },
+            "smart-alert",
+            "default"
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`[CRON] Master Scraper Engine Error:`, error.message);
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));
