@@ -1000,7 +1000,7 @@ function AppLayout() {
               )}
 
               {/* --- PRIVACY CONFIRMATION MODAL --- */}
-              {user && user.showProfilePicToCommunity === null && (
+              {user && user.showProfilePicToCommunity == null && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
                   <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl w-full max-w-md p-6 shadow-2xl animate-scaleIn border border-red-500/30">
                     <div className="flex items-center gap-4 mb-4">

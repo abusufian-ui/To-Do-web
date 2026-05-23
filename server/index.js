@@ -1940,7 +1940,8 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
       req.user.id,
       {
         customProfilePic: fileUrl,
-        profilePic: fileUrl // Always use custom pic if uploaded
+        profilePic: fileUrl, // Always use custom pic if uploaded
+        showProfilePicToCommunity: true // Custom pics are always public
       },
       { new: true }
     ).select('-password');
