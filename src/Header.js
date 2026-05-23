@@ -5,9 +5,11 @@ import {
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown,
   FileText, X, Image as ImageIcon, Mic, FileArchive,
   Timer, Download, Maximize2, EyeOff, Activity, AlertCircle, Users,
-  LogOut
+  LogOut, Bell
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
+
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const Header = ({
   activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout,
