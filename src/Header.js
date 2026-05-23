@@ -11,7 +11,7 @@ import UCPLogo from './UCPLogo';
 
 const Header = ({
   activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout,
-  tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, onToggleKeynoteRead, hfState, hfModes,
+  tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, notifications, onToggleKeynoteRead, hfState, hfModes,
   exams, activeGroup, onOpenGroupInfo, onToggleRightSidebar, isRightSidebarOpen, pendingInvitations
 }) => {
   const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
@@ -21,6 +21,7 @@ const Header = ({
   const safeTasks = Array.isArray(tasks) ? tasks : [];
   const safeNotes = Array.isArray(notes) ? notes : [];
   const safeKeynotes = Array.isArray(keynotes) ? keynotes : [];
+  const safeNotifications = Array.isArray(notifications) ? notifications : [];
 
   const [showFilters, setShowFilters] = useState(false);
   const [showCourseList, setShowCourseList] = useState(false);
@@ -124,17 +125,22 @@ const Header = ({
   ].filter(Boolean).length;
 
   const unreadKeynotes = safeKeynotes.filter(k => !k?.isRead);
+  const unreadNotifications = safeNotifications.filter(n => !n?.isRead);
   const today = new Date().setHours(0, 0, 0, 0);
 
-  const inboxSnaps = safeKeynotes.filter(note => {
-    const noteDate = new Date(note.createdAt).setHours(0, 0, 0, 0);
-    return !note.isRead || noteDate === today;
-  }).sort((a, b) => {
-    if (a.isRead === b.isRead) return new Date(b.createdAt) - new Date(a.createdAt);
-    return a.isRead ? 1 : -1;
-  });
-
   const isAudio = (url) => url?.match(/\.(m4a|mp3|wav|ogg|aac|mp4|3gp)$/i) || url?.includes('video/upload');
+
+  const handleMarkNotificationsRead = async () => {
+    try {
+      await fetch(`${API_BASE}/api/notifications/read`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': localStorage.getItem('token')
+        }
+      });
+    } catch (e) { console.error("Error marking notifications as read", e); }
+  };
 
   const handleDownload = async (e, url) => {
     e.stopPropagation();
@@ -405,15 +411,17 @@ const Header = ({
 
           <div className="relative">
             <button
-              onClick={() => setIsInboxOpen(true)}
-              className="hidden md:flex items-center gap-2 bg-white dark:bg-dark-surface border border-brand-blue text-brand-blue px-4 py-1.5 rounded-full hover:bg-brand-blue hover:text-white dark:hover:bg-brand-blue dark:hover:shadow-[0_0_15px_rgba(59,130,246,0.4)] transition-all text-xs font-medium shadow-sm"
+              onClick={() => {
+                setIsInboxOpen(true);
+                if (unreadNotifications.length > 0) {
+                  handleMarkNotificationsRead();
+                }
+              }}
+              className="p-2.5 rounded-xl bg-white dark:bg-[#1E1E1E] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shadow-sm border border-gray-200 dark:border-[#2C2C2C] relative transition-all"
             >
-              <Inbox size={14} />
-              <span>Inbox</span>
-              {unreadKeynotes.length > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-lg border-2 border-white dark:border-dark-bg">
-                  {unreadKeynotes.length}
-                </span>
+              <Bell size={20} />
+              {unreadNotifications.length > 0 && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1E1E1E]"></span>
               )}
             </button>
           </div>
@@ -502,73 +510,75 @@ const Header = ({
         </div>
       </div>
 
+      {/* Notifications Modal */}
       {isInboxOpen && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150] animate-fadeIn"
-          onClick={() => setIsInboxOpen(false)}
-        />
-      )}
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150] animate-fadeIn"
+            onClick={() => setIsInboxOpen(false)}
+          />
 
-      <div className={`fixed top-0 right-0 h-full w-full sm:w-[400px] bg-gray-50 dark:bg-[#121212] shadow-2xl border-l border-gray-200 dark:border-[#2C2C2C] z-[160] transform transition-transform duration-300 ease-in-out flex flex-col ${isInboxOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-        <div className="p-5 border-b border-gray-200 dark:border-[#2C2C2C] flex justify-between items-center bg-white dark:bg-[#1E1E1E]">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-3">
-            <div className="p-2 bg-brand-blue/10 rounded-xl text-brand-blue"><Inbox size={20} /></div>
-            Inbox Snaps
-          </h2>
-          <button onClick={() => setIsInboxOpen(false)} className="p-2 text-gray-400 hover:text-gray-800 dark:hover:text-white bg-gray-50 dark:bg-[#252525] rounded-full shadow-sm transition-all hover:rotate-90">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
-          {inboxSnaps.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 opacity-50">
-              <Inbox size={48} strokeWidth={1} />
-              <p className="text-sm font-medium">No active snaps right now.</p>
+          <div className={`fixed top-0 right-0 h-full w-full sm:w-[400px] bg-gray-50 dark:bg-[#121212] shadow-2xl border-l border-gray-200 dark:border-[#2C2C2C] z-[160] transform transition-transform duration-300 ease-in-out flex flex-col ${isInboxOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className="p-5 border-b border-gray-200 dark:border-[#2C2C2C] flex justify-between items-center bg-white dark:bg-[#1E1E1E]">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                <div className="p-2 bg-brand-blue/10 rounded-xl text-brand-blue"><Bell size={20} /></div>
+                Notifications
+              </h2>
+              <button onClick={() => setIsInboxOpen(false)} className="p-2 text-gray-400 hover:text-gray-800 dark:hover:text-white bg-gray-50 dark:bg-[#252525] rounded-full shadow-sm transition-all hover:rotate-90">
+                <X size={18} />
+              </button>
             </div>
-          ) : (
-            inboxSnaps.map((note) => {
-              const isUni = safeCourses.find(c => c.name === note.courseName)?.type === 'uni';
-              return (
-                <div
-                  key={note._id}
-                  onClick={() => setSelectedNote(note)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer hover:shadow-lg relative overflow-hidden ${!note.isRead
-                    ? 'bg-white dark:bg-[#1E1E1E] border-brand-blue/50 shadow-md shadow-brand-blue/10'
-                    : 'bg-gray-100 dark:bg-[#1c1c24] border-transparent opacity-60 hover:opacity-100'
-                    }`}
-                >
-                  {!note.isRead && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_12px_rgba(59,130,246,0.9)]"></div>}
 
-                  <div className="flex justify-between items-start mb-2 gap-2 pl-1">
-                    <span className="flex items-start gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-1">
-                      {isUni && <UCPLogo className="w-3 h-3 text-brand-blue shrink-0 mt-0.5" />}
-                      <span className="leading-snug">{note.courseName}</span>
-                    </span>
-                    <span className="text-[10px] font-bold text-gray-400 shrink-0">
-                      {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-0.5 mb-1 pl-1">
-                    <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate">{note.title}</h4>
-                    {note.sender && (
-                      <span className="text-[11px] text-brand-blue font-bold flex items-center gap-1 opacity-90">
-                        Sent by {note.sender.name || 'Unknown'}
-                      </span>
-                    )}
-                  </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+              {safeNotifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 opacity-50">
+                  <Bell size={48} strokeWidth={1} />
+                  <p className="text-sm font-medium">No new notifications.</p>
                 </div>
-              );
-            })
-          )}
-        </div>
+              ) : (
+                safeNotifications.map((notif) => {
+                  return (
+                    <div
+                      key={notif._id}
+                      className={`p-4 rounded-2xl border transition-all relative overflow-hidden ${!notif.isRead
+                        ? 'bg-white dark:bg-[#1E1E1E] border-brand-blue/50 shadow-md shadow-brand-blue/10'
+                        : 'bg-gray-100 dark:bg-[#1c1c24] border-transparent opacity-60'
+                        }`}
+                    >
+                      {!notif.isRead && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-blue shadow-[0_0_12px_rgba(59,130,246,0.9)]"></div>}
 
-        <div className="p-5 border-t border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1E1E1E]">
-          <button onClick={() => { setIsInboxOpen(false); if (onNavigate) onNavigate('Keynotes'); }} className="w-full py-3 text-sm font-bold text-white bg-gray-900 dark:bg-brand-blue rounded-xl hover:shadow-lg transition-all">
-            View All Keynotes
-          </button>
-        </div>
-      </div>
+                      <div className="flex justify-between items-start mb-2 gap-2 pl-1">
+                        <span className="flex items-start gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-1">
+                          {notif.type}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-400 shrink-0">
+                          {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 mb-1 pl-1 cursor-pointer" onClick={() => { if(notif.link) window.open(notif.link, '_blank'); }}>
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-white">{notif.title}</h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{notif.message}</p>
+                        {notif.sender && (
+                          <div className="mt-3 flex items-center gap-2">
+                            {notif.sender.profilePic ? (
+                              <img src={notif.sender.profilePic} alt="sender" className="w-5 h-5 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-brand-blue to-purple-500 flex items-center justify-center text-white text-[9px] font-bold">
+                                {notif.sender.name ? notif.sender.name.charAt(0).toUpperCase() : '?'}
+                              </div>
+                            )}
+                            <span className="text-[11px] font-medium text-brand-blue opacity-90">{notif.sender.name}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {selectedNote && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-fadeIn">

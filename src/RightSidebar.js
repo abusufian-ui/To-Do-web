@@ -171,9 +171,9 @@ const RightSidebar = ({
   };
 
   const renderUserAvatar = (targetUser, size = 'w-10 h-10', textClass = 'text-sm') => {
-    const hasCustomPic = targetUser.customProfilePic && targetUser.customProfilePic.trim() !== "";
+    const hasCustomPic = targetUser.profilePic && targetUser.profilePic.trim() !== "";
     if (hasCustomPic) {
-      return <img src={targetUser.customProfilePic} alt="" className={`${size} rounded-full object-cover border border-gray-200 dark:border-dark-border`} />;
+      return <img src={targetUser.profilePic} alt="" className={`${size} rounded-full object-cover border border-gray-200 dark:border-dark-border`} />;
     }
     const initials = targetUser.name?.substring(0, 2).toUpperCase() || "ST";
     return (

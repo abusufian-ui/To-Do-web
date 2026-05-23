@@ -113,6 +113,7 @@ function AppLayout() {
   const [tasks, setTasks] = useState([]);
   const [notes, setNotes] = useState([]);
   const [keynotes, setKeynotes] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [exams, setExams] = useState([]);
 
   const activeExams = useMemo(() => {
@@ -283,6 +284,7 @@ function AppLayout() {
     setTasks([]);
     setNotes([]);
     setKeynotes([]);
+    setNotifications([]);
     setExams([]);
     setCourses([]);
     setBinItems([]);
@@ -372,6 +374,15 @@ function AppLayout() {
     } catch (error) { console.error("Error fetching keynotes:", error); }
   }, [authHeaders, handleLogout]);
 
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications`, { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
+      const data = await res.json();
+      if (Array.isArray(data)) { setNotifications(data); } else { setNotifications([]); }
+    } catch (error) { console.error("Error fetching notifications:", error); }
+  }, [authHeaders, handleLogout]);
+
   const fetchExams = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/datesheet`, { headers: authHeaders });
@@ -450,13 +461,14 @@ function AppLayout() {
       fetchTasks();
       fetchNotes();
       fetchKeynotes();
+      fetchNotifications();
       fetchBin();
       fetchCourses();
       fetchExams();
       fetchActiveGroup();
       fetchPendingInvitations();
     }
-  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
+  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchNotifications, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
 
   const handleLiveUpdate = useCallback(() => {
     if (token && isAuthenticated) {
@@ -466,6 +478,7 @@ function AppLayout() {
         fetchTasks();
         fetchNotes();
         fetchKeynotes();
+        fetchNotifications();
         fetchBin();
         fetchCourses();
         fetchExams();
@@ -473,7 +486,7 @@ function AppLayout() {
         fetchPendingInvitations();
       }, 500);
     }
-  }, [token, isAuthenticated, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
+  }, [token, isAuthenticated, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchNotifications, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
 
   useLiveSync(handleLiveUpdate, handleLogout, user?.id);
 
@@ -812,6 +825,7 @@ function AppLayout() {
                   notes={notes}
                   onOpenNote={(note) => console.log("Open Note from search:", note)}
                   keynotes={keynotes}
+                  notifications={notifications}
                   onToggleKeynoteRead={handleToggleKeynoteRead}
                   hfState={hfState}
                   hfModes={HF_MODES}

@@ -384,7 +384,17 @@ const AdminDashboard = ({ currentUser }) => {
     );
   }
 
-  const filteredUsers = users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredUsers = users
+    .filter(u => u.name.toLowerCase().includes(search.toLowerCase()) || (u.email && u.email.toLowerCase().includes(search.toLowerCase())))
+    .sort((a, b) => {
+      const aIsSuper = a.email.toLowerCase() === superAdminEmail.toLowerCase();
+      const bIsSuper = b.email.toLowerCase() === superAdminEmail.toLowerCase();
+      if (aIsSuper && !bIsSuper) return -1;
+      if (!aIsSuper && bIsSuper) return 1;
+      if (a.isAdmin && !b.isAdmin) return -1;
+      if (!a.isAdmin && b.isAdmin) return 1;
+      return 0;
+    });
   const currentCpu = cpuData[cpuData.length - 1] || 0;
   const dbLimitBytes = 512 * 1024 * 1024;
   const dbPercentage = Math.min((realDbSize / dbLimitBytes) * 100, 100);

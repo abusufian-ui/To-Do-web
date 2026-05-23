@@ -32,6 +32,8 @@ const Task = require('./models/Task');
 const Grade = require('./models/Grade');
 const ResultHistory = require('./models/ResultHistory');
 const StudentStats = require('./models/StudentStats');
+const FocusSession = require('./models/FocusSession');
+const Notification = require('./models/Notification');
 const Timetable = require('./models/TimetableModel');
 const Habit = require('./models/Habit');
 const Course = require('./models/Course');
@@ -79,6 +81,29 @@ async function getLahorePrayerTimes(todayStr) {
     }
   }
   return cachedPrayerTimes;
+}
+
+// 🚀 GROUP NOTIFICATION HELPER
+async function createGroupNotification(groupId, userId, type, title, message) {
+  try {
+    const group = await Group.findById(groupId);
+    if (!group) return;
+
+    for (const memberId of group.members) {
+      if (memberId.toString() !== userId.toString()) {
+        await new Notification({
+          userId: memberId,
+          groupId,
+          type,
+          title,
+          message,
+          read: false
+        }).save();
+      }
+    }
+  } catch (err) {
+    console.error("Group Notification Error:", err);
+  }
 }
 
 // --- API URL CONFIG ---
@@ -970,6 +995,21 @@ mongoose.connect(dbLink).then(async () => {
 
 }).catch(err => console.log(err));
 
+// --- NOTIFICATION ROUTES ---
+app.get('/api/notifications', auth, async (req, res) => {
+  try {
+    const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    res.json(notifications);
+  } catch (error) { res.status(500).json({ message: "Error" }); }
+});
+
+app.put('/api/notifications/:id/read', auth, async (req, res) => {
+  try {
+    await Notification.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { read: true });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ message: "Error" }); }
+});
+
 app.post('/api/upload', auth, (req, res) => {
   upload.array('files', 10)(req, res, function (err) {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
@@ -1341,7 +1381,7 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
       } else {
         // Leave Group
         userInGroup.members = userInGroup.members.filter(m => m.toString() !== req.user.id);
-        await userInGroup.save();
+        userInGroup.save();
         await Task.updateMany(
           { groupId: userInGroup._id },
           { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
@@ -1439,21 +1479,28 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
 
-    const usersWithStorage = await Promise.all(users.map(async (user) => {
-      let storageBytes = 15360;
+    const modelsToMeasure = [
+      { model: Task, field: 'userId' },
+      { model: Note, field: 'user' },
+      { model: Keynote, field: 'userId' },
+      { model: Transaction, field: 'userId' },
+      { model: Habit, field: 'userId' },
+      { model: Timetable, field: 'userId' },
+      { model: Grade, field: 'userId' }
+    ];
 
-      const keynotes = await Keynote.find({ userId: user._id });
-      for (let kn of keynotes) {
-        if (kn.mediaUrls && kn.mediaUrls.length > 0) {
-          for (let url of kn.mediaUrls) {
-            try {
-              const filename = url.split('/').pop();
-              const filepath = path.join(uploadDir, filename);
-              if (fs.existsSync(filepath)) {
-                storageBytes += fs.statSync(filepath).size;
-              }
-            } catch (e) { }
-          }
+    const usersWithStorage = await Promise.all(users.map(async (user) => {
+      let storageBytes = 15360; // base footprint
+
+      for (const { model, field } of modelsToMeasure) {
+        try {
+          const result = await model.aggregate([
+            { $match: { [field]: user._id } },
+            { $group: { _id: null, size: { $sum: { $bsonSize: "$$ROOT" } } } }
+          ]);
+          if (result && result.length > 0) storageBytes += result[0].size;
+        } catch (e) {
+          // Fallback if $bsonSize fails
         }
       }
 
@@ -1472,7 +1519,10 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
     }));
 
     res.json(usersWithStorage);
-  } catch (error) { res.status(500).json({ message: error.message }); }
+  } catch (error) {
+    console.error("Admin Fetch Users Error:", error);
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
 });
 app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
   try {
@@ -1573,6 +1623,11 @@ app.post('/api/notes', auth, async (req, res) => {
     });
     
     await newNote.save();
+    
+    if (newNote.groupId) {
+      await createGroupNotification(newNote.groupId, req.user.id, 'note', 'New Group Note', `A new note "${newNote.title}" was shared in the group.`);
+    }
+
     await broadcastLiveUpdate(newNote.groupId, req.user.id);
     res.json(await Note.findById(newNote._id).populate('user', 'name email profilePic'));
   } catch (error) {
@@ -1994,6 +2049,53 @@ app.get('/api/focus-sessions', auth, async (req, res) => { try { res.json(await 
 app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await new FocusSession({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 // ==========================================
+// 🔔 NOTIFICATIONS API
+// ==========================================
+app.get('/api/notifications', auth, async (req, res) => {
+  try {
+    const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(50);
+    res.json(notifications);
+  } catch (error) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+app.put('/api/notifications/read', auth, async (req, res) => {
+  try {
+    await Notification.updateMany({ userId: req.user.id, isRead: false }, { $set: { isRead: true } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+const createGroupNotification = async (groupId, senderId, type, title, message, link) => {
+  if (!groupId) return;
+  try {
+    const group = await Group.findById(groupId);
+    if (!group) return;
+    const sender = await User.findById(senderId);
+    
+    const members = group.members.filter(m => m.toString() !== senderId.toString());
+    const notifications = members.map(memberId => ({
+      userId: memberId,
+      type,
+      title,
+      message,
+      sender: sender ? { name: sender.name, profilePic: sender.profilePic, id: sender._id } : {},
+      link
+    }));
+    
+    if (notifications.length > 0) {
+      await Notification.insertMany(notifications);
+      // live_db_update will naturally trigger the frontend to fetch the new notifications
+    }
+  } catch (error) {
+    console.error("Failed to create notifications", error);
+  }
+};
+
+// ==========================================
 // 🚀 INSTANT WEBSOCKET BROADCAST HELPER
 // ==========================================
 const broadcastLiveUpdate = async (groupId, activeUserId) => {
@@ -2052,6 +2154,10 @@ app.post('/api/tasks', auth, async (req, res) => {
   try {
     const task = new Task({ ...req.body, userId: req.user.id });
     await task.save();
+    
+    if (task.groupId) {
+      await createGroupNotification(task.groupId, req.user.id, 'task', 'New Group Task', `A new task "${task.title}" was added to the group.`);
+    }
     
     await broadcastLiveUpdate(task.groupId, req.user.id);
     res.json(await Task.findById(task._id).populate('userId', 'name email profilePic'));

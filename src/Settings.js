@@ -4,9 +4,11 @@ import {
     CheckCircle2, X, AlertTriangle, Lock,
     Calendar, GraduationCap,
     Book, Linkedin, Github, Puzzle, School, ExternalLink, Download,
-    ChevronDown, FileText, Activity, CheckSquare, Camera 
+    ChevronDown, FileText, Activity, CheckSquare, Camera,
+    Smartphone, Monitor
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
+import { StaticLogo } from './StaticLogo';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -305,15 +307,22 @@ const SyncingStatusSection = ({ user, showToast }) => {
                 {/* Status Header */}
                 <div className="p-8 border-b border-gray-100 dark:border-[#333] flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-50/50 dark:bg-[#252525]">
                     <div className="flex items-center gap-5">
-                        <div className={`p-4 rounded-2xl ${user.isPortalConnected ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20' : 'bg-red-100 text-red-500 dark:bg-red-900/20'}`}>
-                            {user.isPortalConnected ? <Activity size={28} className={isCookieActive ? "animate-pulse" : ""} /> : <AlertTriangle size={28} />}
+                        <div className="flex gap-3">
+                            <div className={`p-4 rounded-2xl flex flex-col items-center gap-1 ${user.isPortalConnected ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20' : 'bg-red-100 text-red-500 dark:bg-red-900/20'}`}>
+                                <Monitor size={24} className={isCookieActive ? "animate-pulse" : ""} />
+                                <span className="text-[9px] font-bold uppercase tracking-widest">{user.isPortalConnected ? 'Extension Connected' : 'Extension Disconnected'}</span>
+                            </div>
+                            <div className={`p-4 rounded-2xl flex flex-col items-center gap-1 ${(user.pushTokens && user.pushTokens.length > 0) ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20' : 'bg-red-100 text-red-500 dark:bg-red-900/20'}`}>
+                                <Smartphone size={24} />
+                                <span className="text-[9px] font-bold uppercase tracking-widest">{(user.pushTokens && user.pushTokens.length > 0) ? 'App Connected' : 'App Disconnected'}</span>
+                            </div>
                         </div>
                         <div>
                             <h4 className="font-bold text-gray-800 dark:text-white text-xl flex items-center gap-2">
-                                {user.isPortalConnected ? "Sync Engine Active" : "Portal Disconnected"}
+                                {user.isPortalConnected || (user.pushTokens && user.pushTokens.length > 0) ? "Ecosystem Active" : "Ecosystem Disconnected"}
                                 {user.isPortalConnected && (
                                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest ${isCookieActive ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'}`}>
-                                        {isCookieActive ? 'Live' : 'Cookie Expired'}
+                                        {isCookieActive ? 'Extension Live' : 'Cookie Expired'}
                                     </span>
                                 )}
                             </h4>
@@ -740,7 +749,7 @@ const HelpSection = () => {
 const AboutSection = () => (
     <div className="animate-fadeIn text-center py-12">
         <div className="w-24 h-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl shadow-blue-600/30 mb-6 animate-float">
-            <UCPLogo className="w-12 h-12 text-white" />
+            <StaticLogo className="w-12 h-12 text-white" />
         </div>
         <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">MyPortal</h2>
         <p className="text-gray-500 dark:text-gray-400 mb-8 font-medium">Next-Gen Student Academic Assistant</p>
@@ -758,7 +767,7 @@ const AboutSection = () => (
                 <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-[#333]">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Institution</span>
                     <div className="flex items-center gap-2">
-                        <UCPLogo className="w-4 h-4 text-brand-blue" />
+                        <StaticLogo className="w-4 h-4 text-brand-blue" />
                         <span className="font-bold text-gray-800 dark:text-white text-sm">UCP Lahore</span>
                     </div>
                 </div>
@@ -845,7 +854,7 @@ const Settings = ({
                 </div>
                 <div className="p-6 border-t border-gray-100 dark:border-[#2C2C2C]">
                     <div className="flex items-center gap-3 opacity-60">
-                        <UCPLogo className="w-5 h-5 text-gray-400" />
+                        <StaticLogo className="w-5 h-5 text-gray-400" />
                         <span className="text-xs font-mono text-gray-400">v2.1.0</span>
                     </div>
                 </div>

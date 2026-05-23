@@ -288,8 +288,8 @@ const GroupInfoModal = ({
                   return (
                     <div key={member._id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50/60 dark:bg-dark-surface/20 border border-gray-100 dark:border-[#252525]">
                       <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
-                        {member.customProfilePic && member.customProfilePic.trim() !== "" ? (
-                          <img src={member.customProfilePic} alt="" className="w-8 h-8 rounded-full object-cover" />
+                        {member.profilePic && member.profilePic.trim() !== "" ? (
+                          <img src={member.profilePic} alt="" className="w-8 h-8 rounded-full object-cover" />
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue flex items-center justify-center font-bold text-xs uppercase">{member.name?.substring(0, 2).toUpperCase()}</div>
                         )}
