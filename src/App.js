@@ -488,7 +488,7 @@ function AppLayout() {
     }
   }, [token, isAuthenticated, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchNotifications, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
 
-  useLiveSync(handleLiveUpdate, handleLogout, user?.id);
+  useLiveSync(handleLiveUpdate, handleLogout, user?._id || user?.id);
 
   const handleAddTask = async (newTaskData) => {
     try {
@@ -525,8 +525,23 @@ function AppLayout() {
     try {
       const endpoint = currentStatus ? 'unread' : 'read';
       await fetch(`${API_BASE}/api/keynotes/${id}/${endpoint}`, { method: 'PUT', headers: authHeaders });
-      setKeynotes(prev => prev.map(kn => kn._id === id ? { ...kn, isRead: !currentStatus } : kn));
-    } catch (error) { console.error("Failed to toggle read status", error); }
+      fetchKeynotes();
+    } catch (e) { }
+  };
+
+  const handlePrivacySubmit = async (showToCommunity) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/user/privacy`, {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({ showProfilePicToCommunity: showToCommunity })
+      });
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      }
+    } catch (e) { console.error("Error setting privacy", e); }
   };
 
   const deleteKeynote = (id) => setKeynoteToDelete(id);
@@ -983,6 +998,34 @@ function AppLayout() {
                   </div>
                 </div>
               )}
+
+              {/* --- PRIVACY CONFIRMATION MODAL --- */}
+              {user && user.showProfilePicToCommunity === null && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
+                  <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl w-full max-w-md p-6 shadow-2xl animate-scaleIn border border-red-500/30">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full">
+                        <Users size={24} />
+                      </div>
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Community Profile</h2>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+                      Welcome to the Community! Would you like to display your profile picture to other students in groups and discussions? 
+                      <br /><br />
+                      <span className="text-red-500 font-bold">If you choose NO, your primary portal picture will be hidden from others.</span>
+                    </p>
+                    <div className="flex gap-3">
+                      <button onClick={() => handlePrivacySubmit(false)} className="flex-1 py-2.5 px-4 rounded-xl font-bold text-gray-700 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-[#2C2C2C] dark:hover:bg-[#333] transition-colors">
+                        Hide Picture
+                      </button>
+                      <button onClick={() => handlePrivacySubmit(true)} className="flex-1 py-2.5 px-4 rounded-xl font-bold text-white bg-brand-blue hover:bg-blue-600 shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+                        Show Picture
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* --- IN-APP SNACK NOTIFICATION --- */}
               {toast && (
                 <div className="fixed top-6 right-6 z-[9999] bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-2xl rounded-2xl p-4 w-80 animate-slideInRight">

@@ -14,6 +14,7 @@ const userSchema = new mongoose.Schema({
   originalPortalProfilePic: { type: String, default: null }, // First scrapped pic (for records)
   customProfilePic: { type: String, default: null }, // User uploaded
   profilePic: { type: String, default: null }, // Computed/Current display pic
+  showProfilePicToCommunity: { type: Boolean, default: null }, // Privacy preference
   securitySettings: {
     autoLockEnabled: { type: Boolean, default: false },
     autoLockTimer: { type: Number, default: 900000 } // 15 minutes in ms

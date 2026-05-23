@@ -357,15 +357,19 @@ app.use((req, res, next) => {
   next();
 });
 
-const auth = (req, res, next) => {
+const auth = async (req, res, next) => {
   const token = req.header('x-auth-token');
   if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
   try {
     const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
+    const userExists = await User.findById(decoded.id);
+    if (!userExists) {
+      return res.status(401).json({ message: 'User account has been deleted' });
+    }
     req.user = decoded;
     next();
   } catch (e) {
-    res.status(400).json({ message: 'Token is not valid' });
+    res.status(401).json({ message: 'Token is not valid' });
   }
 };
 
@@ -967,20 +971,6 @@ mongoose.connect(dbLink).then(async () => {
 }).catch(err => console.log(err));
 
 // --- NOTIFICATION ROUTES ---
-app.get('/api/notifications', auth, async (req, res) => {
-  try {
-    const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 });
-    res.json(notifications);
-  } catch (error) { res.status(500).json({ message: "Error" }); }
-});
-
-app.put('/api/notifications/:id/read', auth, async (req, res) => {
-  try {
-    await Notification.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { read: true });
-    res.json({ success: true });
-  } catch (error) { res.status(500).json({ message: "Error" }); }
-});
-
 app.post('/api/upload', auth, (req, res) => {
   upload.array('files', 10)(req, res, function (err) {
     if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
@@ -1619,6 +1609,11 @@ app.put('/api/notes/:id', auth, async (req, res) => {
       if (req.body.isPrivate === false) {
         const userGroup = await Group.findOne({ members: req.user.id });
         if (!userGroup) return res.status(400).json({ message: "No group found." });
+        
+        if (note.groupId === null) {
+          await createGroupNotification(userGroup._id, req.user.id, 'note', 'Note Shared', `A note "${note.title}" was made public to the group.`);
+        }
+        
         note.groupId = userGroup._id;
         note.isPrivate = false;
       } else {
@@ -1958,6 +1953,27 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
 });
 
 
+app.put('/api/user/privacy', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    
+    user.showProfilePicToCommunity = req.body.showProfilePicToCommunity;
+    
+    if (user.showProfilePicToCommunity === false && !user.customProfilePic) {
+      user.profilePic = null; // Hide the portal pic
+    } else if (user.showProfilePicToCommunity === true && !user.customProfilePic && user.portalProfilePic) {
+      user.profilePic = user.portalProfilePic; // Restore it
+    }
+    
+    await user.save();
+    const freshUser = await User.findById(req.user.id).select('-password');
+    res.json(freshUser);
+  } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
 app.put('/api/user/profile', auth, async (req, res) => { try { res.json(await User.findByIdAndUpdate(req.user.id, { name: req.body.name }, { new: true }).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 app.put('/api/user/security-settings', auth, async (req, res) => {
@@ -2020,6 +2036,24 @@ app.get('/api/focus-sessions', auth, async (req, res) => { try { res.json(await 
 app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await new FocusSession({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 // ==========================================
+// 🚀 INSTANT WEBSOCKET BROADCAST HELPER
+// ==========================================
+async function broadcastLiveUpdate(groupId, activeUserId) {
+  // Notify the action initiator instantly
+  io.to(activeUserId.toString()).emit('live_db_update');
+  
+  // If it's a shared group task, instantly broadcast to all members in that group workspace
+  if (groupId) {
+    const group = await Group.findById(groupId);
+    if (group) {
+      group.members.forEach(memberId => {
+        io.to(memberId.toString()).emit('live_db_update');
+      });
+    }
+  }
+}
+
+// ==========================================
 // 🔔 NOTIFICATIONS API
 // ==========================================
 app.get('/api/notifications', auth, async (req, res) => {
@@ -2034,6 +2068,7 @@ app.get('/api/notifications', auth, async (req, res) => {
 app.put('/api/notifications/read', auth, async (req, res) => {
   try {
     await Notification.updateMany({ userId: req.user.id, isRead: false }, { $set: { isRead: true } });
+    await broadcastLiveUpdate(null, req.user.id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ message: "Server Error" });
@@ -2066,23 +2101,7 @@ const createGroupNotification = async (groupId, senderId, type, title, message, 
   }
 };
 
-// ==========================================
-// 🚀 INSTANT WEBSOCKET BROADCAST HELPER
-// ==========================================
-const broadcastLiveUpdate = async (groupId, activeUserId) => {
-  // Notify the action initiator instantly
-  io.to(activeUserId.toString()).emit('live_db_update');
-  
-  // If it's a shared group task, instantly broadcast to all members in that group workspace
-  if (groupId) {
-    const group = await Group.findById(groupId);
-    if (group) {
-      group.members.forEach(memberId => {
-        io.to(memberId.toString()).emit('live_db_update');
-      });
-    }
-  }
-};
+
 
 // ==========================================
 // 📝 STRICT TASK MANAGEMENT ROUTES
@@ -2169,6 +2188,7 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
         const userGroup = await Group.findOne({ members: req.user.id });
         if (!userGroup) return res.status(400).json({ message: "You must join a group before sharing this task." });
         task.groupId = userGroup._id;
+        await createGroupNotification(task.groupId, req.user.id, 'task', 'Task Shared', `A task "${task.title}" was made public to the group.`);
       }
 
       Object.assign(task, req.body);

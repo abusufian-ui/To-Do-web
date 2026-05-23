@@ -122,6 +122,9 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic }) => {
                 </div>
 
                 <div className="flex-1 space-y-4 w-full text-center md:text-left">
+                    <p className="text-xs text-red-500 font-medium">
+                        If you change your picture, it will be visible to everyone across the community.
+                    </p>
                     <div>
                         <h3 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-1">{user?.name}</h3>
                         <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">{user?.email}</p>
