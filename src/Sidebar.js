@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   CheckSquare, Calendar, StickyNote, BarChart3, Settings, 
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
-  CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History,
+  CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History, Award,
   GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2, Bell, ClipboardCheck, FileUp,
   Link, Cloud, Globe, Mail
 } from 'lucide-react';
