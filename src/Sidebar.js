@@ -26,7 +26,8 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Submissions', label: 'Submissions', icon: FileUp },
     { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
-    { id: 'History', label: 'History', icon: History },
+    { id: 'History', label: 'History', icon: Award },
+    { id: 'Sync Diagnostics', label: 'Diagnostics', icon: Activity },
   ];
 
   const cashSubItems = [

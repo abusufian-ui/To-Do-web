@@ -104,9 +104,9 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic }) => {
                     className="relative group cursor-pointer shrink-0"
                     onClick={() => !isUploading && fileInputRef.current.click()}
                 >
-                    {user?.profilePic ? (
+                    {(user?.customProfilePic || user?.portalProfilePic || user?.profilePic) ? (
                         <img 
-                            src={user.profilePic} 
+                            src={user.customProfilePic || user.portalProfilePic || user.profilePic} 
                             alt={user.name} 
                             className="w-32 h-32 rounded-full object-cover shadow-xl ring-4 ring-blue-500/10 transition-all group-hover:opacity-75" 
                         />

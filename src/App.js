@@ -27,6 +27,7 @@ import CoursePortalView from './CoursePortalView';
 import Datesheet from './Datesheet';
 import AnimatedLogo from './Animation'; // 🚀 IMPORTED YOUR NEW LOGO ANIMATION HERE
 import { CustomToast, ToastConfig } from './CustomToast';
+import SyncDiagnostics from './SyncDiagnostics';
 
 import useLiveSync from './hooks/useLiveSync';
 import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock, Users } from 'lucide-react';
@@ -529,21 +530,6 @@ function AppLayout() {
     } catch (e) { }
   };
 
-  const handlePrivacySubmit = async (showToCommunity) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/user/privacy`, {
-        method: 'PUT',
-        headers: authHeaders,
-        body: JSON.stringify({ showProfilePicToCommunity: showToCommunity })
-      });
-      if (res.ok) {
-        const updatedUser = await res.json();
-        setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-      }
-    } catch (e) { console.error("Error setting privacy", e); }
-  };
-
   const deleteKeynote = (id) => setKeynoteToDelete(id);
   const executeDeleteKeynote = async () => {
     if (!keynoteToDelete) return;
@@ -901,7 +887,8 @@ function AppLayout() {
                   <div className={`w-full h-full ${activeTab === 'Keynotes' ? 'block' : 'hidden'}`}><Keynote keynotes={getFilteredKeynotes()} courses={courses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Habits') ? 'block' : 'hidden'}`}><HabitTracker activeTab={activeTab} /></div>
                   <div className={`w-full h-full ${activeTab === 'Grade Book' ? 'block' : 'hidden'}`}><GradeBook courses={courses} user={user} activeGroup={activeGroup} /></div>
-                  <div className={`w-full h-full ${activeTab === 'History' ? 'block' : 'hidden'}`}><ResultHistory /></div>
+                  {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
+                  {activeTab === 'Sync Diagnostics' && <div className="w-full h-full"><SyncDiagnostics /></div>}
 
                   <div className={`w-full h-full ${(activeTab === 'Datesheet' && activeExams.length > 0) ? 'block' : 'hidden'}`}>
                     <Datesheet exams={activeExams} />
@@ -969,8 +956,8 @@ function AppLayout() {
 
                     <div className="w-full space-y-4">
                       <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-[#252525] rounded-2xl border border-gray-100 dark:border-[#333] mb-8">
-                        {user?.profilePic ? (
-                          <img src={user.profilePic} alt="" className="w-12 h-12 rounded-full object-cover" />
+                        {(user?.customProfilePic || user?.portalProfilePic || user?.profilePic) ? (
+                          <img src={user.customProfilePic || user.portalProfilePic || user.profilePic} alt="" className="w-12 h-12 rounded-full object-cover" />
                         ) : (
                           <div className="w-12 h-12 bg-brand-blue rounded-full flex items-center justify-center text-white font-bold uppercase">{user?.name?.charAt(0)}</div>
                         )}
@@ -998,34 +985,6 @@ function AppLayout() {
                   </div>
                 </div>
               )}
-
-              {/* --- PRIVACY CONFIRMATION MODAL --- */}
-              {user && user.showProfilePicToCommunity == null && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
-                  <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl w-full max-w-md p-6 shadow-2xl animate-scaleIn border border-red-500/30">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full">
-                        <Users size={24} />
-                      </div>
-                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Community Profile</h2>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
-                      Welcome to the Community! Would you like to display your profile picture to other students in groups and discussions? 
-                      <br /><br />
-                      <span className="text-red-500 font-bold">If you choose NO, your primary portal picture will be hidden from others.</span>
-                    </p>
-                    <div className="flex gap-3">
-                      <button onClick={() => handlePrivacySubmit(false)} className="flex-1 py-2.5 px-4 rounded-xl font-bold text-gray-700 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-[#2C2C2C] dark:hover:bg-[#333] transition-colors">
-                        Hide Picture
-                      </button>
-                      <button onClick={() => handlePrivacySubmit(true)} className="flex-1 py-2.5 px-4 rounded-xl font-bold text-white bg-brand-blue hover:bg-blue-600 shadow-lg shadow-blue-500/20 transition-all active:scale-95">
-                        Show Picture
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* --- IN-APP SNACK NOTIFICATION --- */}
               {toast && (
                 <div className="fixed top-6 right-6 z-[9999] bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-2xl rounded-2xl p-4 w-80 animate-slideInRight">

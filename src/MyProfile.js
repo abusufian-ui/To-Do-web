@@ -65,9 +65,9 @@ const MyProfile = ({ user, onUpdateProfilePic }) => {
             className="relative group cursor-pointer"
             onClick={() => setIsPreviewOpen(true)}
           >
-            {user.profilePic ? (
+            {(user.customProfilePic || user.portalProfilePic || user.profilePic) ? (
               <img 
-                src={user.profilePic} 
+                src={user.customProfilePic || user.portalProfilePic || user.profilePic} 
                 alt={user.name} 
                 className="w-24 h-24 rounded-full object-cover shadow-lg ring-4 ring-blue-500/10 transition-opacity group-hover:opacity-75" 
               />
@@ -196,9 +196,9 @@ const MyProfile = ({ user, onUpdateProfilePic }) => {
           
           {/* Profile Pic Container */}
           <div className="relative max-w-[90vw] max-h-[75vh] flex flex-col items-center justify-center">
-            {user.profilePic ? (
+            {(user.customProfilePic || user.portalProfilePic || user.profilePic) ? (
               <img 
-                src={user.profilePic} 
+                src={user.customProfilePic || user.portalProfilePic || user.profilePic} 
                 alt={user.name} 
                 className="max-w-full max-h-[65vh] object-contain rounded-2xl shadow-2xl border border-white/10" 
               />

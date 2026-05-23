@@ -1859,7 +1859,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         if (!user.originalPortalProfilePic) {
           user.originalPortalProfilePic = finalProfilePicUrl;
         }
-        if (!user.customProfilePic) user.profilePic = finalProfilePicUrl;
+        // profilePic is now strictly for the custom uploaded picture
       }
       await user.save();
     } else {
@@ -1871,8 +1871,8 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         isPortalConnected: true,
         ucpCookie: ucpCookie,
         portalProfilePic: finalProfilePicUrl,
-        originalPortalProfilePic: finalProfilePicUrl,
-        profilePic: finalProfilePicUrl
+        originalPortalProfilePic: finalProfilePicUrl
+        // profilePic is strictly left empty so it doesn't show to community
       });
       await user.save();
     }
@@ -1940,8 +1940,7 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
       req.user.id,
       {
         customProfilePic: fileUrl,
-        profilePic: fileUrl, // Always use custom pic if uploaded
-        showProfilePicToCommunity: true // Custom pics are always public
+        profilePic: fileUrl // Always use custom pic if uploaded
       },
       { new: true }
     ).select('-password');
@@ -2032,6 +2031,29 @@ app.get('/api/timetable', auth, async (req, res) => { try { const now = new Date
 app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await StudentStats.findOne({ userId: req.user.id }) || { cgpa: "0.00", credits: "0", inprogressCr: "0" }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/results-history', auth, async (req, res) => { try { res.json(await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+
+app.get('/api/sync-diagnostics', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [attendance, announcements, submissions, grades, timetable] = await Promise.all([
+      Attendance.find({ userId }),
+      Announcement.find({ userId }),
+      Submission.find({ userId }),
+      Grade.find({ userId }),
+      Timetable.find({ userId })
+    ]);
+    res.json({
+      attendance,
+      announcements,
+      submissions,
+      grades,
+      timetable
+    });
+  } catch (error) {
+    console.error("Diagnostic error:", error);
+    res.status(500).json({ message: "Error fetching diagnostic data" });
+  }
+});
 
 app.get('/api/focus-sessions', auth, async (req, res) => { try { res.json(await FocusSession.find({ userId: req.user.id }).sort({ completedAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await new FocusSession({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });

@@ -475,8 +475,8 @@ const Header = ({
 
           <div className="relative shrink-0" ref={profileDropdownRef}>
             <button onClick={() => !isProfileOpen ? setIsProfileOpen(true) : setIsProfileOpen(false)} className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-all border border-transparent hover:border-gray-200 dark:hover:border-[#333] whitespace-nowrap shrink-0">
-              {user?.profilePic ? (
-                <img src={user.profilePic} alt={user.name} className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/20 shrink-0" />
+              {(user?.customProfilePic || user?.portalProfilePic || user?.profilePic) ? (
+                <img src={user.customProfilePic || user.portalProfilePic || user.profilePic} alt={user.name} className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-white/20 shrink-0" />
               ) : (
                 <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-md uppercase shrink-0">
                   {user?.name?.charAt(0) || 'U'}
