@@ -10,6 +10,14 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 
+// 🚨 NEW: CHANGE DETECTOR IMPORTS
+const { 
+  detectAttendanceChanges, 
+  detectAnnouncementChanges, 
+  detectSubmissionChanges, 
+  detectGradeChanges 
+} = require('./services/changeDetector');
+
 // 🚨 NEW: CLOUDINARY IMPORTS
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -49,6 +57,7 @@ const Assessment = require('./models/Assessment');
 const Exam = require('./models/Exam'); // 🚨 NEW: DATESHEET EXAM MODEL
 const Group = require('./models/Group');
 const GroupInvitation = require('./models/GroupInvitation');
+const SyncLog = require('./models/SyncLog'); // 🚨 NEW: SYNC DIAGNOSTICS LOG
 const { spawn } = require('child_process');
 
 // --- CONFIGURATION ---
@@ -657,7 +666,7 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
 
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
-    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic } = req.body;
+    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic, syncLogId } = req.body;
     const userId = req.user.id;
     const user = await User.findById(userId);
 
@@ -665,15 +674,21 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     const mode = syncMode || 'AUTO_SYNC';
 
     let activePortalId = portalId;
-    if (activePortalId === "BACKGROUND_SYNC" && user.portalId) {
+    if ((!activePortalId || activePortalId === "BACKGROUND_SYNC") && user.portalId) {
       activePortalId = user.portalId;
     }
 
-    if (!activePortalId) throw new Error("Student ID not detected.");
+    if (!activePortalId) {
+      console.error(`[SYNC] Student ID not detected. portalId provided: ${portalId}, user.portalId: ${user.portalId}`);
+      throw new Error("Student ID not detected.");
+    }
     if (user.portalId && user.portalId.toUpperCase() !== activePortalId.toUpperCase()) {
       throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${activePortalId}.`);
     }
     if (!user.portalId) user.portalId = activePortalId.toUpperCase();
+
+    // ── Tracker for SyncLog ──
+    let changesSummary = {};
 
     // ── Extract enrolled sections from courseMap and ensure Courses exist ──
     const enrolledSections = [];
@@ -723,15 +738,19 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
         if (att.records) {
           const oldAtt = await Attendance.findOne({ userId, courseUrl: att.courseUrl });
-          if (oldAtt && oldAtt.summary && att.summary) {
-            const oldAbsents = oldAtt.summary.conducted - oldAtt.summary.attended;
-            const newAbsents = att.summary.conducted - att.summary.attended;
-            if (newAbsents > oldAbsents) {
-              sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${newAbsents}`);
-              if (newAbsents >= 10 && oldAbsents < 10) {
-                sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
-              }
+          const changes = detectAttendanceChanges(oldAtt, att);
+          
+          if (changes) {
+            if (changes.isNewAbsent) {
+              sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${changes.newAbsents}`);
             }
+            if (changes.isCritical) {
+              sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
+            }
+            // Emit granular WebSocket event
+            io.to(userId.toString()).emit('attendance_update', changes);
+            changesSummary.attendance = changesSummary.attendance || [];
+            if (!changesSummary.attendance.includes(att.courseName)) changesSummary.attendance.push(att.courseName);
           }
           await Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true });
         }
@@ -744,10 +763,13 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
         if (ann.news) {
           const oldAnn = await Announcement.findOne({ userId, courseUrl: ann.courseUrl });
-          if (oldAnn && oldAnn.news) {
-            if (ann.news.length > oldAnn.news.length) {
-              sendPush(user, `New Announcement: ${ann.courseName} 📢`, ann.news[0].subject || "Tap to view details.");
-            }
+          const changes = detectAnnouncementChanges(oldAnn, ann);
+          
+          if (changes) {
+            sendPush(user, `New Announcement: ${ann.courseName} 📢`, changes.latestSubject || "Tap to view details.");
+            io.to(userId.toString()).emit('announcement_update', changes);
+            changesSummary.announcements = changesSummary.announcements || [];
+            if (!changesSummary.announcements.includes(ann.courseName)) changesSummary.announcements.push(ann.courseName);
           }
           await Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true });
         }
@@ -760,6 +782,15 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
 
         if (sub.tasks) {
+          const oldSub = await Submission.findOne({ userId, courseUrl: sub.courseUrl });
+          const changes = detectSubmissionChanges(oldSub, sub);
+          
+          if (changes) {
+            io.to(userId.toString()).emit('submission_update', changes);
+            changesSummary.submissions = changesSummary.submissions || [];
+            if (!changesSummary.submissions.includes(sub.courseName)) changesSummary.submissions.push(sub.courseName);
+          }
+
           await Submission.findOneAndUpdate({ userId, courseUrl: sub.courseUrl }, { ...sub, lastUpdated: new Date() }, { upsert: true });
 
           const sectionCode = sectionLookup[sub.courseName] || sectionLookup[sub.courseUrl] || '';
@@ -774,10 +805,12 @@ app.post('/api/extension-sync', auth, async (req, res) => {
               const existingTaskMap = new Map(existingTasks.map(t => [`${(t.title || '').trim().toLowerCase()}_${(t.dueDate || '').trim()}`, t]));
 
               let merged = false;
+              let newPeerTasks = [];
               sub.tasks.forEach(incomingTask => {
                 const fingerprint = `${(incomingTask.title || '').trim().toLowerCase()}_${(incomingTask.dueDate || '').trim()}`;
                 if (!existingTaskMap.has(fingerprint)) {
                   existingTasks.push(incomingTask);
+                  newPeerTasks.push(incomingTask);
                   merged = true;
                 }
               });
@@ -788,6 +821,13 @@ app.post('/api/extension-sync', auth, async (req, res) => {
                   { courseUrl: sub.courseUrl, courseName: sub.courseName, tasks: existingTasks, lastUpdated: new Date() },
                   { upsert: true }
                 );
+                // Broadcast to peer as well
+                io.to(peerId.toString()).emit('submission_update', {
+                  type: 'SUBMISSION_UPDATE',
+                  courseName: sub.courseName,
+                  newCount: newPeerTasks.length,
+                  newTasks: newPeerTasks
+                });
               }
             }
           }
@@ -876,6 +916,15 @@ await Course.findOneAndUpdate(
       if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
         if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
+        
+        const oldGrade = await Grade.findOne({ userId, courseUrl: grade.courseUrl });
+        const changes = detectGradeChanges(oldGrade, grade);
+        if (changes) {
+          sendPush(user, `Grade Update: ${grade.courseName} 📊`, `Your total weight is now ${changes.newPercentage}%`);
+          io.to(userId.toString()).emit('grade_update', changes);
+          changesSummary.grades = changesSummary.grades || [];
+          if (!changesSummary.grades.includes(grade.courseName)) changesSummary.grades.push(grade.courseName);
+        }
         await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true });
       }
     }
@@ -927,11 +976,91 @@ await Course.findOneAndUpdate(
       $set: updateFields
     });
 
+    if (syncLogId) {
+      // Clean up empty changesSummary
+      if (Object.keys(changesSummary).length === 0) changesSummary = null;
+
+      await SyncLog.findByIdAndUpdate(syncLogId, {
+        status: 'SUCCESS',
+        endTime: new Date(),
+        changesSummary: changesSummary
+      });
+    }
+
     res.json({ message: "Sync & Diffing complete securely!" });
 
   } catch (error) {
+    const { syncLogId } = req.body;
+    if (syncLogId) {
+      await SyncLog.findByIdAndUpdate(syncLogId, {
+        status: 'FAILED',
+        error: error.message,
+        endTime: new Date()
+      });
+    }
     const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
     res.status(statusCode).json({ message: error.message });
+  }
+});
+
+app.post('/api/force-server-sync', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+    
+    if (!user || !user.ucpCookie || !user.portalId) {
+      return res.status(400).json({ message: "No cookie or portalId found. Please login again." });
+    }
+
+    // Create pending SyncLog
+    const syncLog = new SyncLog({
+      userId: user._id,
+      portalId: user.portalId,
+      mode: 'MANUAL_FULL',
+      status: 'PENDING',
+      startTime: new Date()
+    });
+    await syncLog.save();
+
+    // Acknowledge immediately to prevent mobile app timeouts
+    res.json({ message: "Server-side scraping triggered successfully." });
+
+    // Run the scrape in the background
+    setTimeout(async () => {
+      const startTime = Date.now();
+      try {
+        const { scrapeServerSide } = require('./services/scraperEngine');
+        const scrapedPayload = await scrapeServerSide(user.ucpCookie, 'FULL', user.portalId);
+
+        // Append log ID to payload so extension-sync can mark it as success
+        scrapedPayload.syncLogId = syncLog._id.toString();
+
+        const jwt = require('jsonwebtoken');
+        const axios = require('axios');
+        const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
+        const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
+        
+        await axios.post(syncUrl, scrapedPayload, {
+          headers: {
+            'x-auth-token': token,
+            'Content-Type': 'application/json'
+          }
+        });
+      } catch (error) {
+        console.error("[FORCE SYNC BACKGROUND ERROR]", error.message);
+        syncLog.status = 'FAILED';
+        syncLog.error = error.message;
+        syncLog.endTime = new Date();
+        syncLog.durationMs = Date.now() - startTime;
+        await syncLog.save();
+      }
+    }, 100);
+
+  } catch (error) {
+    console.error("[FORCE SYNC ERROR]", error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ message: error.message });
+    }
   }
 });
 
@@ -2064,22 +2193,53 @@ app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await S
 app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/results-history', auth, async (req, res) => { try { res.json(await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
+app.get('/api/sync-diagnostics/users', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user.isAdmin) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const connectedUsers = await User.find({})
+      .select('_id name email portalId isPortalConnected')
+      .sort({ name: 1 });
+    res.json(connectedUsers);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching connected users" });
+  }
+});
+
 app.get('/api/sync-diagnostics', auth, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const [attendance, announcements, submissions, grades, timetable] = await Promise.all([
-      Attendance.find({ userId }),
-      Announcement.find({ userId }),
-      Submission.find({ userId }),
-      Grade.find({ userId }),
-      Timetable.find({ userId })
+    let targetUserId = req.user.id;
+    
+    if (req.query.targetUserId) {
+      const requester = await User.findById(req.user.id);
+      if (requester.isAdmin) {
+        targetUserId = req.query.targetUserId;
+      }
+    }
+
+    const [attendance, announcements, submissions, grades, timetable, syncLogs, courses, studentStats, userInfo] = await Promise.all([
+      Attendance.find({ userId: targetUserId }),
+      Announcement.find({ userId: targetUserId }),
+      Submission.find({ userId: targetUserId }),
+      Grade.find({ userId: targetUserId }),
+      Timetable.find({ userId: targetUserId }),
+      SyncLog.find({ userId: targetUserId }).sort({ startTime: -1 }).limit(50),
+      Course.find({ userId: targetUserId }),
+      StudentStats.findOne({ userId: targetUserId }),
+      User.findById(targetUserId).select('-password')
     ]);
     res.json({
       attendance,
       announcements,
       submissions,
       grades,
-      timetable
+      timetable,
+      syncLogs,
+      courses,
+      studentStats,
+      user: userInfo
     });
   } catch (error) {
     console.error("Diagnostic error:", error);
@@ -2891,29 +3051,38 @@ cron.schedule('0 8 * * *', () => sendSyncPromptToAll("⚠️ Pending Submissions
 cron.schedule('0 13 * * *', () => sendSyncPromptToAll("📊 End of Day Sync", "Your portal data might have changed. Keep your dashboard up to date before tomorrow!"));
 
 // ==========================================
-// 🚀 THE MASTER BACKGROUND SCRAPER ENGINE (CRON)
+// 🚀 TIERED BACKGROUND SCRAPER ENGINES (CRON)
 // ==========================================
 const { scrapeServerSide } = require('./services/scraperEngine');
 
-// Run every 2 hours between 8 AM and 6 PM PKT (3 AM - 1 PM UTC)
-cron.schedule('0 3-13/2 * * *', async () => {
-  console.log("[CRON] 🌐 Starting Background Server-Side Scrape Engine...");
+// Helper to run background sync for a specific mode
+const runTieredSync = async (mode, logName) => {
+  console.log(`[CRON] 🌐 Starting ${logName} Scrape Engine...`);
   try {
     const activeUsers = await User.find({
       isPortalConnected: true,
       ucpCookie: { $exists: true, $ne: null }
     });
 
-    console.log(`[CRON] Found ${activeUsers.length} users with cookies for background sync.`);
+    console.log(`[CRON] Found ${activeUsers.length} users for ${logName}.`);
 
     for (let user of activeUsers) {
+      const syncLog = new SyncLog({
+        userId: user._id,
+        portalId: user.portalId,
+        mode: mode,
+        status: 'PENDING',
+        startTime: new Date()
+      });
+      await syncLog.save();
+      const startTime = Date.now();
+
       try {
-        console.log(`[CRON] Scraping for ${user.email} (${user.portalId || 'Unknown'})...`);
-        const scrapedPayload = await scrapeServerSide(user.ucpCookie, 'HIGH', user.portalId);
+        const scrapedPayload = await scrapeServerSide(user.ucpCookie, mode, user.portalId);
+        scrapedPayload.syncLogId = syncLog._id.toString();
 
         // Generate an internal token to call our own endpoint
         const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
-        
         const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
         
         await axios.post(syncUrl, scrapedPayload, {
@@ -2922,13 +3091,19 @@ cron.schedule('0 3-13/2 * * *', async () => {
             'Content-Type': 'application/json'
           }
         });
-
-        console.log(`[CRON] Successfully background synced ${user.email}`);
+        
+        await SyncLog.findByIdAndUpdate(syncLog._id, { durationMs: Date.now() - startTime });
       } catch (err) {
-        console.error(`[CRON] Failed to background sync ${user.email}:`, err.message);
-        // If session expired, notify user
+        console.error(`[CRON] Failed ${logName} for ${user.email}:`, err.message);
+        
+        syncLog.status = 'FAILED';
+        syncLog.error = err.message;
+        syncLog.endTime = new Date();
+        syncLog.durationMs = Date.now() - startTime;
+        await syncLog.save();
         if (err.message === "Session Expired") {
           await User.findByIdAndUpdate(user._id, { isPortalConnected: false });
+          // Note: Notification will be sent by the first job that detects the expiry
           await sendPush(
             user,
             "UCP Session Expired ⚠️",
@@ -2941,9 +3116,21 @@ cron.schedule('0 3-13/2 * * *', async () => {
       }
     }
   } catch (error) {
-    console.error(`[CRON] Master Scraper Engine Error:`, error.message);
+    console.error(`[CRON] ${logName} Engine Error:`, error.message);
   }
-});
+};
+
+// 1. Submissions - Every 5 minutes during university hours (8 AM - 6 PM PKT = 3 AM - 1 PM UTC)
+cron.schedule('*/5 3-13 * * *', () => runTieredSync('SUBMISSIONS_ONLY', 'Submissions (5m)'));
+
+// 2. Attendance/Grades - Every 15 minutes during university hours
+cron.schedule('*/15 3-13 * * *', () => runTieredSync('ATTENDANCE_GRADES', 'Attendance/Grades (15m)'));
+
+// 3. Announcements - Every 30 minutes during university hours
+cron.schedule('*/30 3-13 * * *', () => runTieredSync('ANNOUNCEMENTS', 'Announcements (30m)'));
+
+// 4. Full Sync (History/Timetable) - Every 6 hours
+cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync (6h)'));
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));
