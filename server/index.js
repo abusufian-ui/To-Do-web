@@ -3043,12 +3043,12 @@ async function sendSyncPromptToAll(title, body) {
   }
 }
 
-// 9:00 AM PKT = 4:00 AM UTC
-cron.schedule('0 4 * * *', () => sendSyncPromptToAll("🚀 Don't Fall Behind!", "Stay on top of your classes. Tap here to sync your latest attendance and grades now."));
-// 1:00 PM PKT = 8:00 AM UTC
-cron.schedule('0 8 * * *', () => sendSyncPromptToAll("⚠️ Pending Submissions?", "Make sure you haven't missed any new assignments. Sync your portal to check."));
-// 6:00 PM PKT = 1:00 PM UTC
-cron.schedule('0 13 * * *', () => sendSyncPromptToAll("📊 End of Day Sync", "Your portal data might have changed. Keep your dashboard up to date before tomorrow!"));
+// 9:00 AM PKT
+cron.schedule('0 9 * * *', () => sendSyncPromptToAll("🚀 Don't Fall Behind!", "Stay on top of your classes. Tap here to sync your latest attendance and grades now."), { timezone: "Asia/Karachi" });
+// 1:00 PM PKT
+cron.schedule('0 13 * * *', () => sendSyncPromptToAll("⚠️ Pending Submissions?", "Make sure you haven't missed any new assignments. Sync your portal to check."), { timezone: "Asia/Karachi" });
+// 6:00 PM PKT
+cron.schedule('0 18 * * *', () => sendSyncPromptToAll("📊 End of Day Sync", "Your portal data might have changed. Keep your dashboard up to date before tomorrow!"), { timezone: "Asia/Karachi" });
 
 // ==========================================
 // 🚀 TIERED BACKGROUND SCRAPER ENGINES (CRON)
@@ -3120,17 +3120,17 @@ const runTieredSync = async (mode, logName) => {
   }
 };
 
-// 1. Submissions - Every 5 minutes during university hours (8 AM - 6 PM PKT = 3 AM - 1 PM UTC)
-cron.schedule('*/5 3-13 * * *', () => runTieredSync('SUBMISSIONS_ONLY', 'Submissions (5m)'));
+// 1. Submissions - Every 5 minutes during university hours (8 AM - 6 PM PKT)
+cron.schedule('*/5 8-18 * * *', () => runTieredSync('SUBMISSIONS_ONLY', 'Submissions (5m)'), { timezone: "Asia/Karachi" });
 
 // 2. Attendance/Grades - Every 15 minutes during university hours
-cron.schedule('*/15 3-13 * * *', () => runTieredSync('ATTENDANCE_GRADES', 'Attendance/Grades (15m)'));
+cron.schedule('*/15 8-18 * * *', () => runTieredSync('ATTENDANCE_GRADES', 'Attendance/Grades (15m)'), { timezone: "Asia/Karachi" });
 
 // 3. Announcements - Every 30 minutes during university hours
-cron.schedule('*/30 3-13 * * *', () => runTieredSync('ANNOUNCEMENTS', 'Announcements (30m)'));
+cron.schedule('*/30 8-18 * * *', () => runTieredSync('ANNOUNCEMENTS', 'Announcements (30m)'), { timezone: "Asia/Karachi" });
 
 // 4. Full Sync (History/Timetable) - Every 6 hours
-cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync (6h)'));
+cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync (6h)'), { timezone: "Asia/Karachi" });
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));

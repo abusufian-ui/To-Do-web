@@ -393,23 +393,28 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                         instructor = instructorMap.get(matchedCourseData.code) || "Unknown Instructor";
                     } else {
                         const em = $ttDoc(el).find('em');
-                        instructor = em.length ? em.text().trim() : "Unknown Instructor";
+                        instructor = em.length ? em.text().replace(/\s+/g, ' ').trim() : "Unknown Instructor";
                     }
 
                     let room = 'TBA';
-                    const roomMatch = rawText.match(/(?:Room[:\s]*|)(\b[A-Z]-\d{2,3}\b|\bLab[\s-]?\d+\b)/i);
+                    const roomMatch = rawText.match(/(?:Room[:\s]*|)(\b[A-Z]-[A-Za-z0-9]+\b|\bLab[\s-]?\d+\b)/i);
                     if (roomMatch) {
                         room = roomMatch[1].toUpperCase();
                     } else {
                         const spans = $ttDoc(el).find('span');
                         if (spans.length > 0) {
-                            room = $ttDoc(spans[spans.length - 1]).text().replace(/room\s*:/i, '').trim() || 'TBA';
+                            room = $ttDoc(spans[spans.length - 1]).text()
+                                .replace(/room\s*:/i, '')
+                                .replace(/\s+/g, ' ')
+                                .replace(/\(\s+/g, '(')
+                                .replace(/\s+\)/g, ')')
+                                .trim() || 'TBA';
                         }
                     }
 
                     const parentGroup = $ttDoc(el).closest('.cd-schedule__group');
                     const dayHeader = parentGroup.find('.top-info span, .cd-schedule__top-info span');
-                    const day = dayHeader.length ? dayHeader.text().trim() : (parentGroup.attr('data-date') || parentGroup.attr('id') || 'Unknown');
+                    const day = dayHeader.length ? dayHeader.text().replace(/\s+/g, ' ').trim() : (parentGroup.attr('data-date') || parentGroup.attr('id') || 'Unknown');
 
                     timetableData.push({ 
                         id: classIdCounter++, 
