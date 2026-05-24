@@ -72,7 +72,6 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
         const dashRes = await fetchWithTimeout('https://horizon.ucp.edu.pk/student/dashboard', defaultOptions);
         console.log("[SERVER_SCRAPER] Dashboard fetched, status:", dashRes.status);
         
-        // Follow redirects check
         if (dashRes.url && dashRes.url.toLowerCase().includes('login')) {
             throw new Error("Session Expired");
         }
@@ -120,8 +119,8 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                             courseCode = subHeading.text().trim();
                         } else {
                             const allSubheadings = $enrolled(el).find('span.sub-heading');
-                            if (allSubheadings.length > 0 && !allSubheadings.eq(0).text().toLowerCase().includes('credit')) {
-                                courseCode = allSubheadings.eq(0).text().trim();
+                            if (allSubheadings.length > 0 && !$enrolled(allSubheadings[0]).text().toLowerCase().includes('credit')) {
+                                courseCode = $enrolled(allSubheadings[0]).text().trim();
                             }
                         }
                     }
@@ -450,7 +449,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                             const courseName = $dsDoc(tds[1]).text().trim();
                             const date = $dsDoc(tds[3]).text().trim();
                             if (courseName && date) {
-                                datesheetData.push({ courseName, instructor: $dsDoc(tds[2]).text().trim(), date, time: $dsDoc(tds[4]).text().trim(), venue: $dsDoc(tds[5]).text().trim() || "TBA" });
+                                datesheetData.push({ courseName, instructor: $dsDoc(tds[2]).text().trim() || "", date, time: $dsDoc(tds[4]).text().trim() || "", venue: $dsDoc(tds[5]).text().trim() || "TBA" });
                             }
                         }
                     });
