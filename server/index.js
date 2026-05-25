@@ -2901,10 +2901,16 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
 });
 
 // ==========================================
-// 🏆 RELATIVE GRADING & LEADERBOARD API (SECURED)
+// 🏆 RELATIVE GRADING & LEADERBOARD API (ADMIN ONLY)
 // ==========================================
-app.get('/api/course/:courseCode/section/:section/leaderboard', async (req, res) => {
+app.get('/api/course/:courseCode/section/:section/leaderboard', auth, async (req, res) => {
   try {
+    // 🔒 Admin-only access
+    const requestingUser = await User.findById(req.user.id);
+    if (!requestingUser || !requestingUser.isAdmin) {
+      return res.status(403).json({ message: "Access denied. Leaderboard is restricted to administrators." });
+    }
+
     const { courseCode, section } = req.params;
 
     const cleanCourseCode = courseCode.replace(/\s+/g, '');
@@ -3067,6 +3073,12 @@ const runTieredSync = async (mode, logName) => {
     console.log(`[CRON] Found ${activeUsers.length} users for ${logName}.`);
 
     for (let user of activeUsers) {
+      // Skip if last synced less than 3 minutes ago
+      if (user.lastSyncAt && (Date.now() - new Date(user.lastSyncAt).getTime()) < 3 * 60 * 1000) {
+        console.log(`[CRON] ⏭️ Skipping ${user.email} - synced ${Math.round((Date.now() - new Date(user.lastSyncAt).getTime()) / 1000)}s ago.`);
+        continue;
+      }
+
       const syncLog = new SyncLog({
         userId: user._id,
         portalId: user.portalId,
@@ -3103,7 +3115,6 @@ const runTieredSync = async (mode, logName) => {
         await syncLog.save();
         if (err.message === "Session Expired") {
           await User.findByIdAndUpdate(user._id, { isPortalConnected: false });
-          // Note: Notification will be sent by the first job that detects the expiry
           await sendPush(
             user,
             "UCP Session Expired ⚠️",
@@ -3114,23 +3125,20 @@ const runTieredSync = async (mode, logName) => {
           );
         }
       }
+
+      // Gentle inter-user delay to avoid overwhelming UCP servers
+      await new Promise(r => setTimeout(r, 2000));
     }
   } catch (error) {
     console.error(`[CRON] ${logName} Engine Error:`, error.message);
   }
 };
 
-// 1. Submissions - Every 5 minutes during university hours (8 AM - 6 PM PKT)
-cron.schedule('*/5 8-18 * * *', () => runTieredSync('SUBMISSIONS_ONLY', 'Submissions (5m)'), { timezone: "Asia/Karachi" });
+// 1. Submissions + Attendance + Grades - Every 20 minutes during university hours (8 AM - 6 PM PKT)
+cron.schedule('*/20 8-18 * * *', () => runTieredSync('HIGH', 'Submissions/Attendance/Grades (20m)'), { timezone: "Asia/Karachi" });
 
-// 2. Attendance/Grades - Every 15 minutes during university hours
-cron.schedule('*/15 8-18 * * *', () => runTieredSync('ATTENDANCE_GRADES', 'Attendance/Grades (15m)'), { timezone: "Asia/Karachi" });
-
-// 3. Announcements - Every 30 minutes during university hours
-cron.schedule('*/30 8-18 * * *', () => runTieredSync('ANNOUNCEMENTS', 'Announcements (30m)'), { timezone: "Asia/Karachi" });
-
-// 4. Full Sync (History/Timetable) - Every 6 hours
-cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync (6h)'), { timezone: "Asia/Karachi" });
+// 2. Full Sync (History/Timetable/Announcements) - Every 6 hours
+cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync + Announcements (6h)'), { timezone: "Asia/Karachi" });
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));

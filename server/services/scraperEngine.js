@@ -51,7 +51,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
 
         const courseMap = new Map();
         let exactInProgressCr = 0;
-        const COURSE_CONCURRENCY = 6;
+        const COURSE_CONCURRENCY = 3;
 
         const patchCourseMap = (rawHtml, url) => {
             const codeRegex = /([A-Z]{2,6}\d{3,4}(?:-[A-Z0-9]+)+)/i;
@@ -285,8 +285,24 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
 
                             const actionText = $doc(tds[6]).text().toLowerCase();
                             const isSubbed = actionText.includes('submitted') || ($doc(row).text().toLowerCase()).includes('submitted successfully');
+                            
+                            const parseUCPDate = (str) => {
+                                if (!str) return "";
+                                let clean = str.replace('-', '').replace(/\s+/g, ' ').trim();
+                                if (!clean) return "";
+                                const d = new Date(clean + ' GMT+0500');
+                                return isNaN(d) ? str : d.toISOString();
+                            };
 
-                            tasks.push({ title: name, description: desc.replace(/\s+/g, ' ').trim(), startDate: $doc(tds[3]).text().trim(), dueDate: $doc(tds[4]).text().trim(), status: isSubbed ? "Submitted" : "Pending", attachmentUrl: attachmentLink, submissionUrl: targetUrl });
+                            tasks.push({ 
+                                title: name, 
+                                description: desc.replace(/\s+/g, ' ').trim(), 
+                                startDate: parseUCPDate($doc(tds[3]).text()), 
+                                dueDate: parseUCPDate($doc(tds[4]).text()), 
+                                status: isSubbed ? "Submitted" : "Pending", 
+                                attachmentUrl: attachmentLink, 
+                                submissionUrl: targetUrl 
+                            });
                         }
                     }
                 });
