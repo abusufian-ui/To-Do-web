@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  :root:not(.dark) .text-gray-400 {
+    color: #4b5563 !important; /* Maps to Tailwind gray-600 */
+  }
+  
+  :root:not(.dark) .text-gray-500 {
+    color: #374151 !important; /* Maps to Tailwind gray-700 */
+  }
+  
+  :root:not(.dark) .text-gray-600 {
+    color: #1f2937 !important; /* Maps to Tailwind gray-800 */
+  }
+  
+  :root:not(.dark) .bg-gray-50 {
+    background-color: #ffffff !important;
+  }
+  
+  :root:not(.dark) .bg-gray-100 {
+    background-color: #f3f4f6 !important;
+  }
+}
+
+/* Custom Scrollbar Styles */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.5);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.4);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.6);
+}

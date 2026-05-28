@@ -1,0 +1,382 @@
+import React, { useState } from 'react';
+import { 
+  CheckSquare, Calendar, StickyNote, BarChart3, Settings, 
+  ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
+  CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History, Award,
+  GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2, Bell, ClipboardCheck, FileUp,
+  Link, Cloud, Globe, Mail
+} from 'lucide-react';
+
+const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
+  const [isCashExpanded, setIsCashExpanded] = useState(false);
+  const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(false);
+  const [isHabitsExpanded, setIsHabitsExpanded] = useState(false);
+  const [isLinksExpanded, setIsLinksExpanded] = useState(false); 
+
+  const menuItems = [
+    { name: 'Tasks', icon: CheckSquare },
+    { name: 'Calendar', icon: Calendar },
+    { name: 'Notes', icon: StickyNote },
+  ];
+
+  const academicsSubItems = [
+    { id: 'Timetable', label: 'Timetable', icon: Clock },
+    { id: 'Announcements', label: 'Announcements', icon: Bell },          
+    { id: 'Attendance', label: 'Attendance', icon: ClipboardCheck },      
+    { id: 'Submissions', label: 'Submissions', icon: FileUp },
+    { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
+    { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
+    { id: 'History', label: 'History', icon: Award },
+  ];
+
+  const cashSubItems = [
+    { id: 'Cash-Overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'Cash-Transactions', label: 'Transactions', icon: CreditCard },
+    { id: 'Cash-Analytics', label: 'Analytics', icon: PieChart },
+    { id: 'Cash-Budget', label: 'Budget', icon: PiggyBank },
+    { id: 'Cash-Debts', label: 'Debts & Loans', icon: ArrowRightLeft },
+  ];
+
+  const habitsSubItems = [
+    { id: 'Habits-Overview', label: 'Protocol Overview', icon: LayoutDashboard },
+    { id: 'Habits-Namaz', label: 'Namaz Tracker', icon: Shield },
+    { id: 'Habits-Tracker', label: 'Active Targets', icon: Activity },
+    { id: 'Habits-Analytics', label: 'Analytics Engine', icon: BarChart3 },
+  ];
+
+  const linksSubItems = [
+    { id: 'Link-Horizon', label: 'Horizon Portal', icon: Globe, url: 'https://horizon.ucp.edu.pk' },
+    { id: 'Link-Email', label: 'Uni Email', icon: Mail, url: 'https://outlook.office.com/mail/' },
+    { id: 'Link-Cloud', label: 'Cloud Workspace', icon: Cloud, url: 'http://20.219.15.106/#/', adminOnly: true },
+  ];
+
+  const handleCashClick = () => {
+    if (!isOpen) toggleSidebar();
+    setIsCashExpanded(!isCashExpanded);
+    if (isAcademicsExpanded) setIsAcademicsExpanded(false);
+    if (isHabitsExpanded) setIsHabitsExpanded(false);
+    if (isLinksExpanded) setIsLinksExpanded(false);
+  };
+
+  const handleAcademicsClick = () => {
+    if (!isOpen) toggleSidebar();
+    setIsAcademicsExpanded(!isAcademicsExpanded);
+    if (isCashExpanded) setIsCashExpanded(false);
+    if (isHabitsExpanded) setIsHabitsExpanded(false);
+    if (isLinksExpanded) setIsLinksExpanded(false);
+  };
+
+  const handleHabitsClick = () => {
+    if (!isOpen) toggleSidebar();
+    setIsHabitsExpanded(!isHabitsExpanded);
+    if (isCashExpanded) setIsCashExpanded(false);
+    if (isAcademicsExpanded) setIsAcademicsExpanded(false);
+    if (isLinksExpanded) setIsLinksExpanded(false);
+  };
+
+  const handleLinksClick = () => {
+    if (!isOpen) toggleSidebar();
+    setIsLinksExpanded(!isLinksExpanded);
+    if (isCashExpanded) setIsCashExpanded(false);
+    if (isAcademicsExpanded) setIsAcademicsExpanded(false);
+    if (isHabitsExpanded) setIsHabitsExpanded(false);
+  };
+
+  // 🚨 SMART CLICK HANDLER: Automatically slides away sidebar if Grade Book is selected
+  const handleSubItemClick = (id) => {
+    setActiveTab(id);
+    if (id === 'Grade Book' && isOpen) {
+      toggleSidebar();
+    }
+  };
+
+  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
+  const isCashActive = activeTab.startsWith('Cash');
+  const isHabitsActive = activeTab.startsWith('Habits');
+
+  return (
+    <div className={`
+      fixed inset-y-0 left-0 md:relative z-[60] h-screen bg-white dark:bg-[#1E1E1E] border-r border-gray-200 dark:border-[#2C2C2C] 
+      flex flex-col transition-transform duration-300 ease-in-out md:transition-all
+      ${isOpen ? 'translate-x-0 w-64 p-6 shadow-2xl md:shadow-none' : '-translate-x-full md:translate-x-0 md:w-20 p-6 md:p-4 md:items-center'}
+    `}>
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #52525b; }
+      `}</style>
+      
+      {isOpen && (
+        <h2 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4 animate-fadeIn whitespace-nowrap shrink-0">
+          Tools
+        </h2>
+      )}
+
+      <div className={`flex flex-col gap-2 w-full flex-1 ${isOpen ? 'overflow-y-auto custom-scrollbar' : 'overflow-visible'}`}>
+        
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.name;
+          return (
+            <button
+              key={item.name}
+              onClick={() => setActiveTab(item.name)} 
+              className={`
+                w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+                ${isActive 
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'
+                }
+                ${!isOpen && 'md:justify-center'}
+              `}
+            >
+              <div className="relative"><Icon size={20} strokeWidth={2} /></div>
+              {isOpen && <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">{item.name}</span>}
+              
+              {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">{item.name}</div>}
+            </button>
+          );
+        })}
+
+        {/* --- ACADEMICS SECTION --- */}
+        <button
+          onClick={handleAcademicsClick}
+          className={`
+            w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+            ${isAcademicsActive && !isOpen 
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
+            ${!isOpen && 'md:justify-center'}
+          `}
+        >
+          <GraduationCap size={20} strokeWidth={2} />
+          {isOpen && (
+            <>
+              <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Academics</span>
+              {isAcademicsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </>
+          )}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Academics</div>}
+        </button>
+
+        {isOpen && isAcademicsExpanded && (
+          <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
+            {academicsSubItems.filter(sub => !sub.adminOnly || (user && user.isAdmin)).map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => handleSubItemClick(sub.id)}
+                className={`
+                  w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
+                  ${activeTab === sub.id 
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-medium' 
+                    : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10'}
+                `}
+              >
+                <sub.icon size={16} />
+                <span>{sub.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* --- CASH MANAGER SECTION --- */}
+        <button
+          onClick={handleCashClick}
+          className={`
+            w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+            ${isCashActive && !isOpen 
+              ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' 
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
+            ${!isOpen && 'md:justify-center'}
+          `}
+        >
+          <Wallet size={20} strokeWidth={2} />
+          {isOpen && (
+            <>
+              <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Cash Manager</span>
+              {isCashExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </>
+          )}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Cash Management</div>}
+        </button>
+
+        {isOpen && isCashExpanded && (
+          <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
+            {cashSubItems.map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => handleSubItemClick(sub.id)}
+                className={`
+                  w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
+                  ${activeTab === sub.id 
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20 font-medium' 
+                    : 'text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10'}
+                `}
+              >
+                <sub.icon size={16} />
+                <span>{sub.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* --- HABITS SECTION --- */}
+        <button
+          onClick={handleHabitsClick}
+          className={`
+            w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+            ${isHabitsActive && !isOpen 
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'}
+            ${!isOpen && 'md:justify-center'}
+          `}
+        >
+          <Activity size={20} strokeWidth={2} />
+          {isOpen && (
+            <>
+              <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Habit Protocol</span>
+              {isHabitsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </>
+          )}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Habit Protocol</div>}
+        </button>
+
+        {isOpen && isHabitsExpanded && (
+          <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
+            {habitsSubItems.map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => handleSubItemClick(sub.id)}
+                className={`
+                  w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm
+                  ${activeTab === sub.id 
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20 font-medium' 
+                    : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/10'}
+                `}
+              >
+                <sub.icon size={16} />
+                <span>{sub.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* --- EXTERNAL LINKS SECTION --- */}
+        <button
+          onClick={handleLinksClick}
+          className={`
+            w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+            text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white
+            ${!isOpen && 'md:justify-center'}
+          `}
+        >
+          <Link size={20} strokeWidth={2} />
+          {isOpen && (
+            <>
+              <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Quick Links</span>
+              {isLinksExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </>
+          )}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Quick Links</div>}
+        </button>
+
+        {isOpen && isLinksExpanded && (
+          <div className="mt-1 ml-4 space-y-1 border-l-2 border-gray-100 dark:border-[#333] pl-2 animate-slideDown">
+            {linksSubItems.filter(sub => !sub.adminOnly || (user && user.isAdmin)).map((sub) => (
+              <a
+                key={sub.id}
+                href={sub.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center gap-3 p-2 rounded-md transition-all text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10"
+              >
+                <sub.icon size={16} />
+                <span>{sub.label}</span>
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* --- ADMIN SECTION --- */}
+        {user && user.isAdmin && (
+          <button
+            onClick={() => handleSubItemClick('Admin')}
+            className={`
+              w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+              ${activeTab === 'Admin' 
+                ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' 
+                : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'}
+              ${!isOpen && 'md:justify-center'}
+            `}
+          >
+            <div className="relative"><Shield size={20} strokeWidth={2} /></div>
+            {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Admin Panel</span>}
+            {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
+          </button>
+        )}
+
+      </div>
+
+      <div className="mt-auto w-full pt-4 border-t border-gray-200 dark:border-[#2C2C2C] flex flex-col gap-2 shrink-0 bg-white dark:bg-[#1E1E1E]">
+        <button
+          onClick={() => handleSubItemClick('Settings')}
+          className={`
+            flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative w-full
+            ${activeTab === 'Settings' 
+              ? 'bg-gray-100 dark:bg-[#333] text-gray-900 dark:text-white font-bold' 
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] hover:text-gray-900 dark:hover:text-white'
+            }
+            ${!isOpen && 'md:justify-center'}
+          `}
+        >
+          <div className="relative"><Settings size={20} strokeWidth={2} /></div>
+          {isOpen && <span className="text-sm font-medium whitespace-nowrap flex-1 text-left">Settings</span>}
+          {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Settings</div>}
+        </button>
+
+        <button
+           onClick={() => handleSubItemClick('Bin')}
+           className={`
+             w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
+             ${activeTab === 'Bin' 
+               ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' 
+               : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600'}
+             ${!isOpen && 'md:justify-center'}
+           `}
+         >
+           <div className="relative">
+             <Trash2 size={20} strokeWidth={2} />
+             {binCount > 0 && (
+               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#1E1E1E]"></span>
+             )}
+           </div>
+           
+           {isOpen && (
+             <div className="flex-1 flex justify-between items-center">
+               <span className="text-sm font-medium">Bin</span>
+               {binCount > 0 && (
+                 <span className="text-[10px] bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded-full font-bold">
+                   {binCount}
+                 </span>
+               )}
+             </div>
+           )}
+           {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Recycle Bin</div>}
+         </button>
+
+        <button 
+          onClick={toggleSidebar}
+          className="hidden md:flex items-center justify-center w-full p-2 mt-1 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-lg transition-colors"
+        >
+          {isOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+        </button>
+      </div>
+
+    </div>
+  );
+};
+
+export default Sidebar;
