@@ -22,7 +22,10 @@ const userSchema = new mongoose.Schema({
   // Crowdsourced sync: which sections this student is enrolled in
   enrolledSections: [{ type: String }], // e.g., ["CSAL3243-S26-BS-CS-F23-F4", "EE212-S26-BS-EE-F23-G11"]
   lastScrapedAt: { type: Date, default: null }, // When this user last ran a full foreground scrape
+<<<<<<< HEAD
   isBlocked: { type: Boolean, default: false },
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
   pushTokens: [{ type: String }],
   prayerNotifs: { type: Boolean, default: false },
   lastSyncAt: { type: Date, default: null },

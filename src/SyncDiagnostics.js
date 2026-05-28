@@ -22,9 +22,12 @@ const SyncDiagnostics = () => {
   // Admin Features
   const [usersList, setUsersList] = useState([]);
   const [selectedUser, setSelectedUser] = useState('');
+<<<<<<< HEAD
   const [userSearch, setUserSearch] = useState('');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [selectedUserLabel, setSelectedUserLabel] = useState('My Account');
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
 
   const fetchUsersList = async () => {
     try {
@@ -69,6 +72,7 @@ const SyncDiagnostics = () => {
     fetchDiagnostics();
   }, []);
 
+<<<<<<< HEAD
   const filteredUsers = usersList.filter(u =>
     u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
     (u.portalId && u.portalId.toLowerCase().includes(userSearch.toLowerCase()))
@@ -89,6 +93,13 @@ const SyncDiagnostics = () => {
     setShowUserDropdown(false);
     fetchDiagnostics('');
   };
+=======
+  useEffect(() => {
+    if (selectedUser) {
+      fetchDiagnostics(selectedUser);
+    }
+  }, [selectedUser]);
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
 
   const tabs = [
     { id: 'courses', label: 'Courses', count: data.courses?.length || 0 },
@@ -122,18 +133,26 @@ const SyncDiagnostics = () => {
     <div className="flex w-full h-full overflow-hidden bg-[#FAFAFA] dark:bg-[#09090B] flex-col p-6">
       
       {/* Header */}
+<<<<<<< HEAD
       <div className="flex justify-between items-center mb-6 shrink-0 flex-wrap gap-3">
+=======
+      <div className="flex justify-between items-center mb-6 shrink-0">
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
         <div>
           <h1 className="text-2xl font-extrabold flex items-center gap-2 text-gray-900 dark:text-white">
             <Activity className="text-blue-500" /> Sync Control Room
           </h1>
           <p className="text-sm text-gray-500 mt-1 flex items-center gap-2">
             <Clock size={14} /> Last pulled: {lastRefreshed.toLocaleTimeString()}
+<<<<<<< HEAD
             {selectedUser && <span className="ml-2 text-blue-500 font-bold">· Viewing: {selectedUserLabel}</span>}
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
           </p>
         </div>
         <div className="flex items-center gap-3">
           {usersList.length > 0 && (
+<<<<<<< HEAD
             <div className="relative">
               <div className="flex items-center gap-2 bg-white dark:bg-[#1A1A1D] border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 min-w-[220px]">
                 <UserCircle size={16} className="text-gray-400 shrink-0" />
@@ -173,6 +192,20 @@ const SyncDiagnostics = () => {
                 </div>
               )}
             </div>
+=======
+            <select 
+              value={selectedUser} 
+              onChange={(e) => setSelectedUser(e.target.value)}
+              className="px-3 py-2 bg-white dark:bg-[#1A1A1D] border border-gray-200 dark:border-gray-800 rounded-lg text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:border-blue-500"
+            >
+              <option value="">My Account</option>
+              {usersList.map(u => (
+                <option key={u._id} value={u._id}>
+                  {u.name} ({u.portalId || 'No ID'})
+                </option>
+              ))}
+            </select>
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
           )}
           <button
             onClick={() => fetchDiagnostics(selectedUser)}

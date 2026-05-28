@@ -53,7 +53,10 @@ const Attendance = require('./models/Attendance');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
 const Feedback = require('./models/Feedback');
+<<<<<<< HEAD
 const AdminNotification = require('./models/AdminNotification');
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
 const Assessment = require('./models/Assessment');
 const Exam = require('./models/Exam'); // 🚨 NEW: DATESHEET EXAM MODEL
 const Group = require('./models/Group');
@@ -315,7 +318,11 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
+<<<<<<< HEAD
   'http://192.168.10.16:8081',
+=======
+  'http://192.168.0.107:8081',
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -1268,9 +1275,15 @@ app.put('/api/groups/update-name', auth, async (req, res) => {
     const group = await Group.findOne({ members: req.user.id });
     if (!group) return res.status(404).json({ message: "Group assignment absent." });
 
+<<<<<<< HEAD
     const isMember = group.members.map(id => id.toString()).includes(req.user.id);
     if (!isMember) {
       return res.status(403).json({ message: "Access Denied: Only Group Members can rename this workspace." });
+=======
+    const isAuthorizedAdmin = group.creatorId.toString() === req.user.id || group.admins.map(id => id.toString()).includes(req.user.id);
+    if (!isAuthorizedAdmin) {
+      return res.status(403).json({ message: "Access Denied: Only Group Admins can rename this workspace." });
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
     }
 
     group.name = name.trim();
@@ -1286,6 +1299,7 @@ app.put('/api/groups/update-name', auth, async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 // 🚀 NEW ENDPOINT: UPDATE GRADING PREFERENCE
 app.put('/api/groups/grading-preference', auth, async (req, res) => {
   try {
@@ -1315,6 +1329,8 @@ app.put('/api/groups/grading-preference', auth, async (req, res) => {
   }
 });
 
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
 // 🚀 REFACTORED ENDPOINT: ANY MEMBER CAN INVITE STUDENTS DIRECTLY NOW
 app.post('/api/groups/invite', auth, async (req, res) => {
   try {
@@ -1352,9 +1368,15 @@ app.put('/api/groups/:id/profile-pic', auth, profilePicUpload.single('profilePic
     const group = await Group.findById(req.params.id);
     if (!group) return res.status(404).json({ message: "Group not found" });
 
+<<<<<<< HEAD
     const isMember = group.members.map(id => id.toString()).includes(req.user.id);
     if (!isMember) {
       return res.status(403).json({ message: "Only group members can modify the profile picture." });
+=======
+    const isAuthorizedAdmin = group.creatorId.toString() === req.user.id || group.admins.map(id => id.toString()).includes(req.user.id);
+    if (!isAuthorizedAdmin) {
+      return res.status(403).json({ message: "Only group creators or promoted admins can modify the profile picture." });
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
     }
 
     if (!req.file && !req.body.profilePic) {
@@ -1527,9 +1549,12 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
     invite.status = 'accepted';
     await invite.save();
 
+<<<<<<< HEAD
     const sender = await User.findById(req.user.id);
     await createGroupNotification(group._id, req.user.id, 'group', 'New Member Joined', `${sender?.name || 'A user'} accepted the invitation and joined the group.`);
 
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
     // Reject all other pending invitations for this user
     await GroupInvitation.updateMany(
       { receiverId: req.user.id, status: 'pending' },
@@ -1643,6 +1668,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         name: user.name,
         email: user.email,
         profilePic: user.profilePic,
+<<<<<<< HEAD
         portalProfilePic: user.portalProfilePic,
         originalPortalProfilePic: user.originalPortalProfilePic,
         customProfilePic: user.customProfilePic,
@@ -1652,6 +1678,12 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         portalId: user.portalId,
         lastSyncAt: user.lastSyncAt,
         ucpCookie: user.ucpCookie ? true : false,
+=======
+        isAdmin: user.isAdmin,
+        isPortalConnected: user.isPortalConnected,
+        portalId: user.portalId,
+        lastSyncAt: user.lastSyncAt,
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
         createdAt: user.createdAt,
         storageUsed: storageBytes
       };
@@ -1932,6 +1964,7 @@ app.put('/api/admin/change-pin', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
+<<<<<<< HEAD
 // === ADMIN: Block / Unblock a user ===
 app.put('/api/admin/users/:id/block', auth, adminAuth, async (req, res) => {
   try {
@@ -2065,6 +2098,8 @@ app.delete('/api/admin/notifications/:id', auth, adminAuth, async (req, res) => 
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
 app.get('/api/courses', auth, async (req, res) => {
   try {
     if (!(await Course.findOne({ userId: req.user.id, name: 'General Course' }))) await new Course({ userId: req.user.id, name: 'General Course', type: 'general' }).save();
@@ -2118,7 +2153,10 @@ app.post('/api/login', async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
     if (!user || !(await bcrypt.compare(req.body.password, user.password))) return res.status(400).json({ message: 'Invalid credentials' });
+<<<<<<< HEAD
     if (user.isBlocked) return res.status(403).json({ message: 'Your account has been suspended. Contact an administrator.' });
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
     res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2469,8 +2507,13 @@ const createGroupNotification = async (groupId, senderId, type, title, message, 
     if (!group) return;
     const sender = await User.findById(senderId);
     
+<<<<<<< HEAD
     const memberIds = group.members.filter(m => m.toString() !== senderId.toString());
     const notifications = memberIds.map(memberId => ({
+=======
+    const members = group.members.filter(m => m.toString() !== senderId.toString());
+    const notifications = members.map(memberId => ({
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
       userId: memberId,
       type,
       title,
@@ -2481,12 +2524,16 @@ const createGroupNotification = async (groupId, senderId, type, title, message, 
     
     if (notifications.length > 0) {
       await Notification.insertMany(notifications);
+<<<<<<< HEAD
       
       // 🚀 SEND PUSH NOTIFICATIONS TO ALL OTHER MEMBERS
       const usersToPush = await User.find({ _id: { $in: memberIds } });
       for (const u of usersToPush) {
         await sendPush(u, title, message, { link, type, senderName: sender?.name }, "smart-alert", "default");
       }
+=======
+      // live_db_update will naturally trigger the frontend to fetch the new notifications
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
     }
   } catch (error) {
     console.error("Failed to create notifications", error);
@@ -2717,6 +2764,7 @@ app.delete('/api/transactions/:id', auth, async (req, res) => { try { await Tran
 app.get('/api/budgets', auth, async (req, res) => { try { res.json(await Budget.find({ userId: req.user.id })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/budgets', auth, async (req, res) => { try { res.json(await Budget.findOneAndUpdate({ category: req.body.category, userId: req.user.id }, { limit: req.body.limit, userId: req.user.id }, { upsert: true, new: true })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
+<<<<<<< HEAD
 app.get('/api/habits/stats', auth, async (req, res) => {
   try {
     const habits = await Habit.find({ userId: req.user.id, isDeleted: false });
@@ -2785,10 +2833,20 @@ app.put('/api/habits/:id/reset', auth, async (req, res) => {
 
 app.put('/api/habits/:id/cheat', auth, async (req, res) => { try { const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id }); habit.cheatDays.push(new Date()); await habit.save(); res.json(habit); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
+=======
+app.get('/api/habits', auth, async (req, res) => { try { res.json(await Habit.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/habits', auth, async (req, res) => { try { res.json(await new Habit({ ...req.body, userId: req.user.id, startDate: new Date() }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/habits/:id/delete', auth, async (req, res) => { try { res.json(await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/habits/:id/restore', auth, async (req, res) => { try { res.json(await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.delete('/api/habits/:id', auth, async (req, res) => { try { await Habit.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/habits/:id/reset', auth, async (req, res) => { try { const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id }); habit.startDate = new Date(); habit.cheatDays = []; await habit.save(); res.json(habit); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/habits/:id/cheat', auth, async (req, res) => { try { const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id }); habit.cheatDays.push(new Date()); await habit.save(); res.json(habit); } catch (error) { res.status(500).json({ message: "Error" }); } });
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
 app.put('/api/habits/:id/checkin', auth, async (req, res) => {
   try {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
     habit.checkIns.push(new Date());
+<<<<<<< HEAD
     
     // Calculate consecutive streak
     const uniqueDays = [...new Set(habit.checkIns.map(d => new Date(d).setHours(0, 0, 0, 0)))].sort((a,b) => b - a);
@@ -2813,6 +2871,11 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
     
     await habit.save();
     res.json(habit);
+=======
+    const uniqueDays = new Set(habit.checkIns.map(d => new Date(d).setHours(0, 0, 0, 0)));
+    if (uniqueDays.size > habit.longestStreak) habit.longestStreak = uniqueDays.size;
+    await habit.save(); res.json(habit);
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
@@ -3242,6 +3305,7 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', auth, async (req
 });
 
 // ==========================================
+<<<<<<< HEAD
 // 📅 HABITS PUSH NOTIFICATION CRON
 // ==========================================
 cron.schedule('0 20 * * *', async () => {
@@ -3269,6 +3333,8 @@ cron.schedule('0 20 * * *', async () => {
 }, { timezone: "Asia/Karachi" });
 
 // ==========================================
+=======
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
 // 🔔 THE 1-MINUTE CRON ENGINES 
 // ==========================================
 

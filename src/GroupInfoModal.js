@@ -225,6 +225,7 @@ const GroupInfoModal = ({
                 <div className="cursor-pointer transition-transform hover:scale-105" onClick={handleAvatarClick} title="View Image">
                   {renderGroupAvatar()}
                 </div>
+<<<<<<< HEAD
                 <div 
                   className="absolute bottom-0 right-0 bg-brand-blue p-2 rounded-full border-[3px] border-white dark:border-[#1E1E1E] shadow-md hover:bg-blue-600 transition-colors cursor-pointer z-10"
                   onClick={(e) => { e.stopPropagation(); fileInputRef.current.click(); }}
@@ -235,6 +236,22 @@ const GroupInfoModal = ({
               </div>
 
               <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+=======
+                {isGroupAdmin && (
+                  <div 
+                    className="absolute bottom-0 right-0 bg-brand-blue p-2 rounded-full border-[3px] border-white dark:border-[#1E1E1E] shadow-md hover:bg-blue-600 transition-colors cursor-pointer z-10"
+                    onClick={(e) => { e.stopPropagation(); fileInputRef.current.click(); }}
+                    title="Change Image"
+                  >
+                    <Camera className="text-white" size={16} />
+                  </div>
+                )}
+              </div>
+
+              {isGroupAdmin && (
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+              )}
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
 
               {/* Editable Group Title Text Row */}
               <div className="mt-4 w-full flex items-center justify-center gap-2 px-4 max-w-sm">
@@ -251,9 +268,17 @@ const GroupInfoModal = ({
                 ) : (
                   <>
                     <h3 className="text-xl font-black text-gray-900 dark:text-white truncate">{activeGroup.name}</h3>
+<<<<<<< HEAD
                     <button onClick={() => setIsEditingName(true)} className="text-gray-400 hover:text-brand-blue p-1.5 hover:bg-gray-50 dark:hover:bg-[#252525] rounded-lg transition-colors">
                       <Edit size={14} />
                     </button>
+=======
+                    {isGroupAdmin && (
+                      <button onClick={() => setIsEditingName(true)} className="text-gray-400 hover:text-brand-blue p-1.5 hover:bg-gray-50 dark:hover:bg-[#252525] rounded-lg transition-colors">
+                        <Edit size={14} />
+                      </button>
+                    )}
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
                   </>
                 )}
               </div>
@@ -336,11 +361,16 @@ const GroupInfoModal = ({
 
       {/* 🚀 FULLSCREEN IMAGE PREVIEW OVERLAY */}
       {isPreviewOpen && (
+<<<<<<< HEAD
         <div onClick={() => setIsPreviewOpen(false)} className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl animate-fadeIn cursor-pointer">
+=======
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl animate-fadeIn">
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
           <button onClick={() => setIsPreviewOpen(false)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all">
             <X size={24} />
           </button>
           
+<<<<<<< HEAD
           <button 
             onClick={(e) => { e.stopPropagation(); setIsPreviewOpen(false); fileInputRef.current.click(); }} 
             className="absolute top-6 left-6 flex items-center gap-2 bg-brand-blue hover:bg-blue-600 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-all"
@@ -360,6 +390,18 @@ const GroupInfoModal = ({
               className="w-64 h-64 rounded-full bg-brand-blue/20 text-brand-blue flex items-center justify-center font-extrabold text-6xl uppercase shadow-2xl cursor-default"
               onClick={(e) => e.stopPropagation()}
             >
+=======
+          {isGroupAdmin && (
+            <button onClick={() => { setIsPreviewOpen(false); fileInputRef.current.click(); }} className="absolute top-6 left-6 flex items-center gap-2 bg-brand-blue hover:bg-blue-600 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-all">
+              <Camera size={18} /> Change Image
+            </button>
+          )}
+
+          {activeGroup.profilePic ? (
+            <img src={activeGroup.profilePic} alt="Group Avatar" className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl" />
+          ) : (
+            <div className="w-64 h-64 rounded-full bg-brand-blue/20 text-brand-blue flex items-center justify-center font-extrabold text-6xl uppercase shadow-2xl">
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
               {activeGroup.name?.substring(0, 2).toUpperCase() || "SG"}
             </div>
           )}

@@ -27,6 +27,10 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: Award },
+<<<<<<< HEAD
+=======
+    { id: 'Sync Diagnostics', label: 'Diagnostics', icon: Activity, adminOnly: true },
+>>>>>>> 76eb399872c50f5e25d4c3ac8316e5f5dc92b77b
   ];
 
   const cashSubItems = [
