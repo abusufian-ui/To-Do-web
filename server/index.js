@@ -315,7 +315,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.10.16:8081',
+  'http://192.168.10.11:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -744,9 +744,11 @@ app.post('/api/extension-sync', auth, async (req, res) => {
           if (changes) {
             if (changes.isNewAbsent) {
               sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${changes.newAbsents}`);
+              await createAcademicNotification(userId, 'attendance', `Attendance Alert: ${att.courseName}`, `You have been marked absent! Total absents: ${changes.newAbsents}`);
             }
             if (changes.isCritical) {
               sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
+              await createAcademicNotification(userId, 'attendance', `CRITICAL: ${att.courseName}`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
             }
             // Emit granular WebSocket event
             io.to(userId.toString()).emit('attendance_update', changes);
@@ -768,6 +770,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
           
           if (changes) {
             sendPush(user, `New Announcement: ${ann.courseName} 📢`, changes.latestSubject || "Tap to view details.");
+            await createAcademicNotification(userId, 'announcement', `New Announcement: ${ann.courseName}`, changes.latestSubject || "Tap to view details.", ann.courseUrl);
             io.to(userId.toString()).emit('announcement_update', changes);
             changesSummary.announcements = changesSummary.announcements || [];
             if (!changesSummary.announcements.includes(ann.courseName)) changesSummary.announcements.push(ann.courseName);
@@ -922,6 +925,7 @@ await Course.findOneAndUpdate(
         const changes = detectGradeChanges(oldGrade, grade);
         if (changes) {
           sendPush(user, `Grade Update: ${grade.courseName} 📊`, `Your total weight is now ${changes.newPercentage}%`);
+          await createAcademicNotification(userId, 'marks', `Grade Update: ${grade.courseName}`, `Your total weight is now ${changes.newPercentage}%`, grade.courseUrl);
           io.to(userId.toString()).emit('grade_update', changes);
           changesSummary.grades = changesSummary.grades || [];
           if (!changesSummary.grades.includes(grade.courseName)) changesSummary.grades.push(grade.courseName);
@@ -1242,14 +1246,24 @@ app.put('/api/groups/toggle-admin', auth, async (req, res) => {
     if (memberId === req.user.id) return res.status(400).json({ message: "Cannot alter creator role." });
 
     const adminIds = group.admins.map(id => id.toString());
-    if (adminIds.includes(memberId)) {
-      group.admins = group.admins.filter(id => id.toString() !== memberId);
-    } else {
+    const isPromoted = !adminIds.includes(memberId);
+    if (isPromoted) {
       group.admins.push(memberId);
+    } else {
+      group.admins = group.admins.filter(id => id.toString() !== memberId);
     }
 
     await group.save();
     await broadcastLiveUpdate(group._id, req.user.id);
+    
+    if (isPromoted) {
+      const memberUser = await User.findById(memberId);
+      if (memberUser) {
+        await createAcademicNotification(memberId, 'group', `Admin Promoted 👑`, `You are now an Admin of "${group.name}".`);
+        if (typeof sendPush === 'function') sendPush(memberUser, `Admin Promoted 👑`, `You are now an Admin of "${group.name}".`);
+        io.to(memberId.toString()).emit('live_db_update');
+      }
+    }
     const updated = await Group.findById(group._id)
       .populate('members', 'name email profilePic customProfilePic portalId createdAt')
       .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
@@ -1339,6 +1353,15 @@ app.post('/api/groups/invite', auth, async (req, res) => {
     });
     await invite.save();
     await broadcastLiveUpdate(group._id, req.user.id);
+    
+    // Notify receiver
+    const sender = await User.findById(req.user.id);
+    const receiver = await User.findById(receiverId);
+    if (receiver && sender) {
+      await createAcademicNotification(receiverId, 'group', `Group Invitation 🤝`, `${sender.name} invited you to join "${group.name}".`);
+      if (typeof sendPush === 'function') sendPush(receiver, `Group Invitation 🤝`, `${sender.name} invited you to join "${group.name}".`);
+    }
+
     io.to(receiverId.toString()).emit('live_db_update');
     res.status(201).json(invite);
   } catch (error) {
@@ -1530,6 +1553,14 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
     const sender = await User.findById(req.user.id);
     await createGroupNotification(group._id, req.user.id, 'group', 'New Member Joined', `${sender?.name || 'A user'} accepted the invitation and joined the group.`);
 
+    // Notify the inviter
+    const inviter = await User.findById(invite.senderId);
+    if (inviter) {
+      await createAcademicNotification(invite.senderId, 'group', `Invitation Accepted ✅`, `${sender?.name || 'A user'} accepted your invite to "${group.name}".`);
+      if (typeof sendPush === 'function') sendPush(inviter, `Invitation Accepted ✅`, `${sender?.name || 'A user'} accepted your invite to "${group.name}".`);
+      io.to(invite.senderId.toString()).emit('live_db_update');
+    }
+
     // Reject all other pending invitations for this user
     await GroupInvitation.updateMany(
       { receiverId: req.user.id, status: 'pending' },
@@ -1598,6 +1629,14 @@ app.post('/api/groups/remove-member', auth, async (req, res) => {
       { $pull: { deletedByUsers: memberId, memberStatuses: { userId: memberId } } }
     );
     await broadcastLiveUpdate(group._id, req.user.id);
+    
+    // Notify removed member
+    const member = await User.findById(memberId);
+    if (member) {
+      await createAcademicNotification(memberId, 'group', `Removed from Group 🚪`, `You have been removed from "${group.name}".`);
+      if (typeof sendPush === 'function') sendPush(member, `Removed from Group 🚪`, `You have been removed from "${group.name}".`);
+    }
+
     io.to(memberId.toString()).emit('live_db_update');
 
     const updatedGroup = await Group.findById(group._id)
@@ -1696,11 +1735,11 @@ app.put('/api/admin/users/:id/role', auth, adminAuth, async (req, res) => {
 });
 
 app.get('/api/debts', auth, async (req, res) => { try { res.json(await Debt.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.post('/api/debts', auth, async (req, res) => { try { res.json(await new Debt({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.put('/api/debts/:id/status', auth, async (req, res) => { try { res.json(await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { status: req.body.status }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.put('/api/debts/:id/delete', auth, async (req, res) => { try { res.json(await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.put('/api/debts/:id/restore', auth, async (req, res) => { try { res.json(await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.delete('/api/debts/:id', auth, async (req, res) => { try { await Debt.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/debts', auth, async (req, res) => { try { const d = await new Debt({ ...req.body, userId: req.user.id }).save(); await broadcastLiveUpdate(null, req.user.id); res.json(d); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/debts/:id/status', auth, async (req, res) => { try { const d = await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { status: req.body.status }, { new: true }); await broadcastLiveUpdate(null, req.user.id); res.json(d); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/debts/:id/delete', auth, async (req, res) => { try { const d = await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true }); await broadcastLiveUpdate(null, req.user.id); res.json(d); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/debts/:id/restore', auth, async (req, res) => { try { const d = await Debt.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true }); await broadcastLiveUpdate(null, req.user.id); res.json(d); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.delete('/api/debts/:id', auth, async (req, res) => { try { await Debt.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); await broadcastLiveUpdate(null, req.user.id); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/debts/:id/pay', auth, async (req, res) => {
   try {
     const { amount, date, description, type, category } = req.body;
@@ -1711,6 +1750,7 @@ app.post('/api/debts/:id/pay', auth, async (req, res) => {
     if (debt.amount === 0) debt.status = 'paid';
     await debt.save();
     const newTransaction = await new Transaction({ userId: req.user.id, type, amount: Number(amount), category, description: description || `Payment: ${debt.person}`, date: date || new Date().toISOString() }).save();
+    await broadcastLiveUpdate(null, req.user.id);
     res.json({ success: true, debt, transaction: newTransaction });
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
@@ -2493,6 +2533,26 @@ const createGroupNotification = async (groupId, senderId, type, title, message, 
   }
 };
 
+const createAcademicNotification = async (userId, type, title, message, link = '') => {
+  if (!userId) return;
+  try {
+    const notification = new Notification({
+      userId,
+      type, // 'marks', 'attendance', 'submission', 'announcement'
+      title,
+      message,
+      link,
+      isRead: false
+    });
+    await notification.save();
+    
+    // Trigger WebSocket so Bell icon updates instantly
+    io.to(userId.toString()).emit('live_db_update');
+  } catch (error) {
+    console.error("Failed to create academic notification", error);
+  }
+};
+
 
 
 // ==========================================
@@ -2709,13 +2769,13 @@ app.delete('/api/tasks/:id', auth, async (req, res) => {
 });
 
 app.get('/api/transactions', auth, async (req, res) => { try { res.json(await Transaction.find({ userId: req.user.id, isDeleted: false }).sort({ date: -1, createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.post('/api/transactions', auth, async (req, res) => { try { res.json(await new Transaction({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.put('/api/transactions/:id/delete', auth, async (req, res) => { try { res.json(await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.put('/api/transactions/:id/restore', auth, async (req, res) => { try { res.json(await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
-app.delete('/api/transactions/:id', auth, async (req, res) => { try { await Transaction.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/transactions', auth, async (req, res) => { try { const t = await new Transaction({ ...req.body, userId: req.user.id }).save(); await broadcastLiveUpdate(null, req.user.id); res.json(t); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/transactions/:id/delete', auth, async (req, res) => { try { const t = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: true, deletedAt: new Date() }, { new: true }); await broadcastLiveUpdate(null, req.user.id); res.json(t); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/transactions/:id/restore', auth, async (req, res) => { try { const t = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true }); await broadcastLiveUpdate(null, req.user.id); res.json(t); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.delete('/api/transactions/:id', auth, async (req, res) => { try { await Transaction.findOneAndDelete({ _id: req.params.id, userId: req.user.id }); await broadcastLiveUpdate(null, req.user.id); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 app.get('/api/budgets', auth, async (req, res) => { try { res.json(await Budget.find({ userId: req.user.id })); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.post('/api/budgets', auth, async (req, res) => { try { res.json(await Budget.findOneAndUpdate({ category: req.body.category, userId: req.user.id }, { limit: req.body.limit, userId: req.user.id }, { upsert: true, new: true })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/budgets', auth, async (req, res) => { try { const b = await Budget.findOneAndUpdate({ category: req.body.category, userId: req.user.id }, { limit: req.body.limit, userId: req.user.id }, { upsert: true, new: true }); await broadcastLiveUpdate(null, req.user.id); res.json(b); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 app.get('/api/habits/stats', auth, async (req, res) => {
   try {
@@ -2725,10 +2785,11 @@ app.get('/api/habits/stats', auth, async (req, res) => {
 });
 
 app.get('/api/habits', auth, async (req, res) => { try { res.json(await Habit.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.post('/api/habits', auth, async (req, res) => { try { res.json(await new Habit({ ...req.body, userId: req.user.id, startDate: new Date() }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.post('/api/habits', auth, async (req, res) => { try { const h = await new Habit({ ...req.body, userId: req.user.id, startDate: new Date() }).save(); await broadcastLiveUpdate(null, req.user.id); res.json(h); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.put('/api/habits/:id', auth, async (req, res) => {
   try {
     const habit = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { ...req.body }, { new: true });
+    await broadcastLiveUpdate(null, req.user.id);
     res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -2738,6 +2799,7 @@ app.put('/api/habits/:id/journal', auth, async (req, res) => {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
     habit.journal.push({ type: req.body.type, content: req.body.content, trigger: req.body.trigger, date: new Date() });
     await habit.save();
+    await broadcastLiveUpdate(null, req.user.id);
     res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -2745,6 +2807,7 @@ app.put('/api/habits/:id/journal', auth, async (req, res) => {
 app.put('/api/habits/:id/archive', auth, async (req, res) => {
   try {
     const habit = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { archivedAt: new Date() }, { new: true });
+    await broadcastLiveUpdate(null, req.user.id);
     res.json(habit);
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
@@ -2757,16 +2820,18 @@ app.put('/api/habits/:id/delete', auth, async (req, res) => {
     habit.isDeleted = true;
     habit.deletedAt = new Date();
     await habit.save();
+    await broadcastLiveUpdate(null, req.user.id);
     res.json(habit);
   } catch (err) { res.status(500).json({ message: err.message }) }
 });
-app.put('/api/habits/:id/restore', auth, async (req, res) => { try { res.json(await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true })); } catch (err) { res.status(500).json({ message: err.message }) } });
+app.put('/api/habits/:id/restore', auth, async (req, res) => { try { const h = await Habit.findOneAndUpdate({ _id: req.params.id, userId: req.user.id }, { isDeleted: false, deletedAt: null }, { new: true }); await broadcastLiveUpdate(null, req.user.id); res.json(h); } catch (err) { res.status(500).json({ message: err.message }) } });
 app.delete('/api/habits/:id', auth, async (req, res) => {
   try {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
     if (!habit) return res.status(404).json({ message: "Not found" });
     if (habit.name === 'Daily Namaz') return res.status(403).json({ message: "Cannot delete system habit." });
     await Habit.findByIdAndDelete(req.params.id);
+    await broadcastLiveUpdate(null, req.user.id);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -2779,11 +2844,12 @@ app.put('/api/habits/:id/reset', auth, async (req, res) => {
     habit.totalRelapses = (habit.totalRelapses || 0) + 1;
     habit.journal.push({ type: 'relapse', content: req.body.note || 'Relapsed', trigger: req.body.trigger || 'Unknown', date: new Date() });
     await habit.save();
+    await broadcastLiveUpdate(null, req.user.id);
     res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-app.put('/api/habits/:id/cheat', auth, async (req, res) => { try { const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id }); habit.cheatDays.push(new Date()); await habit.save(); res.json(habit); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.put('/api/habits/:id/cheat', auth, async (req, res) => { try { const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id }); habit.cheatDays.push(new Date()); await habit.save(); await broadcastLiveUpdate(null, req.user.id); res.json(habit); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 app.put('/api/habits/:id/checkin', auth, async (req, res) => {
   try {
@@ -2812,6 +2878,7 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
     }
     
     await habit.save();
+    await broadcastLiveUpdate(null, req.user.id);
     res.json(habit);
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -3298,6 +3365,7 @@ cron.schedule('* * * * *', async () => {
 
         if (alertMsg) {
           sendPush(sub.userId, `Deadline Alert: ${sub.courseName} ⚠️`, `${alertMsg} for "${task.title}".`, { type: 'submission', url: task.submissionUrl });
+          await createAcademicNotification(sub.userId, 'submission', `Deadline Alert: ${sub.courseName}`, `${alertMsg} for "${task.title}".`, task.submissionUrl);
         }
       }
     }
