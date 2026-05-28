@@ -377,10 +377,10 @@ const Header = ({
             {exams && exams.length > 0 && (
               <button
                 onClick={() => onNavigate('Datesheet')}
-                className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-full text-red-600 dark:text-red-400 font-bold text-sm transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse hover:animate-none ml-2"
+                className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-full text-red-600 dark:text-red-400 font-bold text-sm transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse hover:animate-none ml-2 whitespace-nowrap shrink-0"
                 title="View Datesheet"
               >
-                <AlertCircle size={16} />
+                <AlertCircle size={16} className="shrink-0" />
                 <span className="hidden sm:inline">Exams ({exams.length})</span>
               </button>
             )}
