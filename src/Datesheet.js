@@ -136,29 +136,29 @@ const Datesheet = ({ exams = [] }) => {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="max-w-5xl mx-auto px-6 md:px-12 py-8 space-y-2">
+          <div className="max-w-5xl mx-auto px-4 md:px-12 py-8 space-y-2">
             {Object.entries(grouped).map(([dateKey, dayExams]) => {
               const isFirst = Object.keys(grouped)[0] === dateKey;
               return (
                 <div key={dateKey}>
                   {/* Date separator */}
-                  <div className={`flex items-center gap-4 ${isFirst ? 'mb-4' : 'mt-8 mb-4'}`}>
+                  <div className={`flex items-center gap-3 md:gap-4 ${isFirst ? 'mb-4' : 'mt-8 mb-4'}`}>
                     <div className="flex items-center gap-3">
-                      <div className="text-center">
+                      <div className="text-center min-w-[40px]">
                         <div className="text-[10px] font-black tracking-[0.15em] text-gray-400 dark:text-gray-600 leading-none mb-0.5">{formatDay(dateKey)}</div>
                         <div className="text-2xl font-black text-gray-900 dark:text-white leading-none">{formatDayNum(dateKey)}</div>
                         <div className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-600 leading-none mt-0.5">{formatMonth(dateKey)}</div>
                       </div>
-                      <div className="w-px h-10 bg-gray-200 dark:bg-[#2a2a2a]"></div>
+                      <div className="hidden md:block w-px h-10 bg-gray-200 dark:bg-[#2a2a2a]"></div>
                     </div>
                     <div className="flex-1 h-px bg-gray-100 dark:bg-[#1a1a1a]"></div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-300 dark:text-gray-700">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-300 dark:text-gray-700 whitespace-nowrap">
                       {dayExams.length} exam{dayExams.length > 1 ? 's' : ''}
                     </span>
                   </div>
 
                   {/* Exam cards for this date */}
-                  <div className="space-y-3 pl-[52px]">
+                  <div className="space-y-3 md:pl-[52px]">
                     {dayExams.map((exam, idx) => {
                       const status = getExamStatus(exam.date, exam.time);
                       const ts = tierStyles[status.tier] || tierStyles.future;
@@ -179,7 +179,7 @@ const Datesheet = ({ exams = [] }) => {
                           {/* Left accent bar */}
                           <div className={`absolute left-0 top-0 bottom-0 w-1 ${ts.bar} ${isLive ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'} transition-opacity`} />
 
-                          <div className="flex items-center gap-5 px-6 py-4 pl-7">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5 p-4 sm:px-6 sm:py-4 pl-5 sm:pl-7">
 
                             {/* Dot indicator */}
                             <div className="relative shrink-0 hidden sm:flex items-center justify-center w-8">
@@ -189,10 +189,17 @@ const Datesheet = ({ exams = [] }) => {
 
                             {/* Subject */}
                             <div className="flex-1 min-w-0">
-                              <h3 className={`font-black text-base md:text-lg leading-snug tracking-tight truncate mb-2 ${isDone ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>
-                                {exam.courseName}
-                              </h3>
-                              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+                              <div className="flex justify-between items-start sm:block mb-2 sm:mb-2">
+                                <h3 className={`font-black text-base md:text-lg leading-snug tracking-tight pr-2 ${isDone ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>
+                                  {exam.courseName}
+                                </h3>
+                                {/* Mobile Status pill */}
+                                <div className={`sm:hidden inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${ts.pill}`}>
+                                  {status.icon}
+                                  <span>{status.label}</span>
+                                </div>
+                              </div>
+                              <div className="flex flex-col sm:flex-row flex-wrap sm:items-center gap-y-2 sm:gap-x-5">
                                 <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
                                   <Clock size={12} className="opacity-70 shrink-0" />
                                   {exam.time}
@@ -213,10 +220,10 @@ const Datesheet = ({ exams = [] }) => {
                               <span className="text-xs font-bold text-gray-400 dark:text-gray-600">{formatFullDate(exam.date)}</span>
                             </div>
 
-                            {/* Status pill */}
-                            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider shrink-0 ${ts.pill}`}>
+                            {/* Desktop Status pill */}
+                            <div className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider shrink-0 ${ts.pill}`}>
                               {status.icon}
-                              <span className="hidden sm:inline">{status.label}</span>
+                              <span>{status.label}</span>
                             </div>
                           </div>
                         </div>
