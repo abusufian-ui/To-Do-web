@@ -3373,6 +3373,36 @@ cron.schedule('* * * * *', async () => {
 });
 
 // ==========================================
+// 🗑️ RECYCLE BIN 30-DAY AUTO-PURGE CRON
+// ==========================================
+cron.schedule('0 0 * * *', async () => {
+  console.log('[CRON] 🗑️ Initiating 30-Day Recycle Bin auto-purge...');
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const query = { isDeleted: true, deletedAt: { $lt: thirtyDaysAgo } };
+
+    const deletedTasks = await Task.deleteMany(query);
+    const deletedNotes = await Note.deleteMany(query);
+    const deletedTransactions = await Transaction.deleteMany(query);
+    const deletedHabits = await Habit.deleteMany(query);
+    const deletedKeynotes = await Keynote.deleteMany(query);
+    const deletedDebts = await Debt.deleteMany(query);
+
+    console.log(`[CRON] 🗑️ Recycle Bin purge completed:
+      - Tasks: ${deletedTasks.deletedCount}
+      - Notes: ${deletedNotes.deletedCount}
+      - Transactions: ${deletedTransactions.deletedCount}
+      - Habits: ${deletedHabits.deletedCount}
+      - Keynotes: ${deletedKeynotes.deletedCount}
+      - Debts: ${deletedDebts.deletedCount}`);
+  } catch (err) {
+    console.error("[CRON] Recycle Bin purge error:", err.message);
+  }
+}, { timezone: "Asia/Karachi" });
+
+// ==========================================
 // 🔔 3x DAILY SYNC PROMPT NOTIFICATIONS
 // 9:00 AM PKT (4:00 AM UTC), 1:00 PM PKT (8:00 AM UTC), 6:00 PM PKT (1:00 PM UTC)
 // ==========================================
