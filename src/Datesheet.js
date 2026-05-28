@@ -75,34 +75,30 @@ const Datesheet = ({ exams = [] }) => {
     <div className="h-full flex flex-col bg-gray-50 dark:bg-[#080808] animate-fadeIn overflow-hidden">
 
       {/* ── Hero Header ─────────────────────────────────────────────── */}
-      <div className="shrink-0 px-6 md:px-12 pt-10 pb-8 bg-white dark:bg-[#0d0d0d] border-b border-gray-100 dark:border-[#1a1a1a]">
+      <div className="shrink-0 px-4 md:px-12 pt-4 pb-4 md:pt-10 md:pb-8 bg-white dark:bg-[#0d0d0d] border-b border-gray-100 dark:border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
 
           {/* Title row */}
-          <div className="flex items-start justify-between gap-4 mb-6">
-            <div>
-              <div className="flex items-center gap-2.5 mb-3">
-                <div className="w-8 h-8 rounded-xl bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/30">
-                  <GraduationCap size={16} className="text-white" />
-                </div>
-                <span className="text-xs font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-600">Final Examinations</span>
+          <div className="flex items-center justify-between gap-2 md:gap-4 mb-3 md:mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/30 shrink-0">
+                <GraduationCap size={20} className="text-white" />
               </div>
-              <h1 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight leading-none">
-                Exam<br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500">Datesheet</span>
+              <h1 className="text-2xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight leading-none">
+                Exam <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500">Datesheet</span>
               </h1>
             </div>
 
             {/* Stats cluster */}
-            <div className="flex items-end gap-3 shrink-0">
-              <div className="text-right">
-                <div className="text-5xl font-black text-gray-900 dark:text-white leading-none">{remaining}</div>
-                <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mt-1">remaining</div>
+            <div className="flex items-center gap-3 md:items-end shrink-0">
+              <div className="text-right hidden sm:block">
+                <div className="text-2xl md:text-5xl font-black text-gray-900 dark:text-white leading-none">{remaining}</div>
+                <div className="text-[9px] md:text-xs font-bold uppercase tracking-widest text-gray-400 mt-0.5 md:mt-1">remaining</div>
               </div>
-              <div className="w-px h-12 bg-gray-200 dark:bg-gray-800"></div>
+              <div className="hidden sm:block w-px h-8 md:h-12 bg-gray-200 dark:bg-gray-800"></div>
               <div className="text-right">
-                <div className="text-5xl font-black text-emerald-500 leading-none">{done}</div>
-                <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mt-1">completed</div>
+                <div className="text-2xl md:text-5xl font-black text-emerald-500 leading-none">{done} <span className="sm:hidden text-gray-900 dark:text-white">/ {sorted.length}</span></div>
+                <div className="text-[9px] md:text-xs font-bold uppercase tracking-widest text-gray-400 mt-0.5 md:mt-1 hidden sm:block">completed</div>
               </div>
             </div>
           </div>
@@ -136,29 +132,21 @@ const Datesheet = ({ exams = [] }) => {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="max-w-5xl mx-auto px-4 md:px-12 py-8 space-y-2">
+          <div className="max-w-5xl mx-auto px-4 md:px-12 py-8 flex flex-col gap-4 md:gap-5">
             {Object.entries(grouped).map(([dateKey, dayExams]) => {
-              const isFirst = Object.keys(grouped)[0] === dateKey;
               return (
-                <div key={dateKey}>
-                  {/* Date separator */}
-                  <div className={`flex items-center gap-3 md:gap-4 ${isFirst ? 'mb-4' : 'mt-8 mb-4'}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="text-center min-w-[40px]">
-                        <div className="text-[10px] font-black tracking-[0.15em] text-gray-400 dark:text-gray-600 leading-none mb-0.5">{formatDay(dateKey)}</div>
-                        <div className="text-2xl font-black text-gray-900 dark:text-white leading-none">{formatDayNum(dateKey)}</div>
-                        <div className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-600 leading-none mt-0.5">{formatMonth(dateKey)}</div>
-                      </div>
-                      <div className="hidden md:block w-px h-10 bg-gray-200 dark:bg-[#2a2a2a]"></div>
+                <div key={dateKey} className="flex flex-row gap-3 md:gap-6">
+                  {/* Left Column: Date Box */}
+                  <div className="flex flex-col items-center shrink-0 w-[40px] md:w-[50px] pt-2 md:pt-4">
+                    <div className="text-center sticky top-4">
+                      <div className="text-[10px] font-black tracking-[0.15em] text-gray-400 dark:text-gray-600 leading-none mb-1">{formatDay(dateKey)}</div>
+                      <div className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white leading-none mb-1">{formatDayNum(dateKey)}</div>
+                      <div className="text-[10px] font-black tracking-widest text-gray-400 dark:text-gray-600 leading-none">{formatMonth(dateKey)}</div>
                     </div>
-                    <div className="flex-1 h-px bg-gray-100 dark:bg-[#1a1a1a]"></div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-300 dark:text-gray-700 whitespace-nowrap">
-                      {dayExams.length} exam{dayExams.length > 1 ? 's' : ''}
-                    </span>
                   </div>
 
-                  {/* Exam cards for this date */}
-                  <div className="space-y-3 md:pl-[52px]">
+                  {/* Right Column: Exam cards for this date */}
+                  <div className="flex-1 flex flex-col gap-4 md:gap-5">
                     {dayExams.map((exam, idx) => {
                       const status = getExamStatus(exam.date, exam.time);
                       const ts = tierStyles[status.tier] || tierStyles.future;
@@ -168,18 +156,18 @@ const Datesheet = ({ exams = [] }) => {
                       return (
                         <div
                           key={exam._id || idx}
-                          className={`relative group rounded-2xl border transition-all duration-200 overflow-hidden ${
+                          className={`relative group rounded-xl md:rounded-2xl border transition-all duration-200 overflow-hidden ${
                             isDone
-                              ? 'bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-[#1a1a1a] opacity-50'
+                              ? 'bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-[#1a1a1a] opacity-60 md:opacity-50'
                               : isLive
-                              ? 'bg-white dark:bg-[#0d0d0d] border-red-200 dark:border-red-900/50 shadow-lg shadow-red-500/5'
-                              : 'bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-[#1e1e1e] hover:border-gray-200 dark:hover:border-[#2a2a2a] hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/20'
+                              ? 'bg-white dark:bg-[#0d0d0d] border-red-200 dark:border-red-900/50 shadow-sm md:shadow-lg shadow-red-500/5'
+                              : 'bg-white dark:bg-[#0d0d0d] border-gray-100 dark:border-[#1e1e1e] hover:border-gray-200 dark:hover:border-[#2a2a2a] hover:shadow-sm md:hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/20'
                           }`}
                         >
                           {/* Left accent bar */}
                           <div className={`absolute left-0 top-0 bottom-0 w-1 ${ts.bar} ${isLive ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'} transition-opacity`} />
 
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5 p-4 sm:px-6 sm:py-4 pl-5 sm:pl-7">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-5 p-3 sm:px-6 sm:py-4 pl-4 sm:pl-7">
 
                             {/* Dot indicator */}
                             <div className="relative shrink-0 hidden sm:flex items-center justify-center w-8">
@@ -189,28 +177,28 @@ const Datesheet = ({ exams = [] }) => {
 
                             {/* Subject */}
                             <div className="flex-1 min-w-0">
-                              <div className="flex justify-between items-start sm:block mb-2 sm:mb-2">
-                                <h3 className={`font-black text-base md:text-lg leading-snug tracking-tight pr-2 ${isDone ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>
+                              <div className="flex justify-between items-center sm:block mb-1 sm:mb-2">
+                                <h3 className={`font-black text-sm md:text-lg leading-snug tracking-tight pr-2 ${isDone ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>
                                   {exam.courseName}
                                 </h3>
                                 {/* Mobile Status pill */}
-                                <div className={`sm:hidden inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${ts.pill}`}>
+                                <div className={`sm:hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest shrink-0 ${ts.pill}`}>
                                   {status.icon}
                                   <span>{status.label}</span>
                                 </div>
                               </div>
-                              <div className="flex flex-col sm:flex-row flex-wrap sm:items-center gap-y-2 sm:gap-x-5">
-                                <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                                  <Clock size={12} className="opacity-70 shrink-0" />
+                              <div className="flex flex-row flex-wrap items-center gap-x-3 gap-y-1 sm:gap-x-5">
+                                <span className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                  <Clock size={10} className="opacity-70 shrink-0" />
                                   {exam.time}
                                 </span>
-                                <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                                  <MapPin size={12} className="opacity-70 shrink-0" />
-                                  {exam.venue || 'TBA'}
+                                <span className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                  <MapPin size={10} className="opacity-70 shrink-0" />
+                                  <span className="truncate max-w-[80px] sm:max-w-none">{exam.venue || 'TBA'}</span>
                                 </span>
-                                <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                                  <User size={12} className="opacity-70 shrink-0" />
-                                  {exam.instructor || 'TBA'}
+                                <span className="flex items-center gap-1 text-[10px] md:text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                  <User size={10} className="opacity-70 shrink-0" />
+                                  <span className="truncate max-w-[80px] sm:max-w-none">{exam.instructor || 'TBA'}</span>
                                 </span>
                               </div>
                             </div>
