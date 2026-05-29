@@ -3292,7 +3292,12 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     const myCourse = await Course.findById(req.params.courseId);
     if (!myCourse) return res.status(404).json({ message: "Course not found" });
 
-    let query = { name: myCourse.name };
+    let query = {};
+    if (myCourse.code) {
+      query.code = myCourse.code;
+    } else {
+      query.name = myCourse.name;
+    }
     if (myCourse.section) query.section = myCourse.section;
 
     // 🚨 PRIVACY FIX: Only populate customProfilePic, NEVER the primary profilePic
