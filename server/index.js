@@ -560,14 +560,19 @@ app.post('/api/trigger-expired-push', auth, async (req, res) => {
 
     console.log(`[PUSH] Triggering Session Expired push for ${user.email}`);
 
+    const title = "UCP Session Expired ⚠️";
+    const message = "Your university portal session has expired. Tap here to log in.";
+
     await sendPush(
       user,
-      "UCP Session Expired ⚠️",
-      "Your university portal session has expired. Tap here to log in.",
+      title,
+      message,
       { type: "session_expired" },
       "smart-alert",
       "default"
     );
+
+    await createAcademicNotification(user._id, 'system', title, message);
 
     res.json({ success: true, message: "Push notification triggered." });
   } catch (err) {
@@ -2064,6 +2069,22 @@ app.post('/api/admin/push-notification', auth, adminAuth, async (req, res) => {
       }
     }
 
+    // Save user-facing in-app Notification records in bulk & emit WebSocket pings
+    const notificationsToSave = targetUsers.map(u => ({
+      userId: u._id,
+      type: 'broadcast',
+      title,
+      message,
+      isRead: false
+    }));
+
+    if (notificationsToSave.length > 0) {
+      await Notification.insertMany(notificationsToSave);
+      for (const u of targetUsers) {
+        io.to(u._id.toString()).emit('live_db_update');
+      }
+    }
+
     const requestingUser = await User.findById(req.user.id);
     const record = new AdminNotification({
       title,
@@ -2495,6 +2516,30 @@ app.get('/api/notifications', auth, async (req, res) => {
 app.put('/api/notifications/read', auth, async (req, res) => {
   try {
     await Notification.updateMany({ userId: req.user.id, isRead: false }, { $set: { isRead: true } });
+    await broadcastLiveUpdate(null, req.user.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+app.put('/api/notifications/:id/read', auth, async (req, res) => {
+  try {
+    const notification = await Notification.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!notification) return res.status(404).json({ message: "Notification not found" });
+    notification.isRead = true;
+    await notification.save();
+    await broadcastLiveUpdate(null, req.user.id);
+    res.json({ success: true, notification });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+app.delete('/api/notifications/:id', auth, async (req, res) => {
+  try {
+    const result = await Notification.deleteOne({ _id: req.params.id, userId: req.user.id });
+    if (result.deletedCount === 0) return res.status(404).json({ message: "Notification not found" });
     await broadcastLiveUpdate(null, req.user.id);
     res.json({ success: true });
   } catch (error) {
@@ -2974,25 +3019,8 @@ app.get('/api/bin', auth, async (req, res) => {
       ]
     }).populate('userId', 'name email profilePic').lean();
 
-    const transactions = await Transaction.find({ userId: req.user.id, isDeleted: true }).lean();
-    const habits = await Habit.find({ userId: req.user.id, isDeleted: true }).lean();
-    const notes = await Note.find({ user: req.user.id, isDeleted: true }).lean();
-    const keynotes = await Keynote.find({ userId: req.user.id, isDeleted: true }).lean();
-    
-    res.json({ tasks, transactions, habits, notes, keynotes });
-  } catch (err) { res.status(500).json({ message: err.message }); }
-});app.get('/api/bin', auth, async (req, res) => {
-  try {
-    const userGroups = await Group.find({ members: req.user.id });
-    const groupIds = userGroups.map(g => g._id);
-
-    const tasks = await Task.find({
-      $or: [
-        { userId: req.user.id, isDeleted: true },
-        { groupId: { $in: groupIds }, deletedByUsers: req.user.id }
-      ]
-    }).populate('userId', 'name email profilePic').lean();
-
+    // Notes are in bin if creator and isDeleted,
+    // OR if it's a shared group note and the member explicitly trashed it on their side.
     const notes = await Note.find({
       $or: [
         { user: req.user.id, isDeleted: true },
@@ -3061,7 +3089,16 @@ app.post('/api/notes/share', auth, async (req, res) => {
     const notesToShare = await Note.find({ _id: { $in: noteIds } });
     
     const newNotes = [];
+    const senderUser = await User.findById(req.user.id);
+
     for (let targetId of targetUserIds) {
+      const targetUser = await User.findById(targetId);
+      
+      const notesCount = notesToShare.length;
+      const notesStr = notesCount === 1 ? `"${notesToShare[0].title}"` : `${notesCount} notes`;
+      const title = "Note Shared 📝";
+      const message = `${senderUser?.name || 'A user'} shared ${notesStr} with you.`;
+
       for (let note of notesToShare) {
         // Create a clone in the target user's Inbox
         const newNote = new Note({
@@ -3078,8 +3115,27 @@ app.post('/api/notes/share', auth, async (req, res) => {
         });
         await newNote.save();
         newNotes.push(newNote);
-        io.to(targetId.toString()).emit('live_db_update');
       }
+
+      if (targetUser && notesCount > 0) {
+        // Send push notification
+        if (typeof sendPush === 'function') {
+          await sendPush(targetUser, title, message, { type: 'note' }, 'smart-alert', 'default');
+        }
+        
+        // Save in-app Notification log
+        const notification = new Notification({
+          userId: targetId,
+          type: 'note',
+          title,
+          message,
+          sender: senderUser ? { name: senderUser.name, profilePic: senderUser.profilePic, id: senderUser._id } : {},
+          isRead: false
+        });
+        await notification.save();
+      }
+
+      io.to(targetId.toString()).emit('live_db_update');
     }
     res.json({ success: true, count: newNotes.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3097,49 +3153,7 @@ app.put('/api/notes/:id/accept', auth, async (req, res) => {
     res.json(await Note.findById(note._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-
-
-
-app.post('/api/notes', auth, async (req, res) => {
-  try {
-    const { _id, title, courseId, content, referenceFiles, source, isPrivate } = req.body;
-    let finalGroupId = null;
-    let finalIsPrivate = isPrivate !== undefined ? isPrivate : true;
-
-    if (finalIsPrivate === false) {
-      const userGroup = await Group.findOne({ members: req.user.id });
-      if (userGroup) {
-        finalGroupId = userGroup._id;
-      } else {
-        finalIsPrivate = true; 
-      }
-    }
-
-    if (_id) {
-      const note = await Note.findById(_id);
-      if (!note) return res.status(404).json({ error: "Note not found." });
-      if (note.user.toString() !== req.user.id) return res.status(403).json({ error: "Access Denied" });
-
-      note.title = title;
-      note.courseId = courseId;
-      note.content = content;
-      note.referenceFiles = referenceFiles;
-      note.source = source;
-      note.isPrivate = finalIsPrivate;
-      note.groupId = finalGroupId;
-      if (finalIsPrivate) note.deletedByUsers = [];
-
-      await note.save();
-      await broadcastLiveUpdate(note.groupId, req.user.id);
-      return res.json(await Note.findById(note._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
-    }
-
-    const newNote = new Note({ user: req.user.id, title, courseId, content: content || " ", referenceFiles, source, isPrivate: finalIsPrivate, groupId: finalGroupId });
-    await newNote.save();
-    await broadcastLiveUpdate(newNote.groupId, req.user.id);
-    res.json(await Note.findById(newNote._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
-  } catch (error) { res.status(500).json({ error: error.message || "Failed to process note" }); }
-});
+// Notes routes defined under the primary notes section at line 1766
 
 app.put('/api/notes/:id', auth, async (req, res) => {
   try {
@@ -3171,28 +3185,7 @@ app.put('/api/notes/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-app.put('/api/notes/:id/delete', auth, async (req, res) => {
-  try {
-    const note = await Note.findById(req.params.id);
-    if (!note) return res.status(404).json({ error: "Note not found" });
-
-    const isCreator = note.user.toString() === req.user.id;
-    const oldGroupId = note.groupId;
-
-    if (isCreator) {
-      note.isDeleted = true;
-      note.deletedAt = new Date();
-    } else if (note.groupId) {
-      if (!note.deletedByUsers.map(id => id.toString()).includes(req.user.id)) {
-        note.deletedByUsers.push(req.user.id);
-      }
-    } else { return res.status(403).json({ error: "Unauthorized delete action." }); }
-
-    await note.save();
-    await broadcastLiveUpdate(oldGroupId, req.user.id);
-    res.json({ message: 'Moved to Bin safely' });
-  } catch (error) { res.status(500).json({ error: "Error moving note to bin" }); }
-});
+// Notes delete route defined under the primary notes section at line 1881
 
 app.put('/api/notes/:id/restore', auth, async (req, res) => {
   try {
@@ -3326,9 +3319,12 @@ cron.schedule('0 20 * * *', async () => {
         const todayStr = new Date().setHours(0,0,0,0);
         const checksToday = habit.checkIns.filter(d => new Date(d).setHours(0,0,0,0) === todayStr).length;
         if (checksToday < habit.targetPerDay) {
+          const title = "Habit Reminder 🎯";
+          const message = `Don't forget to complete your habit: ${habit.name}!`;
           if (typeof sendPush === 'function') {
-            await sendPush(habit.userId, "Habit Reminder 🎯", `Don't forget to complete your habit: ${habit.name}!`, { type: 'habit_reminder' }, 'smart-alert', 'default');
+            await sendPush(habit.userId, title, message, { type: 'habit_reminder' }, 'smart-alert', 'default');
           }
+          await createAcademicNotification(habit.userId._id, 'system', title, message);
         }
       }
     }
@@ -3499,14 +3495,17 @@ const runTieredSync = async (mode, logName) => {
         await syncLog.save();
         if (err.message === "Session Expired") {
           await User.findByIdAndUpdate(user._id, { isPortalConnected: false });
+          const title = "UCP Session Expired ⚠️";
+          const message = "Your background sync failed because your session expired. Tap here to log in again.";
           await sendPush(
             user,
-            "UCP Session Expired ⚠️",
-            "Your background sync failed because your session expired. Tap here to log in again.",
+            title,
+            message,
             { type: "session_expired", action: "OPEN_APP" },
             "smart-alert",
             "default"
           );
+          await createAcademicNotification(user._id, 'system', title, message);
         }
       }
 
