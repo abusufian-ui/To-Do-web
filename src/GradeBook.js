@@ -331,7 +331,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
       setLeaderboardLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_BASE}/api/course-leaderboard/${matchingCourseInfo._id}`, {
+        const res = await fetch(`${API_BASE}/api/course-leaderboard/${matchingCourseInfo.id}`, {
           headers: { 'Content-Type': 'application/json', 'x-auth-token': token }
         });
         if (res.ok) {
