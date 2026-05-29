@@ -352,15 +352,21 @@ app.use((req, res, next) => {
       const activeUserId = req.user.id;
       io.to(activeUserId.toString()).emit('live_db_update');
       
-      Group.find({ members: activeUserId }).then(groups => {
-        groups.forEach(group => {
-          group.members.forEach(memberId => {
-            if (memberId.toString() !== activeUserId.toString()) {
-              io.to(memberId.toString()).emit('live_db_update');
-            }
+      const isSharedPath = req.originalUrl.includes('/groups') || 
+                           req.originalUrl.includes('/tasks') || 
+                           req.originalUrl.includes('/notes');
+      
+      if (isSharedPath) {
+        Group.find({ members: activeUserId }).then(groups => {
+          groups.forEach(group => {
+            group.members.forEach(memberId => {
+              if (memberId.toString() !== activeUserId.toString()) {
+                io.to(memberId.toString()).emit('live_db_update');
+              }
+            });
           });
-        });
-      }).catch(err => console.error("Broadcast error:", err));
+        }).catch(err => console.error("Broadcast error:", err));
+      }
     }
     return originalJson.call(this, data);
   };
@@ -1105,7 +1111,11 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
 const dbLink = process.env.REACT_APP_MONGODB_URI;
 console.log("🔗 Connecting to MyPortal Database...");
 
-mongoose.connect(dbLink).then(async () => {
+mongoose.connect(dbLink, {
+  maxPoolSize: 20,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000
+}).then(async () => {
   console.log("✅ MongoDB Connected Successfully!");
 
   try {
@@ -1478,11 +1488,21 @@ app.post('/api/groups/leave', auth, async (req, res) => {
 // 4. Fetch Community Students
 app.get('/api/users/community', auth, async (req, res) => {
   try {
-    const users = await User.find({ _id: { $ne: req.user.id } })
+    const { search } = req.query;
+    const query = { _id: { $ne: req.user.id } };
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    const users = await User.find(query)
       .select('name email profilePic portalId customProfilePic createdAt isAdmin')
-      .sort({ name: 1 });
+      .sort({ name: 1 })
+      .limit(100);
 
-    const allGroups = await Group.find();
+    const allGroups = await Group.find().select('members');
     const groupedUserIds = new Set();
     allGroups.forEach(g => g.members.forEach(m => groupedUserIds.add(m.toString())));
 
@@ -2209,6 +2229,17 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
+
+app.post('/api/auth/check-admin', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email required" });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    res.json({ isAdmin: !!user?.isAdmin });
+  } catch (err) {
+    res.status(500).json({ error: "Server Error" });
+  }
+});
 
 // =================================================================
 // 🚀 UNIFIED MICROSOFT SSO LOGIN & FAST-LOGIN ENGINE
@@ -3362,7 +3393,13 @@ cron.schedule('0 20 * * *', async () => {
 cron.schedule('* * * * *', async () => {
 
   try {
-    const allSubmissions = await Submission.find({}).populate('userId');
+    const allSubmissions = await Submission.find({
+      tasks: { $exists: true, $not: { $size: 0 } },
+      "tasks.status": { $ne: "Submitted" }
+    }).populate({
+      path: 'userId',
+      match: { isPortalConnected: true }
+    });
     const now = new Date();
 
     for (let sub of allSubmissions) {

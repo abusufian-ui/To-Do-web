@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const habitSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   name: { type: String, required: true },
   type: { type: String, enum: ['good', 'bad'], required: true },
   
@@ -54,7 +54,7 @@ const habitSchema = new mongoose.Schema({
   archivedAt: { type: Date, default: null },
   
   // --- SOFT DELETE FIELDS ---
-  isDeleted: { type: Boolean, default: false },
+  isDeleted: { type: Boolean, default: false, index: true },
   deletedAt: { type: Date, default: null }
 });
 

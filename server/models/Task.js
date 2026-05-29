@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const TaskSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // The Task Creator
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true }, // The Task Creator
   name: { type: String, required: true },
   description: { type: String, default: '' },
   course: { type: String, default: 'General' },
@@ -16,10 +16,10 @@ const TaskSchema = new mongoose.Schema({
     text: String,
     completed: { type: Boolean, default: false }
   }],
-  isDeleted: { type: Boolean, default: false }, // Master deletion flag (Creator side)
+  isDeleted: { type: Boolean, default: false, index: true }, // Master deletion flag (Creator side)
   deletedAt: { type: Date, default: null },
   isPrivate: { type: Boolean, default: false },
-  groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
+  groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null, index: true },
   deletedByUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // Independent member deletions
   memberStatuses: [{ // Independent member status tracking
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

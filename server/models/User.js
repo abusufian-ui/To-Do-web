@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   webPassword: { type: String, default: null },
   isAdmin: { type: Boolean, default: false },
-  isPortalConnected: { type: Boolean, default: false },
+  isPortalConnected: { type: Boolean, default: false, index: true },
   portalId: { type: String, default: null },
   ucpCookie: { type: String, default: null },
   portalProfilePic: { type: String, default: null }, // Scrapped from portal
