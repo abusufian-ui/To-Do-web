@@ -291,6 +291,12 @@ export default function Login() {
                                 <button disabled={isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                                     {isLoading ? 'Checking...' : 'Continue'}
                                 </button>
+                                <p className="text-[11px] text-gray-500 text-center font-medium mt-4 select-none">
+                                    By logging in you agree to our{' '}
+                                    <a href="https://myportalucp.vercel.app/terms" target="_blank" rel="noreferrer" className="text-gray-300 hover:text-white underline font-bold transition-colors">
+                                        Terms & conditions
+                                    </a>.
+                                </p>
                             </form>
                         )}
 
@@ -321,6 +327,12 @@ export default function Login() {
                                 <button disabled={isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                                     {isLoading ? 'Authenticating...' : 'Sign In'}
                                 </button>
+                                <p className="text-[11px] text-gray-500 text-center font-medium mt-4 select-none">
+                                    By logging in you agree to our{' '}
+                                    <a href="https://myportalucp.vercel.app/terms" target="_blank" rel="noreferrer" className="text-gray-300 hover:text-white underline font-bold transition-colors">
+                                        Terms & conditions
+                                    </a>.
+                                </p>
                             </form>
                         )}
 
