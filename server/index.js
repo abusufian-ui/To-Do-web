@@ -3279,6 +3279,77 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
 });
 
 // ==========================================
+// 🏆 RELATIVE GRADING LEADERBOARD API (EXTENSION)
+// ==========================================
+app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
+  try {
+    const courseCode = req.params.courseCode;
+
+    // Find all courses matching this exact full course code
+    const matchingCourses = await Course.find({ code: courseCode }).populate('userId', 'name portalId customProfilePic');
+    
+    if (!matchingCourses || matchingCourses.length === 0) {
+      return res.status(404).json({ message: "No students found in this section." });
+    }
+
+    const userIds = matchingCourses.map(c => c.userId?._id).filter(Boolean);
+    const grades = await Grade.find({ userId: { $in: userIds } });
+
+    let leaderboard = matchingCourses.map(course => {
+      // Find matching grade entry for this user
+      const userGrade = grades.find(g =>
+        g.userId.toString() === course.userId?._id.toString() &&
+        (g.courseName === course.name || (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase())))
+      );
+
+      let score = 0;
+      if (userGrade && Array.isArray(userGrade.assessments)) {
+        let totalMarkedWeight = 0;
+        let totalEarnedWeight = 0;
+        userGrade.assessments.forEach(cat => {
+          const wNum = parseFloat(cat.weight) || 0;
+          const pNum = parseFloat(cat.percentage) || 0;
+          totalMarkedWeight += wNum;
+          totalEarnedWeight += (pNum / 100) * wNum;
+        });
+        score = totalMarkedWeight > 0 ? (totalEarnedWeight / totalMarkedWeight) * 100 : 0;
+      }
+
+      return {
+        id: course.userId?.portalId || 'Unknown ID',
+        name: course.userId?.name || 'Unknown Student',
+        score: score || 0,
+        pic: course.userId?.customProfilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}&backgroundColor=4f46e5`
+      };
+    });
+
+    leaderboard = leaderboard.filter(s => s.id !== 'Unknown ID');
+    leaderboard.sort((a, b) => b.score - a.score);
+
+    // Add rank and relative grading properties
+    const total = leaderboard.length;
+    leaderboard = leaderboard.map((s, idx) => {
+      const pctile = (idx / total) * 100;
+      let grade = 'F';
+      if (pctile < 10) grade = 'A';
+      else if (pctile < 20) grade = 'A-';
+      else if (pctile < 35) grade = 'B+';
+      else if (pctile < 50) grade = 'B';
+      else if (pctile < 65) grade = 'B-';
+      else if (pctile < 80) grade = 'C';
+      else if (pctile < 95) grade = 'D';
+
+      return { ...s, rank: idx + 1, grade };
+    });
+
+    res.status(200).json(leaderboard);
+  } catch (error) {
+    console.error('Leaderboard generation error:', error);
+    res.status(500).json({ error: "Failed to generate relative grading leaderboard" });
+  }
+});
+
+// ==========================================
 // 🏆 RELATIVE GRADING & LEADERBOARD API (ADMIN ONLY)
 // ==========================================
 app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
