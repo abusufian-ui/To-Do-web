@@ -723,11 +723,15 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         if (courseName) {
           if (sectionCode) {
             sectionLookup[courseName] = sectionCode;
-            sectionLookup[`${courseName} - Lab`] = sectionCode; 
+            if (!sectionLookup[`${courseName} - Lab`]) {
+              sectionLookup[`${courseName} - Lab`] = sectionCode;
+            }
           }
           if (fullCode) {
             baseCodeLookup[courseName] = fullCode;
-            baseCodeLookup[`${courseName} - Lab`] = fullCode; 
+            if (!baseCodeLookup[`${courseName} - Lab`]) {
+              baseCodeLookup[`${courseName} - Lab`] = fullCode;
+            }
           }
 
           // ✅ Save creditHours to DB dynamically
@@ -3277,7 +3281,7 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
 // ==========================================
 // 🏆 RELATIVE GRADING & LEADERBOARD API (ADMIN ONLY)
 // ==========================================
-app.get('/api/course/:courseCode/section/:section/leaderboard', auth, async (req, res) => {
+app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
   try {
     // 🔒 Admin-only access
     const requestingUser = await User.findById(req.user.id);
@@ -3285,16 +3289,14 @@ app.get('/api/course/:courseCode/section/:section/leaderboard', auth, async (req
       return res.status(403).json({ message: "Access denied. Leaderboard is restricted to administrators." });
     }
 
-    const { courseCode, section } = req.params;
+    const myCourse = await Course.findById(req.params.courseId);
+    if (!myCourse) return res.status(404).json({ message: "Course not found" });
 
-    const cleanCourseCode = courseCode.replace(/\s+/g, '');
-    const courseRegex = new RegExp([...cleanCourseCode].join('\\s*'), 'i');
+    let query = { name: myCourse.name };
+    if (myCourse.section) query.section = myCourse.section;
 
     // 🚨 PRIVACY FIX: Only populate customProfilePic, NEVER the primary profilePic
-    const matchingCourses = await Course.find({
-      code: courseRegex,
-      section: new RegExp(`^${section}$`, 'i')
-    }).populate('userId', 'name portalId customProfilePic'); 
+    const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic'); 
 
     if (!matchingCourses || matchingCourses.length === 0) {
       return res.status(404).json({ message: "No students found in this section." });

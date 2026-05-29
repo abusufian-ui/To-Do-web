@@ -46,7 +46,88 @@ const calculateTrueScore = (assessments) => {
     marked += w;
     earned += (p / 100) * w;
   });
-  return marked > 0 ? (earned / marked) * 100 : 0;
+  return { marked, earned, percentage: marked > 0 ? (earned / marked) * 100 : 0 };
+};
+
+const calculateClassAverageScore = (assessments) => {
+  let marked = 0;
+  let earnedAvg = 0;
+  (assessments || []).forEach(cat => {
+    const w = parseFloat(cat.weight) || 0;
+    let catEarned = 0;
+    let catMax = 0;
+    let hasClassAvg = false;
+    
+    if (cat.details && Array.isArray(cat.details)) {
+      cat.details.forEach(d => {
+        const m = parseFloat(d.maxMarks) || 0;
+        const a = parseFloat(d.classAverage) || 0;
+        if (m > 0 && d.classAverage && d.classAverage !== '-' && d.classAverage !== '') {
+          catMax += m;
+          catEarned += a;
+          hasClassAvg = true;
+        }
+      });
+    }
+    
+    if (hasClassAvg && catMax > 0 && w > 0) {
+      marked += w;
+      earnedAvg += (catEarned / catMax) * w;
+    }
+  });
+  return { marked, earnedAvg, percentage: marked > 0 ? (earnedAvg / marked) * 100 : 0 };
+};
+
+const getSmartCurveGrade = (myScore, classAverage) => {
+  if (classAverage === 0) return getAbsoluteGrade(myScore);
+  const diff = myScore - classAverage;
+  if (diff >= 15) return { grade: 'A', points: 4.0, color: 'text-emerald-400' };
+  if (diff >= 10) return { grade: 'A-', points: 3.67, color: 'text-emerald-500' };
+  if (diff >= 5) return { grade: 'B+', points: 3.33, color: 'text-blue-400' };
+  if (diff >= 0) return { grade: 'B', points: 3.0, color: 'text-blue-500' };
+  if (diff >= -5) return { grade: 'B-', points: 2.67, color: 'text-indigo-400' };
+  if (diff >= -10) return { grade: 'C+', points: 2.33, color: 'text-amber-400' };
+  if (diff >= -15) return { grade: 'C', points: 2.0, color: 'text-amber-500' };
+  if (diff >= -20) return { grade: 'C-', points: 1.67, color: 'text-orange-500' };
+  if (diff >= -25) return { grade: 'D+', points: 1.33, color: 'text-rose-400' };
+  if (diff >= -30) return { grade: 'D', points: 1.0, color: 'text-rose-500' };
+  return { grade: 'F', points: 0.0, color: 'text-red-600' };
+};
+
+const getProjectedGradeForCourse = (courseGrade, gradingMode = "relative", leaderboards = {}, userPortalId = "") => {
+  const cScore = calculateTrueScore(courseGrade.assessments);
+  if (gradingMode === "relative") {
+    const board = leaderboards[courseGrade._id] || [];
+    const myScore = cScore.percentage;
+    let list = [...board];
+
+    let myRankData = userPortalId ? list.find(s => s.id && s.id.toLowerCase() === userPortalId.toLowerCase()) : null;
+    if (myRankData) {
+      myRankData.score = myScore;
+    } else {
+      list.push({ id: userPortalId || 'Me', score: myScore, isMe: true });
+    }
+    
+    list.sort((a, b) => b.score - a.score);
+    const total = list.length;
+    
+    if (board.length === 0 || total < 20) {
+      const avgScore = calculateClassAverageScore(courseGrade.assessments);
+      return getSmartCurveGrade(myScore, avgScore.percentage);
+    }
+
+    const idx = list.findIndex(s => s.id && (s.id.toLowerCase() === (userPortalId || 'Me').toLowerCase()) || s.isMe);
+    const pctile = (idx / total) * 100;
+    if (pctile < 10) return { grade: 'A', points: 4.0, color: 'text-emerald-400' };
+    if (pctile < 20) return { grade: 'A-', points: 3.67, color: 'text-emerald-500' };
+    if (pctile < 35) return { grade: 'B+', points: 3.33, color: 'text-blue-400' };
+    if (pctile < 50) return { grade: 'B', points: 3.0, color: 'text-blue-500' };
+    if (pctile < 65) return { grade: 'B-', points: 2.67, color: 'text-indigo-400' };
+    if (pctile < 80) return { grade: 'C', points: 2.0, color: 'text-amber-500' };
+    if (pctile < 95) return { grade: 'D', points: 1.0, color: 'text-rose-500' };
+    return { grade: 'F', points: 0.0, color: 'text-red-600' };
+  }
+  return getAbsoluteGrade(cScore.percentage);
 };
 
 const GradeCategoryRow = ({ category, onBestOfChange }) => {
@@ -239,18 +320,18 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     return courses.find(c => c.name === selectedCourse.courseName);
   }, [selectedCourse, courses]);
 
-  // ─── LEADERBOARD DATA FETCHER ───
+  // 🚀 LEADERBOARD DATA FETCHER 🚀
   useEffect(() => {
     setLeaderboard([]);
     const fetchLeaderboard = async () => {
-      if (!selectedCourse || !matchingCourseInfo || !matchingCourseInfo.code || !matchingCourseInfo.section) {
+      if (!selectedCourse || !matchingCourseInfo) {
         setLeaderboard([]);
         return;
       }
       setLeaderboardLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_BASE}/api/course/${encodeURIComponent(matchingCourseInfo.code)}/section/${encodeURIComponent(matchingCourseInfo.section)}/leaderboard`, {
+        const res = await fetch(`${API_BASE}/api/course-leaderboard/${matchingCourseInfo._id}`, {
           headers: { 'Content-Type': 'application/json', 'x-auth-token': token }
         });
         if (res.ok) {
@@ -375,11 +456,8 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
         const cInfo = courses.find(c => c.name === courseGrade.courseName);
         const credits = cInfo?.creditHours || 0; // Use real credits or fallback to 0
 
-        const cScore = calculateTrueScore(courseGrade.assessments);
-        
-        // Use relative predicted grade if available in leaderboard, else absolute
-        const absoluteGradeInfo = getAbsoluteGrade(cScore);
-        const gradePoints = absoluteGradeInfo.points; 
+        const proj = getProjectedGradeForCourse(courseGrade, "relative", {}, stats?.rollNo);
+        const gradePoints = proj.points; 
         
         totalPredictedQualityPoints += (gradePoints * credits);
         totalInProgressCredits += credits;
@@ -447,7 +525,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                       
                       {/* 🚀 BUG FIXED: Shows exact Score AND Credit Hours */}
                       <p className={`text-[10px] font-semibold tracking-wider uppercase mt-1 ${isActive ? 'text-blue-200' : 'text-gray-400'}`}>
-                        {totalScore > 0 ? `Score: ${totalScore.toFixed(1)}%` : 'Active'} • {credits} Cr. Hrs
+                        {totalScore.marked > 0 ? `Score: ${totalScore.percentage.toFixed(1)}%` : 'Active'} • {credits} Cr. Hrs
                       </p>
                     </div>
                   </div>
@@ -591,10 +669,9 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                       </div>
                       <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl text-center min-w-[100px]">
                         <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-widest mb-1 whitespace-nowrap">Proj. Grade</p>
-                        {/* 🚀 BUG FIXED: Always guaranteed to have a fallback projected grade */}
-                        <p className="text-3xl font-black text-emerald-300 drop-shadow-sm">
-                          {activeProjectedGrade}
-                        </p>
+                        <h2 className={`text-4xl font-black tracking-tight leading-none mb-2 text-emerald-300`}>
+                            {getProjectedGradeForCourse(selectedCourse.assessments)}
+                        </h2>
                       </div>
                     </div>
                   </div>
@@ -692,6 +769,21 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
               {/* Assessments Details List */}
               <div className="mt-8 space-y-4">
                 <div className="flex items-center justify-between pl-2 pr-2">
+                  {(() => {
+                    const cScore = calculateTrueScore(selectedCourse.assessments);
+                    return (
+                      <>
+                        <h2 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight leading-none mb-2">
+                          {cScore.percentage.toFixed(1)}%
+                        </h2>
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                            Based on {cScore.marked.toFixed(1)}% Marked Weight
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
                   <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Marked Assessments</h4>
                 </div>
                 {processedGradebook.length === 0 ? (
