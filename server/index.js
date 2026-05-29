@@ -811,15 +811,20 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             for (const peerId of uniquePeerIds) {
               const peerSub = await Submission.findOne({ userId: peerId, courseName: sub.courseName });
               const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
-              const existingTaskMap = new Map(existingTasks.map(t => [`${(t.title || '').trim().toLowerCase()}_${(t.dueDate || '').trim()}`, t]));
+              const existingTaskMap = new Map(existingTasks.map(t => [
+                `${(t.title || '').replace(/\s+/g, ' ').trim().toLowerCase()}_${(t.dueDate || '').replace(/\s+/g, ' ').trim()}`, 
+                t
+              ]));
 
               let merged = false;
               let newPeerTasks = [];
               sub.tasks.forEach(incomingTask => {
-                const fingerprint = `${(incomingTask.title || '').trim().toLowerCase()}_${(incomingTask.dueDate || '').trim()}`;
+                const fingerprint = `${(incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase()}_${(incomingTask.dueDate || '').replace(/\s+/g, ' ').trim()}`;
                 if (!existingTaskMap.has(fingerprint)) {
-                  existingTasks.push(incomingTask);
-                  newPeerTasks.push(incomingTask);
+                  // Force classmate tasks to default to Pending to prevent status contamination
+                  const peerTask = { ...incomingTask, status: 'Pending' };
+                  existingTasks.push(peerTask);
+                  newPeerTasks.push(peerTask);
                   merged = true;
                 }
               });
@@ -848,8 +853,8 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     // By using deleteMany on EVERY sync where we have data, we completely wipe out 
     // old makeup classes, dropped courses, and garbage data, ensuring a 1:1 mirror.
     if (timetableData && timetableData.length > 0) {
-      await Timetable.deleteMany({ userId });
       const courseMapLocal = new Map();
+      const preparedClasses = [];
 
       for (const classItem of timetableData) {
         const { id, ...classData } = classItem;
@@ -872,12 +877,31 @@ app.post('/api/extension-sync', auth, async (req, res) => {
           }
         }
 
-        await new Timetable({ ...classData, isMakeup, expiresAt, userId, lastUpdated: new Date() }).save();
+        preparedClasses.push({
+          ...classData,
+          isMakeup,
+          expiresAt,
+          userId,
+          lastUpdated: new Date()
+        });
 
-        if (!courseMapLocal.has(classItem.courseName)) courseMapLocal.set(classItem.courseName, { name: classItem.courseName, code: classItem.courseCode || '', color: classItem.color || '#3498db', instructors: new Set(), rooms: new Set() });
+        if (!courseMapLocal.has(classItem.courseName)) {
+          courseMapLocal.set(classItem.courseName, { 
+            name: classItem.courseName, 
+            code: classItem.courseCode || '', 
+            color: classItem.color || '#3498db', 
+            instructors: new Set(), 
+            rooms: new Set() 
+          });
+        }
         const course = courseMapLocal.get(classItem.courseName);
         if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
         if (classItem.room && !classItem.room.includes('Unknown') && !classItem.room.includes('TBA')) course.rooms.add(classItem.room);
+      }
+
+      await Timetable.deleteMany({ userId });
+      if (preparedClasses.length > 0) {
+        await Timetable.insertMany(preparedClasses);
       }
 
       for (const [courseName, data] of courseMapLocal.entries()) {
