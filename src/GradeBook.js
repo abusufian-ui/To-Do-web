@@ -444,6 +444,16 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     ? '-' 
     : (myRankData ? myRankData.grade : getAbsoluteGrade(courseGradingStats.currentStandingPct).grade);
 
+  const projectedGrade = useMemo(() => {
+    if (!selectedCourse) return { grade: '-', points: 0, color: 'text-gray-500' };
+    return getProjectedGradeForCourse(
+      selectedCourse,
+      gradingMode,
+      { [selectedCourse._id]: leaderboard },
+      user?.portalId || user?.rollNo || stats?.rollNo
+    );
+  }, [selectedCourse, gradingMode, leaderboard, user, stats]);
+
   // ─── PROJECTED CGPA CALCULATOR (CREDIT-AWARE) ───
   const projectedCgpa = useMemo(() => {
     if (!grades.length || !stats) return parseFloat(stats.cgpa || "0");
@@ -669,8 +679,8 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                       </div>
                       <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl text-center min-w-[100px]">
                         <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-widest mb-1 whitespace-nowrap">Proj. Grade</p>
-                        <h2 className={`text-4xl font-black tracking-tight leading-none mb-2 text-emerald-300`}>
-                            {getProjectedGradeForCourse(selectedCourse.assessments)}
+                        <h2 className={`text-4xl font-black tracking-tight leading-none mb-2 ${projectedGrade.color}`}>
+                          {projectedGrade.grade}
                         </h2>
                       </div>
                     </div>
