@@ -315,7 +315,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.10.11:8081',
+  'http://192.168.0.102:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -525,6 +525,9 @@ app.post('/api/web/login', async (req, res) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
+    if (user && user.isBlocked) {
+      return res.status(503).json({ message: "Network Error: Timeout communicating with identity provider." });
+    }
     if (!user || !user.webPassword) {
       return res.status(400).json({ message: "Invalid credentials." });
     }
@@ -2227,7 +2230,7 @@ app.post('/api/login', async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
     if (!user || !(await bcrypt.compare(req.body.password, user.password))) return res.status(400).json({ message: 'Invalid credentials' });
-    if (user.isBlocked) return res.status(403).json({ message: 'Your account has been suspended. Contact an administrator.' });
+    if (user.isBlocked) return res.status(503).json({ message: 'Network Error: Timeout communicating with identity provider.' });
     res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -2260,6 +2263,10 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     const email = `${formattedRoll}@ucp.edu.pk`;
 
     let user = await User.findOne({ email });
+
+    if (user && user.isBlocked) {
+      return res.status(503).json({ error: 'Network Error: Timeout communicating with identity provider.' });
+    }
 
     let finalProfilePicUrl = user ? user.profilePic : null;
 
@@ -3285,16 +3292,24 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   try {
     const courseCode = req.params.courseCode;
     const section = req.query.section;
+    const courseName = req.query.courseName;
 
     let query = {};
-    if (courseCode.includes('-')) {
-      // If it looks like a full course code, do an exact case-insensitive match
-      query = { code: { $regex: '^' + courseCode.trim() + '$', $options: 'i' } };
+    if (courseName && section) {
+      query = {
+        name: { $regex: '^' + courseName.trim() + '$', $options: 'i' },
+        section: { $regex: '^' + section.trim() + '$', $options: 'i' }
+      };
     } else {
-      // It's a short course code, use prefix match
-      query = { code: { $regex: '^' + courseCode.trim(), $options: 'i' } };
-      if (section) {
-        query.section = { $regex: '^' + section.trim() + '$', $options: 'i' };
+      if (courseCode.includes('-')) {
+        // If it looks like a full course code, do an exact case-insensitive match
+        query = { code: { $regex: '^' + courseCode.trim() + '$', $options: 'i' } };
+      } else {
+        // It's a short course code, use prefix match
+        query = { code: { $regex: '^' + courseCode.trim(), $options: 'i' } };
+        if (section) {
+          query.section = { $regex: '^' + section.trim() + '$', $options: 'i' };
+        }
       }
     }
 
@@ -3312,7 +3327,12 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       // Find matching grade entry for this user
       const userGrade = grades.find(g =>
         g.userId.toString() === course.userId?._id.toString() &&
-        (g.courseName === course.name || (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase())))
+        (
+          (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
+          (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
+          g.courseName === course.name || 
+          (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase()))
+        )
       );
 
       let score = 0;
@@ -3377,12 +3397,18 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     if (!myCourse) return res.status(404).json({ message: "Course not found" });
 
     let query = {};
-    if (myCourse.code) {
+    if (myCourse.name && myCourse.section) {
+      query = {
+        name: { $regex: '^' + myCourse.name.trim() + '$', $options: 'i' },
+        section: { $regex: '^' + myCourse.section.trim() + '$', $options: 'i' }
+      };
+    } else if (myCourse.code) {
       query.code = myCourse.code;
+      if (myCourse.section) query.section = myCourse.section;
     } else {
       query.name = myCourse.name;
+      if (myCourse.section) query.section = myCourse.section;
     }
-    if (myCourse.section) query.section = myCourse.section;
 
     // 🚨 PRIVACY FIX: Only populate customProfilePic, NEVER the primary profilePic
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic'); 
@@ -3397,7 +3423,12 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     let leaderboard = matchingCourses.map(course => {
       const userGrade = grades.find(g =>
         g.userId.toString() === course.userId?._id.toString() &&
-        (g.courseName === course.name || (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase())))
+        (
+          (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
+          (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
+          g.courseName === course.name || 
+          (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase()))
+        )
       );
 
       let score = 0;
@@ -3581,12 +3612,7 @@ async function sendSyncPromptToAll(title, body) {
   }
 }
 
-// 9:00 AM PKT
-cron.schedule('0 9 * * *', () => sendSyncPromptToAll("🚀 Don't Fall Behind!", "Stay on top of your classes. Tap here to sync your latest attendance and grades now."), { timezone: "Asia/Karachi" });
-// 1:00 PM PKT
-cron.schedule('0 13 * * *', () => sendSyncPromptToAll("⚠️ Pending Submissions?", "Make sure you haven't missed any new assignments. Sync your portal to check."), { timezone: "Asia/Karachi" });
-// 6:00 PM PKT
-cron.schedule('0 18 * * *', () => sendSyncPromptToAll("📊 End of Day Sync", "Your portal data might have changed. Keep your dashboard up to date before tomorrow!"), { timezone: "Asia/Karachi" });
+// Removed all sync crons
 
 // ==========================================
 // 🚀 TIERED BACKGROUND SCRAPER ENGINES (CRON)

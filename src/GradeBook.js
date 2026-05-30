@@ -402,7 +402,8 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     const myScore = courseGradingStats.currentStandingPct;
 
     let list = [...leaderboard];
-    let closestIndex = list.findIndex(s => s.isMe);
+    const userPortalId = user?.portalId || user?.rollNo || stats?.rollNo;
+    let closestIndex = userPortalId ? list.findIndex(s => s.id && s.id.toLowerCase() === userPortalId.toLowerCase()) : -1;
 
     if (closestIndex === -1 && list.length > 0) {
        let minDiff = Infinity;
@@ -416,7 +417,15 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     if (closestIndex !== -1 && list.length > 0) {
       list[closestIndex].isMe = true;
       list[closestIndex].score = myScore;
-      list[closestIndex].name = "You";
+      list[closestIndex].name = user?.name || list[closestIndex].name;
+    } else {
+      list.push({
+        id: userPortalId || 'Me',
+        name: user?.name || 'You',
+        score: myScore,
+        isMe: true,
+        pic: user?.customProfilePic || user?.profilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || 'Student')}&backgroundColor=4f46e5`
+      });
     }
 
     list.sort((a, b) => b.score - a.score);
@@ -435,7 +444,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
 
       return { ...s, rank: idx + 1, grade };
     });
-  }, [leaderboard, courseGradingStats]);
+  }, [leaderboard, courseGradingStats, user, stats]);
 
   const myRankData = useMemo(() => combinedLeaderboard.find(s => s.isMe), [combinedLeaderboard]);
 
