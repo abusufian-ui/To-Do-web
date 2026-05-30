@@ -3284,9 +3284,22 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
 app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   try {
     const courseCode = req.params.courseCode;
+    const section = req.query.section;
 
-    // Find all courses matching this exact full course code
-    const matchingCourses = await Course.find({ code: courseCode }).populate('userId', 'name portalId customProfilePic');
+    let query = {};
+    if (courseCode.includes('-')) {
+      // If it looks like a full course code, do an exact case-insensitive match
+      query = { code: { $regex: '^' + courseCode.trim() + '$', $options: 'i' } };
+    } else {
+      // It's a short course code, use prefix match
+      query = { code: { $regex: '^' + courseCode.trim(), $options: 'i' } };
+      if (section) {
+        query.section = { $regex: '^' + section.trim() + '$', $options: 'i' };
+      }
+    }
+
+    // Find all courses matching this course code prefix (and section if provided)
+    const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic');
     
     if (!matchingCourses || matchingCourses.length === 0) {
       return res.status(404).json({ message: "No students found in this section." });
