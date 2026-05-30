@@ -3383,11 +3383,11 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
 });
 
 // ==========================================
-// 🏆 RELATIVE GRADING & LEADERBOARD API (ADMIN ONLY)
+// 🏆 RELATIVE GRADING & LEADERBOARD API (ADMIN & SUPER ADMIN ONLY)
 // ==========================================
 app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
   try {
-    // 🔒 Admin-only access
+    // 🔒 Strict security guard: Reject request if user is not an administrator
     const requestingUser = await User.findById(req.user.id);
     if (!requestingUser || !requestingUser.isAdmin) {
       return res.status(403).json({ message: "Access denied. Leaderboard is restricted to administrators." });
@@ -3410,9 +3410,9 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
       if (myCourse.section) query.section = myCourse.section;
     }
 
-    // 🚨 PRIVACY FIX: Only populate customProfilePic, NEVER the primary profilePic
+    // Aggregates all registered students in this specific section block
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic'); 
-
+    
     if (!matchingCourses || matchingCourses.length === 0) {
       return res.status(404).json({ message: "No students found in this section." });
     }
@@ -3448,7 +3448,6 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
         id: course.userId?.portalId || 'Unknown ID',
         name: course.userId?.name || 'Unknown Student',
         score: score || 0,
-        // 🚨 PRIVACY FIX: Strictly mapping the custom picture or safe fallback
         pic: course.userId?.customProfilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}&backgroundColor=4f46e5`
       };
     });
