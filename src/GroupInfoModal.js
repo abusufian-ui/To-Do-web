@@ -22,6 +22,8 @@ const GroupInfoModal = ({
   const [groupNameInput, setGroupNameInput] = useState(activeGroup?.name || '');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false); // 🚀 NEW: Preview State
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', action: null, confirmText: 'Confirm' });
+  const [showReassignDropdown, setShowReassignDropdown] = useState(false);
+  const [selectedNextAdmin, setSelectedNextAdmin] = useState('');
   const fileInputRef = useRef(null);
 
   if (!isOpen || !activeGroup) return null;
@@ -142,36 +144,77 @@ const GroupInfoModal = ({
     });
   };
 
-  const handleLeaveGroup = async () => {
-    const confirmMessage = isGroupAdmin
-      ? "Disbanding the group will delete it and unshare all group tasks. Are you sure you want to proceed?"
-      : "Are you sure you want to leave the study group? You will lose access to all shared tasks.";
-
-    setConfirmModal({
-      isOpen: true,
-      title: isGroupAdmin ? 'Disband Group' : 'Leave Group',
-      message: confirmMessage,
-      confirmText: isGroupAdmin ? 'Disband Group' : 'Leave Group',
-      action: async () => {
-        try {
-          const res = await fetch(`${API_BASE}/api/groups/leave`, {
-            method: 'POST',
-            headers: authHeaders
-          });
-          if (res.ok) {
-            fetchActiveGroup();
-            fetchTasks();
-            onClose();
-            ToastConfig.show({ title: "Success", message: isGroupAdmin ? "Group disbanded" : "You have left the group", type: "success" });
-          } else {
-            const err = await res.json();
-            ToastConfig.show({ title: "Error", message: err.message || "Failed to exit group", type: "error" });
-          }
-        } catch (err) {
-          ToastConfig.show({ title: "Error", message: "Failed to exit group", type: "error" });
-        }
+  const executeLeaveGroupRequest = async (nextAdminId = null) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/groups/leave`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: nextAdminId ? JSON.stringify({ nextAdminId }) : undefined
+      });
+      if (res.ok) {
+        fetchActiveGroup();
+        fetchTasks();
+        onClose();
+        setShowReassignDropdown(false);
+        ToastConfig.show({ 
+          title: "Success", 
+          message: nextAdminId ? "Left group and promoted new admin!" : "Successfully left the group", 
+          type: "success" 
+        });
+      } else {
+        const err = await res.json();
+        ToastConfig.show({ title: "Error", message: err.message || "Failed to exit group", type: "error" });
       }
-    });
+    } catch (err) {
+      ToastConfig.show({ title: "Error", message: "Failed to exit group", type: "error" });
+    }
+  };
+
+  const handleLeaveGroup = () => {
+    const currentUserId = user?.id || user?._id;
+    const isSelfAdmin = activeGroup.admins?.some(admin => (admin._id || admin).toString() === currentUserId.toString()) || activeGroup.creatorId?._id?.toString() === currentUserId.toString() || activeGroup.creatorId?.toString() === currentUserId.toString();
+
+    const otherAdminsList = activeGroup.admins?.filter(admin => (admin._id || admin).toString() !== currentUserId.toString()) || [];
+    const otherMembersList = activeGroup.members?.filter(member => (member._id || member).toString() !== currentUserId.toString()) || [];
+
+    if (isSelfAdmin) {
+      if (otherAdminsList.length > 0) {
+        setConfirmModal({
+          isOpen: true,
+          title: 'Leave Group',
+          message: 'Are you sure you want to leave this study group? You will lose access to all shared tasks. The group will continue to exist under other active administrators.',
+          confirmText: 'Leave Group',
+          action: async () => {
+            await executeLeaveGroupRequest();
+          }
+        });
+      } else if (otherMembersList.length > 0) {
+        setShowReassignDropdown(true);
+        if (otherMembersList.length > 0) {
+          setSelectedNextAdmin(otherMembersList[0]._id || otherMembersList[0]);
+        }
+      } else {
+        setConfirmModal({
+          isOpen: true,
+          title: 'Leave & Delete Group',
+          message: 'Since you are the sole member, leaving will permanently delete the group and remove all shared tasks. Are you sure you want to proceed?',
+          confirmText: 'Delete Group',
+          action: async () => {
+            await executeLeaveGroupRequest();
+          }
+        });
+      }
+    } else {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Leave Group',
+        message: 'Are you sure you want to leave this study group? You will lose access to all shared tasks.',
+        confirmText: 'Leave Group',
+        action: async () => {
+          await executeLeaveGroupRequest();
+        }
+      });
+    }
   };
 
   const resolveGroupAvatarUrl = (url) => {
@@ -200,6 +243,97 @@ const GroupInfoModal = ({
       </div>
     );
   };
+
+  if (showReassignDropdown) {
+    const currentUserId = user?.id || user?._id;
+    const otherMembersList = activeGroup.members?.filter(member => {
+      const memberId = member._id || member;
+      return memberId.toString() !== currentUserId.toString();
+    }) || [];
+
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-start justify-center animate-fadeIn">
+        <style>{`
+          @keyframes slideInFromTop {
+            0% { transform: translateY(-100%); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+          }
+          .animate-topDrawer { animation: slideInFromTop 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        `}</style>
+        <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-lg rounded-b-[2.25rem] rounded-t-none shadow-2xl border-b border-x border-gray-100 dark:border-[#2C2C2C] animate-topDrawer overflow-hidden flex flex-col max-h-[90vh]">
+          {/* Header */}
+          <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center shrink-0">
+            <h2 className="text-lg font-bold dark:text-white text-gray-800 flex items-center gap-2">
+              <ShieldAlert className="text-orange-500" size={18} />
+              Reassign Administrative Role
+            </h2>
+            <button onClick={() => setShowReassignDropdown(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-full transition-colors">
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+            <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/30 rounded-2xl p-4 flex gap-3 text-orange-700 dark:text-orange-400">
+              <AlertCircle size={20} className="shrink-0 mt-0.5" />
+              <div className="text-xs font-semibold leading-relaxed">
+                You are the sole Admin of this group. To leave cleanly, you must choose another member to promote to Admin & Creator next.
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400">Select New Admin</label>
+              <div className="space-y-2">
+                {otherMembersList.map((member) => {
+                  const memberIdStr = (member._id || member).toString();
+                  const isSelected = selectedNextAdmin?.toString() === memberIdStr;
+                  return (
+                    <div 
+                      key={member._id} 
+                      onClick={() => setSelectedNextAdmin(member._id)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        isSelected 
+                          ? 'bg-brand-blue/5 border-brand-blue/40 shadow-sm' 
+                          : 'bg-gray-50/50 dark:bg-dark-surface/20 border-gray-100 dark:border-[#252525] hover:bg-gray-100 dark:hover:bg-dark-surface/40'
+                      }`}
+                    >
+                      {member.profilePic && member.profilePic.trim() !== "" ? (
+                        <img src={member.profilePic} alt="" className="w-8 h-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue flex items-center justify-center font-bold text-xs uppercase">{member.name?.substring(0, 2).toUpperCase()}</div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-gray-800 dark:text-white truncate">{member.name}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{member.email}</p>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                        isSelected ? 'border-brand-blue bg-brand-blue' : 'border-gray-300 dark:border-dark-border'
+                      }`}>
+                        {isSelected && <Check size={12} className="text-white" />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="p-5 bg-gray-50 dark:bg-[#181818] border-t border-gray-100 dark:border-[#2C2C2C] flex gap-3 shrink-0">
+            <button onClick={() => setShowReassignDropdown(false)} className="flex-1 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-xl transition-colors">Cancel</button>
+            <button 
+              onClick={() => executeLeaveGroupRequest(selectedNextAdmin)} 
+              disabled={!selectedNextAdmin}
+              className="flex-1 py-2.5 bg-brand-blue hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-1.5"
+            >
+              <LogOut size={13} />
+              Confirm & Leave Group
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -346,7 +480,7 @@ const GroupInfoModal = ({
             <button onClick={onClose} className="flex-1 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-xl transition-colors">Dismiss</button>
             <button onClick={handleLeaveGroup} className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-1.5">
               <LogOut size={13} />
-              {isGroupAdmin ? "Disband Workspace" : "Leave Group"}
+              Leave Group
             </button>
           </div>
         </div>

@@ -1555,25 +1555,90 @@ app.get('/api/groups/my', auth, async (req, res) => {
   }
 });
 
-// 3. Leave or Disband Group
+// 3. Leave or Disband Group (Robust Admin Leaving Protocol)
 app.post('/api/groups/leave', auth, async (req, res) => {
   try {
     const group = await Group.findOne({ members: req.user.id });
     if (!group) return res.status(400).json({ message: "You are not a member of any group." });
 
-    const isGroupAdmin = group.admins.includes(req.user.id) || group.creatorId.toString() === req.user.id;
+    const userIdStr = req.user.id.toString();
+    const isGroupAdmin = group.admins.map(a => a.toString()).includes(userIdStr) || group.creatorId.toString() === userIdStr;
+
+    const otherAdmins = group.admins.filter(a => a.toString() !== userIdStr);
+    const otherMembers = group.members.filter(m => m.toString() !== userIdStr);
+
     if (isGroupAdmin) {
-      // Disband Group (Admin Exit)
-      await Group.findByIdAndDelete(group._id);
-      await GroupInvitation.deleteMany({ groupId: group._id });
-      // Revert shared tasks back to private
-      await Task.updateMany({ groupId: group._id }, { groupId: null, memberStatuses: [] });
-      await broadcastLiveUpdate(group._id, req.user.id);
-      res.json({ message: "Group disbanded successfully." });
+      if (otherAdmins.length > 0) {
+        // Case 1: Group has another admin -> Do nothing, just exit current admin from admins and members list
+        group.admins = otherAdmins;
+        group.members = otherMembers;
+        if (group.creatorId.toString() === userIdStr) {
+          // If original creator is leaving, reassign creator status to the next active admin
+          group.creatorId = otherAdmins[0];
+        }
+        await group.save();
+
+        // Clean up tasks states for this leaving user
+        await Task.updateMany(
+          { groupId: group._id },
+          { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
+        );
+        await broadcastLiveUpdate(group._id, req.user.id);
+        res.json({ message: "Left group successfully. Workspace continues under other administrators." });
+      }
+      else if (otherMembers.length > 0) {
+        // Case 2: Group has no other admin but has other members -> Must promote selected member to Admin next
+        const { nextAdminId } = req.body;
+        if (!nextAdminId) {
+          return res.status(400).json({ message: "Please specify who should be promoted to Admin next." });
+        }
+        
+        const nextAdminIdStr = nextAdminId.toString();
+        const isValidMember = otherMembers.some(m => m.toString() === nextAdminIdStr);
+        if (!isValidMember) {
+          return res.status(400).json({ message: "Selected user is not a member of this group." });
+        }
+
+        // Re-assign admin and creator roles to the chosen member, then remove leaving admin
+        group.admins = [nextAdminId];
+        group.creatorId = nextAdminId;
+        group.members = otherMembers;
+        await group.save();
+
+        // Notify promoted member
+        const memberUser = await User.findById(nextAdminId);
+        if (memberUser) {
+          await createAcademicNotification(nextAdminId, 'group', `Admin Promoted 👑`, `You are now the Admin of "${group.name}".`);
+          if (typeof sendPush === 'function') sendPush(memberUser, `Admin Promoted 👑`, `You are now the Admin of "${group.name}".`);
+          io.to(nextAdminIdStr).emit('live_db_update');
+        }
+
+        // Clean up tasks states for this leaving user
+        await Task.updateMany(
+          { groupId: group._id },
+          { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
+        );
+        await broadcastLiveUpdate(group._id, req.user.id);
+        res.json({ message: "Left group successfully. Administrative role reassigned." });
+      }
+      else {
+        // Case 3: Group has no one except admin -> Delete that group permanently
+        const pendingInvites = await GroupInvitation.find({ groupId: group._id });
+        for (const invite of pendingInvites) {
+          io.to(invite.receiverId.toString()).emit('live_db_update');
+        }
+        await Group.findByIdAndDelete(group._id);
+        await GroupInvitation.deleteMany({ groupId: group._id });
+        await Task.updateMany({ groupId: group._id }, { groupId: null, memberStatuses: [] });
+        await broadcastLiveUpdate(group._id, req.user.id);
+        res.json({ message: "Group deleted permanently." });
+      }
     } else {
-      // Leave Group (Member Exit)
-      group.members = group.members.filter(m => m.toString() !== req.user.id);
+      // Regular Member Exit: Leave Group
+      group.members = otherMembers;
+      group.admins = group.admins.filter(a => a.toString() !== userIdStr);
       await group.save();
+
       // Clean up member-specific states
       await Task.updateMany(
         { groupId: group._id },
@@ -1674,15 +1739,36 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
       
       if (userInGroup.members.length === 0) {
         // Disband Group
+        const pendingInvites = await GroupInvitation.find({ groupId: userInGroup._id });
+        for (const invite of pendingInvites) {
+          io.to(invite.receiverId.toString()).emit('live_db_update');
+        }
         await Group.findByIdAndDelete(userInGroup._id);
         await GroupInvitation.deleteMany({ groupId: userInGroup._id });
         await Task.updateMany({ groupId: userInGroup._id }, { groupId: null, memberStatuses: [] });
       } else {
-        // Leave Group and Auto-promote random member if no admins left
-        if (userInGroup.admins.length === 0) {
-           const randomMember = userInGroup.members[Math.floor(Math.random() * userInGroup.members.length)];
-           userInGroup.admins.push(randomMember);
+        // Leave Group and Auto-promote a member if no admins left
+        const userIdStr = req.user.id.toString();
+        const isOldGroupAdmin = userInGroup.admins.length === 0 || userInGroup.creatorId.toString() === userIdStr;
+
+        if (isOldGroupAdmin && userInGroup.admins.length === 0) {
+          // Promote first remaining member to admin and creator
+          const nextAdmin = userInGroup.members[0];
+          userInGroup.admins = [nextAdmin];
+          userInGroup.creatorId = nextAdmin;
+          
+          // Notify the newly promoted admin
+          const memberUser = await User.findById(nextAdmin);
+          if (memberUser) {
+            await createAcademicNotification(nextAdmin, 'group', `Admin Promoted 👑`, `You are now the Admin of "${userInGroup.name}".`);
+            if (typeof sendPush === 'function') sendPush(memberUser, `Admin Promoted 👑`, `You are now the Admin of "${userInGroup.name}".`);
+            io.to(nextAdmin.toString()).emit('live_db_update');
+          }
+        } else if (userInGroup.creatorId.toString() === userIdStr) {
+          // If leaving user was creator but other admins exist, reassign creator to first remaining admin
+          userInGroup.creatorId = userInGroup.admins[0];
         }
+
         await userInGroup.save();
         await Task.updateMany(
           { groupId: userInGroup._id },
