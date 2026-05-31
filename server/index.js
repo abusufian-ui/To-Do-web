@@ -2589,14 +2589,29 @@ app.post('/api/user/push-token', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     const token = req.body.token;
+    const removeToken = req.body.removeToken;
+
     if (token) {
+      // 1. Remove this token from any OTHER users' pushTokens lists to prevent cross-user leakage
+      await User.updateMany(
+        { _id: { $ne: user._id }, pushTokens: token },
+        { $pull: { pushTokens: token } }
+      );
+
+      // 2. Add it to the current user's pushTokens list (if not already there)
       if (!user.pushTokens) user.pushTokens = [];
       if (!user.pushTokens.includes(token)) {
         user.pushTokens.push(token);
         await user.save();
       }
+    } else if (token === null || removeToken) {
+      const targetToken = removeToken || (user.pushTokens && user.pushTokens[0]);
+      if (targetToken && user.pushTokens) {
+        user.pushTokens = user.pushTokens.filter(t => t !== targetToken);
+        await user.save();
+      }
     }
-    res.json({ success: true, message: "Push token registered" });
+    res.json({ success: true, message: "Push token updated successfully" });
   } catch (error) { res.status(500).json({ message: "Failed to update token" }); }
 });
 
