@@ -32,6 +32,13 @@ const useLiveSync = (onUpdateCallback, onAccountDeletedCallback, userId) => {
       }
     });
 
+    socket.on('account_blocked', () => {
+      console.log('🔴 Account blocked by admin. Logging out...');
+      if (onAccountDeletedCallback) {
+        onAccountDeletedCallback();
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log('🔴 Disconnected from Live Data Sync');
     });

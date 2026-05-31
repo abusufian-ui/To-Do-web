@@ -36,6 +36,27 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocat
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+// Global fetch interceptor for immediate security termination
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+  try {
+    const response = await originalFetch(...args);
+    const clone = response.clone();
+    if (response.status === 401 || response.status === 403) {
+      try {
+        const data = await clone.json();
+        if (data.logout) {
+          console.warn("🛡️ Security termination requested by server.");
+          window.dispatchEvent(new CustomEvent('security_logout', { detail: data.message }));
+        }
+      } catch (jsonErr) {}
+    }
+    return response;
+  } catch (error) {
+    throw error;
+  }
+};
+
 const HF_MODES = {
   focus: { id: 'focus', title: 'Deep Focus', text: 'Immerse yourself in the work.', minutes: 25, color: '#3B82F6', textClass: 'text-blue-500', glow: 'shadow-[0_0_60px_rgba(59,130,246,0.3)]' },
   short_break: { id: 'short_break', title: 'Short Break', text: 'Step away. Breathe. Hydrate.', minutes: 5, color: '#10B981', textClass: 'text-emerald-500', glow: 'shadow-[0_0_60px_rgba(16,185,129,0.3)]' },
@@ -294,6 +315,19 @@ function AppLayout() {
     setActiveTab('Welcome');
     navigate('/login');
   }, [navigate]);
+
+  useEffect(() => {
+    const onSecurityLogout = (e) => {
+      ToastConfig.show({
+        title: "Access Terminated",
+        message: e.detail || "Your account has been blocked or deleted by an administrator.",
+        type: "error"
+      });
+      handleLogout();
+    };
+    window.addEventListener('security_logout', onSecurityLogout);
+    return () => window.removeEventListener('security_logout', onSecurityLogout);
+  }, [handleLogout]);
 
   // 🚨 FIXED: Manually redirects you into the dashboard and sets state
   const handleLogin = (authToken, userData) => {
