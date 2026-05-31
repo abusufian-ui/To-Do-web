@@ -104,9 +104,9 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic }) => {
                     className="relative group cursor-pointer shrink-0"
                     onClick={() => !isUploading && fileInputRef.current.click()}
                 >
-                    {(user?.customProfilePic || user?.portalProfilePic || user?.profilePic) ? (
+                    {(user?.customProfilePic || user?.portalProfilePic || user?.originalPortalProfilePic || user?.profilePic) ? (
                         <img 
-                            src={user.customProfilePic || user.portalProfilePic || user.profilePic} 
+                            src={user.customProfilePic || user.portalProfilePic || user.originalPortalProfilePic || user.profilePic} 
                             alt={user.name} 
                             className="w-32 h-32 rounded-full object-cover shadow-xl ring-4 ring-blue-500/10 transition-all group-hover:opacity-75" 
                         />
@@ -122,8 +122,8 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic }) => {
                 </div>
 
                 <div className="flex-1 space-y-4 w-full text-center md:text-left">
-                    <p className="text-xs text-red-500 font-medium">
-                        If you change your picture, it will be visible to everyone across the community.
+                    <p className="text-xs text-red-500 font-bold">
+                        If you change the profile pic it will show to other community members as a profile pic
                     </p>
                     <div>
                         <h3 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-1">{user?.name}</h3>

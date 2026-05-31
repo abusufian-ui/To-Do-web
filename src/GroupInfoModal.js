@@ -174,20 +174,29 @@ const GroupInfoModal = ({
     });
   };
 
+  const resolveGroupAvatarUrl = (url) => {
+    if (!url) return '';
+    let finalUrl = url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      finalUrl = `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+    const version = activeGroup.updatedAt ? new Date(activeGroup.updatedAt).getTime() : '';
+    return version ? `${finalUrl}?t=${version}` : finalUrl;
+  };
+
   const renderGroupAvatar = () => {
     if (activeGroup.profilePic && activeGroup.profilePic.trim() !== "") {
       return (
         <img
-          src={activeGroup.profilePic}
+          src={resolveGroupAvatarUrl(activeGroup.profilePic)}
           alt=""
           className="w-24 h-24 rounded-full object-cover border-4 border-white dark:border-[#2c2c2c] shadow-md"
         />
       );
     }
-    const initials = activeGroup.name?.substring(0, 2).toUpperCase() || "SG";
     return (
-      <div className="w-24 h-24 rounded-full bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue flex items-center justify-center font-extrabold text-2xl uppercase shadow-md border-4 border-white dark:border-[#2c2c2c]">
-        {initials}
+      <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-[#2C2C2C] text-gray-400 dark:text-gray-500 flex items-center justify-center shadow-md border-4 border-white dark:border-[#2c2c2c]">
+        <Users size={44} />
       </div>
     );
   };
@@ -222,12 +231,21 @@ const GroupInfoModal = ({
               
               {/* 🚀 FIXED: AVATAR PREVIEW TRIGGER & SEPARATE CAMERA BUTTON */}
               <div className="relative group/avatar animate-fadeIn">
-                <div className="cursor-pointer transition-transform hover:scale-105" onClick={handleAvatarClick} title="View Image">
+                <div 
+                  className={`relative cursor-pointer transition-transform ${uploading ? '' : 'hover:scale-105'}`} 
+                  onClick={uploading ? null : handleAvatarClick} 
+                  title={uploading ? "Uploading..." : "View Image"}
+                >
                   {renderGroupAvatar()}
+                  {uploading && (
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-full flex items-center justify-center animate-pulse">
+                      <div className="w-8 h-8 border-4 border-t-brand-blue border-white/20 rounded-full animate-spin"></div>
+                    </div>
+                  )}
                 </div>
                 <div 
-                  className="absolute bottom-0 right-0 bg-brand-blue p-2 rounded-full border-[3px] border-white dark:border-[#1E1E1E] shadow-md hover:bg-blue-600 transition-colors cursor-pointer z-10"
-                  onClick={(e) => { e.stopPropagation(); fileInputRef.current.click(); }}
+                  className={`absolute bottom-0 right-0 bg-brand-blue p-2 rounded-full border-[3px] border-white dark:border-[#1E1E1E] shadow-md hover:bg-blue-600 transition-colors cursor-pointer z-10 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); if (!uploading) fileInputRef.current.click(); }}
                   title="Change Image"
                 >
                   <Camera className="text-white" size={16} />
@@ -350,17 +368,17 @@ const GroupInfoModal = ({
 
           {activeGroup.profilePic ? (
             <img 
-              src={activeGroup.profilePic} 
+              src={resolveGroupAvatarUrl(activeGroup.profilePic)} 
               alt="Group Avatar" 
               className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl cursor-default" 
               onClick={(e) => e.stopPropagation()} 
             />
           ) : (
             <div 
-              className="w-64 h-64 rounded-full bg-brand-blue/20 text-brand-blue flex items-center justify-center font-extrabold text-6xl uppercase shadow-2xl cursor-default"
+              className="w-64 h-64 rounded-full bg-gray-100 dark:bg-[#2C2C2C] text-gray-400 dark:text-gray-500 flex items-center justify-center shadow-2xl cursor-default"
               onClick={(e) => e.stopPropagation()}
             >
-              {activeGroup.name?.substring(0, 2).toUpperCase() || "SG"}
+              <Users size={96} />
             </div>
           )}
         </div>

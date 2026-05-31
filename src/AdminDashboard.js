@@ -158,7 +158,7 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange }
     } catch { ToastConfig.show({ title: 'Error', message: 'Failed to update role', type: 'error' }); }
     setRoleToToggle(null);
   };
-
+ 
   const toggleBlock = async (u) => {
     setBlockingId(u._id);
     try {
@@ -172,15 +172,80 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange }
     setBlockingId(null);
   };
 
+  const handleBulkLeaderboardToggle = async (enable) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/leaderboard-toggle-all`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ enable })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onUsersChange(users.map(u => ({ ...u, isLeaderboardEnabled: enable })));
+        ToastConfig.show({
+          title: 'Success',
+          message: `Leaderboard ${enable ? 'enabled' : 'disabled'} for all users successfully.`,
+          type: 'success'
+        });
+      } else {
+        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to update leaderboard access', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Failed to update leaderboard access', type: 'error' });
+    }
+  };
+
+  const handleToggleLeaderboard = async (u) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${u._id}/leaderboard-toggle`, {
+        method: 'PUT',
+        headers: { 'x-auth-token': token }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onUsersChange(users.map(x => x._id === u._id ? { ...x, isLeaderboardEnabled: data.isLeaderboardEnabled } : x));
+        ToastConfig.show({
+          title: 'Success',
+          message: `Leaderboard access ${data.isLeaderboardEnabled ? 'granted' : 'revoked'} for ${u.name}.`,
+          type: 'success'
+        });
+      } else {
+        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to toggle access', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Failed to toggle access', type: 'error' });
+    }
+  };
+
   return (
     <div>
-      <div className="p-5 border-b border-gray-200 dark:border-[#27272a] flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
-          <input type="text" placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500" />
+      <div className="p-5 border-b border-gray-200 dark:border-[#27272a] flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+            <input type="text" placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500" />
+          </div>
+          <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{users.length} total</span>
         </div>
-        <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{users.length} total</span>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleBulkLeaderboardToggle(true)}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/10 hover:shadow-indigo-600/20 active:scale-95 transition-all flex items-center gap-1.5"
+          >
+            🔓 Enable Leaderboard for All
+          </button>
+          <button
+            onClick={() => handleBulkLeaderboardToggle(false)}
+            className="px-3.5 py-2 bg-gray-200 dark:bg-[#27272a] hover:bg-gray-300 dark:hover:bg-[#323237] text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold active:scale-95 transition-all flex items-center gap-1.5"
+          >
+            🔒 Disable for All
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
@@ -191,12 +256,13 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange }
               <th className="px-6 py-3">Status</th>
               <th className="px-6 py-3">Last Sync</th>
               <th className="px-6 py-3">Storage</th>
+              <th className="px-6 py-3">Leaderboard</th>
               <th className="px-6 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="6" className="text-center py-12 text-gray-400 animate-pulse">Loading users…</td></tr>
+              <tr><td colSpan="7" className="text-center py-12 text-gray-400 animate-pulse">Loading users…</td></tr>
             ) : filtered.map(u => {
               const isTargetSuperAdmin = u.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
               return (
@@ -226,6 +292,35 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange }
                   </td>
                   <td className="px-6 py-3 text-xs font-bold text-gray-700 dark:text-gray-300">{formatBytes(u.storageUsed)}</td>
                   <td className="px-6 py-3">
+                    {(() => {
+                      const isTargetSuperAdmin = u.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+                      const canToggle = !isTargetSuperAdmin && (isSuperAdmin || !u.isAdmin);
+                      const isLdEnabled = isTargetSuperAdmin ? true : u.isLeaderboardEnabled;
+                      return (
+                        <button
+                          onClick={() => handleToggleLeaderboard(u)}
+                          disabled={!canToggle}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 focus:outline-none ${
+                            isLdEnabled
+                              ? 'bg-indigo-600 dark:bg-indigo-500'
+                              : 'bg-gray-300 dark:bg-gray-700'
+                          } ${!canToggle ? 'opacity-45 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
+                          title={isTargetSuperAdmin 
+                            ? 'Super Admin always has access' 
+                            : u.isAdmin 
+                              ? (isSuperAdmin ? 'Toggle Admin Leaderboard Access' : 'Only Super Admin can change Admin access') 
+                              : 'Toggle Leaderboard Access'}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${
+                              isLdEnabled ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-6 py-3">
                     <div className="flex justify-end gap-1">
                       {!isTargetSuperAdmin && (isSuperAdmin || !u.isAdmin) && (
                         <button onClick={() => toggleBlock(u)} disabled={blockingId === u._id}
@@ -253,7 +348,7 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange }
               );
             })}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan="6" className="text-center py-12 text-gray-400">No users match "{search}"</td></tr>
+              <tr><td colSpan="7" className="text-center py-12 text-gray-400">No users match "{search}"</td></tr>
             )}
           </tbody>
         </table>

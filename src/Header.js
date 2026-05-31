@@ -19,6 +19,16 @@ const Header = ({
   const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
   const isSuperAdmin = user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
+  const resolveGroupAvatarUrl = (url) => {
+    if (!url) return '';
+    let finalUrl = url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      finalUrl = `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+    const version = activeGroup?.updatedAt ? new Date(activeGroup.updatedAt).getTime() : '';
+    return version ? `${finalUrl}?t=${version}` : finalUrl;
+  };
+
   const safeCourses = Array.isArray(courses) ? courses : [];
   const safeTasks = Array.isArray(tasks) ? tasks : [];
   const safeNotes = Array.isArray(notes) ? notes : [];
@@ -420,8 +430,8 @@ const Header = ({
               className="p-2.5 rounded-xl bg-white dark:bg-[#1E1E1E] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shadow-sm border border-gray-200 dark:border-[#2C2C2C] relative transition-all"
             >
               <Bell size={20} />
-              {unreadNotifications.length > 0 && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1E1E1E]"></span>
+              {((unreadNotifications && unreadNotifications.length > 0) || (pendingInvitations && pendingInvitations.length > 0)) && (
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#1E1E1E]"></span>
               )}
             </button>
           </div>
@@ -434,10 +444,10 @@ const Header = ({
               title={`${activeGroup.name} (${groupRoleLabel})`}
             >
               {activeGroup.profilePic ? (
-                <img src={activeGroup.profilePic} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-gray-200 dark:ring-[#333]" />
+                <img src={resolveGroupAvatarUrl(activeGroup.profilePic)} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-md ring-2 ring-gray-200 dark:ring-[#333]" />
               ) : (
-                <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xs md:text-sm flex items-center justify-center uppercase shadow-md ring-2 ring-transparent">
-                  {activeGroup.name?.substring(0, 2).toUpperCase() || "SG"}
+                <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gray-100 dark:bg-[#2C2C2C] text-gray-400 dark:text-gray-500 flex items-center justify-center shadow-md ring-2 ring-gray-200 dark:ring-[#333]">
+                  <Users size={16} />
                 </div>
               )}
               

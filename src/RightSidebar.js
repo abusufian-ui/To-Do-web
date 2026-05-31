@@ -142,6 +142,11 @@ const RightSidebar = ({
   };
 
   const handleSendInvite = async (receiverId) => {
+    const originalCommunity = [...communityUsers];
+    
+    // Optimistic UI Update: immediately mark invited
+    setCommunityUsers(prev => prev.map(u => u._id === receiverId ? { ...u, isInvited: true } : u));
+    
     try {
       const res = await fetch(`${API_BASE}/api/groups/invite`, {
         method: 'POST',
@@ -155,9 +160,13 @@ const RightSidebar = ({
       } else {
         const err = await res.json();
         ToastConfig.show({ title: "Error", message: err.message || "Failed to send invitation", type: "error" });
+        // Revert on failure
+        setCommunityUsers(originalCommunity);
       }
     } catch (e) {
       console.error(e);
+      // Revert on failure
+      setCommunityUsers(originalCommunity);
     }
   };
 

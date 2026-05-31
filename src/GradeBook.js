@@ -264,6 +264,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [isLeaderboardExpanded, setIsLeaderboardExpanded] = useState(false);
+  const [isLeaderboardDisabled, setIsLeaderboardDisabled] = useState(false);
   const [bestOfConfigs, setBestOfConfigs] = useState({});
 
   const fetchData = async () => {
@@ -323,6 +324,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   // 🚀 LEADERBOARD DATA FETCHER 🚀
   useEffect(() => {
     setLeaderboard([]);
+    setIsLeaderboardDisabled(false);
     const fetchLeaderboard = async () => {
       if (!selectedCourse || !matchingCourseInfo) {
         setLeaderboard([]);
@@ -334,9 +336,13 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
         const res = await fetch(`${API_BASE}/api/course-leaderboard/${matchingCourseInfo.id}`, {
           headers: { 'Content-Type': 'application/json', 'x-auth-token': token }
         });
-        if (res.ok) {
+        if (res.status === 403) {
+          setIsLeaderboardDisabled(true);
+          setLeaderboard([]);
+        } else if (res.ok) {
           const data = await res.json();
           setLeaderboard(Array.isArray(data) ? data : []);
+          setIsLeaderboardDisabled(false);
         } else {
           setLeaderboard([]);
         }
@@ -696,91 +702,110 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                   </div>
 
                   {/* LEADERBOARD TABLE */}
-                  {user?.isAdmin && (
-                  <div className="bg-white dark:bg-[#121214] border border-gray-200 dark:border-gray-800/80 rounded-3xl overflow-hidden shadow-sm mt-8">
-                    <div 
-                      className="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors"
-                      onClick={() => setIsLeaderboardExpanded(!isLeaderboardExpanded)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-500">
-                          <Users size={20} />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-gray-900 dark:text-white">Live Section Leaderboard</h4>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">See where you stand among your classmates</p>
-                        </div>
+                  {isLeaderboardDisabled ? (
+                    <div className="bg-white dark:bg-[#121214] border border-red-200 dark:border-red-950/30 rounded-3xl overflow-hidden shadow-sm mt-8 mb-6 p-6 flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-950/20 flex items-center justify-center text-red-500 shrink-0">
+                        <Users className="w-6 h-6" />
                       </div>
-                      <ChevronDown size={20} className={`transition-transform duration-300 ${isLeaderboardExpanded ? 'rotate-180 text-indigo-500' : 'text-gray-400'}`} />
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                          Leaderboard Restricted 🔒
+                        </h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                          Your access to the relative grading leaderboard has been disabled by an administrator. Please reach out to an admin if you believe this is in error.
+                        </p>
+                      </div>
                     </div>
-
-                    {isLeaderboardExpanded && (
-                      <div className="border-t border-gray-100 dark:border-gray-800/50 p-4">
-                        {leaderboardLoading ? (
-                          <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                            <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-                            <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Syncing live data from section...</p>
+                  ) : (
+                    <div className="bg-white dark:bg-[#121214] border border-gray-200 dark:border-gray-800/80 rounded-3xl overflow-hidden shadow-sm mt-8 mb-6">
+                      <div 
+                        className="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors"
+                        onClick={() => setIsLeaderboardExpanded(!isLeaderboardExpanded)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                            <Users size={20} />
                           </div>
-                        ) : combinedLeaderboard.length === 0 ? (
-                          <div className="bg-gray-50 dark:bg-[#161618] rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 p-8 text-center text-gray-500 shadow-sm">
-                            <Users className="w-10 h-10 mx-auto mb-3 text-gray-400" />
-                            <p className="font-bold text-gray-600 dark:text-gray-300">No Class Data Found</p>
-                            <p className="text-xs mt-1">Waiting for backend connection to populate leaderboard.</p>
+                          <div>
+                            <h4 className="text-sm font-bold text-gray-900 dark:text-white">Live Section Leaderboard</h4>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">See where you stand among your classmates</p>
                           </div>
-                        ) : (
-                          <div className="overflow-x-auto custom-scrollbar">
-                            <table className="w-full text-left border-collapse min-w-[500px]">
-                              <thead>
-                                <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800/80">
-                                  <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider w-24 text-center">Rank</th>
-                                  <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Student Details</th>
-                                  <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-right whitespace-nowrap">Course Score</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/50">
-                                {combinedLeaderboard.map((student, i) => {
-                                  const isTop3 = student.rank && student.rank <= 3;
-                                  return (
-                                    <tr key={i} className={`transition-all duration-300 relative ${student.isMe ? 'bg-indigo-50/80 dark:bg-indigo-500/10 shadow-[inset_4px_0_0_0_#4f46e5]' : 'hover:bg-gray-50/80 dark:hover:bg-white/[0.01]'}`}>
-                                      <td className="py-4 px-6">
-                                        <div className="flex items-center justify-center">
-                                          {student.rank === 1 ? <Trophy size={20} className="text-amber-400 fill-amber-400/20" /> :
-                                            student.rank === 2 ? <Trophy size={20} className="text-gray-400 fill-gray-400/20" /> :
-                                            student.rank === 3 ? <Trophy size={20} className="text-amber-700 fill-amber-700/20" /> :
-                                            <span className={`text-sm font-bold ${student.isMe ? 'text-indigo-600' : 'text-gray-400'}`}>#{student.rank}</span>}
-                                        </div>
-                                      </td>
-                                      <td className="py-4 px-6">
-                                        <div className="flex items-center gap-4">
-                                          <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 ${student.isMe ? 'border-indigo-400 shadow-sm' : 'border-gray-100 dark:border-gray-800'}`}>
-                                            <img src={student.pic} alt={student.name} className="w-full h-full object-cover" />
-                                          </div>
-                                          <div>
-                                            <div className="flex items-center gap-2">
-                                              <p className={`text-sm font-bold ${student.isMe ? 'text-indigo-900 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'}`}>
-                                                {student.name}
-                                              </p>
-                                              {student.isMe && <span className="px-2 py-0.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded">You</span>}
-                                            </div>
-                                            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">{student.id}</p>
-                                          </div>
-                                        </div>
-                                      </td>
-                                      <td className="py-4 px-6 text-right">
-                                        <span className={`text-[15px] font-black ${isTop3 ? 'text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-400'}`}>
-                                          {student.score.toFixed(1)}<span className="text-[11px] font-semibold text-gray-400">%</span>
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
+                        </div>
+                        <ChevronDown size={20} className={`transition-transform duration-300 ${isLeaderboardExpanded ? 'rotate-180 text-indigo-500' : 'text-gray-400'}`} />
                       </div>
-                    )}
-                  </div>
+
+                      {isLeaderboardExpanded && (
+                        <div className="border-t border-gray-100 dark:border-gray-800/50 p-4">
+                          {leaderboardLoading ? (
+                            <div className="flex flex-col items-center justify-center py-10 space-y-3">
+                              <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                              <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Syncing live data from section...</p>
+                            </div>
+                          ) : combinedLeaderboard.length === 0 ? (
+                            <div className="bg-gray-50 dark:bg-[#161618] rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 p-8 text-center text-gray-500 shadow-sm">
+                              <Users className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                              <p className="font-bold text-gray-600 dark:text-gray-300">No Class Data Found</p>
+                              <p className="text-xs mt-1">Waiting for backend connection to populate leaderboard.</p>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto custom-scrollbar">
+                              <table className="w-full text-left border-collapse min-w-[500px]">
+                                <thead>
+                                  <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800/80">
+                                    <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider w-24 text-center">Rank</th>
+                                    <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Classmate</th>
+                                    <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-right">Relative Score</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {combinedLeaderboard.map((student, i) => {
+                                    const isMe = student.isMe;
+                                    const isTop3 = student.rank <= 3;
+                                    const rankBg = student.rank === 1 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20' :
+                                                   student.rank === 2 ? 'bg-slate-400/10 text-slate-500 dark:text-slate-300 border border-slate-400/20' :
+                                                   student.rank === 3 ? 'bg-amber-700/10 text-amber-800 dark:text-amber-600 border border-amber-700/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
+                                    return (
+                                      <tr key={i} className={`border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50/50 dark:hover:bg-white/[0.01] transition-colors ${isMe ? 'bg-indigo-50/30 dark:bg-indigo-950/5' : ''}`}>
+                                        <td className="py-4 px-6 text-center">
+                                          <div className="flex justify-center">
+                                            {isTop3 ? 
+                                              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shadow-sm ${rankBg}`}>
+                                                {student.rank}
+                                              </span> : 
+                                              <span className={`text-sm font-bold ${isMe ? 'text-indigo-600' : 'text-gray-400'}`}>#{student.rank}</span>}
+                                          </div>
+                                        </td>
+                                        <td className="py-4 px-6">
+                                          <div className="flex items-center gap-4">
+                                            <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 ${isMe ? 'border-indigo-400 shadow-sm' : 'border-gray-100 dark:border-gray-800'}`}>
+                                              <img src={student.pic} alt={student.name} className="w-full h-full object-cover" />
+                                            </div>
+                                            <div>
+                                              <div className="flex items-center gap-2">
+                                                <p className={`text-sm font-bold ${isMe ? 'text-indigo-900 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'}`}>
+                                                  {student.name}
+                                                </p>
+                                                {isMe && <span className="px-2 py-0.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded">You</span>}
+                                              </div>
+                                              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">{student.id}</p>
+                                            </div>
+                                          </div>
+                                        </td>
+                                        <td className="py-4 px-6 text-right">
+                                          <span className={`text-[15px] font-black ${isTop3 ? 'text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-400'}`}>
+                                            {student.score.toFixed(1)}<span className="text-[11px] font-semibold text-gray-400">%</span>
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

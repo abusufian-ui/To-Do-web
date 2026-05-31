@@ -315,7 +315,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.102:8081',
+  'http://192.168.0.117:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -1743,6 +1743,11 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         customProfilePic: user.customProfilePic,
         isAdmin: user.isAdmin,
         isBlocked: user.isBlocked || false,
+        isLeaderboardEnabled: user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
+          ? true
+          : user.isAdmin
+            ? (user.isLeaderboardEnabled !== false)
+            : (user.isLeaderboardEnabled === true),
         isPortalConnected: user.isPortalConnected,
         portalId: user.portalId,
         lastSyncAt: user.lastSyncAt,
@@ -1788,6 +1793,53 @@ app.put('/api/admin/users/:id/role', auth, adminAuth, async (req, res) => {
     await targetUser.save();
     res.json({ success: true, isAdmin: targetUser.isAdmin });
   } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+app.put('/api/admin/users/leaderboard-toggle-all', auth, adminAuth, async (req, res) => {
+  try {
+    const { enable } = req.body;
+    const requestingUser = await User.findById(req.user.id);
+    const isReqSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+
+    // Bulk toggle only affects regular students (non-admins)
+    await User.updateMany({ isAdmin: { $ne: true } }, { isLeaderboardEnabled: enable === true });
+    io.emit('leaderboard_toggle_all', { isLeaderboardEnabled: enable === true });
+    res.json({ success: true, message: `Leaderboard access toggled for all students to ${enable === true}` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.put('/api/admin/users/:id/leaderboard-toggle', auth, adminAuth, async (req, res) => {
+  try {
+    const requestingUser = await User.findById(req.user.id);
+    const isReqSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+    const isTargetSuperAdmin = targetUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+    if (isTargetSuperAdmin) {
+      return res.status(400).json({ message: "Super Admin leaderboard access cannot be modified." });
+    }
+
+    if (targetUser.isAdmin && !isReqSuperAdmin) {
+      return res.status(403).json({ message: "Only Super Admin can change Admin leaderboard access." });
+    }
+
+    // Toggle logic based on default rules
+    const currentVal = targetUser.isAdmin
+      ? (targetUser.isLeaderboardEnabled !== false) // default true for Admins
+      : (targetUser.isLeaderboardEnabled === true); // default false for students
+
+    targetUser.isLeaderboardEnabled = !currentVal;
+    await targetUser.save();
+
+    io.to(targetUser._id.toString()).emit('leaderboard_toggle', { isLeaderboardEnabled: targetUser.isLeaderboardEnabled });
+    res.json({ success: true, isLeaderboardEnabled: targetUser.isLeaderboardEnabled });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 app.get('/api/debts', auth, async (req, res) => { try { res.json(await Debt.find({ userId: req.user.id, isDeleted: false }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
@@ -3294,6 +3346,21 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     const section = req.query.section;
     const courseName = req.query.courseName;
 
+    const email = req.query.email;
+    if (email) {
+      const requestingUser = await User.findOne({ email: { $regex: '^' + email.trim() + '$', $options: 'i' } });
+      if (requestingUser) {
+        const isSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+        if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled !== true) {
+          return res.status(403).json({ error: "Leaderboard has been disabled for your account by an administrator." });
+        }
+      } else {
+        return res.status(403).json({ error: "Leaderboard has been disabled for your account by an administrator." });
+      }
+    } else {
+      return res.status(403).json({ error: "Leaderboard has been disabled for your account by an administrator." });
+    }
+
     let query = {};
     if (courseName && section) {
       query = {
@@ -3387,11 +3454,18 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
 // ==========================================
 app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
   try {
-    // 🔒 Strict security guard: Reject request if user is not an administrator
+    // 🔒 Strict security guard: Reject request if requester is not an administrator
     const requestingUser = await User.findById(req.user.id);
-    if (!requestingUser || !requestingUser.isAdmin) {
-      return res.status(403).json({ message: "Access denied. Leaderboard is restricted to administrators." });
+    if (!requestingUser) return res.status(404).json({ message: "User not found" });
+
+    const isSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+
+    // Block non-admins (students) if access is disabled
+    if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled !== true) {
+      return res.status(403).json({ message: "Leaderboard has been disabled for your account by an administrator." });
     }
+
+    const gradeName = req.query.gradeName; // NEW: Precise identifier 
 
     const myCourse = await Course.findById(req.params.courseId);
     if (!myCourse) return res.status(404).json({ message: "Course not found" });
@@ -3421,15 +3495,23 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     const grades = await Grade.find({ userId: { $in: userIds } });
 
     let leaderboard = matchingCourses.map(course => {
-      const userGrade = grades.find(g =>
-        g.userId.toString() === course.userId?._id.toString() &&
-        (
+      const userGrade = grades.find(g => {
+        if (!g.userId || !course.userId?._id) return false;
+        if (g.userId.toString() !== course.userId._id.toString()) return false;
+        
+        // Exact match injection forces lab logic if passed
+        if (gradeName) {
+          return g.courseName === gradeName;
+        }
+
+        // Web logic fallback mapping
+        return (
           (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
           (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
           g.courseName === course.name || 
           (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase()))
-        )
-      );
+        );
+      });
 
       let score = 0;
       if (userGrade && Array.isArray(userGrade.assessments)) {
