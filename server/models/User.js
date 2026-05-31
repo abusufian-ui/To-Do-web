@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   webPassword: { type: String, default: null },
   isAdmin: { type: Boolean, default: false },
+  adminPin: { type: String, default: '0000' },
   isPortalConnected: { type: Boolean, default: false, index: true },
   portalId: { type: String, default: null },
   ucpCookie: { type: String, default: null },

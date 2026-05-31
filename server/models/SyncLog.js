@@ -12,4 +12,18 @@ const syncLogSchema = new mongoose.Schema({
   changesSummary: { type: mongoose.Schema.Types.Mixed }
 });
 
+// Auto-prune logic: Keep only the 20 most recent sync logs per user
+syncLogSchema.post('save', async function(doc) {
+  try {
+    const SyncLog = mongoose.model('SyncLog');
+    const logs = await SyncLog.find({ userId: doc.userId }).sort({ startTime: -1 }).select('_id');
+    if (logs.length > 20) {
+      const idsToDelete = logs.slice(20).map(log => log._id);
+      await SyncLog.deleteMany({ _id: { $in: idsToDelete } });
+    }
+  } catch (err) {
+    console.error('Error auto-pruning SyncLogs:', err.message);
+  }
+});
+
 module.exports = mongoose.model('SyncLog', syncLogSchema);

@@ -112,7 +112,7 @@ const UserAvatar = ({ u, size = 10, showBlock = false }) => {
 // ────────────────────────────────────────────────────────────────────────────────
 // APP 1: USER DIRECTORY
 // ────────────────────────────────────────────────────────────────────────────────
-const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange }) => {
+const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, onRefresh }) => {
   const [search, setSearch] = useState('');
   const [userToDelete, setUserToDelete] = useState(null);
   const [roleToToggle, setRoleToToggle] = useState(null);
@@ -230,6 +230,16 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange }
               className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500" />
           </div>
           <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{users.length} total</span>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="p-2.5 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center border border-gray-200 dark:border-transparent"
+              title="Refresh users from live DB"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+          )}
         </div>
         
         <div className="flex items-center gap-2">
@@ -364,7 +374,7 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange }
 // ────────────────────────────────────────────────────────────────────────────────
 // APP 2: SESSION INSPECTOR
 // ────────────────────────────────────────────────────────────────────────────────
-const SessionInspectorApp = ({ users, token }) => {
+const SessionInspectorApp = ({ users, token, loading, onRefresh }) => {
   const [results, setResults] = useState({});
   const [checking, setChecking] = useState({});
 
@@ -384,7 +394,20 @@ const SessionInspectorApp = ({ users, token }) => {
 
   return (
     <div className="p-6">
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Verify whether a user's UCP portal session cookie is still active. Only portal-linked users with stored cookies are shown.</p>
+      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+        <p className="text-sm text-gray-500 dark:text-gray-400">Verify whether a user's UCP portal session cookie is still active. Only portal-linked users with stored cookies are shown.</p>
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50 border border-gray-200 dark:border-transparent shrink-0"
+            title="Refresh users and session cookies from live DB"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            <span>Refresh Live Data</span>
+          </button>
+        )}
+      </div>
       {portalUsers.length === 0 && (
         <div className="text-center py-16 text-gray-400 dark:text-gray-600">
           <Cookie size={40} className="mx-auto mb-3 opacity-40" />
@@ -753,7 +776,7 @@ const SecurityApp = ({ token }) => {
 // ────────────────────────────────────────────────────────────────────────────────
 // APP 6: SUPPORT TICKETS
 // ────────────────────────────────────────────────────────────────────────────────
-const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange }) => {
+const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
@@ -834,6 +857,28 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange }) => {
     setSubmittingReplyId(null);
   };
 
+  const handleReopen = async (id) => {
+    setSubmittingReplyId(id);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/feedback/${id}/reopen`, {
+        method: 'PUT',
+        headers: {
+          'x-auth-token': token
+        }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onTicketsChange(tickets.map(t => t._id === id ? data : t));
+        ToastConfig.show({ title: 'Ticket Re-opened', message: 'The ticket has been re-opened for review.', type: 'success' });
+      } else {
+        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to re-open ticket', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error re-opening ticket', type: 'error' });
+    }
+    setSubmittingReplyId(null);
+  };
+
   const executeBulkDelete = async () => {
     setIsDeleting(true);
     try {
@@ -872,6 +917,16 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange }) => {
               className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500" />
           </div>
           <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{filtered.length} shown</span>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="p-2.5 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center border border-gray-200 dark:border-transparent"
+              title="Refresh support tickets from live DB"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+          )}
           
           {selectedIds.length > 0 && (
             <button
@@ -1007,11 +1062,21 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange }) => {
                           )}
 
                           {isResolved ? (
-                            <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-400">
-                              <h4 className="text-xs font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                                <CheckCircle2 size={14} /> Resolution Response from Admin
-                              </h4>
-                              <p className="text-sm font-medium leading-relaxed">{t.adminResponse}</p>
+                            <div className="space-y-4">
+                              <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-400">
+                                <h4 className="text-xs font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                  <CheckCircle2 size={14} /> Resolution Response from Admin
+                                </h4>
+                                <p className="text-sm font-medium leading-relaxed">{t.adminResponse}</p>
+                              </div>
+                              <button
+                                onClick={() => handleReopen(t._id)}
+                                disabled={submittingReplyId === t._id}
+                                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-amber-600/15"
+                              >
+                                <RefreshCw size={13} />
+                                Re-open Ticket
+                              </button>
                             </div>
                           ) : (
                             <div className="space-y-3 bg-gray-100/40 dark:bg-[#18181b]/50 p-5 rounded-2xl border border-gray-200/50 dark:border-[#27272a]/50">
@@ -1055,14 +1120,22 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange }) => {
 
       {/* Screenshot Lightbox Modal */}
       {lightboxImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-fadeIn">
+        <div 
+          onClick={() => setLightboxImage(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-fadeIn cursor-zoom-out"
+        >
           <button
             onClick={() => setLightboxImage(null)}
-            className="absolute top-6 right-6 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all shadow-md active:scale-95"
+            className="absolute top-6 right-6 p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all shadow-md active:scale-95 cursor-pointer z-55"
           >
             <X size={20} />
           </button>
-          <img src={lightboxImage} alt="Fullscreen Screenshot" className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain animate-scaleIn" />
+          <img 
+            src={lightboxImage} 
+            alt="Fullscreen Screenshot" 
+            onClick={e => e.stopPropagation()}
+            className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain animate-scaleIn cursor-default" 
+          />
         </div>
       )}
 
@@ -1241,9 +1314,9 @@ const AdminDashboard = ({ currentUser }) => {
 
         {/* App content — full width */}
         <div className="bg-white dark:bg-[#111113] min-h-[calc(100%-65px)]">
-          {activeApp === 'users'         && <UserDirectoryApp users={users} loading={loadingUsers} isSuperAdmin={isSuperAdmin} token={token} onUsersChange={setUsers} />}
-          {activeApp === 'tickets'       && <SupportTicketsApp tickets={tickets} loading={loadingTickets} token={token} onTicketsChange={setTickets} />}
-          {activeApp === 'sessions'      && <SessionInspectorApp users={users} token={token} />}
+          {activeApp === 'users'         && <UserDirectoryApp users={users} loading={loadingUsers} isSuperAdmin={isSuperAdmin} token={token} onUsersChange={setUsers} onRefresh={fetchUsers} />}
+          {activeApp === 'tickets'       && <SupportTicketsApp tickets={tickets} loading={loadingTickets} token={token} onTicketsChange={setTickets} onRefresh={fetchTickets} />}
+          {activeApp === 'sessions'      && <SessionInspectorApp users={users} token={token} loading={loadingUsers} onRefresh={fetchUsers} />}
           {activeApp === 'diagnostics'   && <SyncDiagnostics />}
           {activeApp === 'notifications' && <NotificationsManagerApp users={users} isSuperAdmin={isSuperAdmin} token={token} />}
           {activeApp === 'security'      && <SecurityApp token={token} />}

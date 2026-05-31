@@ -494,6 +494,38 @@ app.post('/api/admin/feedback/bulk-delete', auth, adminAuth, async (req, res) =>
   }
 });
 
+// Re-open a resolved support ticket
+app.put('/api/admin/feedback/:id/reopen', auth, adminAuth, async (req, res) => {
+  try {
+    const ticket = await Feedback.findByIdAndUpdate(
+      req.params.id,
+      { status: 'open', adminResponse: null },
+      { new: true }
+    ).populate('userId', 'name email customProfilePic portalProfilePic originalPortalProfilePic profilePic pushTokens pushToken');
+
+    if (!ticket) return res.status(404).json({ message: "Ticket not found." });
+
+    // Send push notification to the user
+    if (ticket.userId) {
+      try {
+        await sendPush(
+          ticket.userId,
+          "Support Ticket Re-opened 🔄",
+          `Your ticket "${ticket.subject}" has been re-opened for further review.`,
+          { type: "ticket_reopened", ticketId: ticket._id.toString() }
+        );
+      } catch (pushErr) {
+        console.error("Failed to send ticket re-open push notification:", pushErr.message);
+      }
+    }
+
+    res.json(ticket);
+  } catch (error) {
+    console.error("Re-open Ticket Error:", error);
+    res.status(500).json({ message: "Server Error re-opening ticket" });
+  }
+});
+
 // =================================================================
 // 🌐 NEW PREMIUM WEB PORTAL AUTHENTICATION FLOW
 // =================================================================
@@ -2640,7 +2672,7 @@ app.get('/api/sync-diagnostics', auth, async (req, res) => {
       Submission.find({ userId: targetUserId }),
       Grade.find({ userId: targetUserId }),
       Timetable.find({ userId: targetUserId }),
-      SyncLog.find({ userId: targetUserId }).sort({ startTime: -1 }).limit(50),
+      SyncLog.find({ userId: targetUserId }).sort({ startTime: -1 }).limit(20),
       Course.find({ userId: targetUserId }),
       StudentStats.findOne({ userId: targetUserId }),
       User.findById(targetUserId).select('-password')
