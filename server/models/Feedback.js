@@ -24,7 +24,8 @@ const feedbackSchema = new mongoose.Schema({
   adminResponse: {
     type: String,
     default: null
-  }
+  },
+  screenshots: [String]
 }, { 
   // This single line magically creates and updates 'createdAt' and 'updatedAt' automatically!
   timestamps: true 

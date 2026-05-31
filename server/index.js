@@ -406,13 +406,14 @@ const adminAuth = async (req, res, next) => {
 // ==========================================
 app.post('/api/feedback', auth, async (req, res) => {
   try {
-    const { subject, description } = req.body;
+    const { subject, description, screenshots } = req.body;
     if (!subject || !description) return res.status(400).json({ message: "Subject and description are required." });
 
     const newFeedback = new Feedback({
       userId: req.user.id,
       subject: subject,
-      description: description
+      description: description,
+      screenshots: screenshots || []
     });
 
     await newFeedback.save();
@@ -423,11 +424,74 @@ app.post('/api/feedback', auth, async (req, res) => {
   }
 });
 
+// Fetch current user's submitted support tickets
+app.get('/api/feedback/my', auth, async (req, res) => {
+  try {
+    const tickets = await Feedback.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    res.json(tickets);
+  } catch (error) {
+    console.error("Fetch User Tickets Error:", error);
+    res.status(500).json({ message: "Server Error fetching tickets" });
+  }
+});
+
+// Fetch all tickets for admin panel
 app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
   try {
-    const feedbacks = await Feedback.find().populate('userId', 'name email').sort({ createdAt: -1 });
+    const feedbacks = await Feedback.find().populate('userId', 'name email customProfilePic portalProfilePic originalPortalProfilePic profilePic').sort({ createdAt: -1 });
     res.json(feedbacks);
   } catch (error) { res.status(500).json({ message: "Server Error" }); }
+});
+
+// Resolve and close a support ticket
+app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => {
+  try {
+    const { adminResponse } = req.body;
+    if (!adminResponse) return res.status(400).json({ message: "Admin response is required." });
+
+    const ticket = await Feedback.findByIdAndUpdate(
+      req.params.id,
+      { status: 'resolved', adminResponse },
+      { new: true }
+    ).populate('userId', 'name email customProfilePic portalProfilePic originalPortalProfilePic profilePic pushTokens pushToken');
+
+    if (!ticket) return res.status(404).json({ message: "Ticket not found." });
+
+    // Send push notification to the user
+    if (ticket.userId) {
+      try {
+        await sendPush(
+          ticket.userId,
+          "Support Ticket Resolved ✅",
+          `Your ticket "${ticket.subject}" has been resolved by support. Tap to view the details.`,
+          { type: "ticket_resolved", ticketId: ticket._id.toString() }
+        );
+      } catch (pushErr) {
+        console.error("Failed to send ticket resolve push notification:", pushErr.message);
+      }
+    }
+
+    res.json(ticket);
+  } catch (error) {
+    console.error("Resolve Ticket Error:", error);
+    res.status(500).json({ message: "Server Error resolving ticket" });
+  }
+});
+
+// Bulk delete support tickets
+app.post('/api/admin/feedback/bulk-delete', auth, adminAuth, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "No ticket IDs provided." });
+    }
+
+    await Feedback.deleteMany({ _id: { $in: ids } });
+    res.json({ success: true, message: "Selected tickets deleted successfully." });
+  } catch (error) {
+    console.error("Bulk Delete Tickets Error:", error);
+    res.status(500).json({ message: "Server Error deleting tickets" });
+  }
 });
 
 // =================================================================

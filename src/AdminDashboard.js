@@ -751,6 +751,336 @@ const SecurityApp = ({ token }) => {
 };
 
 // ────────────────────────────────────────────────────────────────────────────────
+// APP 6: SUPPORT TICKETS
+// ────────────────────────────────────────────────────────────────────────────────
+const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange }) => {
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [expandedId, setExpandedId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [submittingReplyId, setSubmittingReplyId] = useState(null);
+  const [lightboxImage, setLightboxImage] = useState(null);
+  
+  // Bulk selection states
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const filtered = tickets.filter(t => {
+    const user = t.userId || { name: 'Unknown User', email: '' };
+    const matchesSearch = 
+      user.name.toLowerCase().includes(search.toLowerCase()) ||
+      user.email.toLowerCase().includes(search.toLowerCase()) ||
+      t.subject.toLowerCase().includes(search.toLowerCase()) ||
+      t.description.toLowerCase().includes(search.toLowerCase());
+
+    const matchesStatus = 
+      statusFilter === 'all' || 
+      t.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Clear selections when filter or search changes
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [search, statusFilter]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id) 
+        : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const allSelected = filtered.length > 0 && filtered.every(t => selectedIds.includes(t._id));
+    if (allSelected) {
+      setSelectedIds(prev => prev.filter(id => !filtered.some(t => t._id === id)));
+    } else {
+      const filteredIds = filtered.map(t => t._id);
+      setSelectedIds(prev => [...new Set([...prev, ...filteredIds])]);
+    }
+  };
+
+  const handleResolve = async (id) => {
+    if (!replyText.trim()) {
+      ToastConfig.show({ title: 'Error', message: 'Please write a resolution response.', type: 'error' });
+      return;
+    }
+    setSubmittingReplyId(id);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/feedback/${id}/resolve`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ adminResponse: replyText })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onTicketsChange(tickets.map(t => t._id === id ? data : t));
+        ToastConfig.show({ title: 'Success', message: 'Ticket resolved and closed.', type: 'success' });
+        setReplyText('');
+        setExpandedId(null);
+      } else {
+        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to resolve ticket', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error resolving ticket', type: 'error' });
+    }
+    setSubmittingReplyId(null);
+  };
+
+  const executeBulkDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/feedback/bulk-delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ ids: selectedIds })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onTicketsChange(tickets.filter(t => !selectedIds.includes(t._id)));
+        ToastConfig.show({ title: 'Success', message: `${selectedIds.length} tickets deleted successfully.`, type: 'success' });
+        setSelectedIds([]);
+      } else {
+        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to delete tickets', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error deleting tickets', type: 'error' });
+    }
+    setIsDeleting(false);
+    setShowDeleteModal(false);
+  };
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every(t => selectedIds.includes(t._id));
+
+  return (
+    <div>
+      <div className="p-5 border-b border-gray-200 dark:border-[#27272a] flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+            <input type="text" placeholder="Search tickets by user, title, desc…" value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500" />
+          </div>
+          <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{filtered.length} shown</span>
+          
+          {selectedIds.length > 0 && (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-red-600/10 animate-fadeIn"
+            >
+              <Trash2 size={13} />
+              Delete Selected ({selectedIds.length})
+            </button>
+          )}
+        </div>
+
+        <div className="flex bg-gray-100 dark:bg-[#27272a] p-1 rounded-xl">
+          {['all', 'open', 'resolved'].map(status => (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status)}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase ${
+                statusFilter === status 
+                  ? 'bg-white dark:bg-[#151518] text-gray-900 dark:text-white shadow-sm' 
+                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-300'
+              }`}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="text-xs text-gray-500 uppercase bg-gray-100 dark:bg-[#1c1c1f] border-b border-gray-200 dark:border-[#27272a]">
+            <tr>
+              <th className="px-6 py-3 w-10">
+                <input
+                  type="checkbox"
+                  checked={allFilteredSelected}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 bg-white dark:bg-[#27272a] cursor-pointer"
+                />
+              </th>
+              <th className="px-6 py-3">Identity</th>
+              <th className="px-6 py-3">Subject / Title</th>
+              <th className="px-6 py-3">Status</th>
+              <th className="px-6 py-3">Submitted</th>
+              <th className="px-6 py-3 text-right">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan="6" className="text-center py-12 text-gray-400 animate-pulse">Loading support tickets…</td></tr>
+            ) : filtered.map(t => {
+              const user = t.userId || { name: 'Unknown User', email: 'No email linked' };
+              const isExpanded = expandedId === t._id;
+              const isResolved = t.status === 'resolved';
+              const isSelected = selectedIds.includes(t._id);
+
+              return (
+                <React.Fragment key={t._id}>
+                  <tr className={`border-b border-gray-100 dark:border-[#27272a] hover:bg-gray-50 dark:hover:bg-[#1c1c1f] transition-colors ${isExpanded ? 'bg-blue-50/20 dark:bg-blue-900/5' : ''} ${isSelected ? 'bg-blue-50/10 dark:bg-blue-900/5' : ''}`}>
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(t._id)}
+                        className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 bg-white dark:bg-[#27272a] cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <UserAvatar u={user} size={10} />
+                        <div>
+                          <p className="font-bold text-gray-900 dark:text-white">{user.name}</p>
+                          <p className="text-xs text-gray-400">{user.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-gray-800 dark:text-gray-200 max-w-xs truncate">{t.subject}</td>
+                    <td className="px-6 py-4">
+                      {isResolved ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30">
+                          Resolved
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Open
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-xs text-gray-500">
+                      {new Date(t.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => {
+                          setExpandedId(isExpanded ? null : t._id);
+                          setReplyText('');
+                        }}
+                        className="px-3.5 py-1.5 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold active:scale-95 transition-all"
+                      >
+                        {isExpanded ? 'Hide' : 'Inspect'}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {isExpanded && (
+                    <tr className="bg-gray-50/50 dark:bg-[#121214]/40">
+                      <td colSpan="6" className="px-8 py-6 border-b border-gray-100 dark:border-[#27272a]">
+                        <div className="max-w-4xl space-y-5 animate-fadeIn">
+                          <div>
+                            <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5">Problem Details</h4>
+                            <p className="text-sm text-gray-800 dark:text-gray-200 font-medium whitespace-pre-wrap leading-relaxed">{t.description}</p>
+                          </div>
+
+                          {t.screenshots && t.screenshots.length > 0 && (
+                            <div>
+                              <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Attached Screenshots ({t.screenshots.length})</h4>
+                              <div className="flex items-center gap-3.5 flex-wrap">
+                                {t.screenshots.map((url, index) => (
+                                  <button
+                                    key={index}
+                                    onClick={() => setLightboxImage(url)}
+                                    className="w-24 h-24 rounded-xl border border-gray-200 dark:border-[#27272a] overflow-hidden hover:scale-105 hover:border-blue-500 dark:hover:border-blue-400 transition-all shadow-sm active:scale-95 relative group"
+                                  >
+                                    <img src={url} alt={`Screenshot ${index + 1}`} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                      <Eye size={16} className="text-white" />
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {isResolved ? (
+                            <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-400">
+                              <h4 className="text-xs font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                <CheckCircle2 size={14} /> Resolution Response from Admin
+                              </h4>
+                              <p className="text-sm font-medium leading-relaxed">{t.adminResponse}</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3 bg-gray-100/40 dark:bg-[#18181b]/50 p-5 rounded-2xl border border-gray-200/50 dark:border-[#27272a]/50">
+                              <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <Send size={13} /> Respond & Resolve Ticket
+                              </h4>
+                              <textarea
+                                value={replyText}
+                                onChange={e => setReplyText(e.target.value)}
+                                placeholder="Explain the result, fix details, or response to the user. This will close the ticket instantly..."
+                                rows={3}
+                                className="w-full px-4 py-3 bg-white dark:bg-[#0c0c0e] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 resize-none leading-relaxed"
+                              />
+                              <button
+                                onClick={() => handleResolve(t._id)}
+                                disabled={submittingReplyId === t._id || !replyText.trim()}
+                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/10 hover:shadow-indigo-600/20 active:scale-95 disabled:opacity-50 transition-all flex items-center gap-1.5"
+                              >
+                                {submittingReplyId === t._id ? (
+                                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                ) : (
+                                  <CheckCircle2 size={14} />
+                                )}
+                                Resolve & Close Ticket
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+            {!loading && filtered.length === 0 && (
+              <tr><td colSpan="6" className="text-center py-12 text-gray-400">No tickets match search or filters</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Screenshot Lightbox Modal */}
+      {lightboxImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-fadeIn">
+          <button
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-6 right-6 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all shadow-md active:scale-95"
+          >
+            <X size={20} />
+          </button>
+          <img src={lightboxImage} alt="Fullscreen Screenshot" className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain animate-scaleIn" />
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={executeBulkDelete}
+        title="Delete Selected Tickets?"
+        message={`Are you sure you want to permanently delete these ${selectedIds.length} support tickets? Upon deletion, these queries will no longer be visible on the client side as well. This cannot be undone.`}
+        confirmText={isDeleting ? "Deleting..." : "Delete"}
+        confirmStyle="danger"
+      />
+    </div>
+  );
+};
+
+// ────────────────────────────────────────────────────────────────────────────────
 // MAIN ADMIN DASHBOARD
 // ────────────────────────────────────────────────────────────────────────────────
 const AdminDashboard = ({ currentUser }) => {
@@ -775,10 +1105,13 @@ const AdminDashboard = ({ currentUser }) => {
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [activeApp, setActiveApp] = useState(null);
+  const [tickets, setTickets] = useState([]);
+  const [loadingTickets, setLoadingTickets] = useState(true);
 
   useEffect(() => {
     if (isUnlocked) {
       fetchUsers();
+      fetchTickets();
       fetchRealStats();
       const iv = setInterval(fetchRealStats, 2000);
       return () => clearInterval(iv);
@@ -793,6 +1126,16 @@ const AdminDashboard = ({ currentUser }) => {
       if (Array.isArray(data)) setUsers(data);
     } catch { }
     setLoadingUsers(false);
+  };
+
+  const fetchTickets = async () => {
+    setLoadingTickets(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/feedback`, { headers: { 'x-auth-token': token } });
+      const data = await res.json();
+      if (Array.isArray(data)) setTickets(data);
+    } catch { }
+    setLoadingTickets(false);
   };
 
   const fetchRealStats = async () => {
@@ -867,6 +1210,7 @@ const AdminDashboard = ({ currentUser }) => {
   // ── App definitions ──────────────────────────────────────────────────────
   const apps = [
     { id: 'users',         label: 'User Directory',        icon: Users,        color: 'bg-blue-100 dark:bg-blue-900/30',    textColor: 'text-blue-600 dark:text-blue-400',    badge: users.length },
+    { id: 'tickets',       label: 'Support Tickets',       icon: Mail,         color: 'bg-yellow-100 dark:bg-yellow-900/30', textColor: 'text-yellow-600 dark:text-yellow-500', badge: tickets.filter(t => t.status === 'open').length },
     { id: 'sessions',      label: 'Session Inspector',      icon: Cookie,       color: 'bg-emerald-100 dark:bg-emerald-900/30', textColor: 'text-emerald-600 dark:text-emerald-400' },
     { id: 'diagnostics',   label: 'Scraping Diagnostics',   icon: FlaskConical, color: 'bg-purple-100 dark:bg-purple-900/30', textColor: 'text-purple-600 dark:text-purple-400' },
     { id: 'notifications', label: 'Notifications Manager',  icon: Bell,         color: 'bg-orange-100 dark:bg-orange-900/30', textColor: 'text-orange-600 dark:text-orange-400' },
@@ -898,6 +1242,7 @@ const AdminDashboard = ({ currentUser }) => {
         {/* App content — full width */}
         <div className="bg-white dark:bg-[#111113] min-h-[calc(100%-65px)]">
           {activeApp === 'users'         && <UserDirectoryApp users={users} loading={loadingUsers} isSuperAdmin={isSuperAdmin} token={token} onUsersChange={setUsers} />}
+          {activeApp === 'tickets'       && <SupportTicketsApp tickets={tickets} loading={loadingTickets} token={token} onTicketsChange={setTickets} />}
           {activeApp === 'sessions'      && <SessionInspectorApp users={users} token={token} />}
           {activeApp === 'diagnostics'   && <SyncDiagnostics />}
           {activeApp === 'notifications' && <NotificationsManagerApp users={users} isSuperAdmin={isSuperAdmin} token={token} />}
