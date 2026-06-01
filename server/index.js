@@ -2295,7 +2295,7 @@ app.get('/api/admin/validate-session/:userId', auth, adminAuth, async (req, res)
     const sinceMs = targetUser.lastSyncAt ? (Date.now() - new Date(targetUser.lastSyncAt).getTime()) : null;
 
     try {
-      const testRes = await fetch('https://horizon.ucp.edu.pk/courses', {
+      const testRes = await fetch('https://horizon.ucp.edu.pk/student/dashboard', {
         method: 'GET',
         headers: {
           'Cookie': targetUser.ucpCookie,
@@ -2304,7 +2304,10 @@ app.get('/api/admin/validate-session/:userId', auth, adminAuth, async (req, res)
         signal: AbortSignal.timeout(8000)
       });
       const text = await testRes.text();
-      const isAlive = testRes.ok && !text.toLowerCase().includes('login') && !text.toLowerCase().includes('signin');
+      const isAlive = testRes.ok && 
+                      !testRes.url.toLowerCase().includes('login') && 
+                      !text.includes('name="password"') &&
+                      !text.includes('placeholder="Password"');
       res.json({ isAlive, sinceMs, lastSyncAt: targetUser.lastSyncAt });
     } catch (fetchErr) {
       res.json({ isAlive: false, reason: 'Network error', sinceMs, lastSyncAt: targetUser.lastSyncAt });

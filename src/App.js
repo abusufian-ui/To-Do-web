@@ -270,10 +270,21 @@ function AppLayout() {
     setHfState(prev => {
       if (!prev.isAutomated) return { ...prev, isAutomated: true, targetEndTime: Date.now() + prev.timeLeft * 1000 };
       else {
-        setToast(null);
-        return { ...prev, isAutomated: false, targetEndTime: null, modeId: 'focus', timeLeft: HF_MODES.focus.minutes * 60, cyclesCompleted: 0 };
+        return { ...prev, isAutomated: false, targetEndTime: null };
       }
     });
+  };
+
+  const resetAutomation = () => {
+    setToast(null);
+    setHfState(prev => ({
+      ...prev,
+      isAutomated: false,
+      targetEndTime: null,
+      modeId: 'focus',
+      timeLeft: HF_MODES.focus.minutes * 60,
+      cyclesCompleted: 0
+    }));
   };
 
   const skipPhase = () => {
@@ -818,14 +829,16 @@ function AppLayout() {
   // 🛡️ SECURE ROUTES RETURN
   // ==========================================
   
-  const visibleCourses = courses.filter(c => {
-    if (c.type === 'uni') {
-      const explicitPref = user?.coursePreferences?.[c.name];
-      if (explicitPref === false) return false;
-      if (explicitPref === undefined && c.creditHrs === 0) return false;
-    }
-    return true;
-  });
+  const visibleCourses = useMemo(() => {
+    return courses.filter(c => {
+      if (c.type === 'uni') {
+        const explicitPref = user?.coursePreferences?.[c.name];
+        if (explicitPref === false) return false;
+        if (explicitPref === undefined && c.creditHrs === 0) return false;
+      }
+      return true;
+    });
+  }, [courses, user?.coursePreferences]);
 
   return (
     <Routes>
@@ -871,6 +884,7 @@ function AppLayout() {
                   onOpenNote={(note) => console.log("Open Note from search:", note)}
                   keynotes={keynotes}
                   notifications={notifications}
+                  fetchNotifications={fetchNotifications}
                   onToggleKeynoteRead={handleToggleKeynoteRead}
                   hfState={hfState}
                   hfModes={HF_MODES}
@@ -923,7 +937,7 @@ function AppLayout() {
                     </div>
                   </div>
 
-                  <div className={`w-full h-full ${activeTab === 'HyperFocus' ? 'block' : 'hidden'}`}><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>
+                  <div className={`w-full h-full ${activeTab === 'HyperFocus' ? 'block' : 'hidden'}`}><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} resetAutomation={resetAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>
                   <div className={`w-full h-full ${activeTab === 'Notes' ? 'block' : 'hidden'}`}><Notes courses={visibleCourses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} user={user} /></div>
                   <div className={`w-full h-full ${activeTab === 'Tasks' ? 'block' : 'hidden'}`}><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={visibleCourses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} /></div>
                   <div className={`w-full h-full ${activeTab === 'Calendar' ? 'block' : 'hidden'}`}><Calendar tasks={tasks} courses={visibleCourses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>

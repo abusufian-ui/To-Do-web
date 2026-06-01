@@ -5,7 +5,7 @@ import {
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown,
   FileText, X, Image as ImageIcon, Mic, FileArchive,
   Timer, Download, Maximize2, EyeOff, Activity, AlertCircle, Users,
-  LogOut, Bell
+  LogOut, Bell, Trash2
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -13,7 +13,7 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const Header = ({
   activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout,
-  tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, notifications, onToggleKeynoteRead, hfState, hfModes,
+  tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, notifications, fetchNotifications, onToggleKeynoteRead, hfState, hfModes,
   exams, activeGroup, onOpenGroupInfo, onToggleRightSidebar, isRightSidebarOpen, pendingInvitations
 }) => {
   const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
@@ -142,14 +142,34 @@ const Header = ({
 
   const handleMarkNotificationsRead = async () => {
     try {
-      await fetch(`${API_BASE}/api/notifications/read`, {
+      const res = await fetch(`${API_BASE}/api/notifications/read`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'x-auth-token': localStorage.getItem('token')
         }
       });
+      if (res.ok && fetchNotifications) {
+        fetchNotifications();
+      }
     } catch (e) { console.error("Error marking notifications as read", e); }
+  };
+
+  const handleDeleteNotification = async (e, id) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'x-auth-token': localStorage.getItem('token')
+        }
+      });
+      if (res.ok && fetchNotifications) {
+        fetchNotifications();
+      }
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+    }
   };
 
   const handleDownload = async (e, url) => {
@@ -423,9 +443,6 @@ const Header = ({
             <button
               onClick={() => {
                 setIsInboxOpen(true);
-                if (unreadNotifications.length > 0) {
-                  handleMarkNotificationsRead();
-                }
               }}
               className="p-2.5 rounded-xl bg-white dark:bg-[#1E1E1E] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shadow-sm border border-gray-200 dark:border-[#2C2C2C] relative transition-all"
             >
@@ -534,9 +551,19 @@ const Header = ({
                 <div className="p-2 bg-brand-blue/10 rounded-xl text-brand-blue"><Bell size={20} /></div>
                 Notifications
               </h2>
-              <button onClick={() => setIsInboxOpen(false)} className="p-2 text-gray-400 hover:text-gray-800 dark:hover:text-white bg-gray-50 dark:bg-[#252525] rounded-full shadow-sm transition-all hover:rotate-90">
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                {unreadNotifications.length > 0 && (
+                  <button
+                    onClick={handleMarkNotificationsRead}
+                    className="px-2.5 py-1.5 text-xs font-bold text-brand-blue hover:bg-brand-blue/10 dark:hover:bg-brand-blue/5 rounded-lg transition-all"
+                  >
+                    Read All
+                  </button>
+                )}
+                <button onClick={() => setIsInboxOpen(false)} className="p-2 text-gray-400 hover:text-gray-800 dark:hover:text-white bg-gray-50 dark:bg-[#252525] rounded-full shadow-sm transition-all hover:rotate-90">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
@@ -561,9 +588,18 @@ const Header = ({
                         <span className="flex items-start gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-1">
                           {notif.type}
                         </span>
-                        <span className="text-[10px] font-bold text-gray-400 shrink-0">
-                          {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] font-bold text-gray-400">
+                            {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <button
+                            onClick={(e) => handleDeleteNotification(e, notif._id)}
+                            className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-colors"
+                            title="Delete notification"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
                       <div className="flex flex-col gap-0.5 mb-1 pl-1 cursor-pointer" onClick={() => { if(notif.link) window.open(notif.link, '_blank'); }}>
                         <h4 className="text-sm font-bold text-gray-900 dark:text-white">{notif.title}</h4>

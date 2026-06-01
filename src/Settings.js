@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     User, Shield, RefreshCw, BookOpen, HelpCircle, Info,
     CheckCircle2, X, AlertTriangle, Lock,
-    Calendar, GraduationCap,
-    Book, Linkedin, Github, Puzzle, School, ExternalLink, Download,
-    ChevronDown, FileText, Activity, CheckSquare, Camera,
-    Smartphone, Monitor, Eye, EyeOff
+    Calendar,
+    Book, Puzzle, School, ExternalLink, Download,
+    ChevronDown, FileText, Activity, Camera,
+    Smartphone, Monitor, Eye, EyeOff,
+    Send, UploadCloud, LifeBuoy, MessageSquare
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 import { StaticLogo } from './StaticLogo';
@@ -675,182 +676,398 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
     );
 };
 
-// --- 5. HELP SECTION (NEW INTERACTIVE ACCORDION UI) ---
-const HelpSection = () => {
-    const [expandedId, setExpandedId] = useState(null);
+// --- 5. SUPPORT & HELP SECTION (TICKET SYSTEM WITH SCREENSHOT UPLOADS) ---
+const SupportHelpSection = ({ showToast }) => {
+    const [activeSubTab, setActiveSubTab] = useState('create');
+    const [subject, setSubject] = useState("");
+    const [description, setDescription] = useState("");
+    const [mediaFiles, setMediaFiles] = useState([]); // Array of { file, previewUrl }
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Color definitions corresponding to Tailwind classes for safelisting
-    const colorStyles = {
-        blue: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
-        orange: 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
-        purple: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
-        indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400',
-        emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400',
-        rose: 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400',
-        brand: 'bg-brand-blue/10 text-brand-blue dark:bg-brand-blue/20 dark:text-blue-400',
+    const [tickets, setTickets] = useState([]);
+    const [isLoadingTickets, setIsLoadingTickets] = useState(false);
+    const [expandedId, setExpandedId] = useState(null);
+    const [lightboxImage, setLightboxImage] = useState(null);
+
+    const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+    const fetchUserTickets = useCallback(async () => {
+        setIsLoadingTickets(true);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_BASE}/api/feedback/my`, {
+                headers: { "x-auth-token": token },
+            });
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                setTickets(data);
+            }
+        } catch (err) {
+            console.error("Error loading user tickets:", err);
+        } finally {
+            setIsLoadingTickets(false);
+        }
+    }, [API_BASE]);
+
+    useEffect(() => {
+        if (activeSubTab === 'my') {
+            fetchUserTickets();
+        }
+    }, [activeSubTab, fetchUserTickets]);
+
+    const handleFileChange = (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+
+        const validFiles = files.filter(file => {
+            if (!file.type.startsWith('image/')) {
+                showToast("Please select image files only.", "error");
+                return false;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                showToast(`File ${file.name} is too large (max 5MB).`, "error");
+                return false;
+            }
+            return true;
+        });
+
+        const newMedia = validFiles.map(file => ({
+            file,
+            previewUrl: URL.createObjectURL(file),
+            name: file.name
+        }));
+
+        setMediaFiles(prev => [...prev, ...newMedia]);
     };
 
-    const helpItems = [
-        {
-            id: 'portal',
-            icon: RefreshCw,
-            color: 'brand',
-            title: 'Portal Syncing Engine',
-            summary: 'Learn how your data is safely retrieved from Horizon.',
-            content: 'The Syncing Engine uses a secure Chrome Extension to bridge the gap between your university portal and this dashboard. It scrapes your grades, attendance, and timetable locally in your browser and pushes the updates to our encrypted database. This ensures we never need to store your university password on our servers.'
-        },
-        {
-            id: 'tasks',
-            icon: CheckSquare,
-            color: 'blue',
-            title: 'Tasks & Dashboard',
-            summary: 'Manage daily to-dos and categorize them securely.',
-            content: 'The Dashboard is your central hub for productivity. You can create tasks, assign them to specific university or personal courses, set priority levels, and track your progress. Simply drag and drop tasks across columns to dynamically change their status from "To Do" to "In Progress" or "Completed".'
-        },
-        {
-            id: 'academics',
-            icon: GraduationCap,
-            color: 'purple',
-            title: 'Academics & Grades',
-            summary: 'View your live auto-synced grades and CGPA.',
-            content: 'Your academic data is automatically synchronized. Keep an eye on your live CGPA, total earned credits, and detailed semester-wise performance. The system also tracks your attendance and warns you if you are nearing the 75% limit for any course.'
-        },
-        {
-            id: 'security',
-            icon: Shield,
-            color: 'emerald',
-            title: 'Security & Privacy',
-            summary: 'How we protect your sensitive information.',
-            content: 'We use industry-standard JWT authentication and end-to-end encryption for sensitive fields. Your financial records and academic history are strictly private and accessible only by you. Our "Auto-Lock" feature ensures that even if you leave your device unattended, your data remains secure.'
-        },
-        {
-            id: 'terms',
-            icon: FileText,
-            color: 'indigo',
-            title: 'Terms & Conditions',
-            summary: 'Our data usage policy and user agreement.',
-            content: (
-                <div className="space-y-4">
-                    <p>By using MyPortal, you agree to our comprehensive data policy designed to provide a personalized academic experience.</p>
-                    <div className="space-y-2">
-                        <h5 className="font-bold text-gray-800 dark:text-white text-xs uppercase tracking-wider">1. Data Collection</h5>
-                        <p className="text-xs">We collect academic data (grades, attendance, courses) and personal settings to provide synchronization services. We do NOT store your university login credentials.</p>
-                    </div>
-                    <div className="space-y-2">
-                        <h5 className="font-bold text-gray-800 dark:text-white text-xs uppercase tracking-wider">2. AI & Model Training</h5>
-                        <p className="text-xs">To improve our "Hyper Focus" automation and predictive academic alerts, we may use anonymized usage patterns and performance data to train our internal AI models. Your identity remains strictly confidential during this process.</p>
-                    </div>
-                    <div className="space-y-2">
-                        <h5 className="font-bold text-gray-800 dark:text-white text-xs uppercase tracking-wider">3. App Functionality</h5>
-                        <p className="text-xs">Your data is primarily used to generate visual analytics, financial reports, and habit tracking streaks. We do not sell your data to third parties.</p>
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-4 italic">Last updated: May 2026</p>
-                </div>
-            )
+    const removeMedia = (index) => {
+        setMediaFiles(prev => {
+            const item = prev[index];
+            if (item && item.previewUrl) {
+                URL.revokeObjectURL(item.previewUrl);
+            }
+            return prev.filter((_, i) => i !== index);
+        });
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!subject.trim() || !description.trim()) {
+            showToast("Please enter both a title and description.", "error");
+            return;
         }
-    ];
+
+        setIsSubmitting(true);
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                showToast("Session expired, please log in again.", "error");
+                setIsSubmitting(false);
+                return;
+            }
+
+            let uploadedUrls = [];
+
+            // 1. Upload screenshots if any exist
+            if (mediaFiles.length > 0) {
+                const formData = new FormData();
+                mediaFiles.forEach(media => {
+                    formData.append("files", media.file);
+                });
+
+                const uploadRes = await fetch(`${API_BASE}/api/upload`, {
+                    method: "POST",
+                    headers: { "x-auth-token": token },
+                    body: formData,
+                });
+
+                if (!uploadRes.ok) throw new Error("Upload failed");
+                const uploadData = await uploadRes.json();
+                if (uploadData.urls) {
+                    uploadedUrls = uploadData.urls;
+                }
+            }
+
+            // 2. Submit ticket
+            const res = await fetch(`${API_BASE}/api/feedback`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-auth-token": token,
+                },
+                body: JSON.stringify({
+                    subject,
+                    description,
+                    screenshots: uploadedUrls,
+                }),
+            });
+
+            if (res.ok) {
+                showToast("Support ticket created successfully!", "success");
+                setSubject("");
+                setDescription("");
+                setMediaFiles([]);
+                setActiveSubTab('my'); // Switch to My Tickets
+            } else {
+                const errorData = await res.json();
+                showToast(errorData.message || "Failed to submit ticket.", "error");
+            }
+        } catch (error) {
+            console.error("Feedback error:", error);
+            showToast("Connection issue, please try again.", "error");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     return (
         <div className="animate-fadeIn">
-            <div className="mb-8">
-                <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Help Center</h3>
-                <p className="text-gray-500 dark:text-gray-400 text-sm">Expand any module below to learn how to maximize your productivity.</p>
+            {/* Header */}
+            <div className="mb-8 flex items-center justify-between">
+                <div>
+                    <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Support & Help</h3>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Submit technical queries and review resolutions from our system admins.</p>
+                </div>
+                <div className="p-3 bg-brand-blue/10 rounded-2xl text-brand-blue shrink-0 hidden sm:block">
+                    <LifeBuoy size={32} className="animate-spin-slow" />
+                </div>
             </div>
 
-            <div className="grid gap-4">
-                {helpItems.map(item => (
-                    <div key={item.id} className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden transition-all">
-                        <button
-                            onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                            className="w-full text-left p-5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors focus:outline-none"
-                        >
-                            <div className="flex gap-4 items-center">
-                                <div className={`p-3 rounded-lg flex items-center justify-center shrink-0 ${colorStyles[item.color]}`}>
-                                    <item.icon size={20} />
-                                </div>
-                                <div>
-                                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">{item.title}</h4>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">{item.summary}</p>
+            {/* Custom Sub Tabs */}
+            <div className="flex bg-gray-100 dark:bg-[#1E1E1E] p-1 rounded-xl mb-8">
+                <button
+                    type="button"
+                    onClick={() => setActiveSubTab('create')}
+                    className={`flex-grow py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                        activeSubTab === 'create'
+                            ? 'bg-white dark:bg-[#2C2C2C] text-brand-blue shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <MessageSquare size={16} /> Create Ticket
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveSubTab('my')}
+                    className={`flex-grow py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                        activeSubTab === 'my'
+                            ? 'bg-white dark:bg-[#2C2C2C] text-brand-blue shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <FileText size={16} /> My Tickets
+                </button>
+            </div>
+
+            {/* Tab content */}
+            {activeSubTab === 'create' ? (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="bg-white dark:bg-[#1E1E1E] p-8 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] shadow-sm space-y-6">
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Problem Title</label>
+                            <input
+                                type="text"
+                                placeholder="e.g., Attendance Scraper Stuck, Double Payment..."
+                                value={subject}
+                                onChange={e => setSubject(e.target.value)}
+                                className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3.5 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all font-medium text-sm"
+                                maxLength={80}
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Problem Description</label>
+                            <textarea
+                                placeholder="Describe your issue in detail so that our technical admins can resolve it quickly..."
+                                value={description}
+                                onChange={e => setDescription(e.target.value)}
+                                rows={6}
+                                className="w-full bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3.5 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none transition-all font-medium text-sm resize-none"
+                                required
+                            />
+                        </div>
+
+                        {/* Screenshots Preview container */}
+                        {mediaFiles.length > 0 && (
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Attached Screenshots ({mediaFiles.length})</label>
+                                <div className="flex flex-wrap gap-4">
+                                    {mediaFiles.map((media, idx) => (
+                                        <div key={idx} className="relative group w-20 h-20 rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-black/10 dark:bg-black/40 shrink-0">
+                                            <img
+                                                src={media.previewUrl}
+                                                alt="preview"
+                                                className="object-cover w-full h-full"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => removeMedia(idx)}
+                                                className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 border border-white dark:border-[#1E1E1E] transition-all shadow-md group-hover:scale-105"
+                                                title="Remove Image"
+                                            >
+                                                <X size={10} />
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-                            <div className={`text-gray-400 transition-transform duration-300 shrink-0 ml-4 ${expandedId === item.id ? 'rotate-180' : ''}`}>
-                                <ChevronDown size={20} />
-                            </div>
-                        </button>
-                        
-                        {/* Expandable Content Area */}
-                        <div 
-                            className={`overflow-hidden transition-all duration-300 ease-in-out ${expandedId === item.id ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}
-                        >
-                            <div className="p-5 pt-0 border-t border-gray-100 dark:border-[#333] mt-2 bg-gray-50/50 dark:bg-[#1A1A1A]">
-                                <div className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mt-4">
-                                    {item.content}
+                        )}
+
+                        {/* Dropzone Upload */}
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Upload Snapshots</label>
+                            <label className="group flex flex-col items-center justify-center w-full h-36 bg-gray-50 dark:bg-[#121212] border-2 border-dashed border-gray-200 dark:border-[#333] hover:border-brand-blue dark:hover:border-brand-blue rounded-2xl cursor-pointer transition-all">
+                                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                    <UploadCloud size={32} className="text-gray-400 group-hover:text-brand-blue transition-colors mb-2" />
+                                    <p className="mb-1 text-xs text-gray-500 dark:text-gray-400 font-bold">Drag & drop screenshots or click to browse</p>
+                                    <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Images only (Max 5MB)</p>
                                 </div>
-                            </div>
+                                <input
+                                    type="file"
+                                    multiple
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                    className="hidden"
+                                />
+                            </label>
                         </div>
                     </div>
-                ))}
-            </div>
+
+                    <div className="flex justify-end pt-2">
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="w-full md:w-auto bg-brand-blue hover:bg-blue-600 text-white font-bold py-3.5 px-8 rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isSubmitting ? (
+                                <RefreshCw className="animate-spin" size={18} />
+                            ) : (
+                                <>
+                                    <Send size={16} /> Submit Support Ticket
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </form>
+            ) : (
+                <div className="space-y-4">
+                    {isLoadingTickets ? (
+                        <div className="text-center py-16 flex flex-col items-center gap-4">
+                            <RefreshCw className="animate-spin text-brand-blue w-8 h-8" />
+                            <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider animate-pulse">Loading Support Tickets...</p>
+                        </div>
+                    ) : tickets.length === 0 ? (
+                        <div className="text-center py-16 bg-white dark:bg-[#1E1E1E] rounded-2xl border border-dashed border-gray-200 dark:border-[#333] shadow-sm">
+                            <MessageSquare className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+                            <h4 className="font-bold text-gray-800 dark:text-white mb-2 text-lg">No tickets filed yet</h4>
+                            <p className="text-gray-400 text-sm max-w-sm mx-auto leading-relaxed">
+                                Any support tickets you submit will be shown here along with their status and admin feedback.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4 pb-12">
+                            {tickets.map(t => {
+                                const isExpanded = expandedId === t._id;
+                                const isResolved = t.status === "resolved";
+
+                                return (
+                                    <div key={t._id} className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpandedId(isExpanded ? null : t._id)}
+                                            className="w-full text-left p-6 flex items-center justify-between hover:bg-gray-50/50 dark:hover:bg-[#252525]/30 transition-colors focus:outline-none"
+                                        >
+                                            <div className="flex-1 min-w-0 pr-4">
+                                                <h4 className="font-bold text-gray-800 dark:text-white mb-1.5 truncate text-base">{t.subject}</h4>
+                                                <span className="text-xs text-gray-400 font-medium">
+                                                    {new Date(t.createdAt).toLocaleString([], {
+                                                        dateStyle: "medium",
+                                                        timeStyle: "short",
+                                                    })}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-4 shrink-0">
+                                                <span className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wider border ${
+                                                    isResolved
+                                                        ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400'
+                                                        : 'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400'
+                                                }`}>
+                                                    {isResolved ? "Resolved" : "Open"}
+                                                </span>
+                                                <ChevronDown size={20} className={`text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                            </div>
+                                        </button>
+
+                                        {isExpanded && (
+                                            <div className="px-6 pb-6 border-t border-gray-100 dark:border-[#2C2C2C] pt-5 bg-gray-50/30 dark:bg-[#1C1C1F]/20 space-y-5 animate-slideDown">
+                                                <div>
+                                                    <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Description</h5>
+                                                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed font-medium whitespace-pre-wrap">{t.description}</p>
+                                                </div>
+
+                                                {/* Screenshot Display */}
+                                                {t.screenshots && t.screenshots.length > 0 && (
+                                                    <div>
+                                                        <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Attached Screenshots</h5>
+                                                        <div className="flex flex-wrap gap-3">
+                                                            {t.screenshots.map((url, index) => (
+                                                                <div
+                                                                    key={index}
+                                                                    onClick={() => setLightboxImage(url)}
+                                                                    className="relative group w-20 h-20 rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-black/5 cursor-zoom-in shrink-0 animate-scaleIn"
+                                                                >
+                                                                    <img
+                                                                        src={url}
+                                                                        alt="snapshot"
+                                                                        className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Admin resolution block */}
+                                                {isResolved && t.adminResponse && (
+                                                    <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-xl space-y-2 animate-slideUp">
+                                                        <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                                                            <CheckCircle2 size={16} />
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest">Admin Resolution</span>
+                                                        </div>
+                                                        <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300/90 leading-relaxed">{t.adminResponse}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* FULL SCREEN LIGHTBOX */}
+            {lightboxImage && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-md animate-fadeIn">
+                    <button onClick={() => setLightboxImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all">
+                        <X size={24} />
+                    </button>
+                    <a
+                        href={lightboxImage}
+                        download
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute top-6 left-6 flex items-center gap-2 bg-brand-blue hover:bg-blue-600 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-all"
+                    >
+                        <Download size={18} /> Download
+                    </a>
+                    <img src={lightboxImage} alt="Fullscreen Preview" className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl" />
+                </div>
+            )}
         </div>
     );
 };
-
-// --- 6. ABOUT SECTION ---
-const AboutSection = () => (
-    <div className="animate-fadeIn text-center py-12">
-        <div className="w-24 h-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl shadow-blue-600/30 mb-6 animate-float">
-            <StaticLogo className="w-12 h-12 text-white" />
-        </div>
-        <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">MyPortal</h2>
-        <p className="text-gray-500 dark:text-gray-400 mb-8 font-medium">Next-Gen Student Academic Assistant</p>
-
-        <div className="inline-block bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl p-8 text-left max-w-sm w-full mx-auto shadow-sm">
-            <div className="space-y-6">
-                <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-[#333]">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Developed By</span>
-                    <span className="font-bold text-gray-800 dark:text-white text-sm">abusufian-ui</span>
-                </div>
-                <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-[#333]">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Student ID</span>
-                    <span className="font-mono text-xs bg-gray-100 dark:bg-[#252525] px-2 py-1 rounded text-gray-600 dark:text-gray-300">L1F23BSCS1329</span>
-                </div>
-                <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-[#333]">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Institution</span>
-                    <div className="flex items-center gap-2">
-                        <StaticLogo className="w-4 h-4 text-brand-blue" />
-                        <span className="font-bold text-gray-800 dark:text-white text-sm">UCP Lahore</span>
-                    </div>
-                </div>
-                <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Version</span>
-                    <span className="font-bold text-emerald-500 text-sm">2.0.0 (Beta)</span>
-                </div>
-            </div>
-        </div>
-
-        <div className="flex justify-center gap-4 mt-8 animate-slideUp">
-            <a
-                href="https://www.linkedin.com/in/abu-sufian-71ba2a303/"
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-2 px-5 py-3 bg-[#0077b5] text-white rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:scale-105 transition-all"
-            >
-                <Linkedin size={20} className="group-hover:animate-bounce" />
-                <span className="font-bold text-sm">LinkedIn</span>
-            </a>
-
-            <a
-                href="https://github.com/abusufian-ui"
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-2 px-5 py-3 bg-[#333] dark:bg-white dark:text-black text-white rounded-xl shadow-lg shadow-gray-500/30 hover:shadow-gray-500/50 hover:scale-105 transition-all"
-            >
-                <Github size={20} className="group-hover:rotate-12 transition-transform" />
-                <span className="font-bold text-sm">GitHub</span>
-            </a>
-        </div>
-    </div>
-);
 
 // --- MAIN SETTINGS LAYOUT ---
 const Settings = ({
@@ -868,14 +1085,18 @@ const Settings = ({
     const showToast = (msg, type) => {
         setToast({ msg, type });
         setTimeout(() => setToast({ msg: null, type: null }), 3000);
-    };    const tabs = [
+    };
+
+    const tabs = [
         { id: 'profile', label: 'Profile Settings', icon: User },
         { id: 'security', label: 'Security', icon: Shield },
         { id: 'portal', label: 'Syncing Status', icon: RefreshCw },
         { id: 'courses', label: 'Course Manager', icon: BookOpen },
-        { id: 'help', label: 'Help Center', icon: HelpCircle },
+        { id: 'help', label: 'Support & Help', icon: HelpCircle },
         { id: 'about', label: 'About', icon: Info },
     ];
+
+    const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
     return (
         <div className="flex h-full w-full animate-fadeIn bg-gray-50 dark:bg-[#0c0c0c] overflow-hidden">
@@ -890,7 +1111,14 @@ const Settings = ({
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
+                            type="button"
+                            onClick={() => {
+                                if (tab.id === 'about') {
+                                    window.open('https://myportalucp.vercel.app', '_blank');
+                                } else {
+                                    setActiveTab(tab.id);
+                                }
+                            }}
                             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 
                         ${activeTab === tab.id
                                      ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-blue shadow-sm'
@@ -927,8 +1155,7 @@ const Settings = ({
                     {activeTab === 'security' && <SecuritySection user={user} showToast={showToast} />}
                     {activeTab === 'portal' && <SyncingStatusSection user={user} showToast={showToast} />}
                     {activeTab === 'courses' && <CourseSection courses={courses} addCourse={addCourse} removeCourse={removeCourse} tasks={tasks} showToast={showToast} user={user} />}
-                    {activeTab === 'help' && <HelpSection />}
-                    {activeTab === 'about' && <AboutSection />}
+                    {activeTab === 'help' && <SupportHelpSection showToast={showToast} />}
                 </div>
             </div>
         </div>

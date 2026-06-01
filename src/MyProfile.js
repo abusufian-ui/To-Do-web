@@ -101,6 +101,9 @@ const MyProfile = ({ user, onUpdateProfilePic }) => {
                 <Mail size={12} /> {user.email}
               </span>
             </div>
+            <p className="text-xs font-semibold text-red-500 dark:text-red-400 mt-4">
+              Note: Changing your profile picture will make it visible to all community members.
+            </p>
           </div>
         </div>
 
@@ -127,9 +130,9 @@ const MyProfile = ({ user, onUpdateProfilePic }) => {
                 </span>
               </div>
               <div className="flex justify-between items-center py-2">
-                <span className="text-sm text-gray-500 dark:text-gray-400">User ID</span>
-                <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-[#252525] px-2 py-1 rounded select-all">
-                  {user.id || user._id}
+                <span className="text-sm text-gray-500 dark:text-gray-400">Portal ID</span>
+                <span className="text-xs font-mono text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-[#252525] px-2 py-1 rounded select-all font-semibold uppercase">
+                  {user.portalId || 'N/A'}
                 </span>
               </div>
             </div>

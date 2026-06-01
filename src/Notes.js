@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import NoteEditor from './NoteEditor';
 import { FileText, Clock, Trash2, CheckSquare, Book, Lock, Globe, Send, Inbox as InboxIcon, Search, Check, X } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
@@ -125,7 +125,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     return new DOMParser().parseFromString(formattedHtml, 'text/html').body.textContent.trim() || "";
   };
 
-  const handleSaveNote = async (noteData, isAutoSave = false) => {
+  const handleSaveNote = useCallback(async (noteData, isAutoSave = false) => {
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/api/notes`, {
@@ -153,7 +153,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
       }
     } catch (error) { console.error("Error saving note:", error); }
     return null;
-  };
+  }, [fetchNotes, setIsAddingNew, setNotes]);
 
   const confirmDelete = async () => {
     try {

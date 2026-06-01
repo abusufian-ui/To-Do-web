@@ -377,8 +377,14 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
 const SessionInspectorApp = ({ users, token, loading, onRefresh }) => {
   const [results, setResults] = useState({});
   const [checking, setChecking] = useState({});
+  const [search, setSearch] = useState('');
 
   const portalUsers = users.filter(u => u.isPortalConnected && u.ucpCookie);
+
+  const filteredUsers = portalUsers.filter(u =>
+    u.name.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase())
+  );
 
   const checkSession = async (userId) => {
     setChecking(p => ({ ...p, [userId]: true }));
@@ -394,7 +400,7 @@ const SessionInspectorApp = ({ users, token, loading, onRefresh }) => {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">Verify whether a user's UCP portal session cookie is still active. Only portal-linked users with stored cookies are shown.</p>
         {onRefresh && (
           <button
@@ -408,17 +414,41 @@ const SessionInspectorApp = ({ users, token, loading, onRefresh }) => {
           </button>
         )}
       </div>
+
+      {portalUsers.length > 0 && (
+        <div className="mb-6 flex items-center gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+            <input 
+              type="text" 
+              placeholder="Search students by name or email…" 
+              value={search} 
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 transition-colors" 
+            />
+          </div>
+          <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{filteredUsers.length} total</span>
+        </div>
+      )}
+
       {portalUsers.length === 0 && (
         <div className="text-center py-16 text-gray-400 dark:text-gray-600">
           <Cookie size={40} className="mx-auto mb-3 opacity-40" />
           <p className="font-bold">No portal-linked users with cookies found.</p>
         </div>
       )}
+
+      {portalUsers.length > 0 && filteredUsers.length === 0 && (
+        <div className="text-center py-12 text-gray-400">
+          No students match "{search}"
+        </div>
+      )}
+
       <div className="space-y-3">
-        {portalUsers.map(u => {
+        {filteredUsers.map(u => {
           const result = results[u._id];
           return (
-            <div key={u._id} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#18181b]">
+            <div key={u._id} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#18181b] hover:shadow-sm transition-all">
               <UserAvatar u={u} size={10} />
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-900 dark:text-white text-sm">{u.name}</p>

@@ -348,7 +348,7 @@ const CustomImageExtension = Image.extend({
 // ==========================================
 
 const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete, onShare, readOnly = false, defaultIsPrivate = true }) => {
-  const [currentNoteId, setCurrentNoteId] = useState(initialNote?._id || null);
+  const [, setCurrentNoteId] = useState(initialNote?._id || null);
   const [title, setTitle] = useState(initialNote?.title || '');
   const [courseId, setCourseId] = useState(initialNote?.courseId || '');
   const [referenceFiles, setReferenceFiles] = useState(initialNote?.referenceFiles || []);
@@ -531,6 +531,19 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     };
   };
 
+  // Keep latest props and state in refs to avoid resetting the timeout
+  const onSaveRef = useRef(onSave);
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
+
+  const coursesRef = useRef(courses);
+  useEffect(() => {
+    coursesRef.current = courses;
+  }, [courses]);
+
+  const editorHTML = editor ? editor.getHTML() : '';
+
   useEffect(() => {
     if (!readOnly && isDirty && editor) {
       if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
@@ -538,11 +551,13 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       autoSaveTimeoutRef.current = setTimeout(async () => {
         setSaveStatus('Saving...');
         const activeTitle = title.trim() || 'Untitled Note';
-        const activeCourse = courseId || generalCourses[0]?.id || courses[0]?.id || 'general-task';
-        const contentHtml = editor.getHTML(); 
+        const latestCourses = coursesRef.current;
+        const latestGeneralCourses = latestCourses.filter(c => c.type === 'general');
+        const activeCourse = courseId || latestGeneralCourses[0]?.id || latestCourses[0]?.id || 'general-task';
+        const contentHtml = editorHTML; 
 
         const noteData = { _id: noteIdRef.current, title: activeTitle, courseId: activeCourse, content: contentHtml, referenceFiles, isPrivate };
-        const savedNote = await onSave(noteData, true); 
+        const savedNote = await onSaveRef.current(noteData, true); 
         
         if (savedNote && savedNote._id) {
           noteIdRef.current = savedNote._id; 
@@ -556,7 +571,10 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         }
       }, 1500);
     }
-  }, [editor?.getHTML(), title, courseId, referenceFiles, isDirty, courses, generalCourses, onSave, readOnly]);
+    return () => {
+      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+    };
+  }, [editor, editorHTML, title, courseId, referenceFiles, isPrivate, isDirty, readOnly]);
 
   const handleCopyText = () => {
     if (editor) {
