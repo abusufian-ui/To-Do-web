@@ -1271,8 +1271,12 @@ const WebsiteConfigApp = ({ token }) => {
       });
       const { signature, timestamp, cloudName, apiKey, folder } = sigRes.data;
 
-      // 2. Rename selected .apk file client-side to bypass Cloudinary's raw .apk extension block
-      const renamedFile = new File([file], 'myportal.bin', { type: file.type });
+      // 2. Rename selected .apk file client-side to bypass Cloudinary's raw .apk extension block.
+      //    CRITICAL: Must also override MIME type to generic 'application/octet-stream'.
+      //    If we pass file.type ('application/vnd.android.package-archive'), Cloudinary
+      //    detects it and rejects the upload with a 400 — which then appears as a CORS
+      //    error in the browser because Cloudinary omits CORS headers on error responses.
+      const renamedFile = new File([file], 'myportal.bin', { type: 'application/octet-stream' });
 
       // 3. Prepare FormData for Cloudinary Raw upload
       const formData = new FormData();

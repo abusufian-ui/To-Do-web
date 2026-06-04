@@ -600,14 +600,21 @@ app.get('/api/public/download-apk', async (req, res) => {
     if (dbSetting && dbSetting.value && dbSetting.value.uploaded && dbSetting.value.url && !dbSetting.value.url.includes('/api/public/download-apk')) {
       const cloudinaryUrl = dbSetting.value.url;
       
-      res.setHeader('Content-Disposition', 'attachment; filename="myportal.apk"');
-      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-      
       const streamRes = await axios({
         method: 'get',
         url: cloudinaryUrl,
         responseType: 'stream'
       });
+      
+      // Set forced download headers so browser always saves as myportal.apk
+      res.setHeader('Content-Disposition', 'attachment; filename="myportal.apk"');
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      
+      // Forward Content-Length so browsers/download managers show accurate file size
+      // and don't stall waiting for an unknown-length stream on large 100-200MB files
+      if (streamRes.headers['content-length']) {
+        res.setHeader('Content-Length', streamRes.headers['content-length']);
+      }
       
       return streamRes.data.pipe(res);
     }
