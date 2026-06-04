@@ -1265,17 +1265,29 @@ const WebsiteConfigApp = ({ token }) => {
     setUploadProgress({ loaded: 0, total: file.size, percent: 0 });
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      // 1. Request upload signature and configurations from backend
+      const sigRes = await axios.get(`${API_BASE}/api/admin/cloudinary-signature`, {
+        headers: { 'x-auth-token': token }
+      });
+      const { signature, timestamp, cloudName, apiKey, folder } = sigRes.data;
 
-      const uploadRes = await axios.post(
-        `${API_BASE}/api/admin/settings/apk-upload`,
+      // 2. Rename selected .apk file client-side to bypass Cloudinary's raw .apk extension block
+      const renamedFile = new File([file], 'myportal.bin', { type: file.type });
+
+      // 3. Prepare FormData for Cloudinary Raw upload
+      const formData = new FormData();
+      formData.append('file', renamedFile);
+      formData.append('api_key', apiKey);
+      formData.append('timestamp', timestamp);
+      formData.append('signature', signature);
+      formData.append('folder', folder);
+
+      // 4. Perform direct signed upload to Cloudinary (bypasses VM reverse proxy size limits)
+      const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`;
+      const cloudinaryRes = await axios.post(
+        uploadUrl,
         formData,
         {
-          headers: { 
-            'Content-Type': 'multipart/form-data',
-            'x-auth-token': token
-          },
           onUploadProgress: (progressEvent) => {
             const loaded = progressEvent.loaded;
             const total = progressEvent.total || file.size;
@@ -1285,18 +1297,39 @@ const WebsiteConfigApp = ({ token }) => {
         }
       );
 
-      if (uploadRes.data && uploadRes.data.success) {
-        setApkInfo(uploadRes.data.apkInfo);
-        ToastConfig.show({ title: 'Upload Successful', message: 'APK has been uploaded directly to the server storage.', type: 'success' });
+      const cloudinaryUrl = cloudinaryRes.data.secure_url || cloudinaryRes.data.url;
+      if (!cloudinaryUrl) {
+        throw new Error("Failed to retrieve upload URL from Cloudinary.");
+      }
+
+      // 5. Register the secure Cloudinary CDN URL, size, and filename back on backend setting
+      const saveRes = await axios.post(
+        `${API_BASE}/api/admin/settings/apk-url`,
+        {
+          url: cloudinaryUrl,
+          size: file.size,
+          filename: 'myportal.apk'
+        },
+        {
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-auth-token': token
+          }
+        }
+      );
+
+      if (saveRes.data && saveRes.data.success) {
+        setApkInfo(saveRes.data.apkInfo);
+        ToastConfig.show({ title: 'Upload Successful', message: 'APK has been renamed, uploaded to Cloudinary, and registered on server.', type: 'success' });
       } else {
-        throw new Error(uploadRes.data.message || "Failed to save APK on portal server.");
+        throw new Error(saveRes.data.message || "Failed to save Cloudinary asset URL on portal server.");
       }
 
     } catch (err) {
       console.error(err);
       ToastConfig.show({ 
         title: 'Upload Failed', 
-        message: err.response?.data?.message || err.message || 'Network error uploading APK to server.', 
+        message: err.response?.data?.message || err.message || 'Error uploading APK release.', 
         type: 'error' 
       });
     } finally {
@@ -1389,7 +1422,7 @@ const WebsiteConfigApp = ({ token }) => {
           <Activity size={16} className="text-green-500" /> Mobile App (APK) Release
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          Upload the Android APK bundle here. The general website links directly to this file, ensuring users always get the latest version from your server storage.
+          Upload the Android APK bundle here. The general website links directly to this file, ensuring users always get the latest version from Cloudinary CDN.
         </p>
 
         {loadingInfo ? (
@@ -1399,7 +1432,7 @@ const WebsiteConfigApp = ({ token }) => {
             <div className="flex items-center justify-between text-xs font-bold">
               <span className="text-blue-500 flex items-center gap-2">
                 <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                Uploading to Server Storage...
+                Uploading to Cloudinary...
               </span>
               <span className="text-gray-500 dark:text-gray-400">
                 {uploadProgress 

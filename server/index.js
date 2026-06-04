@@ -566,10 +566,10 @@ app.get('/api/public/settings', async (req, res) => {
     const baseUrl = getBaseUrl(req);
 
     if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
-      apkInfo = dbSetting.value;
-      if (!apkInfo.url) {
-        apkInfo.url = `${baseUrl}/api/public/download-apk`;
-      }
+      apkInfo = {
+        ...dbSetting.value,
+        url: `${baseUrl}/api/public/download-apk`
+      };
     } else {
       const apkPath = path.join(uploadDir, 'myportal.apk');
       if (fs.existsSync(apkPath)) {
@@ -594,6 +594,25 @@ app.get('/api/public/settings', async (req, res) => {
 // Public: Stream and download the active APK file with forced filename
 app.get('/api/public/download-apk', async (req, res) => {
   try {
+    const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
+    
+    // Check if Cloudinary URL is stored and valid
+    if (dbSetting && dbSetting.value && dbSetting.value.uploaded && dbSetting.value.url && !dbSetting.value.url.includes('/api/public/download-apk')) {
+      const cloudinaryUrl = dbSetting.value.url;
+      
+      res.setHeader('Content-Disposition', 'attachment; filename="myportal.apk"');
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      
+      const streamRes = await axios({
+        method: 'get',
+        url: cloudinaryUrl,
+        responseType: 'stream'
+      });
+      
+      return streamRes.data.pipe(res);
+    }
+    
+    // Local storage fallback
     const apkPath = path.join(uploadDir, 'myportal.apk');
     if (!fs.existsSync(apkPath)) {
       return res.status(404).json({ message: "APK release not found on server storage." });
