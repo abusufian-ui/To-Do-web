@@ -561,16 +561,15 @@ app.get('/api/public/settings', async (req, res) => {
       webPortalLink = linkSetting.value;
     }
 
-    const apkPath = path.join(uploadDir, 'myportal.apk');
-    const apkExists = fs.existsSync(apkPath);
     let apkInfo = { uploaded: false };
+    const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
 
-    if (apkExists) {
-      const stat = fs.statSync(apkPath);
-      const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
-      if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
-        apkInfo = dbSetting.value;
-      } else {
+    if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
+      apkInfo = dbSetting.value;
+    } else {
+      const apkPath = path.join(uploadDir, 'myportal.apk');
+      if (fs.existsSync(apkPath)) {
+        const stat = fs.statSync(apkPath);
         apkInfo = {
           uploaded: true,
           filename: 'myportal.apk',
@@ -671,7 +670,8 @@ app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) =
       uploaded: false,
       filename: null,
       size: 0,
-      uploadedAt: null
+      uploadedAt: null,
+      url: null
     };
 
     await SystemSettings.findOneAndUpdate(
@@ -684,6 +684,56 @@ app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) =
   } catch (error) {
     console.error("Delete APK Error:", error);
     res.status(500).json({ message: "Server Error deleting APK" });
+  }
+});
+
+// Admin: Get Cloudinary upload signature for client-side APK uploads
+app.get('/api/admin/cloudinary-signature', auth, adminAuth, (req, res) => {
+  try {
+    const timestamp = Math.round(new Date().getTime() / 1000);
+    const folder = 'myportal/apk';
+    const params = {
+      timestamp,
+      folder
+    };
+    const signature = cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET);
+    res.json({
+      signature,
+      timestamp,
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      apiKey: process.env.CLOUDINARY_API_KEY,
+      folder
+    });
+  } catch (error) {
+    console.error("Cloudinary Signature Error:", error);
+    res.status(500).json({ message: "Server Error generating upload signature" });
+  }
+});
+
+// Admin: Save APK Cloudinary CDN URL and size metadata
+app.post('/api/admin/settings/apk-url', auth, adminAuth, async (req, res) => {
+  try {
+    const { url, size, filename } = req.body;
+    if (!url) return res.status(400).json({ message: "URL is required." });
+
+    const apkInfo = {
+      uploaded: true,
+      filename: filename || 'myportal.apk',
+      size: size || 0,
+      uploadedAt: new Date(),
+      url: url
+    };
+
+    const setting = await SystemSettings.findOneAndUpdate(
+      { key: "apk_info" },
+      { value: apkInfo },
+      { upsert: true, new: true }
+    );
+
+    res.json({ success: true, apkInfo: setting.value });
+  } catch (error) {
+    console.error("Save APK URL Error:", error);
+    res.status(500).json({ message: "Server Error saving APK URL" });
   }
 });
 

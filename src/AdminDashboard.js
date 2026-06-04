@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import {
   Users, Activity, Search, Trash2,
   Shield, HardDrive, Cpu, X,
@@ -1188,10 +1189,14 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
 // ────────────────────────────────────────────────────────────────────────────────
 const WebsiteConfigApp = ({ token }) => {
   const [webPortalLink, setWebPortalLink] = useState('');
+  const [savedLink, setSavedLink] = useState('');
+  const [isEditingLink, setIsEditingLink] = useState(false);
   const [savingLink, setSavingLink] = useState(false);
+  
   const [apkInfo, setApkInfo] = useState({ uploaded: false });
   const [loadingInfo, setLoadingInfo] = useState(true);
   const [uploadingApk, setUploadingApk] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null); // { loaded, total, percent }
   const [deletingApk, setDeletingApk] = useState(false);
 
   const fetchSettings = async () => {
@@ -1201,6 +1206,7 @@ const WebsiteConfigApp = ({ token }) => {
       if (res.ok) {
         const data = await res.json();
         setWebPortalLink(data.webPortalLink || '');
+        setSavedLink(data.webPortalLink || '');
         setApkInfo(data.apkInfo || { uploaded: false });
       }
     } catch (err) {
@@ -1229,6 +1235,8 @@ const WebsiteConfigApp = ({ token }) => {
         body: JSON.stringify({ link: webPortalLink.trim() })
       });
       if (res.ok) {
+        setSavedLink(webPortalLink.trim());
+        setIsEditingLink(false);
         ToastConfig.show({ title: 'Success', message: 'Web Portal link updated.', type: 'success' });
       } else {
         const errData = await res.json();
@@ -1240,6 +1248,11 @@ const WebsiteConfigApp = ({ token }) => {
     setSavingLink(false);
   };
 
+  const handleCancelLink = () => {
+    setWebPortalLink(savedLink);
+    setIsEditingLink(false);
+  };
+
   const handleApkUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1248,31 +1261,75 @@ const WebsiteConfigApp = ({ token }) => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     setUploadingApk(true);
+    setUploadProgress({ loaded: 0, total: file.size, percent: 0 });
+
     try {
-      const res = await fetch(`${API_BASE}/api/admin/settings/apk-upload`, {
+      // Step 1: Request signature from server
+      const sigRes = await fetch(`${API_BASE}/api/admin/cloudinary-signature`, {
+        headers: { 'x-auth-token': token }
+      });
+      if (!sigRes.ok) {
+        throw new Error("Failed to generate upload signature from server.");
+      }
+      const sigData = await sigRes.json();
+      const { signature, timestamp, cloudName, apiKey, folder } = sigData;
+
+      // Step 2: Upload directly to Cloudinary with progress monitoring
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('api_key', apiKey);
+      formData.append('timestamp', timestamp);
+      formData.append('signature', signature);
+      formData.append('folder', folder);
+
+      const uploadRes = await axios.post(
+        `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`,
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            const loaded = progressEvent.loaded;
+            const total = progressEvent.total || file.size;
+            const percent = Math.round((loaded * 100) / total);
+            setUploadProgress({ loaded, total, percent });
+          }
+        }
+      );
+
+      const uploadedUrl = uploadRes.data.secure_url;
+
+      // Step 3: Save URL and metadata back to server
+      const saveRes = await fetch(`${API_BASE}/api/admin/settings/apk-url`, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'x-auth-token': token
         },
-        body: formData
+        body: JSON.stringify({
+          url: uploadedUrl,
+          size: file.size,
+          filename: file.name
+        })
       });
-      if (res.ok) {
-        const data = await res.json();
+
+      if (saveRes.ok) {
+        const data = await saveRes.json();
         setApkInfo(data.apkInfo);
-        ToastConfig.show({ title: 'Upload Successful', message: 'APK has been uploaded and stored on the server.', type: 'success' });
+        ToastConfig.show({ title: 'Upload Successful', message: 'APK has been published to the CDN.', type: 'success' });
       } else {
-        const errData = await res.json();
-        ToastConfig.show({ title: 'Error', message: errData.message || 'Failed to upload APK.', type: 'error' });
+        const errData = await saveRes.json();
+        throw new Error(errData.message || "Failed to register APK URL on portal server.");
       }
-    } catch {
-      ToastConfig.show({ title: 'Error', message: 'Network error uploading APK.', type: 'error' });
+
+    } catch (err) {
+      console.error(err);
+      ToastConfig.show({ title: 'Upload Failed', message: err.message || 'Network error uploading APK.', type: 'error' });
+    } finally {
+      setUploadingApk(false);
+      setUploadProgress(null);
+      e.target.value = null;
     }
-    setUploadingApk(false);
-    e.target.value = null;
   };
 
   const handleDeleteApk = async () => {
@@ -1303,6 +1360,7 @@ const WebsiteConfigApp = ({ token }) => {
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
+      {/* Web Portal Link configuration */}
       <div className="bg-gray-50 dark:bg-[#18181b] rounded-2xl border border-gray-200 dark:border-[#27272a] p-5">
         <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4">
           <Server size={16} className="text-blue-500" /> Web Portal Visit Link
@@ -1310,24 +1368,48 @@ const WebsiteConfigApp = ({ token }) => {
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           This is the link users will be redirected to when they click "LOGIN PORTAL" or "Web Portal" links on the general website.
         </p>
-        <div className="flex gap-3">
-          <input
-            type="text"
-            placeholder="e.g. https://myportalucp.online/"
-            value={webPortalLink}
-            onChange={e => setWebPortalLink(e.target.value)}
-            className="flex-1 px-4 py-2.5 bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
-          />
-          <button
-            onClick={handleSaveLink}
-            disabled={savingLink || !webPortalLink.trim()}
-            className="px-6 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {savingLink ? 'Saving...' : 'Save Link'}
-          </button>
-        </div>
+
+        {isEditingLink ? (
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder="e.g. https://web.myportalucp.online/"
+              value={webPortalLink}
+              onChange={e => setWebPortalLink(e.target.value)}
+              className="flex-1 px-4 py-2.5 bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
+            />
+            <button
+              onClick={handleSaveLink}
+              disabled={savingLink || !webPortalLink.trim()}
+              className="px-5 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {savingLink ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={handleCancelLink}
+              disabled={savingLink}
+              className="px-5 py-2.5 rounded-xl font-bold bg-gray-200 hover:bg-gray-300 dark:bg-[#27272a] dark:hover:bg-[#323237] text-gray-800 dark:text-gray-200 text-sm transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50/50 dark:bg-blue-900/5 border border-blue-200/50 dark:border-blue-900/10">
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-blue-500 dark:text-blue-400">Currently Saved</span>
+              <p className="text-sm font-bold text-gray-800 dark:text-gray-200 truncate mt-0.5">{savedLink || 'None (Using default)'}</p>
+            </div>
+            <button
+              onClick={() => setIsEditingLink(true)}
+              className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-blue-600/10"
+            >
+              Edit Link
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* APK release section */}
       <div className="bg-gray-50 dark:bg-[#18181b] rounded-2xl border border-gray-200 dark:border-[#27272a] p-5">
         <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4">
           <Activity size={16} className="text-green-500" /> Mobile App (APK) Release
@@ -1338,12 +1420,36 @@ const WebsiteConfigApp = ({ token }) => {
 
         {loadingInfo ? (
           <div className="text-center py-6 text-gray-400 animate-pulse text-sm">Loading config...</div>
+        ) : uploadingApk ? (
+          <div className="space-y-4 p-4 rounded-xl border border-blue-200/50 dark:border-blue-900/20 bg-blue-50/20 dark:bg-blue-900/5">
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className="text-blue-500 flex items-center gap-2">
+                <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                Uploading to Cloudinary CDN...
+              </span>
+              <span className="text-gray-500 dark:text-gray-400">
+                {uploadProgress 
+                  ? `${(uploadProgress.loaded / (1024 * 1024)).toFixed(1)} / ${(uploadProgress.total / (1024 * 1024)).toFixed(1)} MB (${uploadProgress.percent}%)`
+                  : 'Preparing upload...'}
+              </span>
+            </div>
+            
+            <div className="w-full h-2 bg-gray-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                style={{ width: `${uploadProgress?.percent || 0}%` }}
+              ></div>
+            </div>
+          </div>
         ) : apkInfo.uploaded ? (
           <div className="space-y-4">
             <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center gap-3">
               <CheckCircle2 className="text-emerald-500 shrink-0" size={24} />
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-900 dark:text-white text-sm">Active APK Release</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                  Filename: {apkInfo.filename || 'myportal.apk'}
+                </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                   Size: {(apkInfo.size / (1024 * 1024)).toFixed(2)} MB · Uploaded: {new Date(apkInfo.uploadedAt).toLocaleString()}
                 </p>
@@ -1352,9 +1458,10 @@ const WebsiteConfigApp = ({ token }) => {
             
             <div className="flex gap-3">
               <a
-                href={`${API_BASE}/media/myportal.apk`}
-                download
-                className="flex-1 py-2.5 rounded-xl font-bold bg-gray-200 hover:bg-gray-300 dark:bg-[#27272a] dark:hover:bg-[#323237] text-gray-800 dark:text-gray-200 text-center text-sm transition-all"
+                href={apkInfo.url || `${API_BASE}/media/myportal.apk`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-grow py-2.5 rounded-xl font-bold bg-gray-200 hover:bg-gray-300 dark:bg-[#27272a] dark:hover:bg-[#323237] text-gray-800 dark:text-gray-200 text-center text-sm transition-all"
               >
                 Download Current APK
               </a>
@@ -1373,8 +1480,7 @@ const WebsiteConfigApp = ({ token }) => {
                 type="file"
                 accept=".apk"
                 onChange={handleApkUpload}
-                disabled={uploadingApk}
-                className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-400"
+                className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-400 cursor-pointer"
               />
             </div>
           </div>
@@ -1386,12 +1492,11 @@ const WebsiteConfigApp = ({ token }) => {
               Upload the app package to allow users to download it from the general website.
             </p>
             <label className="px-5 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white text-xs cursor-pointer transition-all">
-              {uploadingApk ? 'Uploading...' : 'Select and Upload APK'}
+              Select and Upload APK
               <input
                 type="file"
                 accept=".apk"
                 onChange={handleApkUpload}
-                disabled={uploadingApk}
                 className="hidden"
               />
             </label>
