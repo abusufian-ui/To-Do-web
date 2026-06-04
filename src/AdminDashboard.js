@@ -820,7 +820,7 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
   const [isDeleting, setIsDeleting] = useState(false);
 
   const filtered = tickets.filter(t => {
-    const user = t.userId || { name: 'Unknown User', email: '' };
+    const user = t.userId || { name: t.name || 'Anonymous User', email: t.email || '' };
     const matchesSearch = 
       user.name.toLowerCase().includes(search.toLowerCase()) ||
       user.email.toLowerCase().includes(search.toLowerCase()) ||
@@ -1009,7 +1009,7 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
             {loading ? (
               <tr><td colSpan="6" className="text-center py-12 text-gray-400 animate-pulse">Loading support tickets…</td></tr>
             ) : filtered.map(t => {
-              const user = t.userId || { name: 'Unknown User', email: 'No email linked' };
+              const user = t.userId || { name: t.name || 'Anonymous User', email: t.email || 'No email linked' };
               const isExpanded = expandedId === t._id;
               const isResolved = t.status === 'resolved';
               const isSelected = selectedIds.includes(t._id);
@@ -1184,6 +1184,225 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
 };
 
 // ────────────────────────────────────────────────────────────────────────────────
+// APP 7: WEBSITE CONFIG (PORTAL LINK & APK RELEASE)
+// ────────────────────────────────────────────────────────────────────────────────
+const WebsiteConfigApp = ({ token }) => {
+  const [webPortalLink, setWebPortalLink] = useState('');
+  const [savingLink, setSavingLink] = useState(false);
+  const [apkInfo, setApkInfo] = useState({ uploaded: false });
+  const [loadingInfo, setLoadingInfo] = useState(true);
+  const [uploadingApk, setUploadingApk] = useState(false);
+  const [deletingApk, setDeletingApk] = useState(false);
+
+  const fetchSettings = async () => {
+    setLoadingInfo(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/public/settings`);
+      if (res.ok) {
+        const data = await res.json();
+        setWebPortalLink(data.webPortalLink || '');
+        setApkInfo(data.apkInfo || { uploaded: false });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoadingInfo(false);
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const handleSaveLink = async () => {
+    if (!webPortalLink.trim()) {
+      ToastConfig.show({ title: 'Error', message: 'Web Portal Link cannot be empty.', type: 'error' });
+      return;
+    }
+    setSavingLink(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings/web-portal-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ link: webPortalLink.trim() })
+      });
+      if (res.ok) {
+        ToastConfig.show({ title: 'Success', message: 'Web Portal link updated.', type: 'success' });
+      } else {
+        const errData = await res.json();
+        ToastConfig.show({ title: 'Error', message: errData.message || 'Failed to update link.', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error saving link.', type: 'error' });
+    }
+    setSavingLink(false);
+  };
+
+  const handleApkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.endsWith('.apk')) {
+      ToastConfig.show({ title: 'Invalid File', message: 'Please select a valid .apk file.', type: 'error' });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setUploadingApk(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings/apk-upload`, {
+        method: 'POST',
+        headers: {
+          'x-auth-token': token
+        },
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setApkInfo(data.apkInfo);
+        ToastConfig.show({ title: 'Upload Successful', message: 'APK has been uploaded and stored on the server.', type: 'success' });
+      } else {
+        const errData = await res.json();
+        ToastConfig.show({ title: 'Error', message: errData.message || 'Failed to upload APK.', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error uploading APK.', type: 'error' });
+    }
+    setUploadingApk(false);
+    e.target.value = null;
+  };
+
+  const handleDeleteApk = async () => {
+    if (!window.confirm("Are you sure you want to delete the APK from the server? Users will not be able to download it from the general website.")) {
+      return;
+    }
+    setDeletingApk(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings/apk-delete`, {
+        method: 'DELETE',
+        headers: {
+          'x-auth-token': token
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setApkInfo(data.apkInfo);
+        ToastConfig.show({ title: 'Deleted', message: 'APK file deleted from server.', type: 'success' });
+      } else {
+        const errData = await res.json();
+        ToastConfig.show({ title: 'Error', message: errData.message || 'Failed to delete APK.', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error deleting APK.', type: 'error' });
+    }
+    setDeletingApk(false);
+  };
+
+  return (
+    <div className="p-6 max-w-2xl space-y-6">
+      <div className="bg-gray-50 dark:bg-[#18181b] rounded-2xl border border-gray-200 dark:border-[#27272a] p-5">
+        <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+          <Server size={16} className="text-blue-500" /> Web Portal Visit Link
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          This is the link users will be redirected to when they click "LOGIN PORTAL" or "Web Portal" links on the general website.
+        </p>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            placeholder="e.g. https://myportalucp.online/"
+            value={webPortalLink}
+            onChange={e => setWebPortalLink(e.target.value)}
+            className="flex-1 px-4 py-2.5 bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
+          />
+          <button
+            onClick={handleSaveLink}
+            disabled={savingLink || !webPortalLink.trim()}
+            className="px-6 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {savingLink ? 'Saving...' : 'Save Link'}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-gray-50 dark:bg-[#18181b] rounded-2xl border border-gray-200 dark:border-[#27272a] p-5">
+        <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+          <Activity size={16} className="text-green-500" /> Mobile App (APK) Release
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Upload the Android APK bundle here. The general website links directly to this file, ensuring users always get the latest version.
+        </p>
+
+        {loadingInfo ? (
+          <div className="text-center py-6 text-gray-400 animate-pulse text-sm">Loading config...</div>
+        ) : apkInfo.uploaded ? (
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center gap-3">
+              <CheckCircle2 className="text-emerald-500 shrink-0" size={24} />
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-gray-900 dark:text-white text-sm">Active APK Release</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Size: {(apkInfo.size / (1024 * 1024)).toFixed(2)} MB · Uploaded: {new Date(apkInfo.uploadedAt).toLocaleString()}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <a
+                href={`${API_BASE}/media/myportal.apk`}
+                download
+                className="flex-1 py-2.5 rounded-xl font-bold bg-gray-200 hover:bg-gray-300 dark:bg-[#27272a] dark:hover:bg-[#323237] text-gray-800 dark:text-gray-200 text-center text-sm transition-all"
+              >
+                Download Current APK
+              </a>
+              <button
+                onClick={handleDeleteApk}
+                disabled={deletingApk}
+                className="px-5 py-2.5 rounded-xl font-bold bg-red-600 hover:bg-red-700 text-white text-sm transition-all"
+              >
+                {deletingApk ? 'Deleting...' : 'Delete APK'}
+              </button>
+            </div>
+
+            <div className="border-t border-gray-200 dark:border-[#27272a] pt-4">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Overwrite / Upload New Version</label>
+              <input
+                type="file"
+                accept=".apk"
+                onChange={handleApkUpload}
+                disabled={uploadingApk}
+                className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-400"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center flex flex-col items-center justify-center">
+            <ShieldAlert className="text-gray-400 dark:text-gray-600 mb-3" size={32} />
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">No APK uploaded</p>
+            <p className="text-xs text-gray-400 mb-4 max-w-sm">
+              Upload the app package to allow users to download it from the general website.
+            </p>
+            <label className="px-5 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white text-xs cursor-pointer transition-all">
+              {uploadingApk ? 'Uploading...' : 'Select and Upload APK'}
+              <input
+                type="file"
+                accept=".apk"
+                onChange={handleApkUpload}
+                disabled={uploadingApk}
+                className="hidden"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ────────────────────────────────────────────────────────────────────────────────
 // MAIN ADMIN DASHBOARD
 // ────────────────────────────────────────────────────────────────────────────────
 const AdminDashboard = ({ currentUser }) => {
@@ -1318,6 +1537,7 @@ const AdminDashboard = ({ currentUser }) => {
     { id: 'diagnostics',   label: 'Scraping Diagnostics',   icon: FlaskConical, color: 'bg-purple-100 dark:bg-purple-900/30', textColor: 'text-purple-600 dark:text-purple-400' },
     { id: 'notifications', label: 'Notifications Manager',  icon: Bell,         color: 'bg-orange-100 dark:bg-orange-900/30', textColor: 'text-orange-600 dark:text-orange-400' },
     { id: 'security',      label: 'Security & PIN',         icon: KeyRound,     color: 'bg-red-100 dark:bg-red-900/30',      textColor: 'text-red-600 dark:text-red-400' },
+    { id: 'settings',      label: 'Website Config',         icon: Server,       color: 'bg-indigo-100 dark:bg-indigo-900/30', textColor: 'text-indigo-600 dark:text-indigo-400' },
   ];
 
   const activeAppConfig = apps.find(a => a.id === activeApp);
@@ -1350,6 +1570,7 @@ const AdminDashboard = ({ currentUser }) => {
           {activeApp === 'diagnostics'   && <SyncDiagnostics />}
           {activeApp === 'notifications' && <NotificationsManagerApp users={users} isSuperAdmin={isSuperAdmin} token={token} />}
           {activeApp === 'security'      && <SecurityApp token={token} />}
+          {activeApp === 'settings'      && <WebsiteConfigApp token={token} />}
         </div>
       </div>
     );

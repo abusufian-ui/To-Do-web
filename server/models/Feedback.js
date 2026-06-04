@@ -4,7 +4,15 @@ const feedbackSchema = new mongoose.Schema({
   userId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User', 
-    required: true 
+    required: false 
+  },
+  name: {
+    type: String,
+    trim: true
+  },
+  email: {
+    type: String,
+    trim: true
   },
   subject: { 
     type: String, 

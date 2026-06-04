@@ -53,6 +53,7 @@ const Attendance = require('./models/Attendance');
 const Submission = require('./models/Submission');
 const Announcement = require('./models/Announcement');
 const Feedback = require('./models/Feedback');
+const SystemSettings = require('./models/SystemSettings');
 const AdminNotification = require('./models/AdminNotification');
 const Assessment = require('./models/Assessment');
 const Exam = require('./models/Exam'); // 🚨 NEW: DATESHEET EXAM MODEL
@@ -523,6 +524,166 @@ app.put('/api/admin/feedback/:id/reopen', auth, adminAuth, async (req, res) => {
   } catch (error) {
     console.error("Re-open Ticket Error:", error);
     res.status(500).json({ message: "Server Error re-opening ticket" });
+  }
+});
+
+// ==========================================
+// 🚀 NEW: PUBLIC AND ADMIN WEBSITE SETTINGS & APK ENDPOINTS
+// ==========================================
+
+const apkDiskStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, 'myportal.apk');
+  }
+});
+
+const apkUpload = multer({
+  storage: apkDiskStorage,
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext !== '.apk') {
+      return cb(new Error('Only APK files are allowed!'), false);
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
+
+// Public: Get general website configuration
+app.get('/api/public/settings', async (req, res) => {
+  try {
+    let webPortalLink = "https://myportalucp.online/";
+    const linkSetting = await SystemSettings.findOne({ key: "web_portal_link" });
+    if (linkSetting) {
+      webPortalLink = linkSetting.value;
+    }
+
+    const apkPath = path.join(uploadDir, 'myportal.apk');
+    const apkExists = fs.existsSync(apkPath);
+    let apkInfo = { uploaded: false };
+
+    if (apkExists) {
+      const stat = fs.statSync(apkPath);
+      const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
+      if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
+        apkInfo = dbSetting.value;
+      } else {
+        apkInfo = {
+          uploaded: true,
+          filename: 'myportal.apk',
+          size: stat.size,
+          uploadedAt: stat.mtime
+        };
+      }
+    }
+
+    res.json({ webPortalLink, apkInfo });
+  } catch (error) {
+    console.error("Public Settings Error:", error);
+    res.status(500).json({ message: "Server Error fetching settings" });
+  }
+});
+
+// Public: Submit support feedback from general website
+app.post('/api/feedback/public', async (req, res) => {
+  try {
+    const { name, email, subject, description } = req.body;
+    if (!name || !email || !subject || !description) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+    const newFeedback = new Feedback({
+      name,
+      email,
+      subject,
+      description,
+      status: 'open'
+    });
+    await newFeedback.save();
+    res.json({ success: true, message: "Feedback submitted successfully." });
+  } catch (error) {
+    console.error("Public Feedback Error:", error);
+    res.status(500).json({ message: "Server Error processing feedback" });
+  }
+});
+
+// Admin: Save web portal link configuration
+app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res) => {
+  try {
+    const { link } = req.body;
+    if (!link) return res.status(400).json({ message: "Link is required." });
+
+    const setting = await SystemSettings.findOneAndUpdate(
+      { key: "web_portal_link" },
+      { value: link },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true, link: setting.value });
+  } catch (error) {
+    console.error("Save Web Portal Link Error:", error);
+    res.status(500).json({ message: "Server Error saving portal link" });
+  }
+});
+
+// Admin: Upload APK release
+app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
+  apkUpload.single('file')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ message: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded." });
+    }
+
+    try {
+      const apkInfo = {
+        uploaded: true,
+        filename: 'myportal.apk',
+        size: req.file.size,
+        uploadedAt: new Date()
+      };
+
+      await SystemSettings.findOneAndUpdate(
+        { key: "apk_info" },
+        { value: apkInfo },
+        { upsert: true, new: true }
+      );
+
+      res.json({ success: true, apkInfo });
+    } catch (error) {
+      console.error("APK Settings Save Error:", error);
+      res.status(500).json({ message: "Server Error saving APK metadata" });
+    }
+  });
+});
+
+// Admin: Delete APK release from filesystem & database
+app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) => {
+  try {
+    const apkPath = path.join(uploadDir, 'myportal.apk');
+    if (fs.existsSync(apkPath)) {
+      fs.unlinkSync(apkPath);
+    }
+
+    const apkInfo = {
+      uploaded: false,
+      filename: null,
+      size: 0,
+      uploadedAt: null
+    };
+
+    await SystemSettings.findOneAndUpdate(
+      { key: "apk_info" },
+      { value: apkInfo },
+      { upsert: true, new: true }
+    );
+
+    res.json({ success: true, apkInfo });
+  } catch (error) {
+    console.error("Delete APK Error:", error);
+    res.status(500).json({ message: "Server Error deleting APK" });
   }
 });
 
