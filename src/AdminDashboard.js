@@ -910,6 +910,29 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
     setSubmittingReplyId(null);
   };
 
+  const handleDenyDispute = async (id) => {
+    setSubmittingReplyId(id);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/feedback/${id}/deny-dispute`, {
+        method: 'PUT',
+        headers: {
+          'x-auth-token': token
+        }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onTicketsChange(tickets.map(t => t._id === id ? data : t));
+        ToastConfig.show({ title: 'Dispute Denied', message: 'The dispute has been marked as invalid.', type: 'success' });
+        setExpandedId(null);
+      } else {
+        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to deny dispute', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error denying dispute', type: 'error' });
+    }
+    setSubmittingReplyId(null);
+  };
+
   const executeBulkDelete = async () => {
     setIsDeleting(true);
     try {
@@ -971,7 +994,7 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
         </div>
 
         <div className="flex bg-gray-100 dark:bg-[#27272a] p-1 rounded-xl">
-          {['all', 'open', 'resolved'].map(status => (
+          {['all', 'open', 'disputed', 'resolved', 'invalid'].map(status => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
@@ -1037,9 +1060,17 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
                     </td>
                     <td className="px-6 py-4 font-semibold text-gray-800 dark:text-gray-200 max-w-xs truncate">{t.subject}</td>
                     <td className="px-6 py-4">
-                      {isResolved ? (
+                      {t.status === 'resolved' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30">
                           Resolved
+                        </span>
+                      ) : t.status === 'disputed' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span> Disputed
+                        </span>
+                      ) : t.status === 'invalid' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700 dark:bg-[#27272a] dark:text-gray-400 border border-gray-200 dark:border-[#333]">
+                          Invalid
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30">
@@ -1092,14 +1123,24 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
                             </div>
                           )}
 
-                          {isResolved ? (
+                          {t.status === 'resolved' || t.status === 'invalid' ? (
                             <div className="space-y-4">
-                              <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-400">
-                                <h4 className="text-xs font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                                  <CheckCircle2 size={14} /> Resolution Response from Admin
-                                </h4>
-                                <p className="text-sm font-medium leading-relaxed">{t.adminResponse}</p>
-                              </div>
+                              {t.adminResponse && (
+                                <div className="p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-400">
+                                  <h4 className="text-xs font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                    <CheckCircle2 size={14} /> Resolution Response from Admin
+                                  </h4>
+                                  <p className="text-sm font-medium leading-relaxed">{t.adminResponse}</p>
+                                </div>
+                              )}
+                              {t.status === 'invalid' && (
+                                <div className="p-4 rounded-2xl bg-gray-500/5 dark:bg-gray-500/10 border border-gray-500/20 text-gray-700 dark:text-gray-400">
+                                  <h4 className="text-xs font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                    <AlertTriangle size={14} /> Marked as Invalid
+                                  </h4>
+                                  <p className="text-sm font-medium leading-relaxed">This ticket's dispute has been marked as invalid by an administrator.</p>
+                                </div>
+                              )}
                               <button
                                 onClick={() => handleReopen(t._id)}
                                 disabled={submittingReplyId === t._id}
@@ -1108,6 +1149,63 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
                                 <RefreshCw size={13} />
                                 Re-open Ticket
                               </button>
+                            </div>
+                          ) : t.status === 'disputed' ? (
+                            <div className="space-y-4">
+                              {t.adminResponse && (
+                                <div className="p-4 rounded-2xl bg-gray-100 dark:bg-[#1e1e24] border border-gray-200 dark:border-[#2d2d39] text-gray-700 dark:text-gray-300">
+                                  <h4 className="text-xs font-bold uppercase tracking-widest mb-1.5">Previous Admin Resolution</h4>
+                                  <p className="text-sm font-medium leading-relaxed">{t.adminResponse}</p>
+                                </div>
+                              )}
+                              
+                              {t.disputeMessage && (
+                                <div className="p-4 rounded-2xl bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/20 text-rose-800 dark:text-rose-400 animate-fadeIn">
+                                  <h4 className="text-xs font-bold uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                    <AlertTriangle size={14} /> User Disputed Resolution
+                                  </h4>
+                                  <p className="text-sm font-medium leading-relaxed">Reason: {t.disputeMessage}</p>
+                                </div>
+                              )}
+
+                              <div className="space-y-3 bg-gray-100/40 dark:bg-[#18181b]/50 p-5 rounded-2xl border border-gray-200/50 dark:border-[#27272a]/50">
+                                <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                  <Send size={13} /> Respond & Resolve Dispute
+                                </h4>
+                                <textarea
+                                  value={replyText}
+                                  onChange={e => setReplyText(e.target.value)}
+                                  placeholder="Explain the result or update resolution details. This will close the ticket and resolve the dispute..."
+                                  rows={3}
+                                  className="w-full px-4 py-3 bg-white dark:bg-[#0c0c0e] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 resize-none leading-relaxed"
+                                />
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => handleResolve(t._id)}
+                                    disabled={submittingReplyId === t._id || !replyText.trim()}
+                                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/10 hover:shadow-indigo-600/20 active:scale-95 disabled:opacity-50 transition-all flex items-center gap-1.5"
+                                  >
+                                    {submittingReplyId === t._id ? (
+                                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                    ) : (
+                                      <CheckCircle2 size={14} />
+                                    )}
+                                    Response Back & Close Ticket
+                                  </button>
+                                  <button
+                                    onClick={() => handleDenyDispute(t._id)}
+                                    disabled={submittingReplyId === t._id}
+                                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-md shadow-red-600/10 hover:shadow-red-600/20 active:scale-95 transition-all flex items-center gap-1.5"
+                                  >
+                                    {submittingReplyId === t._id ? (
+                                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                    ) : (
+                                      <BanIcon size={14} />
+                                    )}
+                                    Deny Dispute (Mark Invalid)
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           ) : (
                             <div className="space-y-3 bg-gray-100/40 dark:bg-[#18181b]/50 p-5 rounded-2xl border border-gray-200/50 dark:border-[#27272a]/50">

@@ -3,13 +3,20 @@ import { AlertCircle, ChevronDown, CheckCircle2 } from 'lucide-react';
 import CourseAnnouncements from './CourseAnnouncements';
 import CourseAttendance from './CourseAttendance';
 import CourseSubmissions from './CourseSubmissions';
-import UCPLogo from './UCPLogo'; 
+import UCPLogo from './UCPLogo';
+import CourseMaterial from './CourseMaterial';
+import CourseVault from './CourseVault';
+import SecureDocumentViewer from './SecureDocumentViewer';
+ 
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const CoursePortalView = ({ activeTab, courses }) => {
   const uniCourses = courses.filter(c => c.type === 'uni');
   const [selectedCourse, setSelectedCourse] = useState(uniCourses.length > 0 ? uniCourses[0].name : null);
+  
+  const [previewFile, setPreviewFile] = useState(null);
+  const [previewName, setPreviewName] = useState(null);
   
   useEffect(() => {
     const uni = courses.filter(c => c.type === 'uni');
@@ -145,6 +152,11 @@ const CoursePortalView = ({ activeTab, courses }) => {
     );
   }
 
+  const currentCourse = uniCourses.find(c => c.name === selectedCourse);
+  const currentCourseId = currentCourse?.id || currentCourse?._id;
+  const currentCourseCode = currentCourse?.code;
+  const currentCourseName = currentCourse?.name;
+
   return (
     <div className="w-full h-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar-hide">
       
@@ -224,11 +236,43 @@ const CoursePortalView = ({ activeTab, courses }) => {
             {activeTab === 'Announcements' && <CourseAnnouncements announcements={courseData.announcements} />}
             {activeTab === 'Attendance' && <CourseAttendance attendance={courseData.attendance} />}
             {activeTab === 'Submissions' && <CourseSubmissions submissions={courseData.submissions} />}
+            {activeTab === 'Course Material' && currentCourseId && (
+              <CourseMaterial 
+                courseId={currentCourseId} 
+                onViewFile={(url, name) => {
+                  setPreviewFile(url);
+                  setPreviewName(name);
+                }} 
+              />
+            )}
+            {activeTab === 'Course Vault' && (
+              <CourseVault 
+                courseCode={currentCourseCode} 
+                courseName={currentCourseName} 
+                onViewFile={(url, name) => {
+                  setPreviewFile(url);
+                  setPreviewName(name);
+                }} 
+              />
+            )}
           </div>
         )}
       </div>
+
+      {/* Secure Document Viewer Modal Overlay */}
+      {previewFile && (
+        <SecureDocumentViewer 
+          fileUrl={previewFile} 
+          fileName={previewName} 
+          onClose={() => {
+            setPreviewFile(null);
+            setPreviewName(null);
+          }} 
+        />
+      )}
     </div>
   );
 };
+
 
 export default CoursePortalView;

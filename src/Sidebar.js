@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History, Award,
   GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2, Bell, ClipboardCheck, FileUp,
-  Link, Cloud, Globe, Mail
+  Link, Cloud, Globe, Mail, FolderOpen, Database
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
@@ -24,10 +24,13 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Announcements', label: 'Announcements', icon: Bell },          
     { id: 'Attendance', label: 'Attendance', icon: ClipboardCheck },      
     { id: 'Submissions', label: 'Submissions', icon: FileUp },
+    { id: 'Course Material', label: 'Course Material', icon: FolderOpen },
+    { id: 'Course Vault', label: 'Course Vault', icon: Database },
     { id: 'Keynotes', label: 'Keynotes', icon: Lightbulb },
     { id: 'Grade Book', label: 'Grade Book', icon: BarChart3 },
     { id: 'History', label: 'History', icon: Award },
   ];
+
 
   const cashSubItems = [
     { id: 'Cash-Overview', label: 'Overview', icon: LayoutDashboard },
@@ -90,7 +93,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     }
   };
 
-  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
+  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Course Material', 'Course Vault', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
   const isCashActive = activeTab.startsWith('Cash');
   const isHabitsActive = activeTab.startsWith('Habits');
 

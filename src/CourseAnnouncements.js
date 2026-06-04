@@ -23,9 +23,76 @@ const CourseAnnouncements = ({ announcements }) => {
     }
   };
 
+  // Helper for reliable descending date sorting
+  const parseAnnouncementDate = (dateStr) => {
+    if (!dateStr) return 0;
+
+    // 1. Direct check for ISO-like YYYY-MM-DD or YYYY/MM/DD
+    const isoMatch = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (isoMatch) {
+      const year = parseInt(isoMatch[1], 10);
+      const month = parseInt(isoMatch[2], 10) - 1;
+      const day = parseInt(isoMatch[3], 10);
+      return new Date(year, month, day).getTime();
+    }
+
+    // 2. Direct check for DD-MM-YYYY or DD/MM/YYYY
+    const reverseMatch = dateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (reverseMatch) {
+      const day = parseInt(reverseMatch[1], 10);
+      const month = parseInt(reverseMatch[2], 10) - 1;
+      const year = parseInt(reverseMatch[3], 10);
+      return new Date(year, month, day).getTime();
+    }
+
+    // 3. Fallback to token-based matching for wordy months
+    const cleaned = dateStr.replace(/,/g, '').replace(/-/g, ' ').trim();
+    const parts = cleaned.split(/\s+/);
+
+    const months = {
+      jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+      jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+    };
+
+    let day = 1;
+    let month = 0;
+    let year = 2026;
+    let foundMonth = false;
+
+    for (let part of parts) {
+      const lower = part.toLowerCase().substring(0, 3);
+      if (lower in months) {
+        month = months[lower];
+        foundMonth = true;
+      } else {
+        const num = parseInt(part, 10);
+        if (!isNaN(num)) {
+          if (num > 1000) {
+            year = num;
+          } else {
+            day = num;
+          }
+        }
+      }
+    }
+
+    if (foundMonth) {
+      return new Date(year, month, day).getTime();
+    }
+
+    // Final fallback to native Date.parse
+    const parsed = Date.parse(dateStr);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Sort announcements descending by date
+  const sortedAnnouncements = [...announcements].sort((a, b) => {
+    return parseAnnouncementDate(b.date) - parseAnnouncementDate(a.date);
+  });
+
   // Separate the newest announcement from the rest
-  const latestNews = announcements[0];
-  const olderNews = announcements.slice(1);
+  const latestNews = sortedAnnouncements[0];
+  const olderNews = sortedAnnouncements.slice(1);
 
   return (
     <div className="space-y-8 animate-fadeIn">

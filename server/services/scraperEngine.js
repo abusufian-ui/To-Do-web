@@ -1,4 +1,13 @@
 const cheerio = require('cheerio');
+const { parseUCPDate } = require('../utils/dateParser');
+
+const isValidCourseCode = (code) => {
+    if (!code) return false;
+    const c = code.trim();
+    if (c.toLowerCase().includes('credit') || c.toLowerCase().includes('hour')) return false;
+    if (c.length < 2 || c.length > 30) return false;
+    return /^[a-zA-Z0-9\s-]+$/.test(c);
+};
 
 // --- Bulletproof Helper: Prevents infinite hanging on dead university servers ---
 async function fetchWithTimeout(resource, options = {}) {
@@ -58,9 +67,14 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
             const match = rawHtml.match(codeRegex);
             if (match && courseMap.has(url)) {
                 let currentData = courseMap.get(url);
-                if (!currentData.code || !currentData.code.includes('-')) {
-                    currentData.code = match[1].trim().toUpperCase();
+                const oldCode = currentData.code;
+                const newCode = match[1].trim().toUpperCase();
+                if (!oldCode || !oldCode.includes('-')) {
+                    currentData.code = newCode;
                     courseMap.set(url, currentData);
+                    console.log(`[SERVER_SCRAPER] [patchCourseMap] Patched course code for ${url}: "${oldCode || ''}" -> "${newCode}"`);
+                } else if (oldCode !== newCode) {
+                    console.warn(`[SERVER_SCRAPER] [patchCourseMap] Warning: Collision detected for ${url}. Current: "${oldCode}", Scraped: "${newCode}". Keeping current.`);
                 }
             }
         };
@@ -115,12 +129,16 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                         courseName = codeMatch[2].trim();
                     } else {
                         const subHeading = $enrolled(el).find('span.sub-heading[style*="inline-block"]');
-                        if (subHeading.length) {
-                            courseCode = subHeading.text().trim();
+                        let candidateCode = subHeading.length ? subHeading.text().trim() : "";
+                        if (candidateCode && isValidCourseCode(candidateCode)) {
+                            courseCode = candidateCode;
                         } else {
                             const allSubheadings = $enrolled(el).find('span.sub-heading');
-                            if (allSubheadings.length > 0 && !$enrolled(allSubheadings[0]).text().toLowerCase().includes('credit')) {
-                                courseCode = $enrolled(allSubheadings[0]).text().trim();
+                            if (allSubheadings.length > 0) {
+                                candidateCode = $enrolled(allSubheadings[0]).text().trim();
+                                if (isValidCourseCode(candidateCode)) {
+                                    courseCode = candidateCode;
+                                }
                             }
                         }
                     }
@@ -278,32 +296,27 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                     const tds = $doc(row).find('td');
                     if (tds.length >= 7) {
                         const name = $doc(tds[1]).text().trim() || $doc(row).find('.rec_submission_title').text().trim();
-                        if (name) {
-                            let desc = $doc(tds[2]).text().trim() || $doc(row).find('.rec_submission_description').text().trim() || "";
-                            let attachmentLink = $doc(tds[5]).find('a').attr('href') || null;
-                            if (attachmentLink && attachmentLink.startsWith('/')) attachmentLink = 'https://horizon.ucp.edu.pk' + attachmentLink;
+                        if (!name || name.toLowerCase() === 'name' || name.toLowerCase() === 'sr no.' || name.toLowerCase().includes('sr no.')) return;
 
-                            const actionText = $doc(tds[6]).text().toLowerCase();
-                            const isSubbed = actionText.includes('submitted') || ($doc(row).text().toLowerCase()).includes('submitted successfully');
-                            
-                            const parseUCPDate = (str) => {
-                                if (!str) return "";
-                                let clean = str.replace('-', '').replace(/\s+/g, ' ').trim();
-                                if (!clean) return "";
-                                const d = new Date(clean + ' GMT+0500');
-                                return isNaN(d) ? str : d.toISOString();
-                            };
+                        let desc = $doc(tds[2]).text().trim() || $doc(row).find('.rec_submission_description').text().trim() || "";
+                        let attachmentLink = $doc(tds[5]).find('a').attr('href') || null;
+                        if (attachmentLink && attachmentLink.startsWith('/')) attachmentLink = 'https://horizon.ucp.edu.pk' + attachmentLink;
 
-                            tasks.push({ 
-                                title: name, 
-                                description: desc.replace(/\s+/g, ' ').trim(), 
-                                startDate: parseUCPDate($doc(tds[3]).text()), 
-                                dueDate: parseUCPDate($doc(tds[4]).text()), 
-                                status: isSubbed ? "Submitted" : "Pending", 
-                                attachmentUrl: attachmentLink, 
-                                submissionUrl: targetUrl 
-                            });
-                        }
+                        const actionText = $doc(tds[6]).text().toLowerCase();
+                        const isSubbed = actionText.includes('submitted') 
+                            || actionText.includes('view submission')
+                            || actionText.includes('submitted successfully')
+                            || ($doc(row).text().toLowerCase()).includes('submitted successfully');
+
+                        tasks.push({ 
+                            title: name, 
+                            description: desc.replace(/\s+/g, ' ').trim(), 
+                            startDate: parseUCPDate($doc(tds[3]).text()), 
+                            dueDate: parseUCPDate($doc(tds[4]).text()), 
+                            status: isSubbed ? "Submitted" : "Pending", 
+                            attachmentUrl: attachmentLink, 
+                            submissionUrl: targetUrl 
+                        });
                     }
                 });
                 return tasks.length > 0 ? { courseUrl: url, courseName: realName, tasks } : null;
@@ -322,8 +335,11 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                 $hDoc('table tbody tr').each((i, row) => {
                     if ($hDoc(row).hasClass('table-parent-row')) {
                         const tds = $hDoc(row).find('td');
-                        if (tds.length >= 8) {
-                            currentSemester = { term: $hDoc(tds[0]).text().trim(), earnedCH: $hDoc(tds[4]).text().trim(), sgpa: $hDoc(tds[6]).text().trim(), cgpa: $hDoc(tds[7]).text().trim(), courses: [] };
+                        if (tds.length >= 6) {
+                            const earnedCH = tds.length >= 5 ? $hDoc(tds[4]).text().trim() : "0";
+                            const sgpa = tds.length >= 7 ? $hDoc(tds[6]).text().trim() : "0.00";
+                            const cgpa = tds.length >= 8 ? $hDoc(tds[7]).text().trim() : "0.00";
+                            currentSemester = { term: $hDoc(tds[0]).text().trim(), earnedCH, sgpa, cgpa, courses: [] };
                             historyData.push(currentSemester);
                         }
                     } else if ($hDoc(row).hasClass('table-child-row') && currentSemester) {

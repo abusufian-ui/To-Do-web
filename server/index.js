@@ -23,6 +23,8 @@ const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const { encrypt, decrypt } = require('./utils/encryption');
+const { parseUCPDate } = require('./utils/dateParser');
+const crypto = require('crypto');
 const { Resend } = require('resend');
 
 // 🚨 NEW: IMPORT HTTP AND SOCKET.IO
@@ -61,6 +63,12 @@ const Group = require('./models/Group');
 const GroupInvitation = require('./models/GroupInvitation');
 const SyncLog = require('./models/SyncLog'); // 🚨 NEW: SYNC DIAGNOSTICS LOG
 const { spawn } = require('child_process');
+
+// 🚨 NEW: COURSE MATERIAL & VAULT MODELS & CONVERTER
+const CourseMaterial = require('./models/CourseMaterial');
+const CourseVaultFile = require('./models/CourseVaultFile');
+const { convertToPdf } = require('./utils/documentConverter');
+
 
 // --- CONFIGURATION ---
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "l1f23bscs1329@ucp.edu.pk";
@@ -131,6 +139,25 @@ try {
 } catch (err) {
   console.error(`❌ Failed to create chunk temp directory:`, err.message);
 }
+
+// ==========================================
+// 📂 TEMP MATERIALS UPLOAD DIRECTORY
+// ==========================================
+const tempDir = path.join(__dirname, 'uploads', 'temp');
+try {
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+    console.log(`📁 Created temp uploads directory at: ${tempDir}`);
+  }
+} catch (err) {
+  console.error(`❌ Failed to create temp uploads directory:`, err.message);
+}
+
+const tempUpload = multer({
+  dest: tempDir,
+  limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit
+});
+
 
 // Keep local storage for things like general files or Keynote media
 const localDiskStorage = multer.diskStorage({
@@ -331,7 +358,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.117:8081',
+  'http://192.168.0.104:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -467,7 +494,7 @@ app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => 
 
     const ticket = await Feedback.findByIdAndUpdate(
       req.params.id,
-      { status: 'resolved', adminResponse },
+      { status: 'resolved', adminResponse, disputeMessage: null },
       { new: true }
     ).populate('userId', 'name email customProfilePic portalProfilePic originalPortalProfilePic profilePic pushTokens pushToken');
 
@@ -491,6 +518,59 @@ app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => 
   } catch (error) {
     console.error("Resolve Ticket Error:", error);
     res.status(500).json({ message: "Server Error resolving ticket" });
+  }
+});
+
+// User disputes a resolved support ticket
+app.put('/api/feedback/:id/dispute', auth, async (req, res) => {
+  try {
+    const { disputeMessage } = req.body;
+    if (!disputeMessage) return res.status(400).json({ message: "Dispute reason is required." });
+
+    const ticket = await Feedback.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!ticket) return res.status(404).json({ message: "Ticket not found." });
+    if (ticket.status !== 'resolved') return res.status(400).json({ message: "Only resolved tickets can be disputed." });
+
+    ticket.status = 'disputed';
+    ticket.disputeMessage = disputeMessage;
+    await ticket.save();
+
+    res.json(ticket);
+  } catch (error) {
+    console.error("Dispute Ticket Error:", error);
+    res.status(500).json({ message: "Server Error disputing ticket" });
+  }
+});
+
+// Admin deny dispute and mark ticket as invalid
+app.put('/api/admin/feedback/:id/deny-dispute', auth, adminAuth, async (req, res) => {
+  try {
+    const ticket = await Feedback.findByIdAndUpdate(
+      req.params.id,
+      { status: 'invalid' },
+      { new: true }
+    ).populate('userId', 'name email customProfilePic portalProfilePic originalPortalProfilePic profilePic pushTokens pushToken');
+
+    if (!ticket) return res.status(404).json({ message: "Ticket not found." });
+
+    // Send push notification to the user
+    if (ticket.userId) {
+      try {
+        await sendPush(
+          ticket.userId,
+          "Support Dispute Denied ❌",
+          `Your dispute on ticket "${ticket.subject}" has been marked as invalid.`,
+          { type: "dispute_denied", ticketId: ticket._id.toString() }
+        );
+      } catch (pushErr) {
+        console.error("Failed to send dispute denied push notification:", pushErr.message);
+      }
+    }
+
+    res.json(ticket);
+  } catch (error) {
+    console.error("Deny Dispute Error:", error);
+    res.status(500).json({ message: "Server Error denying dispute" });
   }
 });
 
@@ -1127,6 +1207,76 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error fetching course records" }); }
 });
 
+// Helper to compute a consistent content hash for a submissions tasks list
+const computeSubmissionsHash = (tasks) => {
+  const hash = crypto.createHash('md5');
+  const serialized = (tasks || []).map(t => {
+    const normalizedDueDate = parseUCPDate(t.dueDate);
+    const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const desc = (t.description || '').replace(/\s+/g, ' ').trim();
+    const status = t.status || 'Pending';
+    const attachmentUrl = t.attachmentUrl || '';
+    const submissionUrl = t.submissionUrl || '';
+    return `${title}|${desc}|${normalizedDueDate}|${status}|${attachmentUrl}|${submissionUrl}`;
+  }).sort().join('||');
+  hash.update(serialized);
+  return hash.digest('hex');
+};
+
+// Helper to merge newly scraped tasks with existing DB tasks, preserving 'Submitted' statuses
+const mergeUserTasks = (existingTasks, incomingTasks) => {
+  const existingTasksList = existingTasks || [];
+  const existingTaskMap = new Map();
+  for (const t of existingTasksList) {
+    const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const normDate = parseUCPDate(t.dueDate);
+    const fp = `${title}_${normDate}`;
+    existingTaskMap.set(fp, t);
+  }
+
+  const mergedTasks = [];
+  for (const incomingTask of incomingTasks) {
+    const title = (incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const normDate = parseUCPDate(incomingTask.dueDate);
+    const fp = `${title}_${normDate}`;
+
+    if (existingTaskMap.has(fp)) {
+      const existingTask = existingTaskMap.get(fp);
+      const status = (existingTask.status === 'Submitted' || incomingTask.status === 'Submitted') ? 'Submitted' : 'Pending';
+      mergedTasks.push({
+        ...incomingTask,
+        dueDate: normDate,
+        startDate: parseUCPDate(incomingTask.startDate),
+        status
+      });
+    } else {
+      mergedTasks.push({
+        ...incomingTask,
+        dueDate: normDate,
+        startDate: parseUCPDate(incomingTask.startDate)
+      });
+    }
+  }
+
+  const incomingFps = new Set(incomingTasks.map(t => {
+    const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const normDate = parseUCPDate(t.dueDate);
+    return `${title}_${normDate}`;
+  }));
+
+  for (const existingTask of existingTasksList) {
+    const title = (existingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const normDate = parseUCPDate(existingTask.dueDate);
+    const fp = `${title}_${normDate}`;
+
+    if (!incomingFps.has(fp)) {
+      mergedTasks.push(existingTask);
+    }
+  }
+
+  return mergedTasks;
+};
+
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
     const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic, syncLogId } = req.body;
@@ -1166,9 +1316,19 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         let sectionCode = '';
         if (fullCode) {
           const parts = fullCode.split('-');
-          sectionCode = parts.length > 1 ? parts[parts.length - 1] : fullCode;
-          enrolledSections.push(sectionCode);
-          sectionLookup[url] = sectionCode;
+          const candidate = parts.length > 1 ? parts[parts.length - 1] : fullCode;
+          const isValidSection = candidate && 
+            !candidate.includes(' ') && 
+            !candidate.toLowerCase().includes('credit') && 
+            !candidate.toLowerCase().includes('hour') && 
+            candidate.length <= 15 &&
+            /^[a-zA-Z0-9-]+$/.test(candidate);
+
+          if (isValidSection) {
+            sectionCode = candidate;
+            enrolledSections.push(sectionCode);
+            sectionLookup[url] = sectionCode;
+          }
         }
 
         if (courseName) {
@@ -1253,6 +1413,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
 
         if (sub.tasks) {
           const oldSub = await Submission.findOne({ userId, courseUrl: sub.courseUrl });
+          const mergedTasks = mergeUserTasks(oldSub?.tasks, sub.tasks);
           const changes = detectSubmissionChanges(oldSub, sub);
           
           if (changes) {
@@ -1261,7 +1422,16 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             if (!changesSummary.submissions.includes(sub.courseName)) changesSummary.submissions.push(sub.courseName);
           }
 
-          await Submission.findOneAndUpdate({ userId, courseUrl: sub.courseUrl }, { ...sub, lastUpdated: new Date() }, { upsert: true });
+          const newHash = computeSubmissionsHash(mergedTasks);
+          if (oldSub && oldSub.lastSyncHash === newHash) {
+            console.log(`[SYNC] Submissions for ${sub.courseName} unchanged (hash match), skipping save.`);
+          } else {
+            await Submission.findOneAndUpdate(
+              { userId, courseUrl: sub.courseUrl },
+              { $set: { courseName: sub.courseName, tasks: mergedTasks, lastSyncHash: newHash, lastUpdated: new Date() } },
+              { upsert: true }
+            );
+          }
 
           const sectionCode = sectionLookup[sub.courseName] || sectionLookup[sub.courseUrl] || '';
           if (sectionCode) {
@@ -1272,18 +1442,21 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             for (const peerId of uniquePeerIds) {
               const peerSub = await Submission.findOne({ userId: peerId, courseName: sub.courseName });
               const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
-              const existingTaskMap = new Map(existingTasks.map(t => [
-                `${(t.title || '').replace(/\s+/g, ' ').trim().toLowerCase()}_${(t.dueDate || '').replace(/\s+/g, ' ').trim()}`, 
-                t
-              ]));
+              const existingTaskMap = new Map(existingTasks.map(t => {
+                const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const normDate = parseUCPDate(t.dueDate);
+                return [`${title}_${normDate}`, t];
+              }));
 
               let merged = false;
               let newPeerTasks = [];
-              sub.tasks.forEach(incomingTask => {
-                const fingerprint = `${(incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase()}_${(incomingTask.dueDate || '').replace(/\s+/g, ' ').trim()}`;
+              mergedTasks.forEach(incomingTask => {
+                const title = (incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const normDate = parseUCPDate(incomingTask.dueDate);
+                const fingerprint = `${title}_${normDate}`;
                 if (!existingTaskMap.has(fingerprint)) {
                   // Force classmate tasks to default to Pending to prevent status contamination
-                  const peerTask = { ...incomingTask, status: 'Pending' };
+                  const peerTask = { ...incomingTask, status: 'Pending', dueDate: normDate, startDate: parseUCPDate(incomingTask.startDate) };
                   existingTasks.push(peerTask);
                   newPeerTasks.push(peerTask);
                   merged = true;
@@ -1291,9 +1464,10 @@ app.post('/api/extension-sync', auth, async (req, res) => {
               });
 
               if (merged) {
+                const peerNewHash = computeSubmissionsHash(existingTasks);
                 await Submission.findOneAndUpdate(
                   { userId: peerId, courseName: sub.courseName },
-                  { courseUrl: sub.courseUrl, courseName: sub.courseName, tasks: existingTasks, lastUpdated: new Date() },
+                  { $set: { courseUrl: sub.courseUrl, courseName: sub.courseName, tasks: existingTasks, lastSyncHash: peerNewHash, lastUpdated: new Date() } },
                   { upsert: true }
                 );
                 // Broadcast to peer as well
@@ -1430,11 +1604,35 @@ await Course.findOneAndUpdate(
       for (const sem of historyData) {
         if (!sem.term) continue;
 
-        // Safety: Don't overwrite valid data with garbage 0.00
         const existing = await ResultHistory.findOne({ userId, term: sem.term });
-        if (existing && sem.cgpa === "0.00" && existing.cgpa !== "0.00") continue;
-
-        await ResultHistory.findOneAndUpdate({ term: sem.term, userId }, { ...sem, userId, lastUpdated: new Date() }, { upsert: true });
+        if (existing) {
+          const updateDoc = {};
+          if (sem.cgpa && (sem.cgpa !== "0.00" || existing.cgpa === "0.00")) {
+            updateDoc.cgpa = sem.cgpa;
+          }
+          if (sem.sgpa && (sem.sgpa !== "0.00" || existing.sgpa === "0.00")) {
+            updateDoc.sgpa = sem.sgpa;
+          }
+          if (sem.earnedCH !== undefined && sem.earnedCH !== null) {
+            updateDoc.earnedCH = sem.earnedCH;
+          }
+          if (sem.courses && sem.courses.length > 0) {
+            updateDoc.courses = sem.courses;
+          }
+          updateDoc.lastUpdated = new Date();
+          
+          await ResultHistory.findOneAndUpdate(
+            { term: sem.term, userId },
+            { $set: updateDoc },
+            { upsert: true }
+          );
+        } else {
+          await ResultHistory.findOneAndUpdate(
+            { term: sem.term, userId },
+            { ...sem, userId, lastUpdated: new Date() },
+            { upsert: true }
+          );
+        }
       }
     }
 
@@ -4334,5 +4532,188 @@ cron.schedule('*/20 8-18 * * *', () => runTieredSync('HIGH', 'Submissions/Attend
 // 2. Full Sync (History/Timetable/Announcements) - Every 6 hours
 cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync + Announcements (6h)'), { timezone: "Asia/Karachi" });
 
+// ==========================================
+// 📚 COURSE MATERIAL & COURSE VAULT APIS
+// ==========================================
+
+// 1. Upload a file for personal course material
+app.post('/api/course-material/upload', auth, tempUpload.single('file'), async (req, res) => {
+  try {
+    const { courseId } = req.body;
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded." });
+    }
+    if (!courseId) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ message: "courseId is required." });
+    }
+
+    const course = await Course.findOne({ _id: courseId, userId: req.user.id });
+    if (!course) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(404).json({ message: "Course not found." });
+    }
+
+    const originalPath = req.file.path;
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    let finalPath = originalPath;
+    let finalFilename = req.file.originalname;
+    let finalExt = ext;
+
+    // Convert non-PDF formats to PDF
+    if (ext !== '.pdf') {
+      try {
+        console.log(`[MATERIAL_UPLOAD] Converting ${req.file.originalname} to PDF...`);
+        finalPath = await convertToPdf(originalPath, tempDir);
+        finalFilename = path.basename(finalPath);
+        finalExt = '.pdf';
+      } catch (convErr) {
+        console.error("[MATERIAL_UPLOAD] Conversion failed:", convErr);
+        if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
+        return res.status(500).json({ message: `Failed to process document: ${convErr.message}` });
+      }
+    }
+
+    // Upload to Cloudinary manually
+    console.log(`[MATERIAL_UPLOAD] Uploading ${finalFilename} to Cloudinary...`);
+    let uploadResult;
+    try {
+      uploadResult = await cloudinary.uploader.upload(finalPath, {
+        folder: 'myportal/materials',
+        resource_type: 'auto'
+      });
+    } catch (uploadErr) {
+      console.error("[MATERIAL_UPLOAD] Cloudinary upload failed:", uploadErr);
+      if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
+      if (finalPath !== originalPath && fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
+      return res.status(500).json({ message: "Failed to upload document to cloud storage." });
+    }
+
+    // Clean up temp files
+    if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
+    if (finalPath !== originalPath && fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
+
+    // Save to CourseMaterial (Personal)
+    const personalMaterial = new CourseMaterial({
+      userId: req.user.id,
+      courseId: course._id,
+      fileName: req.file.originalname,
+      fileUrl: uploadResult.secure_url,
+      fileType: finalExt.substring(1) // 'pdf'
+    });
+    await personalMaterial.save();
+
+    // --- VAULT DEDUPLICATION CHECK ---
+    const courseCode = (course.code || '').trim();
+    const courseName = (course.name || '').trim();
+    const teacherName = (course.instructors && course.instructors.length > 0) ? course.instructors[0].trim() : 'Unknown Teacher';
+    const section = (course.section || '').trim();
+
+    if (courseCode && teacherName) {
+      const existingVaultFiles = await CourseVaultFile.find({ courseCode, teacherName });
+      let shouldAddToVault = true;
+
+      if (existingVaultFiles.length > 0) {
+        const firstFile = existingVaultFiles[0];
+        if (firstFile.section !== section || (firstFile.uploadedBy && firstFile.uploadedBy.toString() !== req.user.id)) {
+          shouldAddToVault = false;
+          console.log(`[VAULT_SYNC] Skipping vault addition. Teacher ${teacherName} already has files from section ${firstFile.section} / user ${firstFile.uploadedBy}.`);
+        }
+      }
+
+      if (shouldAddToVault) {
+        const normalizedName = req.file.originalname.toLowerCase().replace(/[^a-z0-9.-]/g, '');
+        const fileExistsInVault = existingVaultFiles.some(f => f.normalizedFileName === normalizedName);
+
+        if (!fileExistsInVault) {
+          console.log(`[VAULT_SYNC] Adding file to Vault: ${normalizedName}`);
+          const vaultFile = new CourseVaultFile({
+            courseCode,
+            courseName,
+            teacherName,
+            section,
+            uploadedBy: req.user.id,
+            fileName: req.file.originalname,
+            normalizedFileName: normalizedName,
+            fileUrl: uploadResult.secure_url,
+            fileType: finalExt.substring(1)
+          });
+          await vaultFile.save();
+        } else {
+          console.log(`[VAULT_SYNC] File ${normalizedName} already exists in Vault. Skipping.`);
+        }
+      }
+    }
+
+    res.status(201).json(personalMaterial);
+  } catch (error) {
+    console.error("Upload material error:", error);
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ message: "Server error uploading course material." });
+  }
+});
+
+// 2. Fetch personal course materials for a course
+app.get('/api/course-material/:courseId', auth, async (req, res) => {
+  try {
+    const materials = await CourseMaterial.find({
+      userId: req.user.id,
+      courseId: req.params.courseId
+    }).sort({ createdAt: -1 });
+    res.json(materials);
+  } catch (error) {
+    res.status(500).json({ message: "Server error fetching course materials." });
+  }
+});
+
+// 3. Delete a personal course material
+app.delete('/api/course-material/:id', auth, async (req, res) => {
+  try {
+    const material = await CourseMaterial.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!material) {
+      return res.status(404).json({ message: "Material not found." });
+    }
+    await CourseMaterial.deleteOne({ _id: req.params.id });
+    res.json({ success: true, message: "Course material deleted successfully." });
+  } catch (error) {
+    res.status(500).json({ message: "Server error deleting course material." });
+  }
+});
+
+// 4. Fetch crowdsourced Course Vault files grouped by teacher
+app.get('/api/course-vault/:courseCodeOrName', auth, async (req, res) => {
+  try {
+    const param = decodeURIComponent(req.params.courseCodeOrName).trim();
+    // Search by exact code or name
+    const files = await CourseVaultFile.find({
+      $or: [
+        { courseCode: param },
+        { courseName: param }
+      ]
+    }).sort({ createdAt: -1 });
+
+    // Group files by teacherName
+    const grouped = {};
+    files.forEach(f => {
+      const teacher = f.teacherName || 'Unknown Teacher';
+      if (!grouped[teacher]) {
+        grouped[teacher] = [];
+      }
+      grouped[teacher].push(f);
+    });
+
+    const response = Object.keys(grouped).map(teacher => ({
+      teacherName: teacher,
+      files: grouped[teacher]
+    }));
+
+    res.json(response);
+  } catch (error) {
+    console.error("Fetch course vault error:", error);
+    res.status(500).json({ message: "Server error fetching course vault." });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));
+

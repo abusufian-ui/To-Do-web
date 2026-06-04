@@ -26,10 +26,14 @@ const feedbackSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['open', 'in-progress', 'resolved'], 
+    enum: ['open', 'in-progress', 'resolved', 'disputed', 'invalid'], 
     default: 'open' 
   },
   adminResponse: {
+    type: String,
+    default: null
+  },
+  disputeMessage: {
     type: String,
     default: null
   },

@@ -13,6 +13,7 @@ const submissionSchema = new mongoose.Schema({
         attachmentUrl: String,
         submissionUrl: String
     }],
+    lastSyncHash: String,
     lastUpdated: { type: Date, default: Date.now }
 });
 
