@@ -549,7 +549,7 @@ const apkUpload = multer({
     }
     cb(null, true);
   },
-  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+  limits: { fileSize: 250 * 1024 * 1024 } // 250MB limit
 });
 
 // Public: Get general website configuration
@@ -563,9 +563,13 @@ app.get('/api/public/settings', async (req, res) => {
 
     let apkInfo = { uploaded: false };
     const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
+    const baseUrl = getBaseUrl(req);
 
     if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
       apkInfo = dbSetting.value;
+      if (!apkInfo.url) {
+        apkInfo.url = `${baseUrl}/api/public/download-apk`;
+      }
     } else {
       const apkPath = path.join(uploadDir, 'myportal.apk');
       if (fs.existsSync(apkPath)) {
@@ -574,7 +578,8 @@ app.get('/api/public/settings', async (req, res) => {
           uploaded: true,
           filename: 'myportal.apk',
           size: stat.size,
-          uploadedAt: stat.mtime
+          uploadedAt: stat.mtime,
+          url: `${baseUrl}/api/public/download-apk`
         };
       }
     }
@@ -583,6 +588,20 @@ app.get('/api/public/settings', async (req, res) => {
   } catch (error) {
     console.error("Public Settings Error:", error);
     res.status(500).json({ message: "Server Error fetching settings" });
+  }
+});
+
+// Public: Stream and download the active APK file with forced filename
+app.get('/api/public/download-apk', async (req, res) => {
+  try {
+    const apkPath = path.join(uploadDir, 'myportal.apk');
+    if (!fs.existsSync(apkPath)) {
+      return res.status(404).json({ message: "APK release not found on server storage." });
+    }
+    res.download(apkPath, 'myportal.apk');
+  } catch (error) {
+    console.error("Download APK Error:", error);
+    res.status(500).json({ message: "Server error processing file download." });
   }
 });
 
@@ -637,11 +656,13 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
     }
 
     try {
+      const baseUrl = getBaseUrl(req);
       const apkInfo = {
         uploaded: true,
         filename: 'myportal.apk',
         size: req.file.size,
-        uploadedAt: new Date()
+        uploadedAt: new Date(),
+        url: `${baseUrl}/api/public/download-apk`
       };
 
       await SystemSettings.findOneAndUpdate(

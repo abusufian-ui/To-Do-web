@@ -1256,10 +1256,8 @@ const WebsiteConfigApp = ({ token }) => {
   const handleApkUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const isApk = file.name.endsWith('.apk');
-    const isZip = file.name.endsWith('.zip');
-    if (!isApk && !isZip) {
-      ToastConfig.show({ title: 'Invalid File', message: 'Please select a valid .apk or .zip file.', type: 'error' });
+    if (!file.name.endsWith('.apk')) {
+      ToastConfig.show({ title: 'Invalid File', message: 'Please select a valid .apk file.', type: 'error' });
       return;
     }
 
@@ -1267,29 +1265,17 @@ const WebsiteConfigApp = ({ token }) => {
     setUploadProgress({ loaded: 0, total: file.size, percent: 0 });
 
     try {
-      // Step 1: Request signature from server
-      const sigRes = await fetch(`${API_BASE}/api/admin/cloudinary-signature`, {
-        headers: { 'x-auth-token': token }
-      });
-      if (!sigRes.ok) {
-        throw new Error("Failed to generate upload signature from server.");
-      }
-      const sigData = await sigRes.json();
-      const { signature, timestamp, cloudName, apiKey, folder } = sigData;
-
-      // Step 2: Upload directly to Cloudinary with progress monitoring
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('api_key', apiKey);
-      formData.append('timestamp', timestamp);
-      formData.append('signature', signature);
-      formData.append('folder', folder);
 
       const uploadRes = await axios.post(
-        `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`,
+        `${API_BASE}/api/admin/settings/apk-upload`,
         formData,
         {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: { 
+            'Content-Type': 'multipart/form-data',
+            'x-auth-token': token
+          },
           onUploadProgress: (progressEvent) => {
             const loaded = progressEvent.loaded;
             const total = progressEvent.total || file.size;
@@ -1299,34 +1285,20 @@ const WebsiteConfigApp = ({ token }) => {
         }
       );
 
-      const uploadedUrl = uploadRes.data.secure_url;
-
-      // Step 3: Save URL and metadata back to server
-      const saveRes = await fetch(`${API_BASE}/api/admin/settings/apk-url`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': token
-        },
-        body: JSON.stringify({
-          url: uploadedUrl,
-          size: file.size,
-          filename: file.name
-        })
-      });
-
-      if (saveRes.ok) {
-        const data = await saveRes.json();
-        setApkInfo(data.apkInfo);
-        ToastConfig.show({ title: 'Upload Successful', message: 'APK has been published to the CDN.', type: 'success' });
+      if (uploadRes.data && uploadRes.data.success) {
+        setApkInfo(uploadRes.data.apkInfo);
+        ToastConfig.show({ title: 'Upload Successful', message: 'APK has been uploaded directly to the server storage.', type: 'success' });
       } else {
-        const errData = await saveRes.json();
-        throw new Error(errData.message || "Failed to register APK URL on portal server.");
+        throw new Error(uploadRes.data.message || "Failed to save APK on portal server.");
       }
 
     } catch (err) {
       console.error(err);
-      ToastConfig.show({ title: 'Upload Failed', message: err.message || 'Network error uploading APK.', type: 'error' });
+      ToastConfig.show({ 
+        title: 'Upload Failed', 
+        message: err.response?.data?.message || err.message || 'Network error uploading APK to server.', 
+        type: 'error' 
+      });
     } finally {
       setUploadingApk(false);
       setUploadProgress(null);
@@ -1416,11 +1388,8 @@ const WebsiteConfigApp = ({ token }) => {
         <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4">
           <Activity size={16} className="text-green-500" /> Mobile App (APK) Release
         </h3>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4 space-y-2">
-          <span>Upload the Android APK bundle or ZIP archive here. The general website links directly to this file for fast download.</span>
-          <span className="block mt-2 font-bold text-amber-600 dark:text-amber-500 bg-amber-500/5 border border-amber-500/10 p-2.5 rounded-xl text-[11px] leading-relaxed">
-            ⚠️ Cloudinary blocks raw APK uploads on free accounts to prevent malware distribution. If your upload fails, please compress your APK into a .zip file (e.g., myportal.zip) and upload the ZIP file instead.
-          </span>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Upload the Android APK bundle here. The general website links directly to this file, ensuring users always get the latest version from your server storage.
         </p>
 
         {loadingInfo ? (
@@ -1430,7 +1399,7 @@ const WebsiteConfigApp = ({ token }) => {
             <div className="flex items-center justify-between text-xs font-bold">
               <span className="text-blue-500 flex items-center gap-2">
                 <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                Uploading to Cloudinary CDN...
+                Uploading to Server Storage...
               </span>
               <span className="text-gray-500 dark:text-gray-400">
                 {uploadProgress 
@@ -1483,7 +1452,7 @@ const WebsiteConfigApp = ({ token }) => {
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Overwrite / Upload New Version</label>
               <input
                 type="file"
-                accept=".apk,.zip"
+                accept=".apk"
                 onChange={handleApkUpload}
                 className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-400 cursor-pointer"
               />
@@ -1500,7 +1469,7 @@ const WebsiteConfigApp = ({ token }) => {
               Select and Upload APK
               <input
                 type="file"
-                accept=".apk,.zip"
+                accept=".apk"
                 onChange={handleApkUpload}
                 className="hidden"
               />
