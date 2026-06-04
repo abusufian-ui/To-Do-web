@@ -105,7 +105,7 @@ const uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'productio
   ? '/var/www/student_portal/media/'
   : path.join(__dirname, 'media'));
 
-// Ensure the directory exists safely
+// Ensure the media directory exists safely
 try {
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -115,6 +115,21 @@ try {
   console.error(`❌ Failed to create media directory at ${uploadDir}:`, err.message);
   const fallbackDir = path.join(__dirname, 'media');
   if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+}
+
+// ==========================================
+// 📦 TEMP CHUNK STORAGE (for chunked APK uploads)
+// ==========================================
+const chunkDir = process.env.NODE_ENV === 'production'
+  ? '/var/www/student_portal/apk_chunks/'
+  : path.join(__dirname, 'apk_chunks');
+try {
+  if (!fs.existsSync(chunkDir)) {
+    fs.mkdirSync(chunkDir, { recursive: true });
+    console.log(`📦 Created chunk temp directory at: ${chunkDir}`);
+  }
+} catch (err) {
+  console.error(`❌ Failed to create chunk temp directory:`, err.message);
 }
 
 // Keep local storage for things like general files or Keynote media
@@ -734,30 +749,109 @@ app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) =
   }
 });
 
-// Admin: Get Cloudinary upload signature for client-side APK uploads
-app.get('/api/admin/cloudinary-signature', auth, adminAuth, (req, res) => {
+// Admin: Receive a single binary chunk from a chunked APK upload.
+// Each request is ~10MB so it safely passes through Nginx's client_max_body_size.
+// Route uses express.raw() so the binary body is available as req.body (Buffer).
+app.post(
+  '/api/admin/apk-chunk',
+  auth,
+  adminAuth,
+  express.raw({ type: 'application/octet-stream', limit: '12mb' }),
+  (req, res) => {
+    try {
+      const chunkIndex = parseInt(req.headers['x-chunk-index'], 10);
+      const totalChunks = parseInt(req.headers['x-total-chunks'], 10);
+
+      if (isNaN(chunkIndex) || isNaN(totalChunks)) {
+        return res.status(400).json({ message: 'Missing x-chunk-index or x-total-chunks headers.' });
+      }
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        return res.status(400).json({ message: 'Empty chunk body received.' });
+      }
+
+      const chunkPath = path.join(chunkDir, `chunk_${chunkIndex}`);
+      fs.writeFileSync(chunkPath, req.body);
+
+      console.log(`📦 APK chunk ${chunkIndex + 1}/${totalChunks} saved (${(req.body.length / 1024 / 1024).toFixed(2)} MB)`);
+      res.json({ success: true, received: chunkIndex });
+    } catch (err) {
+      console.error('APK Chunk Upload Error:', err);
+      res.status(500).json({ message: 'Server error saving chunk.' });
+    }
+  }
+);
+
+// Admin: Finalize a chunked APK upload — assemble all chunks into myportal.apk.
+app.post('/api/admin/apk-finalize', auth, adminAuth, async (req, res) => {
   try {
-    const timestamp = Math.round(new Date().getTime() / 1000);
-    const folder = 'myportal/apk';
-    const params = {
-      timestamp,
-      folder
-    };
-    const signature = cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET);
-    res.json({
-      signature,
-      timestamp,
-      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-      apiKey: process.env.CLOUDINARY_API_KEY,
-      folder
+    const { totalChunks, totalSize } = req.body;
+    if (!totalChunks || totalChunks < 1) {
+      return res.status(400).json({ message: 'totalChunks is required.' });
+    }
+
+    const finalApkPath = path.join(uploadDir, 'myportal.apk');
+
+    // Remove old APK if it exists
+    if (fs.existsSync(finalApkPath)) {
+      fs.unlinkSync(finalApkPath);
+      console.log('🗑️  Deleted old myportal.apk before assembly.');
+    }
+
+    // Verify all chunks exist before assembling
+    for (let i = 0; i < totalChunks; i++) {
+      const cp = path.join(chunkDir, `chunk_${i}`);
+      if (!fs.existsSync(cp)) {
+        return res.status(400).json({ message: `Missing chunk ${i}. Upload may be incomplete.` });
+      }
+    }
+
+    // Assemble chunks in order into myportal.apk
+    const writeStream = fs.createWriteStream(finalApkPath);
+    for (let i = 0; i < totalChunks; i++) {
+      const cp = path.join(chunkDir, `chunk_${i}`);
+      const chunkData = fs.readFileSync(cp);
+      writeStream.write(chunkData);
+    }
+    writeStream.end();
+
+    // Wait for the write stream to finish
+    await new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
     });
-  } catch (error) {
-    console.error("Cloudinary Signature Error:", error);
-    res.status(500).json({ message: "Server Error generating upload signature" });
+
+    // Clean up all chunk temp files
+    for (let i = 0; i < totalChunks; i++) {
+      try { fs.unlinkSync(path.join(chunkDir, `chunk_${i}`)); } catch {}
+    }
+
+    const assembledSize = fs.statSync(finalApkPath).size;
+    console.log(`✅ APK assembled successfully: ${(assembledSize / 1024 / 1024).toFixed(2)} MB`);
+
+    // Build the download URL using backend base URL
+    const baseUrl = getBaseUrl(req);
+    const apkInfo = {
+      uploaded: true,
+      filename: 'myportal.apk',
+      size: assembledSize,
+      uploadedAt: new Date(),
+      url: `${baseUrl}/api/public/download-apk`
+    };
+
+    await SystemSettings.findOneAndUpdate(
+      { key: 'apk_info' },
+      { value: apkInfo },
+      { upsert: true, new: true }
+    );
+
+    res.json({ success: true, apkInfo });
+  } catch (err) {
+    console.error('APK Finalize Error:', err);
+    res.status(500).json({ message: 'Server error assembling APK.' });
   }
 });
 
-// Admin: Save APK Cloudinary CDN URL and size metadata
+// Admin: Save APK Cloudinary CDN URL and size metadata (KEPT for backwards compatibility)
 app.post('/api/admin/settings/apk-url', auth, adminAuth, async (req, res) => {
   try {
     const { url, size, filename } = req.body;

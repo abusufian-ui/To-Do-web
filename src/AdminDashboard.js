@@ -1261,80 +1261,81 @@ const WebsiteConfigApp = ({ token }) => {
       return;
     }
 
+    // ── Chunked upload config ─────────────────────────────────────────────────
+    // Each chunk is 10 MB. This keeps every individual POST well under Nginx's
+    // default client_max_body_size (usually 1–50 MB) with room to spare.
+    // The server's /api/admin/apk-chunk route accepts up to 12 MB per request.
+    const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
     setUploadingApk(true);
-    setUploadProgress({ loaded: 0, total: file.size, percent: 0 });
+    setUploadProgress({ loaded: 0, total: file.size, percent: 0, chunk: 0, totalChunks });
 
     try {
-      // 1. Request upload signature and configurations from backend
-      const sigRes = await axios.get(`${API_BASE}/api/admin/cloudinary-signature`, {
-        headers: { 'x-auth-token': token }
-      });
-      const { signature, timestamp, cloudName, apiKey, folder } = sigRes.data;
+      // Upload each chunk sequentially
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end   = Math.min(start + CHUNK_SIZE, file.size);
+        const blob  = file.slice(start, end);
 
-      // 2. Rename selected .apk file client-side to bypass Cloudinary's raw .apk extension block.
-      //    CRITICAL: Must also override MIME type to generic 'application/octet-stream'.
-      //    If we pass file.type ('application/vnd.android.package-archive'), Cloudinary
-      //    detects it and rejects the upload with a 400 — which then appears as a CORS
-      //    error in the browser because Cloudinary omits CORS headers on error responses.
-      const renamedFile = new File([file], 'myportal.bin', { type: 'application/octet-stream' });
+        // Convert Blob → ArrayBuffer → Buffer for binary transfer
+        const arrayBuf = await blob.arrayBuffer();
 
-      // 3. Prepare FormData for Cloudinary Raw upload
-      const formData = new FormData();
-      formData.append('file', renamedFile);
-      formData.append('api_key', apiKey);
-      formData.append('timestamp', timestamp);
-      formData.append('signature', signature);
-      formData.append('folder', folder);
-
-      // 4. Perform direct signed upload to Cloudinary (bypasses VM reverse proxy size limits)
-      const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`;
-      const cloudinaryRes = await axios.post(
-        uploadUrl,
-        formData,
-        {
-          onUploadProgress: (progressEvent) => {
-            const loaded = progressEvent.loaded;
-            const total = progressEvent.total || file.size;
-            const percent = Math.round((loaded * 100) / total);
-            setUploadProgress({ loaded, total, percent });
+        await axios.post(
+          `${API_BASE}/api/admin/apk-chunk`,
+          arrayBuf,
+          {
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'x-auth-token': token,
+              'x-chunk-index': String(i),
+              'x-total-chunks': String(totalChunks),
+            },
+            // Track per-chunk progress to keep the bar alive during each POST
+            onUploadProgress: (progressEvent) => {
+              const chunkLoaded  = progressEvent.loaded;
+              const baseSent     = i * CHUNK_SIZE;
+              const totalLoaded  = baseSent + chunkLoaded;
+              const percent      = Math.round((totalLoaded / file.size) * 100);
+              setUploadProgress({
+                loaded: totalLoaded,
+                total:  file.size,
+                percent: Math.min(percent, 99), // Reserve 100% for finalize
+                chunk: i + 1,
+                totalChunks,
+              });
+            },
           }
-        }
-      );
-
-      const cloudinaryUrl = cloudinaryRes.data.secure_url || cloudinaryRes.data.url;
-      if (!cloudinaryUrl) {
-        throw new Error("Failed to retrieve upload URL from Cloudinary.");
+        );
       }
 
-      // 5. Register the secure Cloudinary CDN URL, size, and filename back on backend setting
-      const saveRes = await axios.post(
-        `${API_BASE}/api/admin/settings/apk-url`,
-        {
-          url: cloudinaryUrl,
-          size: file.size,
-          filename: 'myportal.apk'
-        },
-        {
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-auth-token': token
-          }
-        }
+      // All chunks sent — tell the server to assemble them
+      setUploadProgress(prev => ({ ...prev, percent: 99, chunk: totalChunks, totalChunks }));
+
+      const finalizeRes = await axios.post(
+        `${API_BASE}/api/admin/apk-finalize`,
+        { totalChunks, totalSize: file.size },
+        { headers: { 'Content-Type': 'application/json', 'x-auth-token': token } }
       );
 
-      if (saveRes.data && saveRes.data.success) {
-        setApkInfo(saveRes.data.apkInfo);
-        ToastConfig.show({ title: 'Upload Successful', message: 'APK has been renamed, uploaded to Cloudinary, and registered on server.', type: 'success' });
+      if (finalizeRes.data && finalizeRes.data.success) {
+        setUploadProgress(prev => ({ ...prev, percent: 100 }));
+        setApkInfo(finalizeRes.data.apkInfo);
+        ToastConfig.show({
+          title: 'Upload Complete',
+          message: `APK saved to server (${(file.size / 1024 / 1024).toFixed(1)} MB). Users can now download it.`,
+          type: 'success'
+        });
       } else {
-        throw new Error(saveRes.data.message || "Failed to save Cloudinary asset URL on portal server.");
+        throw new Error(finalizeRes.data?.message || 'Server failed to assemble APK.');
       }
 
     } catch (err) {
-      console.error(err);
-      ToastConfig.show({ 
-        title: 'Upload Failed', 
-        message: err.response?.data?.message || err.message || 'Error uploading APK release.', 
-        type: 'error' 
+      console.error('Chunked APK Upload Error:', err);
+      ToastConfig.show({
+        title: 'Upload Failed',
+        message: err.response?.data?.message || err.message || 'Error uploading APK. Please try again.',
+        type: 'error'
       });
     } finally {
       setUploadingApk(false);
@@ -1343,7 +1344,9 @@ const WebsiteConfigApp = ({ token }) => {
     }
   };
 
+
   const handleDeleteApk = async () => {
+
     if (!window.confirm("Are you sure you want to delete the APK from the server? Users will not be able to download it from the general website.")) {
       return;
     }
@@ -1426,7 +1429,7 @@ const WebsiteConfigApp = ({ token }) => {
           <Activity size={16} className="text-green-500" /> Mobile App (APK) Release
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          Upload the Android APK bundle here. The general website links directly to this file, ensuring users always get the latest version from Cloudinary CDN.
+          Upload the Android APK bundle here. The general website download button and QR code link directly to this file on the server, ensuring users always get the latest version.
         </p>
 
         {loadingInfo ? (
@@ -1436,11 +1439,13 @@ const WebsiteConfigApp = ({ token }) => {
             <div className="flex items-center justify-between text-xs font-bold">
               <span className="text-blue-500 flex items-center gap-2">
                 <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                Uploading to Cloudinary...
+                {uploadProgress?.percent >= 99 ? 'Assembling on server...' : 'Uploading to server...'}
               </span>
               <span className="text-gray-500 dark:text-gray-400">
-                {uploadProgress 
-                  ? `${(uploadProgress.loaded / (1024 * 1024)).toFixed(1)} / ${(uploadProgress.total / (1024 * 1024)).toFixed(1)} MB (${uploadProgress.percent}%)`
+                {uploadProgress
+                  ? uploadProgress.percent >= 99
+                    ? 'Finalizing...'
+                    : `Chunk ${uploadProgress.chunk}/${uploadProgress.totalChunks} · ${(uploadProgress.loaded / (1024 * 1024)).toFixed(1)} / ${(uploadProgress.total / (1024 * 1024)).toFixed(1)} MB (${uploadProgress.percent}%)`
                   : 'Preparing upload...'}
               </span>
             </div>
@@ -1452,6 +1457,7 @@ const WebsiteConfigApp = ({ token }) => {
               ></div>
             </div>
           </div>
+
         ) : apkInfo.uploaded ? (
           <div className="space-y-4">
             <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center gap-3">
