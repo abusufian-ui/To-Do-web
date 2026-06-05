@@ -67,7 +67,12 @@ const { spawn } = require('child_process');
 // 🚨 NEW: COURSE MATERIAL & VAULT MODELS & CONVERTER
 const CourseMaterial = require('./models/CourseMaterial');
 const CourseVaultFile = require('./models/CourseVaultFile');
+const MaterialLink   = require('./models/MaterialLink');
 const { convertToPdf } = require('./utils/documentConverter');
+
+// 🚨 NEW: BACKBLAZE B2 + MATERIAL PROCESSOR
+const { getSignedDownloadUrl } = require('./utils/b2Client');
+const { processUserMaterials, runNightlyMaterialSync } = require('./services/materialProcessor');
 
 
 // --- CONFIGURATION ---
@@ -358,7 +363,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.104:8081',
+  'http://192.168.0.117:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -1279,7 +1284,7 @@ const mergeUserTasks = (existingTasks, incomingTasks) => {
 
 app.post('/api/extension-sync', auth, async (req, res) => {
   try {
-    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic, syncLogId } = req.body;
+    const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic, syncLogId, materialLinksData } = req.body;
     const userId = req.user.id;
     const user = await User.findById(userId);
 
@@ -1345,10 +1350,11 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             }
           }
 
-          // ✅ Save creditHours to DB dynamically
+          // ✅ Save creditHours + portalUrl to DB dynamically
           const updatePayload = { userId, name: courseName, type: 'university', creditHours };
           if (fullCode) updatePayload.code = fullCode;
           if (sectionCode) updatePayload.section = sectionCode;
+          if (url) updatePayload.portalUrl = url; // Store the full portal URL for nightly scraper
 
           await Course.findOneAndUpdate(
             { userId, name: courseName },
@@ -1678,6 +1684,51 @@ await Course.findOneAndUpdate(
         endTime: new Date(),
         changesSummary: changesSummary
       });
+    }
+
+
+    // ── 🗂️ Material Links: Stage + Immediately Trigger Processing ──
+    // Session-bound download URLs expire when cookie expires.
+    // Process IMMEDIATELY while session is live. Even duplicate links trigger a re-run
+    // so any newly added files by the teacher are picked up.
+    if (materialLinksData && Array.isArray(materialLinksData) && materialLinksData.length > 0) {
+      const liveCookie = ucpCookie || user.ucpCookie;
+      if (liveCookie) {
+        let stagedCount = 0;
+        for (const item of materialLinksData) {
+          if (!item.courseUrl || !item.links || item.links.length === 0) continue;
+
+          // Derive section and teacher from context already parsed above
+          const itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
+          const courseDoc = await Course.findOne({ userId, name: item.courseName }).lean();
+          const itemTeacherName = (courseDoc?.instructors || [])[0] || '';
+
+          // Always upsert with fresh links + reset processed = false
+          // so the processor always re-checks for new files
+          await MaterialLink.findOneAndUpdate(
+            { userId, courseUrl: item.courseUrl },
+            {
+              $set: {
+                courseName: item.courseName || '',
+                courseCode: item.courseCode || '',
+                sectionCode: itemSectionCode,
+                teacherName: itemTeacherName,
+                links: item.links,
+                lastScrapedAt: new Date(),
+                processed: false
+              }
+            },
+            { upsert: true }
+          );
+          stagedCount++;
+        }
+
+        if (stagedCount > 0) {
+          console.log(`[SYNC] 📥 Staged ${stagedCount} material link sets. Firing processor immediately.`);
+          // Fire immediately in background — session cookie is live right now
+          setTimeout(() => processUserMaterials(userId.toString(), liveCookie), 200);
+        }
+      }
     }
 
     res.json({ message: "Sync & Diffing complete securely!" });
@@ -4532,186 +4583,164 @@ cron.schedule('*/20 8-18 * * *', () => runTieredSync('HIGH', 'Submissions/Attend
 // 2. Full Sync (History/Timetable/Announcements) - Every 6 hours
 cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync + Announcements (6h)'), { timezone: "Asia/Karachi" });
 
+// 3. 🗂️ Nightly Material Sync — 2:00 AM PKT
+// Fallback: re-fetches material links for all users and processes any newly added files
+cron.schedule('0 2 * * *', () => runNightlyMaterialSync(User, Course), { timezone: "Asia/Karachi" });
+
 // ==========================================
-// 📚 COURSE MATERIAL & COURSE VAULT APIS
+// 🗂️ COURSE MATERIAL & COURSE VAULT APIS (Fully Automated)
 // ==========================================
 
-// 1. Upload a file for personal course material
-app.post('/api/course-material/upload', auth, tempUpload.single('file'), async (req, res) => {
+// 1. Get all scraped course materials for a section (returns files + signed download URLs)
+app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) => {
   try {
-    const { courseId } = req.body;
-    if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded." });
+    const { courseCode, sectionCode } = req.params;
+    const materials = await CourseMaterial.find({ courseCode, sectionCode })
+      .sort({ isArchiveExtracted: 1, fileName: 1 })
+      .lean();
+
+    // Generate fresh signed URLs for each file
+    const withUrls = await Promise.all(materials.map(async (m) => {
+      const signedUrl = m.b2Key ? await getSignedDownloadUrl(m.b2Key, 3600) : null;
+      return { ...m, downloadUrl: signedUrl };
+    }));
+
+    // Group extracted files under their parent archives
+    const grouped = [];
+    const archives = {};
+    for (const m of withUrls) {
+      if (m.isArchiveExtracted && m.parentArchive) {
+        if (!archives[m.parentArchive]) archives[m.parentArchive] = [];
+        archives[m.parentArchive].push(m);
+      } else {
+        if (m.fileType === 'zip' && archives[m.fileName]) {
+          m.contents = archives[m.fileName];
+        }
+        grouped.push(m);
+      }
     }
-    if (!courseId) {
-      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      return res.status(400).json({ message: "courseId is required." });
+    // Attach orphan extracted files to their zip parent
+    for (const m of grouped) {
+      if ((m.fileType === 'zip' || m.fileType === 'rar') && archives[m.fileName]) {
+        m.contents = archives[m.fileName];
+      }
     }
 
-    const course = await Course.findOne({ _id: courseId, userId: req.user.id });
-    if (!course) {
-      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      return res.status(404).json({ message: "Course not found." });
-    }
+    res.json({ files: grouped, total: withUrls.length });
+  } catch (err) {
+    console.error('[API] course-material fetch error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch course materials.' });
+  }
+});
 
-    const originalPath = req.file.path;
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    let finalPath = originalPath;
-    let finalFilename = req.file.originalname;
-    let finalExt = ext;
+// 2. Get scraping status for a section
+app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req, res) => {
+  try {
+    const { courseCode, sectionCode } = req.params;
+    const count = await CourseMaterial.countDocuments({ courseCode, sectionCode });
+    const pending = await MaterialLink.countDocuments({
+      userId: req.user.id,
+      courseCode: { $regex: courseCode, $options: 'i' },
+      processed: false
+    });
+    const latest = await CourseMaterial.findOne({ courseCode, sectionCode })
+      .sort({ createdAt: -1 }).lean();
 
-    // Convert non-PDF formats to PDF
-    if (ext !== '.pdf') {
+    res.json({
+      fileCount: count,
+      hasPending: pending > 0,
+      lastSyncedAt: latest?.createdAt || null,
+      isProcessing: pending > 0
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch status.' });
+  }
+});
+
+// 3. Download multiple files as a ZIP (server zips them from B2)
+app.post('/api/course-material/download-zip', auth, async (req, res) => {
+  try {
+    const { fileIds, courseName } = req.body;
+    if (!fileIds || fileIds.length === 0) return res.status(400).json({ message: 'No files selected.' });
+    if (fileIds.length > 20) return res.status(400).json({ message: 'Max 20 files per download.' });
+
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip();
+
+    const materials = await CourseMaterial.find({ _id: { $in: fileIds } }).lean();
+
+    for (const m of materials) {
+      if (!m.b2Key) continue;
       try {
-        console.log(`[MATERIAL_UPLOAD] Converting ${req.file.originalname} to PDF...`);
-        finalPath = await convertToPdf(originalPath, tempDir);
-        finalFilename = path.basename(finalPath);
-        finalExt = '.pdf';
-      } catch (convErr) {
-        console.error("[MATERIAL_UPLOAD] Conversion failed:", convErr);
-        if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
-        return res.status(500).json({ message: `Failed to process document: ${convErr.message}` });
-      }
+        // Get signed URL and fetch the file
+        const signedUrl = await getSignedDownloadUrl(m.b2Key, 300);
+        const response = await fetch(signedUrl);
+        if (!response.ok) continue;
+        const buf = Buffer.from(await response.arrayBuffer());
+        zip.addFile(m.fileName || m.normalizedFileName, buf);
+      } catch (_) {}
     }
 
-    // Upload to Cloudinary manually
-    console.log(`[MATERIAL_UPLOAD] Uploading ${finalFilename} to Cloudinary...`);
-    let uploadResult;
-    try {
-      uploadResult = await cloudinary.uploader.upload(finalPath, {
-        folder: 'myportal/materials',
-        resource_type: 'auto'
-      });
-    } catch (uploadErr) {
-      console.error("[MATERIAL_UPLOAD] Cloudinary upload failed:", uploadErr);
-      if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
-      if (finalPath !== originalPath && fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
-      return res.status(500).json({ message: "Failed to upload document to cloud storage." });
-    }
-
-    // Clean up temp files
-    if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
-    if (finalPath !== originalPath && fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
-
-    // Save to CourseMaterial (Personal)
-    const personalMaterial = new CourseMaterial({
-      userId: req.user.id,
-      courseId: course._id,
-      fileName: req.file.originalname,
-      fileUrl: uploadResult.secure_url,
-      fileType: finalExt.substring(1) // 'pdf'
-    });
-    await personalMaterial.save();
-
-    // --- VAULT DEDUPLICATION CHECK ---
-    const courseCode = (course.code || '').trim();
-    const courseName = (course.name || '').trim();
-    const teacherName = (course.instructors && course.instructors.length > 0) ? course.instructors[0].trim() : 'Unknown Teacher';
-    const section = (course.section || '').trim();
-
-    if (courseCode && teacherName) {
-      const existingVaultFiles = await CourseVaultFile.find({ courseCode, teacherName });
-      let shouldAddToVault = true;
-
-      if (existingVaultFiles.length > 0) {
-        const firstFile = existingVaultFiles[0];
-        if (firstFile.section !== section || (firstFile.uploadedBy && firstFile.uploadedBy.toString() !== req.user.id)) {
-          shouldAddToVault = false;
-          console.log(`[VAULT_SYNC] Skipping vault addition. Teacher ${teacherName} already has files from section ${firstFile.section} / user ${firstFile.uploadedBy}.`);
-        }
-      }
-
-      if (shouldAddToVault) {
-        const normalizedName = req.file.originalname.toLowerCase().replace(/[^a-z0-9.-]/g, '');
-        const fileExistsInVault = existingVaultFiles.some(f => f.normalizedFileName === normalizedName);
-
-        if (!fileExistsInVault) {
-          console.log(`[VAULT_SYNC] Adding file to Vault: ${normalizedName}`);
-          const vaultFile = new CourseVaultFile({
-            courseCode,
-            courseName,
-            teacherName,
-            section,
-            uploadedBy: req.user.id,
-            fileName: req.file.originalname,
-            normalizedFileName: normalizedName,
-            fileUrl: uploadResult.secure_url,
-            fileType: finalExt.substring(1)
-          });
-          await vaultFile.save();
-        } else {
-          console.log(`[VAULT_SYNC] File ${normalizedName} already exists in Vault. Skipping.`);
-        }
-      }
-    }
-
-    res.status(201).json(personalMaterial);
-  } catch (error) {
-    console.error("Upload material error:", error);
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.status(500).json({ message: "Server error uploading course material." });
+    const zipBuffer = zip.toBuffer();
+    const safeCourseName = (courseName || 'course-materials').replace(/[^a-zA-Z0-9-_]/g, '_');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeCourseName}_files.zip"`);
+    res.setHeader('Content-Length', zipBuffer.length);
+    res.send(zipBuffer);
+  } catch (err) {
+    console.error('[API] download-zip error:', err.message);
+    res.status(500).json({ message: 'Failed to create zip.' });
   }
 });
 
-// 2. Fetch personal course materials for a course
-app.get('/api/course-material/:courseId', auth, async (req, res) => {
+// 4. Get Course Vault files for a course, grouped by teacher
+app.get('/api/course-vault/:courseCode', auth, async (req, res) => {
   try {
-    const materials = await CourseMaterial.find({
-      userId: req.user.id,
-      courseId: req.params.courseId
-    }).sort({ createdAt: -1 });
-    res.json(materials);
-  } catch (error) {
-    res.status(500).json({ message: "Server error fetching course materials." });
-  }
-});
+    const courseCode = decodeURIComponent(req.params.courseCode).trim();
+    const files = await CourseVaultFile.find({ courseCode }).sort({ createdAt: -1 }).lean();
 
-// 3. Delete a personal course material
-app.delete('/api/course-material/:id', auth, async (req, res) => {
-  try {
-    const material = await CourseMaterial.findOne({ _id: req.params.id, userId: req.user.id });
-    if (!material) {
-      return res.status(404).json({ message: "Material not found." });
-    }
-    await CourseMaterial.deleteOne({ _id: req.params.id });
-    res.json({ success: true, message: "Course material deleted successfully." });
-  } catch (error) {
-    res.status(500).json({ message: "Server error deleting course material." });
-  }
-});
+    // Generate signed URLs for vault files (view-only, 2 hour expiry for PDF readers)
+    const withUrls = await Promise.all(files.map(async (f) => {
+      const viewUrl = f.b2Key ? await getSignedDownloadUrl(f.b2Key, 7200) : null;
+      return { ...f, viewUrl };
+    }));
 
-// 4. Fetch crowdsourced Course Vault files grouped by teacher
-app.get('/api/course-vault/:courseCodeOrName', auth, async (req, res) => {
-  try {
-    const param = decodeURIComponent(req.params.courseCodeOrName).trim();
-    // Search by exact code or name
-    const files = await CourseVaultFile.find({
-      $or: [
-        { courseCode: param },
-        { courseName: param }
-      ]
-    }).sort({ createdAt: -1 });
-
-    // Group files by teacherName
+    // Group by teacher
     const grouped = {};
-    files.forEach(f => {
+    for (const f of withUrls) {
       const teacher = f.teacherName || 'Unknown Teacher';
-      if (!grouped[teacher]) {
-        grouped[teacher] = [];
-      }
+      if (!grouped[teacher]) grouped[teacher] = [];
       grouped[teacher].push(f);
-    });
+    }
 
     const response = Object.keys(grouped).map(teacher => ({
       teacherName: teacher,
+      fileCount: grouped[teacher].length,
       files: grouped[teacher]
     }));
 
     res.json(response);
-  } catch (error) {
-    console.error("Fetch course vault error:", error);
-    res.status(500).json({ message: "Server error fetching course vault." });
+  } catch (err) {
+    console.error('[API] course-vault error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch vault.' });
   }
+});
+
+// 5. Get a fresh signed URL for a single vault file (for inline PDF viewer refresh)
+app.get('/api/course-vault/view/:id', auth, async (req, res) => {
+  try {
+    const vaultFile = await CourseVaultFile.findById(req.params.id).lean();
+    if (!vaultFile || !vaultFile.b2Key) return res.status(404).json({ message: 'Not found.' });
+    const viewUrl = await getSignedDownloadUrl(vaultFile.b2Key, 7200);
+    res.json({ viewUrl, fileName: vaultFile.fileName, fileType: vaultFile.fileType });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to generate view URL.' });
+  }
+});
+
+// 6. (Old manual upload endpoint — kept but hidden from public; only internal use)
+app.post('/api/course-material/upload', auth, async (req, res) => {
+  return res.status(403).json({ message: 'Manual uploads are disabled. Course materials are synced automatically from Horizon Portal.' });
 });
 
 const PORT = process.env.PORT || 5000;
