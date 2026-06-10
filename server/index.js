@@ -72,7 +72,7 @@ const MaterialLink   = require('./models/MaterialLink');
 const { convertToPdf } = require('./utils/documentConverter');
 
 // 🚨 NEW: BACKBLAZE B2 + MATERIAL PROCESSOR
-const { getSignedDownloadUrl, b2, B2_BUCKET, uploadToB2 } = require('./utils/b2Client');
+const { getSignedDownloadUrl, b2, B2_BUCKET, uploadToB2, getPresignedUploadUrl, configureBucketCors } = require('./utils/b2Client');
 const { processUserMaterials, runNightlyMaterialSync } = require('./services/materialProcessor');
 
 
@@ -840,6 +840,54 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
       res.status(500).json({ message: "Server Error uploading APK to B2." });
     }
   });
+});
+
+// Admin: Get B2 pre-signed upload URL for APK
+app.get('/api/admin/settings/apk-upload-url', auth, adminAuth, async (req, res) => {
+  const version = req.query.version || '1.0.0';
+  const filename = req.query.filename || 'myportal.apk';
+  const cleanVersion = version.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const b2Key = `apk_releases/myportal_${cleanVersion}_${Date.now()}.apk`;
+
+  try {
+    const uploadUrl = await getPresignedUploadUrl(b2Key, 'application/vnd.android.package-archive', 3600);
+    res.json({ success: true, uploadUrl, b2Key });
+  } catch (error) {
+    console.error("Presigned URL Generation Error:", error);
+    res.status(500).json({ message: "Server Error generating pre-signed upload URL." });
+  }
+});
+
+// Admin: Confirm completed APK upload and update db setting
+app.post('/api/admin/settings/apk-confirm', auth, adminAuth, async (req, res) => {
+  const { b2Key, version, size, filename } = req.body;
+  if (!b2Key || !version) {
+    return res.status(400).json({ message: "b2Key and version are required." });
+  }
+
+  try {
+    const baseUrl = getBaseUrl(req);
+    const apkInfo = {
+      uploaded: true,
+      filename: filename || 'myportal.apk',
+      size: size || 0,
+      uploadedAt: new Date(),
+      version: version,
+      b2Key: b2Key,
+      url: `${baseUrl}/api/public/download-apk`
+    };
+
+    await SystemSettings.findOneAndUpdate(
+      { key: "apk_info" },
+      { value: apkInfo },
+      { upsert: true, new: true }
+    );
+
+    res.json({ success: true, apkInfo });
+  } catch (error) {
+    console.error("APK Confirm Save Error:", error);
+    res.status(500).json({ message: "Server Error saving APK release info." });
+  }
 });
 
 // Admin: Delete APK release from filesystem & database
@@ -5388,5 +5436,8 @@ app.post('/api/course-material/upload', auth, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`));
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`);
+  configureBucketCors();
+});
 

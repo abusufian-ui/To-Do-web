@@ -635,7 +635,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
                       </div>
                       <Folder size={18} className="text-blue-500 shrink-0 fill-blue-500/10" />
                       <div className="min-w-0 flex-1 text-left">
-                        <p className="text-xs font-bold text-gray-700 dark:text-gray-200 truncate leading-tight text-left">
+                        <p className="text-xs font-bold text-gray-700 dark:text-gray-200 line-clamp-2 leading-tight text-left">
                           {course.courseName}
                         </p>
                         <p className="text-[10px] text-gray-400 font-mono mt-0.5 text-left">

@@ -1691,18 +1691,30 @@ const WebsiteConfigApp = ({ token }) => {
     setUploadingApk(true);
     setUploadProgress({ loaded: 0, total: file.size, percent: 0 });
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('version', apkVersion.trim());
-
     try {
-      const res = await axios.post(
-        `${API_BASE}/api/admin/settings/apk-upload`,
-        formData,
+      // 1. Get presigned upload URL from server
+      const urlRes = await axios.get(
+        `${API_BASE}/api/admin/settings/apk-upload-url?version=${encodeURIComponent(apkVersion.trim())}&filename=${encodeURIComponent(file.name)}`,
         {
           headers: {
-            'Content-Type': 'multipart/form-data',
             'x-auth-token': token
+          }
+        }
+      );
+
+      if (!urlRes.data || !urlRes.data.uploadUrl) {
+        throw new Error('Failed to generate pre-signed upload URL from backend.');
+      }
+
+      const { uploadUrl, b2Key } = urlRes.data;
+
+      // 2. Upload directly to B2 from browser (with ETag/progress tracking)
+      await axios.put(
+        uploadUrl,
+        file,
+        {
+          headers: {
+            'Content-Type': 'application/vnd.android.package-archive'
           },
           onUploadProgress: (progressEvent) => {
             const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
@@ -1715,13 +1727,29 @@ const WebsiteConfigApp = ({ token }) => {
         }
       );
 
-      if (res.data && res.data.success) {
+      // 3. Confirm upload with server
+      const confirmRes = await axios.post(
+        `${API_BASE}/api/admin/settings/apk-confirm`,
+        {
+          b2Key,
+          version: apkVersion.trim(),
+          size: file.size,
+          filename: file.name
+        },
+        {
+          headers: {
+            'x-auth-token': token
+          }
+        }
+      );
+
+      if (confirmRes.data && confirmRes.data.success) {
         setUploadProgress({ loaded: file.size, total: file.size, percent: 100 });
-        setApkInfo(res.data.apkInfo);
+        setApkInfo(confirmRes.data.apkInfo);
         setApkVersion('');
         ToastConfig.show({
           title: 'Upload Complete',
-          message: `APK v${res.data.apkInfo.version} uploaded successfully to BackBlaze B2.`,
+          message: `APK v${confirmRes.data.apkInfo.version} uploaded successfully to BackBlaze B2.`,
           type: 'success'
         });
       }

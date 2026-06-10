@@ -1,6 +1,6 @@
 const { S3Client } = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
-const { GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { GetObjectCommand, PutObjectCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 // BackBlaze B2 is S3-compatible — we use the AWS SDK v3
@@ -64,6 +64,39 @@ async function getSignedDownloadUrl(key, expiresIn = 3600, customFilename = null
     return getSignedUrl(b2, command, { expiresIn });
 }
 
+async function getPresignedUploadUrl(key, contentType, expiresIn = 3600) {
+    const command = new PutObjectCommand({
+        Bucket: B2_BUCKET,
+        Key: key,
+        ContentType: contentType
+    });
+    return getSignedUrl(b2, command, { expiresIn });
+}
+
+async function configureBucketCors() {
+    const corsRule = {
+        CORSRules: [
+            {
+                AllowedHeaders: ['*'],
+                AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
+                AllowedOrigins: ['*'],
+                ExposeHeaders: ['ETag'],
+                MaxAgeSeconds: 3000
+            }
+        ]
+    };
+    try {
+        const command = new PutBucketCorsCommand({
+            Bucket: B2_BUCKET,
+            CORSConfiguration: corsRule
+        });
+        await b2.send(command);
+        console.log("✅ BackBlaze B2 Bucket CORS configured successfully.");
+    } catch (err) {
+        console.error("⚠️ Failed to configure B2 Bucket CORS programmatically:", err.message);
+    }
+}
+
 /**
  * Get MIME type from file extension.
  */
@@ -115,4 +148,4 @@ async function downloadFileFromB2(key) {
     return Buffer.concat(chunks);
 }
 
-module.exports = { b2, uploadToB2, getSignedDownloadUrl, getMimeType, normalizeFileName, downloadFileFromB2, B2_BUCKET };
+module.exports = { b2, uploadToB2, getSignedDownloadUrl, getPresignedUploadUrl, configureBucketCors, getMimeType, normalizeFileName, downloadFileFromB2, B2_BUCKET };
