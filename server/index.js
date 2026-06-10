@@ -72,7 +72,7 @@ const MaterialLink   = require('./models/MaterialLink');
 const { convertToPdf } = require('./utils/documentConverter');
 
 // 🚨 NEW: BACKBLAZE B2 + MATERIAL PROCESSOR
-const { getSignedDownloadUrl, b2, B2_BUCKET } = require('./utils/b2Client');
+const { getSignedDownloadUrl, b2, B2_BUCKET, uploadToB2 } = require('./utils/b2Client');
 const { processUserMaterials, runNightlyMaterialSync } = require('./services/materialProcessor');
 
 
@@ -115,7 +115,7 @@ const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp
 // ==========================================
 // 📂 LOCAL MEDIA STORAGE CONFIGURATION (For general uploads)
 // ==========================================
-const uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production'
+let uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production'
   ? '/var/www/student_portal/media/'
   : path.join(__dirname, 'media'));
 
@@ -127,8 +127,8 @@ try {
   }
 } catch (err) {
   console.error(`❌ Failed to create media directory at ${uploadDir}:`, err.message);
-  const fallbackDir = path.join(__dirname, 'media');
-  if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+  uploadDir = path.join(__dirname, 'media');
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 
@@ -648,6 +648,12 @@ app.get('/api/public/settings', async (req, res) => {
       webPortalLink = linkSetting.value;
     }
 
+    let termsLink = "";
+    const termsSetting = await SystemSettings.findOne({ key: "terms_link" });
+    if (termsSetting) {
+      termsLink = termsSetting.value;
+    }
+
     let apkInfo = { uploaded: false };
     const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
     const baseUrl = getBaseUrl(req);
@@ -671,7 +677,7 @@ app.get('/api/public/settings', async (req, res) => {
       }
     }
 
-    res.json({ webPortalLink, apkInfo });
+    res.json({ webPortalLink, apkInfo, termsLink });
   } catch (error) {
     console.error("Public Settings Error:", error);
     res.status(500).json({ message: "Server Error fetching settings" });
@@ -685,7 +691,7 @@ app.get('/api/public/download-apk', async (req, res) => {
     
     // Check if Backblaze B2 key is stored and valid
     if (dbSetting && dbSetting.value && dbSetting.value.uploaded && dbSetting.value.b2Key) {
-      const signedUrl = await getSignedDownloadUrl(dbSetting.value.b2Key, 3600); // 1 hour expiry
+      const signedUrl = await getSignedDownloadUrl(dbSetting.value.b2Key, 3600, 'myportal.apk'); // 1 hour expiry
       return res.redirect(signedUrl);
     }
     
@@ -760,6 +766,22 @@ app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res
   } catch (error) {
     console.error("Save Web Portal Link Error:", error);
     res.status(500).json({ message: "Server Error saving portal link" });
+  }
+});
+
+// Admin: Save terms link configuration
+app.post('/api/admin/settings/terms-link', auth, adminAuth, async (req, res) => {
+  try {
+    const { link } = req.body;
+    const setting = await SystemSettings.findOneAndUpdate(
+      { key: "terms_link" },
+      { value: link || "" },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true, link: setting.value });
+  } catch (error) {
+    console.error("Save Terms Link Error:", error);
+    res.status(500).json({ message: "Server Error saving terms link" });
   }
 });
 
@@ -4759,7 +4781,7 @@ app.get('/api/course-material/download/:fileId', async (req, res) => {
     if (!file || !file.b2Key) {
       return res.status(404).json({ message: 'File not found.' });
     }
-    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300); // 5 min expiry is enough for immediate redirect
+    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300, file.fileName || file.normalizedFileName); // 5 min expiry is enough for immediate redirect
     res.redirect(signedUrl);
   } catch (err) {
     console.error('[API] download redirect error:', err.message);
@@ -4866,6 +4888,132 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch status.' });
   }
+});
+
+
+const zipJobs = new Map();
+
+// Periodic cleanup of completed or failed zip jobs older than 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [jobId, job] of zipJobs.entries()) {
+    if (job.createdAt && (now - job.createdAt > 10 * 60 * 1000)) {
+      zipJobs.delete(jobId);
+    }
+  }
+}, 5 * 60 * 1000); // Run every 5 minutes
+
+// 3.1 Start a zip packaging background job
+app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
+  try {
+    const { fileIds, courseName, courseCode, sectionCode, semester } = req.body;
+    let resolvedFileIds = fileIds || [];
+
+    if (resolvedFileIds.length === 0 && courseCode) {
+      const query = { courseCode };
+      if (sectionCode) query.sectionCode = sectionCode;
+      if (semester) query.semester = semester;
+      
+      const materials = await CourseMaterial.find(query).select('_id').lean();
+      resolvedFileIds = materials.map(m => m._id);
+    }
+
+    if (resolvedFileIds.length === 0) return res.status(400).json({ message: 'No files selected or found.' });
+    if (resolvedFileIds.length > 150) return res.status(400).json({ message: 'Max 150 files per download.' });
+
+    const jobId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const safeCourseName = (courseName || 'course-materials').replace(/[^a-zA-Z0-9-_]/g, '_');
+
+    zipJobs.set(jobId, {
+      status: 'processing',
+      processed: 0,
+      total: resolvedFileIds.length,
+      error: null,
+      buffer: null,
+      fileName: `${safeCourseName}_files.zip`,
+      createdAt: Date.now()
+    });
+
+    // Start background zipping (non-blocking)
+    (async () => {
+      try {
+        const AdmZip = require('adm-zip');
+        const zip = new AdmZip();
+        const materials = await CourseMaterial.find({ _id: { $in: resolvedFileIds } }).lean();
+
+        for (const m of materials) {
+          const job = zipJobs.get(jobId);
+          if (!job) break; // Job was cleaned up or deleted
+          
+          if (m.b2Key) {
+            try {
+              // Pass the original fileName as customFilename to getSignedDownloadUrl so it downloads with original name
+              const signedUrl = await getSignedDownloadUrl(m.b2Key, 300, m.fileName || m.normalizedFileName);
+              const response = await fetch(signedUrl);
+              if (response.ok) {
+                const buf = Buffer.from(await response.arrayBuffer());
+                zip.addFile(m.fileName || m.normalizedFileName, buf);
+              }
+            } catch (err) {
+              console.error(`[ZIP_JOB] Failed for ${m.fileName}:`, err.message);
+            }
+          }
+          job.processed++;
+          zipJobs.set(jobId, { ...job });
+        }
+
+        const job = zipJobs.get(jobId);
+        if (job) {
+          job.buffer = zip.toBuffer();
+          job.status = 'completed';
+          zipJobs.set(jobId, job);
+        }
+      } catch (err) {
+        console.error(`[ZIP_JOB] Job ${jobId} failed:`, err);
+        const job = zipJobs.get(jobId);
+        if (job) {
+          job.status = 'failed';
+          job.error = err.message;
+          zipJobs.set(jobId, job);
+        }
+      }
+    })();
+
+    res.json({ jobId });
+  } catch (err) {
+    console.error('[API] start-zip-job error:', err.message);
+    res.status(500).json({ message: 'Failed to start zip packaging.' });
+  }
+});
+
+// 3.2 Poll status of a zip packaging job
+app.get('/api/course-material/download-zip/status/:jobId', auth, async (req, res) => {
+  const job = zipJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ message: 'Job not found or expired.' });
+  res.json({
+    status: job.status,
+    processed: job.processed,
+    total: job.total,
+    error: job.error
+  });
+});
+
+// 3.3 Get the packaged zip file
+app.get('/api/course-material/download-zip/file/:jobId', auth, async (req, res) => {
+  const { jobId } = req.params;
+  const job = zipJobs.get(jobId);
+  if (!job) return res.status(404).json({ message: 'File not found or expired.' });
+  if (job.status !== 'completed' || !job.buffer) {
+    return res.status(400).json({ message: 'Zip is not ready yet.' });
+  }
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${job.fileName}"`);
+  res.setHeader('Content-Length', job.buffer.length);
+  res.send(job.buffer);
+
+  // Clear job from memory after successful transfer
+  zipJobs.delete(jobId);
 });
 
 // 3. Download multiple files as a ZIP (server zips them from B2)
@@ -5090,16 +5238,17 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
       code: { $regex: '^' + courseCode + '(-|$)' },
       section: sectionCode,
       semester: semester
-    }).populate('userId', 'name email rollNumber isPortalConnected').lean();
+    }).populate('userId', 'name email portalId isPortalConnected').lean();
 
     const totalStudents = enrollments.length;
-    const connectedStudents = enrollments
-      .filter(e => e.userId && e.userId.isPortalConnected)
+    const enrolledStudents = enrollments
+      .filter(e => e.userId)
       .map(e => ({
         _id: e.userId._id,
         name: e.userId.name,
         email: e.userId.email,
-        rollNumber: e.userId.rollNumber || ''
+        rollNumber: e.userId.portalId || '',
+        isPortalConnected: e.userId.isPortalConnected || false
       }));
 
     res.json({
@@ -5107,13 +5256,103 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
       totalFiles: withUrls.length,
       studentStats: {
         total: totalStudents,
-        connectedCount: connectedStudents.length,
-        connectedList: connectedStudents
+        connectedCount: enrolledStudents.filter(s => s.isPortalConnected).length,
+        connectedList: enrolledStudents.filter(s => s.isPortalConnected),
+        studentsList: enrolledStudents
       }
     });
   } catch (err) {
     console.error('[API] admin get section files error:', err.message);
     res.status(500).json({ message: 'Failed to fetch course files and stats.' });
+  }
+});
+
+// Admin Unified Search Endpoint for Course Materials
+app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim() === '') {
+      return res.json({ courses: [], files: [], students: [] });
+    }
+
+    const cleanQ = q.trim();
+
+    // 1. Search unique course/section configurations from Course schema
+    const matchedCourses = await Course.find({
+      $or: [
+        { name: { $regex: cleanQ, $options: 'i' } },
+        { code: { $regex: cleanQ, $options: 'i' } },
+        { section: { $regex: cleanQ, $options: 'i' } }
+      ]
+    })
+    .limit(50)
+    .lean();
+
+    // Deduplicate courses to unique { courseCode, courseName, sectionCode, semester }
+    const uniqueCoursesMap = new Map();
+    for (const c of matchedCourses) {
+      const key = `${c.code}_${c.section}_${c.semester}`;
+      if (!uniqueCoursesMap.has(key)) {
+        uniqueCoursesMap.set(key, {
+          courseCode: c.code,
+          courseName: c.name,
+          sectionCode: c.section,
+          semester: c.semester
+        });
+      }
+    }
+    const deduplicatedCourses = Array.from(uniqueCoursesMap.values()).slice(0, 15);
+
+    // 2. Search files matching fileName
+    const matchedFiles = await CourseMaterial.find({
+      fileName: { $regex: cleanQ, $options: 'i' }
+    })
+    .select('fileName fileType fileSize courseCode sectionCode semester b2Key')
+    .limit(15)
+    .lean();
+
+    // 3. Search students (Users)
+    const matchedUsers = await User.find({
+      isAdmin: false,
+      $or: [
+        { name: { $regex: cleanQ, $options: 'i' } },
+        { email: { $regex: cleanQ, $options: 'i' } },
+        { portalId: { $regex: cleanQ, $options: 'i' } }
+      ]
+    })
+    .select('name email portalId isPortalConnected')
+    .limit(15)
+    .lean();
+
+    res.json({
+      courses: deduplicatedCourses,
+      files: matchedFiles,
+      students: matchedUsers
+    });
+  } catch (err) {
+    console.error('[API] Admin search error:', err.message);
+    res.status(500).json({ message: 'Search query failed.' });
+  }
+});
+
+// Admin: Get all section enrollments for a specific student
+app.get('/api/admin/course-materials/student-sections/:userId', auth, adminAuth, async (req, res) => {
+  try {
+    const enrollments = await Course.find({ userId: req.params.userId })
+      .select('name code section semester')
+      .lean();
+
+    const formatted = enrollments.map(c => ({
+      courseName: c.name,
+      courseCode: c.code,
+      sectionCode: c.section,
+      semester: c.semester
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    console.error('[API] Get student sections error:', err.message);
+    res.status(500).json({ message: 'Failed to retrieve student sections.' });
   }
 });
 

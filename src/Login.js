@@ -30,6 +30,7 @@ export default function Login() {
     // Visibility States
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [termsLink, setTermsLink] = useState('https://myportalucp.vercel.app/terms');
 
     const email = activeEmail || `${rollNumber.toLowerCase().trim()}@ucp.edu.pk`;
     const otp = otpValues.join('');
@@ -203,6 +204,20 @@ export default function Login() {
         }
     };
 
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/api/public/settings`);
+                if (res.data && res.data.termsLink) {
+                    setTermsLink(res.data.termsLink);
+                }
+            } catch (err) {
+                console.error("Error fetching terms link setting:", err);
+            }
+        };
+        fetchSettings();
+    }, []);
+
     return (
         <div className="relative min-h-screen bg-black flex items-center justify-center p-4 selection:bg-white/30 transition-colors duration-1000">
             
@@ -293,7 +308,7 @@ export default function Login() {
                                 </button>
                                 <p className="text-[11px] text-gray-500 text-center font-medium mt-4 select-none">
                                     By logging in you agree to our{' '}
-                                    <a href="https://myportalucp.vercel.app/terms" target="_blank" rel="noreferrer" className="text-gray-300 hover:text-white underline font-bold transition-colors">
+                                    <a href={termsLink} target="_blank" rel="noreferrer" className="text-gray-300 hover:text-white underline font-bold transition-colors">
                                         Terms & conditions
                                     </a>.
                                 </p>
@@ -329,7 +344,7 @@ export default function Login() {
                                 </button>
                                 <p className="text-[11px] text-gray-500 text-center font-medium mt-4 select-none">
                                     By logging in you agree to our{' '}
-                                    <a href="https://myportalucp.vercel.app/terms" target="_blank" rel="noreferrer" className="text-gray-300 hover:text-white underline font-bold transition-colors">
+                                    <a href={termsLink} target="_blank" rel="noreferrer" className="text-gray-300 hover:text-white underline font-bold transition-colors">
                                         Terms & conditions
                                     </a>.
                                 </p>

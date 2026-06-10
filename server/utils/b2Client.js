@@ -54,16 +54,12 @@ async function uploadToB2(key, buffer, contentType = 'application/octet-stream',
     };
 }
 
-/**
- * Generate a pre-signed download URL for a B2 object.
- * Valid for `expiresIn` seconds (default 3600 = 1 hour).
- */
-async function getSignedDownloadUrl(key, expiresIn = 3600) {
-    const filename = key.split('/').pop() || 'file';
+async function getSignedDownloadUrl(key, expiresIn = 3600, customFilename = null) {
+    const filename = customFilename || key.split('/').pop() || 'file';
     const command = new GetObjectCommand({
         Bucket: B2_BUCKET,
         Key: key,
-        ResponseContentDisposition: `attachment; filename="${filename}"`
+        ResponseContentDisposition: `attachment; filename="${filename.replace(/"/g, '\\"')}"`
     });
     return getSignedUrl(b2, command, { expiresIn });
 }

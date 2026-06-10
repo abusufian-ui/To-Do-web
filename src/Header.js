@@ -84,7 +84,10 @@ const Header = ({
     setFilters({ ...filters, searchQuery: query });
 
     if (query.trim().length > 0 && !isCashTab) {
-      if (activeTab === 'Notes') {
+      if (activeTab === 'Course Material') {
+        setSearchResults([]);
+        setShowSearchDropdown(false);
+      } else if (activeTab === 'Notes') {
         const results = safeNotes.filter(note => note?.title?.toLowerCase().includes(query.toLowerCase()) || note?.content?.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
         setSearchResults(results.map(n => ({ ...n, isNoteResult: true })));
       } else if (activeTab === 'Keynotes') {
@@ -223,8 +226,16 @@ const Header = ({
                 type="text"
                 value={filters?.searchQuery || ''}
                 onChange={handleSearchChange}
-                onFocus={() => filters?.searchQuery && !isCashTab && setShowSearchDropdown(true)}
-                placeholder={activeTab === 'Notes' || activeTab === 'Keynotes' ? `Search ${activeTab.toLowerCase()}...` : isCashTab ? 'Search transactions...' : "Search tasks..."}
+                onFocus={() => filters?.searchQuery && !isCashTab && activeTab !== 'Course Material' && setShowSearchDropdown(true)}
+                placeholder={
+                  activeTab === 'Notes' || activeTab === 'Keynotes'
+                    ? `Search ${activeTab.toLowerCase()}...`
+                    : activeTab === 'Course Material'
+                    ? 'Search files by name or genre (.pdf, .docx)...'
+                    : isCashTab
+                    ? 'Search transactions...'
+                    : "Search tasks..."
+                }
                 autoComplete="off"
                 name="global-portal-search-input"
                 spellCheck="false"

@@ -99,7 +99,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
 
   return (
     <div className={`
-      fixed inset-y-0 left-0 md:relative z-[60] h-screen bg-white dark:bg-[#1E1E1E] border-r border-gray-200 dark:border-[#2C2C2C] 
+      fixed inset-y-0 left-0 md:relative z-[120] shrink-0 h-screen bg-white dark:bg-[#1E1E1E] border-r border-gray-200 dark:border-[#2C2C2C] 
       flex flex-col transition-transform duration-300 ease-in-out md:transition-all
       ${isOpen ? 'translate-x-0 w-64 p-6 shadow-2xl md:shadow-none' : '-translate-x-full md:translate-x-0 md:w-20 p-6 md:p-4 md:items-center'}
     `}>

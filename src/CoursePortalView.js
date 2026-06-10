@@ -12,7 +12,7 @@ import ParallelSyncDashboard from './ParallelSyncDashboard';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-const CoursePortalView = ({ activeTab, courses }) => {
+const CoursePortalView = ({ activeTab, courses, filters }) => {
   const uniCourses = courses.filter(c => c.type === 'uni');
   const [selectedCourse, setSelectedCourse] = useState(uniCourses.length > 0 ? uniCourses[0].name : null);
   
@@ -220,6 +220,35 @@ const CoursePortalView = ({ activeTab, courses }) => {
   const currentCourseCode = currentCourse?.code;
   const currentCourseName = currentCourse?.name;
 
+  if (activeTab === 'Course Material') {
+    return (
+      <div className="w-full h-full relative">
+        <CourseMaterial 
+          courses={uniCourses} 
+          onViewFile={(url, name) => {
+            setPreviewFile(url);
+            setPreviewName(name);
+          }} 
+          showSyncDashboard={showSyncDashboard}
+          setShowSyncDashboard={setShowSyncDashboard}
+          coursesSyncStatus={coursesSyncStatus}
+          fetchStatuses={fetchStatuses}
+          searchQuery={filters?.searchQuery || ''}
+        />
+        {previewFile && (
+          <SecureDocumentViewer 
+            fileUrl={previewFile} 
+            fileName={previewName} 
+            onClose={() => {
+              setPreviewFile(null);
+              setPreviewName(null);
+            }} 
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar-hide">
       
@@ -237,7 +266,7 @@ const CoursePortalView = ({ activeTab, courses }) => {
         </div>
         
         {/* EXACT UI MATCH: Custom Dropdown Menu */}
-        {!(activeTab === 'Course Material' && showSyncDashboard) && (
+        {activeTab !== 'Course Material' && (
           <div className="relative w-full md:w-[28rem] shrink-0" ref={dropdownRef}>
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}

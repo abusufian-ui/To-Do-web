@@ -1015,7 +1015,7 @@ function AppLayout() {
                     <Datesheet exams={activeExams} />
                   </div>
 
-                  <div className={`w-full h-full ${['Announcements', 'Attendance', 'Submissions', 'Course Material', 'Course Vault'].includes(activeTab) ? 'block' : 'hidden'}`}><CoursePortalView activeTab={activeTab} courses={visibleCourses} user={user} /></div>
+                  <div className={`w-full h-full ${['Announcements', 'Attendance', 'Submissions', 'Course Material', 'Course Vault'].includes(activeTab) ? 'block' : 'hidden'}`}><CoursePortalView activeTab={activeTab} courses={visibleCourses} user={user} filters={filters} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Cash-') ? 'block' : 'hidden'}`}><CashManager activeTab={activeTab} filters={filters} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>
                   <div className={`w-full h-full ${activeTab === 'Bin' ? 'block' : 'hidden'}`}><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>
                   <div className={`w-full h-full ${activeTab === 'Admin' ? 'block' : 'hidden'}`}><AdminDashboard currentUser={user} /></div>

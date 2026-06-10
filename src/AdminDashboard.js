@@ -1576,6 +1576,11 @@ const WebsiteConfigApp = ({ token }) => {
   const [isEditingLink, setIsEditingLink] = useState(false);
   const [savingLink, setSavingLink] = useState(false);
   
+  const [termsLink, setTermsLink] = useState('');
+  const [savedTermsLink, setSavedTermsLink] = useState('');
+  const [isEditingTerms, setIsEditingTerms] = useState(false);
+  const [savingTerms, setSavingTerms] = useState(false);
+
   const [apkInfo, setApkInfo] = useState({ uploaded: false });
   const [loadingInfo, setLoadingInfo] = useState(true);
   const [uploadingApk, setUploadingApk] = useState(false);
@@ -1591,6 +1596,8 @@ const WebsiteConfigApp = ({ token }) => {
         const data = await res.json();
         setWebPortalLink(data.webPortalLink || '');
         setSavedLink(data.webPortalLink || '');
+        setTermsLink(data.termsLink || '');
+        setSavedTermsLink(data.termsLink || '');
         setApkInfo(data.apkInfo || { uploaded: false });
       }
     } catch (err) {
@@ -1635,6 +1642,36 @@ const WebsiteConfigApp = ({ token }) => {
   const handleCancelLink = () => {
     setWebPortalLink(savedLink);
     setIsEditingLink(false);
+  };
+
+  const handleSaveTerms = async () => {
+    setSavingTerms(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings/terms-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ link: termsLink.trim() })
+      });
+      if (res.ok) {
+        setSavedTermsLink(termsLink.trim());
+        setIsEditingTerms(false);
+        ToastConfig.show({ title: 'Success', message: 'Terms and Conditions link updated.', type: 'success' });
+      } else {
+        const errData = await res.json();
+        ToastConfig.show({ title: 'Error', message: errData.message || 'Failed to update link.', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error saving terms link.', type: 'error' });
+    }
+    setSavingTerms(false);
+  };
+
+  const handleCancelTerms = () => {
+    setTermsLink(savedTermsLink);
+    setIsEditingTerms(false);
   };
 
   const handleApkUpload = async (e) => {
@@ -1773,6 +1810,55 @@ const WebsiteConfigApp = ({ token }) => {
             </div>
             <button
               onClick={() => setIsEditingLink(true)}
+              className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-blue-600/10"
+            >
+              Edit Link
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Terms and Conditions Link configuration */}
+      <div className="bg-gray-50 dark:bg-[#18181b] rounded-2xl border border-gray-200 dark:border-[#27272a] p-5">
+        <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+          <Server size={16} className="text-blue-500" /> Terms & Conditions Link
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          This is the link to the Terms and Conditions page for both the Mobile App and the Web App.
+        </p>
+
+        {isEditingTerms ? (
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder="e.g. https://myportalucp.online/terms"
+              value={termsLink}
+              onChange={e => setTermsLink(e.target.value)}
+              className="flex-1 px-4 py-2.5 bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
+            />
+            <button
+              onClick={handleSaveTerms}
+              disabled={savingTerms}
+              className="px-5 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {savingTerms ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={handleCancelTerms}
+              disabled={savingTerms}
+              className="px-5 py-2.5 rounded-xl font-bold bg-gray-200 hover:bg-gray-300 dark:bg-[#27272a] dark:hover:bg-[#323237] text-gray-800 dark:text-gray-200 text-sm transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50/50 dark:bg-blue-900/5 border border-blue-200/50 dark:border-blue-900/10">
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-blue-500 dark:text-blue-400">Currently Saved</span>
+              <p className="text-sm font-bold text-gray-800 dark:text-gray-200 truncate mt-0.5">{savedTermsLink || 'None (Using default)'}</p>
+            </div>
+            <button
+              onClick={() => setIsEditingTerms(true)}
               className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-blue-600/10"
             >
               Edit Link
@@ -2043,10 +2129,11 @@ const AdminDashboard = ({ currentUser }) => {
 
   // ── Active App full-layout view ──────────────────────────────────────────
   if (activeApp) {
+    const isSidebarApp = ['courseMaterials', 'vaultManager'].includes(activeApp);
     return (
-      <div className="w-full h-full overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-[#0c0c0c] text-gray-900 dark:text-white animate-fadeIn">
+      <div className="w-full h-full flex flex-col bg-gray-50 dark:bg-[#0c0c0c] text-gray-900 dark:text-white animate-fadeIn overflow-hidden">
         {/* App header with back button */}
-        <div className="sticky top-0 z-30 bg-white/80 dark:bg-[#111113]/80 backdrop-blur-md border-b border-gray-200 dark:border-[#27272a] px-6 py-4 flex items-center gap-3">
+        <div className="shrink-0 bg-white/80 dark:bg-[#111113]/80 backdrop-blur-md border-b border-gray-200 dark:border-[#27272a] px-6 py-4 flex items-center gap-3">
           <button onClick={() => setActiveApp(null)}
             className="flex items-center gap-1.5 text-sm font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors group">
             <ChevronLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
@@ -2061,8 +2148,8 @@ const AdminDashboard = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* App content — full width */}
-        <div className="bg-white dark:bg-[#111113] min-h-[calc(100%-65px)]">
+        {/* App content */}
+        <div className={`flex-1 bg-white dark:bg-[#111113] relative min-h-0 ${isSidebarApp ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
           {activeApp === 'users'         && <UserDirectoryApp users={users} loading={loadingUsers} isSuperAdmin={isSuperAdmin} token={token} onUsersChange={setUsers} onRefresh={fetchUsers} />}
           {activeApp === 'tickets'       && <SupportTicketsApp tickets={tickets} loading={loadingTickets} token={token} onTicketsChange={setTickets} onRefresh={fetchTickets} />}
           {activeApp === 'sessions'      && <SessionInspectorApp users={users} token={token} loading={loadingUsers} onRefresh={fetchUsers} />}
