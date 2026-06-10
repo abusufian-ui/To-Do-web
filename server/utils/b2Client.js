@@ -4,8 +4,8 @@ const { GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 // BackBlaze B2 is S3-compatible — we use the AWS SDK v3
-const B2_KEY_ID = process.env.B2_KEY_ID || 'cdfb0a4cfaaf';
-const B2_APP_KEY = process.env.B2_APP_KEY || '003f60a1064fbbe459faebfe0d94199bfd056fb7d2';
+const B2_KEY_ID = process.env.B2_KEY_ID || '003cdfb0a4cfaaf0000000001';
+const B2_APP_KEY = process.env.B2_APP_KEY || 'K003/mzimKqI8FKs1419f8UiHrWKy3E';
 const B2_ENDPOINT = process.env.B2_ENDPOINT || 'https://s3.eu-central-003.backblazeb2.com';
 const B2_REGION = process.env.B2_REGION || 'eu-central-003';
 const B2_BUCKET = process.env.B2_BUCKET_NAME || 'myportal-large-data';
@@ -59,9 +59,11 @@ async function uploadToB2(key, buffer, contentType = 'application/octet-stream',
  * Valid for `expiresIn` seconds (default 3600 = 1 hour).
  */
 async function getSignedDownloadUrl(key, expiresIn = 3600) {
+    const filename = key.split('/').pop() || 'file';
     const command = new GetObjectCommand({
         Bucket: B2_BUCKET,
-        Key: key
+        Key: key,
+        ResponseContentDisposition: `attachment; filename="${filename}"`
     });
     return getSignedUrl(b2, command, { expiresIn });
 }
