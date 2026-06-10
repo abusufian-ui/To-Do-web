@@ -4910,9 +4910,20 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
     let resolvedFileIds = fileIds || [];
 
     if (resolvedFileIds.length === 0 && courseCode) {
-      const query = { courseCode };
+      const globalCode = courseCode.split('-')[0].trim();
+      const query = { courseCode: globalCode };
       if (sectionCode) query.sectionCode = sectionCode;
-      if (semester) query.semester = semester;
+      
+      let activeSemester = semester;
+      if (!activeSemester) {
+        const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
+        if (course) {
+          activeSemester = course.semester;
+        }
+      }
+      if (activeSemester) {
+        query.semester = activeSemester;
+      }
       
       const materials = await CourseMaterial.find(query).select('_id').lean();
       resolvedFileIds = materials.map(m => m._id);
