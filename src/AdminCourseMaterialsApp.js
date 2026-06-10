@@ -628,17 +628,17 @@ const AdminCourseMaterialsApp = ({ token }) => {
                   <div className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-[#1c1c1f] text-left transition-colors group relative">
                     <button
                       onClick={() => toggleCourseExpand(course.courseCode)}
-                      className="flex-grow flex items-center gap-2.5 min-w-0"
+                      className="flex-grow flex items-center gap-2.5 min-w-0 text-left"
                     >
                       <div className="text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
                         {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </div>
                       <Folder size={18} className="text-blue-500 shrink-0 fill-blue-500/10" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-gray-700 dark:text-gray-200 truncate leading-tight">
+                      <div className="min-w-0 flex-1 text-left">
+                        <p className="text-xs font-bold text-gray-700 dark:text-gray-200 truncate leading-tight text-left">
                           {course.courseName}
                         </p>
-                        <p className="text-[10px] text-gray-400 font-mono mt-0.5">
+                        <p className="text-[10px] text-gray-400 font-mono mt-0.5 text-left">
                           {course.courseCode}
                         </p>
                       </div>

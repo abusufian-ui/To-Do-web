@@ -4941,6 +4941,9 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
         const zip = new AdmZip();
         const materials = await CourseMaterial.find({ _id: { $in: resolvedFileIds } }).lean();
 
+        const uniqueSections = [...new Set(materials.map(m => m.sectionCode).filter(Boolean))];
+        const useSectionDirs = uniqueSections.length > 1;
+
         for (const m of materials) {
           const job = zipJobs.get(jobId);
           if (!job) break; // Job was cleaned up or deleted
@@ -4952,7 +4955,8 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
               const response = await fetch(signedUrl);
               if (response.ok) {
                 const buf = Buffer.from(await response.arrayBuffer());
-                zip.addFile(m.fileName || m.normalizedFileName, buf);
+                const sectionFolder = useSectionDirs ? `Section ${m.sectionCode}/` : '';
+                zip.addFile(`${sectionFolder}${m.fileName || m.normalizedFileName}`, buf);
               }
             } catch (err) {
               console.error(`[ZIP_JOB] Failed for ${m.fileName}:`, err.message);
