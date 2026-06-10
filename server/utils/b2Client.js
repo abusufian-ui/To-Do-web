@@ -101,4 +101,20 @@ function normalizeFileName(filename) {
     return filename.toLowerCase().replace(/[^a-z0-9._-]/g, '').replace(/\s+/g, '');
 }
 
-module.exports = { b2, uploadToB2, getSignedDownloadUrl, getMimeType, normalizeFileName, B2_BUCKET };
+/**
+ * Download a file from BackBlaze B2 and return a Buffer.
+ */
+async function downloadFileFromB2(key) {
+    const command = new GetObjectCommand({
+        Bucket: B2_BUCKET,
+        Key: key
+    });
+    const response = await b2.send(command);
+    const chunks = [];
+    for await (const chunk of response.Body) {
+        chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+}
+
+module.exports = { b2, uploadToB2, getSignedDownloadUrl, getMimeType, normalizeFileName, downloadFileFromB2, B2_BUCKET };

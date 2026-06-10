@@ -6,11 +6,13 @@ import {
   ShieldAlert, Lock, ShieldCheck, Mail, KeyRound, Server,
   Eye, Cookie, RefreshCw, Bell, BanIcon, CheckCircle2,
   ChevronLeft, Send, Clock, Wifi, WifiOff, FlaskConical,
-  UserCheck, AlertTriangle
+  UserCheck, AlertTriangle, Folder, FileText
 } from 'lucide-react';
 import { ToastConfig } from './CustomToast';
 import ConfirmationModal from './ConfirmationModal';
 import SyncDiagnostics from './SyncDiagnostics';
+import CourseVaultManagerApp from './CourseVaultManagerApp';
+import AdminCourseMaterialsApp from './AdminCourseMaterialsApp';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
@@ -1283,6 +1285,289 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
 };
 
 // ────────────────────────────────────────────────────────────────────────────────
+// APP 8: BACKBLAZE B2 MANAGER & MANUAL SYNC
+// ────────────────────────────────────────────────────────────────────────────────
+const BackBlazeManagerApp = ({ token, users }) => {
+  const [b2Files, setB2Files] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [syncType, setSyncType] = useState('single_user_process');
+  const [triggering, setTriggering] = useState(false);
+
+  const fetchB2Files = async () => {
+    setLoadingFiles(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/b2-files`, {
+        headers: { 'x-auth-token': token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setB2Files(data);
+      } else {
+        const err = await res.json();
+        ToastConfig.show({ title: 'Error', message: err.message || 'Failed to fetch B2 files.', type: 'error' });
+      }
+    } catch (err) {
+      ToastConfig.show({ title: 'Error', message: 'Network error fetching B2 files.', type: 'error' });
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchB2Files();
+  }, []);
+
+  const handleTriggerSync = async () => {
+    if (syncType !== 'nightly_sync_all' && !selectedUserId) {
+      ToastConfig.show({ title: 'Selection Required', message: 'Please select a user to trigger sync/processing.', type: 'error' });
+      return;
+    }
+
+    setTriggering(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/trigger-processor`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({
+          userId: selectedUserId,
+          type: syncType
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        ToastConfig.show({
+          title: 'Sync Triggered',
+          message: data.message || 'Sync started successfully in the background.',
+          type: 'success'
+        });
+      } else {
+        const err = await res.json();
+        ToastConfig.show({ title: 'Sync Failed', message: err.message || 'Failed to trigger sync.', type: 'error' });
+      }
+    } catch (err) {
+      ToastConfig.show({ title: 'Error', message: 'Network error triggering sync.', type: 'error' });
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const handleDeleteFile = async (key) => {
+    if (!window.confirm(`Are you sure you want to permanently delete the file "${key}" from the B2 bucket? This will also remove database references and cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/b2-files?key=${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+        headers: {
+          'x-auth-token': token
+        }
+      });
+
+      if (res.ok) {
+        ToastConfig.show({ title: 'Deleted', message: 'File deleted from B2 successfully.', type: 'success' });
+        setB2Files(prev => prev.filter(f => f.key !== key));
+      } else {
+        const err = await res.json();
+        ToastConfig.show({ title: 'Delete Failed', message: err.message || 'Failed to delete file.', type: 'error' });
+      }
+    } catch (err) {
+      ToastConfig.show({ title: 'Error', message: 'Network error deleting file.', type: 'error' });
+    }
+  };
+
+  const filteredFiles = b2Files.filter(f => 
+    f.key.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const connectedUsers = users.filter(u => u.isPortalConnected && u.ucpCookie);
+
+  return (
+    <div className="p-6 space-y-8 animate-fadeIn">
+      {/* SECTION 1: Manual Trigger Panel */}
+      <div className="bg-white dark:bg-[#151518] rounded-2xl border border-gray-200 dark:border-[#27272a] p-6 shadow-sm">
+        <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2 mb-2">
+          <RefreshCw size={20} className="text-blue-500 animate-spin-slow" />
+          Manual Materials Sync & Processor
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
+          Trigger the backend crawler and S3 converter to fetch, process, and convert course materials into PDFs and upload them to BackBlaze B2.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-end">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Sync Action Type</label>
+            <select
+              value={syncType}
+              onChange={(e) => setSyncType(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0c0c0e] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-bold"
+            >
+              <option value="single_user_process">Process Staged Links (Single User)</option>
+              <option value="single_user_nightly">Full Portal Crawl & Process (Single User)</option>
+              <option value="nightly_sync_all">Full Nightly Sync (All Users)</option>
+            </select>
+          </div>
+
+          {syncType !== 'nightly_sync_all' && (
+            <div className="animate-fadeIn">
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Target Student / User</label>
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0c0c0e] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
+              >
+                <option value="">-- Select Active Portal Student --</option>
+                {connectedUsers.map(u => (
+                  <option key={u._id} value={u._id}>
+                    {u.name || 'No Name'} ({u.email || u.rollNumber})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <button
+              onClick={handleTriggerSync}
+              disabled={triggering || (syncType !== 'nightly_sync_all' && !selectedUserId)}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-blue-600/15"
+            >
+              {triggering ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Send size={16} />
+                  Trigger Processing
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 2: B2 Storage File List */}
+      <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-2xl p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2">
+              <HardDrive size={20} className="text-rose-500" />
+              BackBlaze B2 Bucket Files
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Currently stored documents, original files, and PDF conversions inside the BackBlaze B2 bucket storage.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input
+                type="text"
+                placeholder="Search bucket files..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 bg-gray-50 dark:bg-[#0c0c0e] border border-gray-200 dark:border-[#27272a] rounded-xl text-xs text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 w-56 font-medium"
+              />
+            </div>
+
+            <button
+              onClick={fetchB2Files}
+              disabled={loadingFiles}
+              className="p-2 bg-gray-100 hover:bg-gray-200 dark:bg-[#27272a] dark:hover:bg-[#323237] text-gray-700 dark:text-gray-300 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+              title="Refresh Files List"
+            >
+              <RefreshCw size={16} className={loadingFiles ? "animate-spin" : ""} />
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-gray-200/50 dark:border-[#27272a]/50">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-[#1c1c1f] text-[10px] uppercase tracking-wider font-extrabold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-[#27272a]">
+                <th className="px-6 py-4">File Key / Path</th>
+                <th className="px-6 py-4">Type</th>
+                <th className="px-6 py-4">Size</th>
+                <th className="px-6 py-4">Last Modified</th>
+                <th className="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-[#27272a] text-xs font-medium text-gray-700 dark:text-gray-300">
+              {loadingFiles ? (
+                <tr>
+                  <td colSpan="5" className="px-6 py-12 text-center text-gray-400 animate-pulse">
+                    Loading BackBlaze bucket files...
+                  </td>
+                </tr>
+              ) : filteredFiles.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="px-6 py-12 text-center text-gray-400">
+                    No files found in B2 bucket matching criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredFiles.map((file) => {
+                  const isVault = file.key.startsWith('course-vault/');
+                  const isMaterial = file.key.startsWith('course-material/');
+                  
+                  return (
+                    <tr key={file.key} className="hover:bg-gray-50/50 dark:hover:bg-[#18181b]/30 transition-colors">
+                      <td className="px-6 py-4 font-mono select-all break-all max-w-md">
+                        {file.key}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isVault ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400 border border-purple-200/30">
+                            Vault (PDF View)
+                          </span>
+                        ) : isMaterial ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 border border-blue-200/30">
+                            Material (Download)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                            Other
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
+                        {formatBytes(file.size)}
+                      </td>
+                      <td className="px-6 py-4 text-gray-500">
+                        {new Date(file.lastModified).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => handleDeleteFile(file.key)}
+                          className="p-1.5 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20 dark:hover:text-red-400 text-gray-400 rounded-lg transition-colors"
+                          title="Delete file permanently"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ────────────────────────────────────────────────────────────────────────────────
 // APP 7: WEBSITE CONFIG (PORTAL LINK & APK RELEASE)
 // ────────────────────────────────────────────────────────────────────────────────
 const WebsiteConfigApp = ({ token }) => {
@@ -1296,6 +1581,7 @@ const WebsiteConfigApp = ({ token }) => {
   const [uploadingApk, setUploadingApk] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null); // { loaded, total, percent }
   const [deletingApk, setDeletingApk] = useState(false);
+  const [apkVersion, setApkVersion] = useState('');
 
   const fetchSettings = async () => {
     setLoadingInfo(true);
@@ -1359,77 +1645,51 @@ const WebsiteConfigApp = ({ token }) => {
       return;
     }
 
-    // ── Chunked upload config ─────────────────────────────────────────────────
-    // Each chunk is 10 MB. This keeps every individual POST well under Nginx's
-    // default client_max_body_size (usually 1–50 MB) with room to spare.
-    // The server's /api/admin/apk-chunk route accepts up to 12 MB per request.
-    const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    if (!apkVersion.trim()) {
+      ToastConfig.show({ title: 'Version Required', message: 'Please enter the App Version before selecting the APK file.', type: 'error' });
+      e.target.value = null;
+      return;
+    }
 
     setUploadingApk(true);
-    setUploadProgress({ loaded: 0, total: file.size, percent: 0, chunk: 0, totalChunks });
+    setUploadProgress({ loaded: 0, total: file.size, percent: 0 });
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('version', apkVersion.trim());
 
     try {
-      // Upload each chunk sequentially
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end   = Math.min(start + CHUNK_SIZE, file.size);
-        const blob  = file.slice(start, end);
-
-        // Convert Blob → ArrayBuffer → Buffer for binary transfer
-        const arrayBuf = await blob.arrayBuffer();
-
-        await axios.post(
-          `${API_BASE}/api/admin/apk-chunk`,
-          arrayBuf,
-          {
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'x-auth-token': token,
-              'x-chunk-index': String(i),
-              'x-total-chunks': String(totalChunks),
-            },
-            // Track per-chunk progress to keep the bar alive during each POST
-            onUploadProgress: (progressEvent) => {
-              const chunkLoaded  = progressEvent.loaded;
-              const baseSent     = i * CHUNK_SIZE;
-              const totalLoaded  = baseSent + chunkLoaded;
-              const percent      = Math.round((totalLoaded / file.size) * 100);
-              setUploadProgress({
-                loaded: totalLoaded,
-                total:  file.size,
-                percent: Math.min(percent, 99), // Reserve 100% for finalize
-                chunk: i + 1,
-                totalChunks,
-              });
-            },
+      const res = await axios.post(
+        `${API_BASE}/api/admin/settings/apk-upload`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'x-auth-token': token
+          },
+          onUploadProgress: (progressEvent) => {
+            const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+            setUploadProgress({
+              loaded: progressEvent.loaded,
+              total: progressEvent.total,
+              percent: Math.min(percent, 99)
+            });
           }
-        );
-      }
-
-      // All chunks sent — tell the server to assemble them
-      setUploadProgress(prev => ({ ...prev, percent: 99, chunk: totalChunks, totalChunks }));
-
-      const finalizeRes = await axios.post(
-        `${API_BASE}/api/admin/apk-finalize`,
-        { totalChunks, totalSize: file.size },
-        { headers: { 'Content-Type': 'application/json', 'x-auth-token': token } }
+        }
       );
 
-      if (finalizeRes.data && finalizeRes.data.success) {
-        setUploadProgress(prev => ({ ...prev, percent: 100 }));
-        setApkInfo(finalizeRes.data.apkInfo);
+      if (res.data && res.data.success) {
+        setUploadProgress({ loaded: file.size, total: file.size, percent: 100 });
+        setApkInfo(res.data.apkInfo);
+        setApkVersion('');
         ToastConfig.show({
           title: 'Upload Complete',
-          message: `APK saved to server (${(file.size / 1024 / 1024).toFixed(1)} MB). Users can now download it.`,
+          message: `APK v${res.data.apkInfo.version} uploaded successfully to BackBlaze B2.`,
           type: 'success'
         });
-      } else {
-        throw new Error(finalizeRes.data?.message || 'Server failed to assemble APK.');
       }
-
     } catch (err) {
-      console.error('Chunked APK Upload Error:', err);
+      console.error('APK Upload Error:', err);
       ToastConfig.show({
         title: 'Upload Failed',
         message: err.response?.data?.message || err.message || 'Error uploading APK. Please try again.',
@@ -1530,6 +1790,19 @@ const WebsiteConfigApp = ({ token }) => {
           Upload the Android APK bundle here. The general website download button and QR code link directly to this file on the server, ensuring users always get the latest version.
         </p>
 
+        {!loadingInfo && !uploadingApk && (
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">New Release Version (e.g. 1.0.1)</label>
+            <input
+              type="text"
+              placeholder="e.g. 1.0.0"
+              value={apkVersion}
+              onChange={e => setApkVersion(e.target.value)}
+              className="w-full px-4 py-2.5 bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
+            />
+          </div>
+        )}
+
         {loadingInfo ? (
           <div className="text-center py-6 text-gray-400 animate-pulse text-sm">Loading config...</div>
         ) : uploadingApk ? (
@@ -1537,13 +1810,13 @@ const WebsiteConfigApp = ({ token }) => {
             <div className="flex items-center justify-between text-xs font-bold">
               <span className="text-blue-500 flex items-center gap-2">
                 <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                {uploadProgress?.percent >= 99 ? 'Assembling on server...' : 'Uploading to server...'}
+                {uploadProgress?.percent >= 99 ? 'Processing on B2...' : 'Uploading to B2...'}
               </span>
               <span className="text-gray-500 dark:text-gray-400">
                 {uploadProgress
                   ? uploadProgress.percent >= 99
-                    ? 'Finalizing...'
-                    : `Chunk ${uploadProgress.chunk}/${uploadProgress.totalChunks} · ${(uploadProgress.loaded / (1024 * 1024)).toFixed(1)} / ${(uploadProgress.total / (1024 * 1024)).toFixed(1)} MB (${uploadProgress.percent}%)`
+                    ? 'Processing on B2...'
+                    : `Uploading · ${(uploadProgress.loaded / (1024 * 1024)).toFixed(1)} / ${(uploadProgress.total / (1024 * 1024)).toFixed(1)} MB (${uploadProgress.percent}%)`
                   : 'Preparing upload...'}
               </span>
             </div>
@@ -1564,6 +1837,9 @@ const WebsiteConfigApp = ({ token }) => {
                 <p className="font-bold text-gray-900 dark:text-white text-sm">Active APK Release</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
                   Filename: {apkInfo.filename || 'myportal.apk'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Version: {apkInfo.version || '1.0.0'}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                   Size: {(apkInfo.size / (1024 * 1024)).toFixed(2)} MB · Uploaded: {new Date(apkInfo.uploadedAt).toLocaleString()}
@@ -1756,6 +2032,9 @@ const AdminDashboard = ({ currentUser }) => {
     { id: 'sessions',      label: 'Session Inspector',      icon: Cookie,       color: 'bg-emerald-100 dark:bg-emerald-900/30', textColor: 'text-emerald-600 dark:text-emerald-400' },
     { id: 'diagnostics',   label: 'Scraping Diagnostics',   icon: FlaskConical, color: 'bg-purple-100 dark:bg-purple-900/30', textColor: 'text-purple-600 dark:text-purple-400' },
     { id: 'notifications', label: 'Notifications Manager',  icon: Bell,         color: 'bg-orange-100 dark:bg-orange-900/30', textColor: 'text-orange-600 dark:text-orange-400' },
+    { id: 'b2',            label: 'BackBlaze B2 Manager',  icon: HardDrive,    color: 'bg-rose-100 dark:bg-rose-900/30',     textColor: 'text-rose-600 dark:text-rose-400' },
+    { id: 'vaultManager',  label: 'Course Vault Manager',   icon: Folder,       color: 'bg-teal-100 dark:bg-teal-900/30',     textColor: 'text-teal-600 dark:text-teal-400' },
+    { id: 'courseMaterials',label: 'Course Materials',     icon: FileText,     color: 'bg-pink-100 dark:bg-pink-900/30',     textColor: 'text-pink-600 dark:text-pink-400' },
     { id: 'security',      label: 'Security & PIN',         icon: KeyRound,     color: 'bg-red-100 dark:bg-red-900/30',      textColor: 'text-red-600 dark:text-red-400' },
     { id: 'settings',      label: 'Website Config',         icon: Server,       color: 'bg-indigo-100 dark:bg-indigo-900/30', textColor: 'text-indigo-600 dark:text-indigo-400' },
   ];
@@ -1791,6 +2070,9 @@ const AdminDashboard = ({ currentUser }) => {
           {activeApp === 'notifications' && <NotificationsManagerApp users={users} isSuperAdmin={isSuperAdmin} token={token} />}
           {activeApp === 'security'      && <SecurityApp token={token} />}
           {activeApp === 'settings'      && <WebsiteConfigApp token={token} />}
+          {activeApp === 'b2'            && <BackBlazeManagerApp token={token} users={users} />}
+          {activeApp === 'vaultManager'  && <CourseVaultManagerApp token={token} />}
+          {activeApp === 'courseMaterials'&& <AdminCourseMaterialsApp token={token} />}
         </div>
       </div>
     );

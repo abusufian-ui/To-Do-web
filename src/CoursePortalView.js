@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AlertCircle, ChevronDown, CheckCircle2 } from 'lucide-react';
 import CourseAnnouncements from './CourseAnnouncements';
 import CourseAttendance from './CourseAttendance';
@@ -7,6 +7,7 @@ import UCPLogo from './UCPLogo';
 import CourseMaterial from './CourseMaterial';
 import CourseVault from './CourseVault';
 import SecureDocumentViewer from './SecureDocumentViewer';
+import ParallelSyncDashboard from './ParallelSyncDashboard';
  
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -29,6 +30,9 @@ const CoursePortalView = ({ activeTab, courses }) => {
   const [allAnnouncements, setAllAnnouncements] = useState([]);
   const [allAttendance, setAllAttendance] = useState([]);
   const [allSubmissions, setAllSubmissions] = useState([]);
+  
+  const [coursesSyncStatus, setCoursesSyncStatus] = useState({});
+  const [showSyncDashboard, setShowSyncDashboard] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -71,6 +75,66 @@ const CoursePortalView = ({ activeTab, courses }) => {
 
     fetchAllData();
   }, []); // Run once on mount
+
+  const fetchStatuses = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const headers = { 'x-auth-token': token };
+
+      const statuses = await Promise.all(
+        uniCourses.map(async (course) => {
+          try {
+            const res = await fetch(`${API_BASE}/api/course-material/status/${encodeURIComponent(course.code)}/${encodeURIComponent(course.section)}`, { headers });
+            if (res.ok) {
+              const data = await res.json();
+              return { code: course.code, status: data };
+            }
+          } catch (e) {
+            console.error("Status fetch failed for", course.code, e);
+          }
+          return { code: course.code, status: null };
+        })
+      );
+
+      const statusMap = {};
+      let anyProcessing = false;
+      let totalFilesAll = 0;
+
+      statuses.forEach(item => {
+        if (item.status) {
+          statusMap[item.code] = item.status;
+          if (item.status.isProcessing) {
+            anyProcessing = true;
+          }
+          totalFilesAll += item.status.fileCount || 0;
+        }
+      });
+
+      setCoursesSyncStatus(statusMap);
+
+      if (anyProcessing || totalFilesAll === 0) {
+        setShowSyncDashboard(true);
+      } else {
+        setShowSyncDashboard(false);
+      }
+    } catch (error) {
+      console.error("Failed to fetch course material statuses", error);
+    }
+  }, [uniCourses]);
+
+  useEffect(() => {
+    if (activeTab !== 'Course Material') return;
+
+    fetchStatuses();
+
+    let interval;
+    if (showSyncDashboard) {
+      interval = setInterval(() => {
+        fetchStatuses();
+      }, 5050);
+    }
+    return () => clearInterval(interval);
+  }, [activeTab, showSyncDashboard, fetchStatuses]);
 
   // Helper for robust string matching
   const normalize = (name) => name?.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -153,7 +217,6 @@ const CoursePortalView = ({ activeTab, courses }) => {
   }
 
   const currentCourse = uniCourses.find(c => c.name === selectedCourse);
-  const currentCourseId = currentCourse?.id || currentCourse?._id;
   const currentCourseCode = currentCourse?.code;
   const currentCourseName = currentCourse?.name;
 
@@ -174,55 +237,57 @@ const CoursePortalView = ({ activeTab, courses }) => {
         </div>
         
         {/* EXACT UI MATCH: Custom Dropdown Menu */}
-        <div className="relative w-full md:w-[28rem] shrink-0" ref={dropdownRef}>
-          <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-all outline-none focus:ring-2 focus:ring-brand-blue"
-          >
-            <span className="flex items-center gap-3 w-full pr-2">
-              <UCPLogo className="w-5 h-5 text-blue-500 shrink-0" />
-              <span className="font-bold text-sm whitespace-normal leading-snug text-left">
-                {selectedCourse || "Loading courses..."}
+        {!(activeTab === 'Course Material' && showSyncDashboard) && (
+          <div className="relative w-full md:w-[28rem] shrink-0" ref={dropdownRef}>
+            <button
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-gray-50 dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-700 dark:text-gray-200 text-sm font-bold rounded-lg transition-all outline-none focus:ring-2 focus:ring-brand-blue"
+            >
+              <span className="flex items-center gap-3 w-full pr-2">
+                <UCPLogo className="w-5 h-5 text-blue-500 shrink-0" />
+                <span className="font-bold text-sm whitespace-normal leading-snug text-left">
+                  {selectedCourse || "Loading courses..."}
+                </span>
               </span>
-            </span>
-            <ChevronDown size={18} className={`text-gray-400 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
-          </button>
+              <ChevronDown size={18} className={`text-gray-400 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-          {/* Dropdown Options */}
-          {isDropdownOpen && (
-            <div className="absolute top-full right-0 mt-2 w-full bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-[100] animate-fadeIn custom-scrollbar max-h-[350px] overflow-y-auto">
-              
-              <div className="px-4 py-2 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C]">
-                 University Courses
-              </div>
+            {/* Dropdown Options */}
+            {isDropdownOpen && (
+              <div className="absolute top-full right-0 mt-2 w-full bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-[100] animate-fadeIn custom-scrollbar max-h-[350px] overflow-y-auto">
+                
+                <div className="px-4 py-2 bg-gray-50 dark:bg-[#252525] text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#2C2C2C]">
+                   University Courses
+                </div>
 
-              {uniCourses.map((course) => (
-                <button
-                  key={course.id || course._id}
-                  onClick={() => {
-                    setSelectedCourse(course.name);
-                    setIsDropdownOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#333] transition-colors text-left border-b border-gray-50 dark:border-[#2C2C2C] last:border-0 ${
-                    selectedCourse === course.name 
-                      ? 'bg-blue-50/50 dark:bg-blue-900/10' 
-                      : ''
-                  }`}
-                >
-                  <span className="flex items-start gap-2 text-gray-700 dark:text-gray-200 pr-2">
-                    <UCPLogo className="w-4 h-4 text-blue-500 shrink-0 mt-[2px]" />
-                    <span className={`leading-snug whitespace-normal break-words text-left font-medium ${selectedCourse === course.name ? 'text-brand-blue dark:text-blue-400' : ''}`}>
-                      {course.name}
+                {uniCourses.map((course) => (
+                  <button
+                    key={course.id || course._id}
+                    onClick={() => {
+                      setSelectedCourse(course.name);
+                      setIsDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#333] transition-colors text-left border-b border-gray-50 dark:border-[#2C2C2C] last:border-0 ${
+                      selectedCourse === course.name 
+                        ? 'bg-blue-50/50 dark:bg-blue-900/10' 
+                        : ''
+                    }`}
+                  >
+                    <span className="flex items-start gap-2 text-gray-700 dark:text-gray-200 pr-2">
+                      <UCPLogo className="w-4 h-4 text-blue-500 shrink-0 mt-[2px]" />
+                      <span className={`leading-snug whitespace-normal break-words text-left font-medium ${selectedCourse === course.name ? 'text-brand-blue dark:text-blue-400' : ''}`}>
+                        {course.name}
+                      </span>
                     </span>
-                  </span>
 
-                  {/* The Dynamic Tab Feedback Badge */}
-                  {renderBadge(course.name)}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+                    {/* The Dynamic Tab Feedback Badge */}
+                    {renderBadge(course.name)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content Area */}
@@ -236,16 +301,26 @@ const CoursePortalView = ({ activeTab, courses }) => {
             {activeTab === 'Announcements' && <CourseAnnouncements announcements={courseData.announcements} />}
             {activeTab === 'Attendance' && <CourseAttendance attendance={courseData.attendance} />}
             {activeTab === 'Submissions' && <CourseSubmissions submissions={courseData.submissions} />}
-            {activeTab === 'Course Material' && currentCourseId && (
-              <CourseMaterial 
-                courseId={currentCourseId} 
-                onViewFile={(url, name) => {
-                  setPreviewFile(url);
-                  setPreviewName(name);
-                }} 
-              />
+            {activeTab === 'Course Material' && currentCourseCode && (
+              showSyncDashboard ? (
+                <ParallelSyncDashboard 
+                  courses={uniCourses} 
+                  statuses={coursesSyncStatus} 
+                  onClose={() => setShowSyncDashboard(false)} 
+                  onRefresh={fetchStatuses}
+                />
+              ) : (
+                <CourseMaterial 
+                  courseCode={currentCourseCode} 
+                  sectionCode={currentCourse?.section} 
+                  onViewFile={(url, name) => {
+                    setPreviewFile(url);
+                    setPreviewName(name);
+                  }} 
+                />
+              )
             )}
-            {activeTab === 'Course Vault' && (
+            {activeTab === 'Course Vault' && currentCourseCode && (
               <CourseVault 
                 courseCode={currentCourseCode} 
                 courseName={currentCourseName} 

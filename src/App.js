@@ -63,6 +63,42 @@ const HF_MODES = {
   long_break: { id: 'long_break', title: 'Long Break', text: 'Excellent work. Take a deep rest.', minutes: 30, color: '#EC4899', textClass: 'text-pink-500', glow: 'shadow-[0_0_60px_rgba(236,72,153,0.3)]' }
 };
 
+const TAB_PATH_MAP = {
+  'Welcome': '/dashboard',
+  'HyperFocus': '/hyperfocus',
+  'Tasks': '/tasks',
+  'Calendar': '/calendar',
+  'Notes': '/notes',
+  'Timetable': '/timetable',
+  'Announcements': '/announcements',
+  'Attendance': '/attendance',
+  'Submissions': '/submissions',
+  'Course Material': '/course-material',
+  'Course Vault': '/course-vault',
+  'Keynotes': '/keynotes',
+  'Grade Book': '/gradebook',
+  'History': '/history',
+  'Sync Diagnostics': '/sync-diagnostics',
+  'Datesheet': '/datesheet',
+  'Cash-Overview': '/cash/overview',
+  'Cash-Transactions': '/cash/transactions',
+  'Cash-Analytics': '/cash/analytics',
+  'Cash-Budget': '/cash/budget',
+  'Cash-Debts': '/cash/debts',
+  'Habits-Overview': '/habits/overview',
+  'Habits-Namaz': '/habits/namaz',
+  'Habits-Tracker': '/habits/tracker',
+  'Habits-Analytics': '/habits/analytics',
+  'Bin': '/bin',
+  'Admin': '/admin',
+  'Profile': '/profile',
+  'Settings': '/settings'
+};
+
+const PATH_TAB_MAP = Object.fromEntries(
+  Object.entries(TAB_PATH_MAP).map(([tab, path]) => [path, tab])
+);
+
 // =========================================================
 // 🚀 APP LAYOUT COMPONENT (Has access to useNavigate now!)
 // =========================================================
@@ -113,7 +149,11 @@ function AppLayout() {
     localStorage.setItem('idleTimeout', idleTimeout);
   }, [idleTimeout]);
 
-  const [activeTab, setActiveTab] = useState('Welcome');
+  const [activeTab, setActiveTab] = useState(() => {
+    const path = window.location.pathname;
+    if (path === '/' || path === '') return 'Welcome';
+    return PATH_TAB_MAP[path] || 'Welcome';
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
@@ -360,6 +400,24 @@ function AppLayout() {
       } catch (e) { console.error("Sync error", e); }
     }
   }, [location.pathname, token]);
+
+  // 🚨 Sync URL changes back to activeTab state (supports browser back/forward and direct links)
+  useEffect(() => {
+    const path = location.pathname;
+    if (isAuthenticated) {
+      if (path === '/' || path === '') {
+        navigate('/dashboard', { replace: true });
+        setActiveTab('Welcome');
+      } else {
+        const tab = PATH_TAB_MAP[path];
+        if (tab && tab !== activeTab) {
+          setActiveTab(tab);
+          if (tab === 'Bin') fetchBin();
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, isAuthenticated, navigate]);
 
   const checkForInactivity = useCallback(() => {
     if (!isAuthenticated) return;
@@ -806,7 +864,12 @@ function AppLayout() {
 
   const handleNavigate = (tab) => {
     if (tab === 'Server') { if (user?.isAdmin) setIsServerModalOpen(true); return; }
-    setActiveTab(tab);
+    const path = TAB_PATH_MAP[tab];
+    if (path) {
+      navigate(path);
+    } else {
+      setActiveTab(tab);
+    }
     if (tab === 'Bin') fetchBin();
     if (window.innerWidth < 768) setIsSidebarOpen(false);
   };
@@ -834,7 +897,7 @@ function AppLayout() {
       if (c.type === 'uni') {
         const explicitPref = user?.coursePreferences?.[c.name];
         if (explicitPref === false) return false;
-        if (explicitPref === undefined && c.creditHrs === 0) return false;
+        if (explicitPref === undefined && c.creditHours === 0) return false;
       }
       return true;
     });

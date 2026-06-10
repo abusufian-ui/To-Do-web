@@ -16,6 +16,7 @@ const CourseSchema = new mongoose.Schema({
   rooms: [{ type: String }],           
 
   portalUrl: { type: String, default: '' }, // e.g. https://horizon.ucp.edu.pk/student/course/12345
+  semester: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });
 

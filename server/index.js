@@ -67,11 +67,12 @@ const { spawn } = require('child_process');
 // 🚨 NEW: COURSE MATERIAL & VAULT MODELS & CONVERTER
 const CourseMaterial = require('./models/CourseMaterial');
 const CourseVaultFile = require('./models/CourseVaultFile');
+const CourseVaultBucket = require('./models/CourseVaultBucket');
 const MaterialLink   = require('./models/MaterialLink');
 const { convertToPdf } = require('./utils/documentConverter');
 
 // 🚨 NEW: BACKBLAZE B2 + MATERIAL PROCESSOR
-const { getSignedDownloadUrl } = require('./utils/b2Client');
+const { getSignedDownloadUrl, b2, B2_BUCKET } = require('./utils/b2Client');
 const { processUserMaterials, runNightlyMaterialSync } = require('./services/materialProcessor');
 
 
@@ -130,20 +131,6 @@ try {
   if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
 }
 
-// ==========================================
-// 📦 TEMP CHUNK STORAGE (for chunked APK uploads)
-// ==========================================
-const chunkDir = process.env.NODE_ENV === 'production'
-  ? '/var/www/student_portal/apk_chunks/'
-  : path.join(__dirname, 'apk_chunks');
-try {
-  if (!fs.existsSync(chunkDir)) {
-    fs.mkdirSync(chunkDir, { recursive: true });
-    console.log(`📦 Created chunk temp directory at: ${chunkDir}`);
-  }
-} catch (err) {
-  console.error(`❌ Failed to create chunk temp directory:`, err.message);
-}
 
 // ==========================================
 // 📂 TEMP MATERIALS UPLOAD DIRECTORY
@@ -363,7 +350,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.117:8081',
+  'http://192.168.0.105:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -696,7 +683,13 @@ app.get('/api/public/download-apk', async (req, res) => {
   try {
     const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
     
-    // Check if Cloudinary URL is stored and valid
+    // Check if Backblaze B2 key is stored and valid
+    if (dbSetting && dbSetting.value && dbSetting.value.uploaded && dbSetting.value.b2Key) {
+      const signedUrl = await getSignedDownloadUrl(dbSetting.value.b2Key, 3600); // 1 hour expiry
+      return res.redirect(signedUrl);
+    }
+    
+    // Check if older Cloudinary URL is stored and valid (legacy support)
     if (dbSetting && dbSetting.value && dbSetting.value.uploaded && dbSetting.value.url && !dbSetting.value.url.includes('/api/public/download-apk')) {
       const cloudinaryUrl = dbSetting.value.url;
       
@@ -711,7 +704,6 @@ app.get('/api/public/download-apk', async (req, res) => {
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
       
       // Forward Content-Length so browsers/download managers show accurate file size
-      // and don't stall waiting for an unknown-length stream on large 100-200MB files
       if (streamRes.headers['content-length']) {
         res.setHeader('Content-Length', streamRes.headers['content-length']);
       }
@@ -781,13 +773,33 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
       return res.status(400).json({ message: "No file uploaded." });
     }
 
+    const version = req.body.version || '1.0.0';
+    const filePath = req.file.path;
+
     try {
+      // 1. Read file from disk
+      const buffer = fs.readFileSync(filePath);
+
+      // 2. Upload to BackBlaze B2
+      const b2Key = `apk_releases/myportal_${version.replace(/[^a-zA-Z0-9.-]/g, '_')}_${Date.now()}.apk`;
+      await uploadToB2(b2Key, buffer, 'application/vnd.android.package-archive');
+
+      // 3. Remove local temporary file
+      try {
+        fs.unlinkSync(filePath);
+      } catch (unlinkErr) {
+        console.error("Failed to delete temp APK file:", unlinkErr.message);
+      }
+
+      // 4. Update SystemSettings in DB
       const baseUrl = getBaseUrl(req);
       const apkInfo = {
         uploaded: true,
-        filename: 'myportal.apk',
+        filename: req.file.originalname || 'myportal.apk',
         size: req.file.size,
         uploadedAt: new Date(),
+        version: version,
+        b2Key: b2Key,
         url: `${baseUrl}/api/public/download-apk`
       };
 
@@ -800,7 +812,10 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
       res.json({ success: true, apkInfo });
     } catch (error) {
       console.error("APK Settings Save Error:", error);
-      res.status(500).json({ message: "Server Error saving APK metadata" });
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch {}
+      }
+      res.status(500).json({ message: "Server Error uploading APK to B2." });
     }
   });
 });
@@ -808,6 +823,17 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
 // Admin: Delete APK release from filesystem & database
 app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) => {
   try {
+    const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
+    if (dbSetting && dbSetting.value && dbSetting.value.b2Key) {
+      const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+      const deleteCommand = new DeleteObjectCommand({
+        Bucket: B2_BUCKET,
+        Key: dbSetting.value.b2Key
+      });
+      await b2.send(deleteCommand);
+      console.log(`🗑️ Deleted APK from B2: ${dbSetting.value.b2Key}`);
+    }
+
     const apkPath = path.join(uploadDir, 'myportal.apk');
     if (fs.existsSync(apkPath)) {
       fs.unlinkSync(apkPath);
@@ -815,10 +841,12 @@ app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) =
 
     const apkInfo = {
       uploaded: false,
-      filename: null,
+      filename: '',
       size: 0,
       uploadedAt: null,
-      url: null
+      version: '',
+      b2Key: '',
+      url: ''
     };
 
     await SystemSettings.findOneAndUpdate(
@@ -831,108 +859,6 @@ app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) =
   } catch (error) {
     console.error("Delete APK Error:", error);
     res.status(500).json({ message: "Server Error deleting APK" });
-  }
-});
-
-// Admin: Receive a single binary chunk from a chunked APK upload.
-// Each request is ~10MB so it safely passes through Nginx's client_max_body_size.
-// Route uses express.raw() so the binary body is available as req.body (Buffer).
-app.post(
-  '/api/admin/apk-chunk',
-  auth,
-  adminAuth,
-  express.raw({ type: 'application/octet-stream', limit: '12mb' }),
-  (req, res) => {
-    try {
-      const chunkIndex = parseInt(req.headers['x-chunk-index'], 10);
-      const totalChunks = parseInt(req.headers['x-total-chunks'], 10);
-
-      if (isNaN(chunkIndex) || isNaN(totalChunks)) {
-        return res.status(400).json({ message: 'Missing x-chunk-index or x-total-chunks headers.' });
-      }
-      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-        return res.status(400).json({ message: 'Empty chunk body received.' });
-      }
-
-      const chunkPath = path.join(chunkDir, `chunk_${chunkIndex}`);
-      fs.writeFileSync(chunkPath, req.body);
-
-      console.log(`📦 APK chunk ${chunkIndex + 1}/${totalChunks} saved (${(req.body.length / 1024 / 1024).toFixed(2)} MB)`);
-      res.json({ success: true, received: chunkIndex });
-    } catch (err) {
-      console.error('APK Chunk Upload Error:', err);
-      res.status(500).json({ message: 'Server error saving chunk.' });
-    }
-  }
-);
-
-// Admin: Finalize a chunked APK upload — assemble all chunks into myportal.apk.
-app.post('/api/admin/apk-finalize', auth, adminAuth, async (req, res) => {
-  try {
-    const { totalChunks, totalSize } = req.body;
-    if (!totalChunks || totalChunks < 1) {
-      return res.status(400).json({ message: 'totalChunks is required.' });
-    }
-
-    const finalApkPath = path.join(uploadDir, 'myportal.apk');
-
-    // Remove old APK if it exists
-    if (fs.existsSync(finalApkPath)) {
-      fs.unlinkSync(finalApkPath);
-      console.log('🗑️  Deleted old myportal.apk before assembly.');
-    }
-
-    // Verify all chunks exist before assembling
-    for (let i = 0; i < totalChunks; i++) {
-      const cp = path.join(chunkDir, `chunk_${i}`);
-      if (!fs.existsSync(cp)) {
-        return res.status(400).json({ message: `Missing chunk ${i}. Upload may be incomplete.` });
-      }
-    }
-
-    // Assemble chunks in order into myportal.apk
-    const writeStream = fs.createWriteStream(finalApkPath);
-    for (let i = 0; i < totalChunks; i++) {
-      const cp = path.join(chunkDir, `chunk_${i}`);
-      const chunkData = fs.readFileSync(cp);
-      writeStream.write(chunkData);
-    }
-    writeStream.end();
-
-    // Wait for the write stream to finish
-    await new Promise((resolve, reject) => {
-      writeStream.on('finish', resolve);
-      writeStream.on('error', reject);
-    });
-
-    // Clean up all chunk temp files
-    for (let i = 0; i < totalChunks; i++) {
-      try { fs.unlinkSync(path.join(chunkDir, `chunk_${i}`)); } catch {}
-    }
-
-    const assembledSize = fs.statSync(finalApkPath).size;
-    console.log(`✅ APK assembled successfully: ${(assembledSize / 1024 / 1024).toFixed(2)} MB`);
-
-    // Build the download URL using backend base URL
-    const baseUrl = getBaseUrl(req);
-    const apkInfo = {
-      uploaded: true,
-      filename: 'myportal.apk',
-      size: assembledSize,
-      uploadedAt: new Date(),
-      url: `${baseUrl}/api/public/download-apk`
-    };
-
-    await SystemSettings.findOneAndUpdate(
-      { key: 'apk_info' },
-      { value: apkInfo },
-      { upsert: true, new: true }
-    );
-
-    res.json({ success: true, apkInfo });
-  } catch (err) {
-    console.error('APK Finalize Error:', err);
-    res.status(500).json({ message: 'Server error assembling APK.' });
   }
 });
 
@@ -1350,8 +1276,10 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             }
           }
 
-          // ✅ Save creditHours + portalUrl to DB dynamically
-          const updatePayload = { userId, name: courseName, type: 'university', creditHours };
+          // ✅ Save creditHours + portalUrl + semester to DB dynamically
+          const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
+          const activeSemester = parseSemesterFromCourseCode(fullCode) || req.body.semester || getCurrentSemesterCode();
+          const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: activeSemester };
           if (fullCode) updatePayload.code = fullCode;
           if (sectionCode) updatePayload.section = sectionCode;
           if (url) updatePayload.portalUrl = url; // Store the full portal URL for nightly scraper
@@ -1446,7 +1374,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             const uniquePeerIds = [...new Set(peerUserIds)];
 
             for (const peerId of uniquePeerIds) {
-              const peerSub = await Submission.findOne({ userId: peerId, courseName: sub.courseName });
+              const peerSub = await Submission.findOne({ userId: peerId, courseUrl: sub.courseUrl });
               const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
               const existingTaskMap = new Map(existingTasks.map(t => {
                 const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -1472,8 +1400,8 @@ app.post('/api/extension-sync', auth, async (req, res) => {
               if (merged) {
                 const peerNewHash = computeSubmissionsHash(existingTasks);
                 await Submission.findOneAndUpdate(
-                  { userId: peerId, courseName: sub.courseName },
-                  { $set: { courseUrl: sub.courseUrl, courseName: sub.courseName, tasks: existingTasks, lastSyncHash: peerNewHash, lastUpdated: new Date() } },
+                  { userId: peerId, courseUrl: sub.courseUrl },
+                  { $set: { courseName: sub.courseName, tasks: existingTasks, lastSyncHash: peerNewHash, lastUpdated: new Date() } },
                   { upsert: true }
                 );
                 // Broadcast to peer as well
@@ -1696,15 +1624,27 @@ await Course.findOneAndUpdate(
       if (liveCookie) {
         let stagedCount = 0;
         for (const item of materialLinksData) {
-          if (!item.courseUrl || !item.links || item.links.length === 0) continue;
+          if (!item.courseUrl) continue;
 
           // Derive section and teacher from context already parsed above
           const itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
           const courseDoc = await Course.findOne({ userId, name: item.courseName }).lean();
+
+          // Skip 0 credit hour courses
+          if (courseDoc && courseDoc.creditHours === 0) {
+            console.log(`[SYNC] Skipping 0 credit hour course material staging: ${item.courseName}`);
+            continue;
+          }
+
           const itemTeacherName = (courseDoc?.instructors || [])[0] || '';
 
           // Always upsert with fresh links + reset processed = false
           // so the processor always re-checks for new files
+          const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
+          const activeSemester = parseSemesterFromCourseCode(item.courseCode) || req.body.semester || getCurrentSemesterCode();
+
+          const isProcessed = !item.links || item.links.length === 0;
+
           await MaterialLink.findOneAndUpdate(
             { userId, courseUrl: item.courseUrl },
             {
@@ -1713,9 +1653,16 @@ await Course.findOneAndUpdate(
                 courseCode: item.courseCode || '',
                 sectionCode: itemSectionCode,
                 teacherName: itemTeacherName,
-                links: item.links,
+                links: (item.links || []).map(l => ({
+                  fileName: l.fileName || '',
+                  description: l.description || '',
+                  downloadUrl: l.downloadUrl || '',
+                  token: l.token || '',
+                  processed: false
+                })),
                 lastScrapedAt: new Date(),
-                processed: false
+                processed: isProcessed,
+                semester: activeSemester
               }
             },
             { upsert: true }
@@ -3013,6 +2960,161 @@ app.delete('/api/admin/notifications/:id', auth, adminAuth, async (req, res) => 
     await AdminNotification.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// === ADMIN: Get BackBlaze B2 files list ===
+app.get('/api/admin/b2-files', auth, adminAuth, async (req, res) => {
+  try {
+    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+    const command = new ListObjectsV2Command({
+      Bucket: B2_BUCKET,
+      MaxKeys: 1000
+    });
+    const response = await b2.send(command);
+    const files = response.Contents || [];
+    res.json(files.map(f => ({
+      key: f.Key,
+      lastModified: f.LastModified,
+      size: f.Size,
+      etag: f.ETag
+    })));
+  } catch (error) {
+    console.error('[ADMIN B2 LIST ERROR]', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// === ADMIN: Delete file from BackBlaze B2 ===
+app.delete('/api/admin/b2-files', auth, adminAuth, async (req, res) => {
+  try {
+    const { key } = req.query;
+    if (!key) return res.status(400).json({ message: 'File key is required.' });
+
+    const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+    const command = new DeleteObjectCommand({
+      Bucket: B2_BUCKET,
+      Key: key
+    });
+    await b2.send(command);
+
+    // Also delete references from the DB if they exist
+    await CourseMaterial.deleteMany({ b2Key: key });
+    await CourseVaultFile.deleteMany({ b2Key: key });
+
+    res.json({ success: true, message: 'File deleted from B2 and references removed.' });
+  } catch (error) {
+    console.error('[ADMIN B2 DELETE ERROR]', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// === ADMIN: Trigger manual processing ===
+app.post('/api/admin/trigger-processor', auth, adminAuth, async (req, res) => {
+  try {
+    const { userId, type } = req.body; // type can be 'single_user_process', 'single_user_nightly', or 'nightly_sync_all'
+
+    if (type === 'single_user_process') {
+      if (!userId) return res.status(400).json({ message: 'User ID is required for single user processing.' });
+      
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ message: 'User not found.' });
+      if (!user.ucpCookie) return res.status(400).json({ message: 'User has no saved UCP Cookie.' });
+
+      // Run immediately in the background
+      processUserMaterials(user._id.toString(), user.ucpCookie)
+        .catch(err => console.error(`[MANUAL_PROC] Async processing failed for ${user.email}:`, err.message));
+
+      return res.json({ success: true, message: `Manual material processing triggered for ${user.name || user.email}.` });
+
+    } else if (type === 'single_user_nightly') {
+      if (!userId) return res.status(400).json({ message: 'User ID is required.' });
+
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ message: 'User not found.' });
+      if (!user.ucpCookie) return res.status(400).json({ message: 'User has no saved UCP Cookie.' });
+
+      // Trigger crawl + sync for this user in background
+      (async () => {
+        const cheerio = require('cheerio');
+        const courses = await Course.find({ userId: user._id, type: 'university', portalUrl: { $exists: true, $ne: '' } }).lean();
+        console.log(`[MANUAL_NIGHTLY] Crawling ${courses.length} courses for ${user.email}`);
+        
+        for (const course of courses) {
+          // Skip 0 credit hour courses
+          if (course.creditHours === 0) {
+            console.log(`[MANUAL_NIGHTLY] Skipping 0 credit hour course material: ${course.code}`);
+            continue;
+          }
+
+          const courseId = course.portalUrl.split('/').pop();
+          if (!courseId) continue;
+
+          try {
+            const controller = new AbortController();
+            const tid = setTimeout(() => controller.abort(), 15000);
+            const res = await fetch(`https://horizon.ucp.edu.pk/student/course/material/${courseId}`, {
+              headers: { 'Cookie': user.ucpCookie, 'User-Agent': 'Mozilla/5.0' },
+              signal: controller.signal
+            });
+            clearTimeout(tid);
+
+            if (!res.ok) continue;
+            const html = await res.text();
+            if (html.includes('/login')) {
+              console.warn(`[MANUAL_NIGHTLY] Session expired for ${user.email}`);
+              break;
+            }
+
+            const $ = cheerio.load(html);
+            const links = [];
+            $('table tbody tr').each((_, row) => {
+              const tds = $(row).find('td');
+              if (tds.length >= 4) {
+                const fileName = $(tds[1]).text().replace(/\s+/g, ' ').trim();
+                const description = $(tds[2]).text().replace(/\s+/g, ' ').trim();
+                const href = $(tds[3]).find('a').attr('href') || '';
+                if (href.includes('/student/class/material/download/')) {
+                  const fullUrl = href.startsWith('http') ? href : `https://horizon.ucp.edu.pk${href}`;
+                  links.push({ fileName, description, downloadUrl: fullUrl, token: href.split('/').pop() });
+                }
+              }
+            });
+
+            const isProcessed = links.length === 0;
+            await MaterialLink.findOneAndUpdate(
+              { userId: user._id, courseUrl: course.portalUrl },
+              {
+                $set: {
+                  courseName: course.name, courseCode: course.code,
+                  sectionCode: course.section, teacherName: (course.instructors || [])[0] || '',
+                  links, lastScrapedAt: new Date(), processed: isProcessed
+                }
+              },
+              { upsert: true }
+            );
+          } catch (e) {
+            console.warn(`[MANUAL_NIGHTLY] Failed course ${course.code}:`, e.message);
+          }
+        }
+        
+        await processUserMaterials(user._id.toString(), user.ucpCookie);
+      })().catch(err => console.error(`[MANUAL_NIGHTLY] Async crawl failed for ${user.email}:`, err.message));
+
+      return res.json({ success: true, message: `Full material sync and processing triggered for ${user.name || user.email}.` });
+
+    } else if (type === 'nightly_sync_all') {
+      runNightlyMaterialSync(User, Course)
+        .catch(err => console.error('[MANUAL_NIGHTLY_ALL] Nightly sync failed:', err.message));
+
+      return res.json({ success: true, message: 'Nightly sync triggered for all connected users.' });
+
+    } else {
+      return res.status(400).json({ message: 'Invalid sync type specified.' });
+    }
+  } catch (error) {
+    console.error('[ADMIN TRIGGER PROCESSOR ERROR]', error);
+    res.status(500).json({ message: error.message });
+  }
 });
 
 app.get('/api/courses', auth, async (req, res) => {
@@ -4583,26 +4685,110 @@ cron.schedule('*/20 8-18 * * *', () => runTieredSync('HIGH', 'Submissions/Attend
 // 2. Full Sync (History/Timetable/Announcements) - Every 6 hours
 cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync + Announcements (6h)'), { timezone: "Asia/Karachi" });
 
-// 3. 🗂️ Nightly Material Sync — 2:00 AM PKT
-// Fallback: re-fetches material links for all users and processes any newly added files
 cron.schedule('0 2 * * *', () => runNightlyMaterialSync(User, Course), { timezone: "Asia/Karachi" });
+
+// POST /api/sync-grades - Manual portal FULL sync endpoint triggered from Settings
+app.post('/api/sync-grades', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (!user.ucpCookie) return res.status(400).json({ message: 'Portal not connected.' });
+
+    console.log(`[MANUAL_SYNC] User ${user.email} triggered manual FULL sync`);
+    const syncLog = new SyncLog({
+      userId: user._id,
+      portalId: user.portalId,
+      mode: 'FULL',
+      status: 'PENDING',
+      startTime: new Date()
+    });
+    await syncLog.save();
+    const startTime = Date.now();
+
+    try {
+      const { scrapeServerSide } = require('./services/scraperEngine');
+      const scrapedPayload = await scrapeServerSide(user.ucpCookie, 'FULL', user.portalId);
+      scrapedPayload.syncLogId = syncLog._id.toString();
+
+      const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
+      const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
+      
+      await axios.post(syncUrl, scrapedPayload, {
+        headers: {
+          'x-auth-token': token,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      await SyncLog.findByIdAndUpdate(syncLog._id, { durationMs: Date.now() - startTime });
+      res.json({ success: true, message: 'Sync complete.' });
+    } catch (err) {
+      console.error(`[MANUAL_SYNC] Sync failed:`, err.message);
+      syncLog.status = 'FAILED';
+      syncLog.error = err.message;
+      syncLog.endTime = new Date();
+      syncLog.durationMs = Date.now() - startTime;
+      await syncLog.save();
+
+      if (err.message === "Session Expired") {
+        await User.findByIdAndUpdate(user._id, { isPortalConnected: false });
+        res.status(401).json({ message: 'Session Expired' });
+      } else {
+        res.status(500).json({ message: err.message });
+      }
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 // ==========================================
 // 🗂️ COURSE MATERIAL & COURSE VAULT APIS (Fully Automated)
 // ==========================================
 
+// Direct download proxy redirect to avoid heavy cryptographic signing during file listing API requests
+app.get('/api/course-material/download/:fileId', async (req, res) => {
+  try {
+    const token = req.header('x-auth-token') || req.query.token;
+    if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
+
+    jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
+
+    const file = await CourseMaterial.findById(req.params.fileId).lean();
+    if (!file || !file.b2Key) {
+      return res.status(404).json({ message: 'File not found.' });
+    }
+    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300); // 5 min expiry is enough for immediate redirect
+    res.redirect(signedUrl);
+  } catch (err) {
+    console.error('[API] download redirect error:', err.message);
+    res.status(401).json({ message: 'Token is not valid' });
+  }
+});
+
 // 1. Get all scraped course materials for a section (returns files + signed download URLs)
 app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) => {
   try {
     const { courseCode, sectionCode } = req.params;
-    const materials = await CourseMaterial.find({ courseCode, sectionCode })
+    const globalCode = courseCode.split('-')[0].trim();
+    const { getCurrentSemesterCode } = require('./services/scraperEngine');
+
+    // Find the active semester for this course
+    const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
+    const activeSemester = course?.semester || getCurrentSemesterCode();
+
+    const materials = await CourseMaterial.find({ courseCode: globalCode, sectionCode, semester: activeSemester })
+      .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key')
       .sort({ isArchiveExtracted: 1, fileName: 1 })
       .lean();
 
-    // Generate fresh signed URLs for each file
-    const withUrls = await Promise.all(materials.map(async (m) => {
-      const signedUrl = m.b2Key ? await getSignedDownloadUrl(m.b2Key, 3600) : null;
-      return { ...m, downloadUrl: signedUrl };
+    // Generate direct download URLs pointing to the proxy endpoint
+    const token = req.header('x-auth-token');
+    const baseUrl = getBaseUrl(req);
+    const withUrls = materials.map((m) => ({
+      ...m,
+      downloadUrl: m.b2Key ? `${baseUrl}/api/course-material/download/${m._id}?token=${encodeURIComponent(token)}` : null
     }));
 
     // Group extracted files under their parent archives
@@ -4633,24 +4819,49 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
   }
 });
 
-// 2. Get scraping status for a section
+// 2. Get scraping status for a section (including file progress count)
 app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req, res) => {
   try {
     const { courseCode, sectionCode } = req.params;
-    const count = await CourseMaterial.countDocuments({ courseCode, sectionCode });
-    const pending = await MaterialLink.countDocuments({
+    const globalCode = courseCode.split('-')[0].trim();
+    const { getCurrentSemesterCode } = require('./services/scraperEngine');
+
+    const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
+    const activeSemester = course?.semester || getCurrentSemesterCode();
+
+    const count = await CourseMaterial.countDocuments({ courseCode: globalCode, sectionCode, semester: activeSemester });
+    
+    // Find if there is an unprocessed linkSet for this user & course in the active semester
+    const pendingLinkSet = await MaterialLink.findOne({
       userId: req.user.id,
-      courseCode: { $regex: courseCode, $options: 'i' },
-      processed: false
-    });
-    const latest = await CourseMaterial.findOne({ courseCode, sectionCode })
+      courseCode: { $regex: '^' + globalCode + '(-|$)', $options: 'i' },
+      processed: false,
+      semester: activeSemester
+    }).lean();
+
+    const latest = await CourseMaterial.findOne({ courseCode: globalCode, sectionCode, semester: activeSemester })
       .sort({ createdAt: -1 }).lean();
+
+    if (pendingLinkSet && pendingLinkSet.links && pendingLinkSet.links.length > 0) {
+      const total = pendingLinkSet.links.length;
+      const completed = pendingLinkSet.links.filter(l => l.processed).length;
+      return res.json({
+        fileCount: count,
+        hasPending: true,
+        lastSyncedAt: latest?.createdAt || null,
+        isProcessing: true,
+        totalFiles: total,
+        processedFiles: completed
+      });
+    }
 
     res.json({
       fileCount: count,
-      hasPending: pending > 0,
+      hasPending: false,
       lastSyncedAt: latest?.createdAt || null,
-      isProcessing: pending > 0
+      isProcessing: false,
+      totalFiles: 0,
+      processedFiles: 0
     });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch status.' });
@@ -4669,16 +4880,30 @@ app.post('/api/course-material/download-zip', auth, async (req, res) => {
 
     const materials = await CourseMaterial.find({ _id: { $in: fileIds } }).lean();
 
-    for (const m of materials) {
-      if (!m.b2Key) continue;
+    // Fetch all files in parallel from BackBlaze B2
+    const downloadPromises = materials.map(async (m) => {
+      if (!m.b2Key) return null;
       try {
-        // Get signed URL and fetch the file
         const signedUrl = await getSignedDownloadUrl(m.b2Key, 300);
         const response = await fetch(signedUrl);
-        if (!response.ok) continue;
+        if (!response.ok) return null;
         const buf = Buffer.from(await response.arrayBuffer());
-        zip.addFile(m.fileName || m.normalizedFileName, buf);
-      } catch (_) {}
+        return {
+          fileName: m.fileName || m.normalizedFileName,
+          buf
+        };
+      } catch (err) {
+        console.error(`[ZIP_DL] Failed to download B2 file for ${m.fileName}:`, err.message);
+        return null;
+      }
+    });
+
+    const downloadedFiles = await Promise.all(downloadPromises);
+
+    for (const file of downloadedFiles) {
+      if (file) {
+        zip.addFile(file.fileName, file.buf);
+      }
     }
 
     const zipBuffer = zip.toBuffer();
@@ -4693,49 +4918,214 @@ app.post('/api/course-material/download-zip', auth, async (req, res) => {
   }
 });
 
-// 4. Get Course Vault files for a course, grouped by teacher
-app.get('/api/course-vault/:courseCode', auth, async (req, res) => {
+// ============================================================================
+// ADMIN VAULT ENDPOINTS (Course Vault Moderation & Buckets)
+// ============================================================================
+
+// A1. Get all pending files for moderation
+app.get('/api/admin/vault/files/pending', adminAuth, async (req, res) => {
   try {
-    const courseCode = decodeURIComponent(req.params.courseCode).trim();
-    const files = await CourseVaultFile.find({ courseCode }).sort({ createdAt: -1 }).lean();
-
-    // Generate signed URLs for vault files (view-only, 2 hour expiry for PDF readers)
-    const withUrls = await Promise.all(files.map(async (f) => {
-      const viewUrl = f.b2Key ? await getSignedDownloadUrl(f.b2Key, 7200) : null;
-      return { ...f, viewUrl };
-    }));
-
-    // Group by teacher
-    const grouped = {};
-    for (const f of withUrls) {
-      const teacher = f.teacherName || 'Unknown Teacher';
-      if (!grouped[teacher]) grouped[teacher] = [];
-      grouped[teacher].push(f);
-    }
-
-    const response = Object.keys(grouped).map(teacher => ({
-      teacherName: teacher,
-      fileCount: grouped[teacher].length,
-      files: grouped[teacher]
-    }));
-
-    res.json(response);
+    const files = await CourseVaultFile.find({ status: 'pending' }).sort({ createdAt: -1 }).lean();
+    res.json(files);
   } catch (err) {
-    console.error('[API] course-vault error:', err.message);
-    res.status(500).json({ message: 'Failed to fetch vault.' });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// 5. Get a fresh signed URL for a single vault file (for inline PDF viewer refresh)
-app.get('/api/course-vault/view/:id', auth, async (req, res) => {
+// A2. Get buckets for a course
+app.get('/api/admin/vault/buckets/:courseCode', adminAuth, async (req, res) => {
   try {
-    const vaultFile = await CourseVaultFile.findById(req.params.id).lean();
-    if (!vaultFile || !vaultFile.b2Key) return res.status(404).json({ message: 'Not found.' });
-    const viewUrl = await getSignedDownloadUrl(vaultFile.b2Key, 7200);
-    res.json({ viewUrl, fileName: vaultFile.fileName, fileType: vaultFile.fileType });
+    const courseCode = req.params.courseCode.split('-')[0].trim();
+    const buckets = await CourseVaultBucket.find({ courseCode }).sort({ createdAt: 1 }).lean();
+    res.json(buckets);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to generate view URL.' });
+    res.status(500).json({ message: err.message });
   }
+});
+
+// A3. Create a bucket
+app.post('/api/admin/vault/buckets', adminAuth, async (req, res) => {
+  try {
+    const { name, courseCode } = req.body;
+    const globalCode = courseCode.split('-')[0].trim();
+    const bucket = await CourseVaultBucket.create({ name, courseCode: globalCode, createdBy: req.user.id });
+    res.json(bucket);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// A4. Delete a bucket
+app.delete('/api/admin/vault/buckets/:id', adminAuth, async (req, res) => {
+  try {
+    await CourseVaultBucket.findByIdAndDelete(req.params.id);
+    // Optionally move files in this bucket back to pending or unbucketed
+    await CourseVaultFile.updateMany({ bucketId: req.params.id }, { $set: { status: 'pending', bucketId: null } });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// A5. Publish/Approve a pending file into a bucket
+app.put('/api/admin/vault/files/:id/publish', adminAuth, async (req, res) => {
+  try {
+    const { bucketId } = req.body;
+    const updated = await CourseVaultFile.findByIdAndUpdate(req.params.id, {
+      status: 'published',
+      bucketId
+    }, { new: true });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// A6. Delete/Reject a file
+app.delete('/api/admin/vault/files/:id', adminAuth, async (req, res) => {
+  try {
+    const file = await CourseVaultFile.findById(req.params.id);
+    if (!file) return res.status(404).json({ message: 'Not found' });
+    if (file.b2Key) {
+        // We could delete from B2 here, skipping for safety or implement via b2Client delete function if it existed.
+    }
+    await CourseVaultFile.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ============================================================================
+// ADMIN COURSE MATERIALS ENDPOINTS
+// ============================================================================
+
+// 1. Get all unique courses and sections from CourseMaterial (for tree structure)
+app.get('/api/admin/course-materials/courses', auth, adminAuth, async (req, res) => {
+  try {
+    const courses = await CourseMaterial.aggregate([
+      {
+        $match: {
+          isArchiveExtracted: false
+        }
+      },
+      {
+        $group: {
+          _id: { courseCode: "$courseCode", sectionCode: "$sectionCode", semester: "$semester" },
+          courseName: { $first: "$courseName" },
+          fileCount: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: "$_id.courseCode",
+          courseName: { $first: "$courseName" },
+          sections: {
+            $push: {
+              sectionCode: "$_id.sectionCode",
+              semester: "$_id.semester",
+              fileCount: "$fileCount"
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          courseCode: "$_id",
+          courseName: { $ifNull: ["$courseName", "$_id"] },
+          sections: 1,
+          _id: 0
+        }
+      },
+      { $sort: { courseName: 1 } }
+    ]);
+    res.json(courses);
+  } catch (err) {
+    console.error('[API] admin get course list error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch admin course materials.' });
+  }
+});
+
+// 2. Get files and student connection statistics for a specific course section
+app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) => {
+  try {
+    const { courseCode, sectionCode, semester } = req.query;
+    if (!courseCode || !sectionCode || !semester) {
+      return res.status(400).json({ message: 'Missing courseCode, sectionCode, or semester.' });
+    }
+
+    // 1. Fetch materials files
+    const materials = await CourseMaterial.find({ courseCode, sectionCode, semester })
+      .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key createdAt')
+      .sort({ isArchiveExtracted: 1, fileName: 1 })
+      .lean();
+
+    // 2. Generate direct download URLs pointing to the proxy endpoint
+    const token = req.header('x-auth-token');
+    const baseUrl = getBaseUrl(req);
+    const withUrls = materials.map((m) => ({
+      ...m,
+      downloadUrl: m.b2Key ? `${baseUrl}/api/course-material/download/${m._id}?token=${encodeURIComponent(token)}` : null
+    }));
+
+    // Group zip extracts
+    const grouped = [];
+    const archives = {};
+    for (const m of withUrls) {
+      if (m.isArchiveExtracted && m.parentArchive) {
+        if (!archives[m.parentArchive]) archives[m.parentArchive] = [];
+        archives[m.parentArchive].push(m);
+      } else {
+        grouped.push(m);
+      }
+    }
+    for (const m of grouped) {
+      if ((m.fileType === 'zip' || m.fileType === 'rar') && archives[m.fileName]) {
+        m.contents = archives[m.fileName];
+      }
+    }
+
+    // 3. Fetch student statistics
+    const enrollments = await Course.find({
+      code: { $regex: '^' + courseCode + '(-|$)' },
+      section: sectionCode,
+      semester: semester
+    }).populate('userId', 'name email rollNumber isPortalConnected').lean();
+
+    const totalStudents = enrollments.length;
+    const connectedStudents = enrollments
+      .filter(e => e.userId && e.userId.isPortalConnected)
+      .map(e => ({
+        _id: e.userId._id,
+        name: e.userId.name,
+        email: e.userId.email,
+        rollNumber: e.userId.rollNumber || ''
+      }));
+
+    res.json({
+      files: grouped,
+      totalFiles: withUrls.length,
+      studentStats: {
+        total: totalStudents,
+        connectedCount: connectedStudents.length,
+        connectedList: connectedStudents
+      }
+    });
+  } catch (err) {
+    console.error('[API] admin get section files error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch course files and stats.' });
+  }
+});
+
+
+// 4. Get Course Vault files for a course, grouped by bucket (PUBLIC) - DISABLED
+app.get('/api/course-vault/:courseCode', auth, async (req, res) => {
+  res.json([]);
+});
+
+// 5. Get a fresh signed URL for a single vault file (for inline PDF viewer refresh) - DISABLED
+app.get('/api/course-vault/view/:id', auth, async (req, res) => {
+  res.status(404).json({ message: 'Course Vault is disabled.' });
 });
 
 // 6. (Old manual upload endpoint — kept but hidden from public; only internal use)

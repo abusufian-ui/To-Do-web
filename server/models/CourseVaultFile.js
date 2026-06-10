@@ -7,6 +7,10 @@ const CourseVaultFileSchema = new mongoose.Schema({
     section:            { type: String, default: '' },
     uploadedBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
+    // Moderation and Organization
+    status:             { type: String, enum: ['pending', 'published'], default: 'pending' },
+    bucketId:           { type: mongoose.Schema.Types.ObjectId, ref: 'CourseVaultBucket' },
+
     // File identity
     fileName:           { type: String, required: true },           // display name (may be .pdf even if converted)
     normalizedFileName: { type: String, required: true },           // normalized original name (pre-conversion)

@@ -27,14 +27,53 @@ const CourseMaterialSchema = new mongoose.Schema({
     isArchiveExtracted: { type: Boolean, default: false },  // true = extracted from zip/rar
     parentArchive:      { type: String, default: '' },      // parent zip/rar filename
 
+    semester:           { type: String, required: true },   // e.g. fall 26, spring 26
+
     createdAt:          { type: Date, default: Date.now }
 });
 
-// PRIMARY dedup guard: only one record per file per section (across all users)
-CourseMaterialSchema.index({ sectionCode: 1, normalizedFileName: 1 }, { unique: true });
+// PRIMARY dedup guard: only one record per file per course per section per semester
+CourseMaterialSchema.index({ courseCode: 1, sectionCode: 1, normalizedFileName: 1, semester: 1 }, { unique: true });
 
-// Quick lookup by section+course
-CourseMaterialSchema.index({ courseCode: 1, sectionCode: 1 });
+// Quick lookup indexes
+CourseMaterialSchema.index({ courseCode: 1, sectionCode: 1, semester: 1 });
 CourseMaterialSchema.index({ userId: 1, courseCode: 1 });
 
+// DELETION HOOKS: Automate Backblaze B2 file cleanup
+CourseMaterialSchema.pre('findOneAndDelete', async function() {
+    try {
+        const doc = await this.model.findOne(this.getQuery()).lean();
+        if (doc && doc.b2Key) {
+            const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+            const { b2, B2_BUCKET } = require('../utils/b2Client');
+            const command = new DeleteObjectCommand({
+                Bucket: B2_BUCKET,
+                Key: doc.b2Key
+            });
+            await b2.send(command);
+            console.log(`[B2_CLEANUP] findOneAndDelete pre-hook deleted B2 file: ${doc.b2Key}`);
+        }
+    } catch (err) {
+        console.error('[B2_CLEANUP] findOneAndDelete pre-hook B2 deletion failed:', err.message);
+    }
+});
+
+CourseMaterialSchema.pre('deleteOne', { document: true, query: false }, async function() {
+    try {
+        if (this.b2Key) {
+            const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+            const { b2, B2_BUCKET } = require('../utils/b2Client');
+            const command = new DeleteObjectCommand({
+                Bucket: B2_BUCKET,
+                Key: this.b2Key
+            });
+            await b2.send(command);
+            console.log(`[B2_CLEANUP] deleteOne document pre-hook deleted B2 file: ${this.b2Key}`);
+        }
+    } catch (err) {
+        console.error('[B2_CLEANUP] deleteOne document pre-hook B2 deletion failed:', err.message);
+    }
+});
+
 module.exports = mongoose.model('CourseMaterial', CourseMaterialSchema);
+

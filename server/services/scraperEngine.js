@@ -9,6 +9,26 @@ const isValidCourseCode = (code) => {
     return /^[a-zA-Z0-9\s-]+$/.test(c);
 };
 
+const parseSemesterFromCourseCode = (courseCode) => {
+    if (!courseCode) return null;
+    const parts = courseCode.trim().split('-');
+    for (const part of parts) {
+        const cleanPart = part.trim();
+        const match = cleanPart.match(/^([sSfFuU])(\d{2})$/);
+        if (match) {
+            const seasonChar = match[1].toLowerCase();
+            const year = match[2];
+            let season = '';
+            if (seasonChar === 's') season = 'spring';
+            else if (seasonChar === 'f') season = 'fall';
+            else if (seasonChar === 'u') season = 'summer';
+            if (season) return `${season} ${year}`;
+        }
+    }
+    return null;
+};
+
+
 // --- Bulletproof Helper: Prevents infinite hanging on dead university servers ---
 async function fetchWithTimeout(resource, options = {}) {
     const { timeout = 15000 } = options; // 15 second strict timeout
@@ -43,6 +63,42 @@ const runWithConcurrency = async (items, limit, worker) => {
     await Promise.all(workers);
     return results;
 };
+
+/**
+ * Predicts the current semester code based on date.
+ * Spring: Feb end (Feb 20) to Jul start (Jul 10)
+ * Summer: Jul End (Jul 11) to Sep start (Sep 20)
+ * Fall: Sep End (Sep 21) to Feb start (Feb 19)
+ */
+function getCurrentSemesterCode() {
+    const now = new Date();
+    const month = now.getMonth(); // 0 = Jan, 11 = Dec
+    const date = now.getDate();
+    const year = now.getFullYear();
+    const shortYear = year.toString().slice(-2); // e.g. "26"
+
+    let season = '';
+    let semesterYear = shortYear;
+
+    // Spring: Feb 20 (month 1, day 20) to Jul 10 (month 6, day 10)
+    if ((month === 1 && date >= 20) || (month > 1 && month < 6) || (month === 6 && date <= 10)) {
+        season = 'spring';
+    } 
+    // Summer: Jul 11 (month 6, day 11) to Sep 20 (month 8, day 20)
+    else if ((month === 6 && date >= 11) || (month === 7) || (month === 8 && date <= 20)) {
+        season = 'summer';
+    } 
+    // Fall: Sep 21 (month 8, day 21) to Feb 19 (month 1, day 19)
+    else {
+        season = 'fall';
+        // If it is Jan (month 0) or early Feb (month 1, date < 20), it belongs to the previous year's Fall semester
+        if (month === 0 || (month === 1 && date < 20)) {
+            semesterYear = (year - 1).toString().slice(-2);
+        }
+    }
+
+    return `${season} ${semesterYear}`;
+}
 
 // Main Scrape Function
 const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = null) => {
@@ -490,15 +546,87 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
             return datesheetData;
         };
 
+        const scrapeMaterialLinks = async () => {
+            return runWithConcurrency(courseLinks, COURSE_CONCURRENCY, async (url) => {
+                const courseId = url.split('/').pop();
+                try {
+                    const res = await fetchWithTimeout(`https://horizon.ucp.edu.pk/student/course/material/${courseId}`, defaultOptions);
+                    const html = await res.text();
+                    const $doc = cheerio.load(html);
+                    const courseData = courseMap.get(url) || {};
+
+                    // Skip 0 credit hour courses
+                    if (courseData.creditHours === 0) {
+                        console.log(`[SERVER_SCRAPER] Skipping 0 credit hour course materials: ${courseData.code || courseData.name}`);
+                        return null;
+                    }
+
+                    const links = [];
+                    $doc('table tbody tr').each((_, row) => {
+                        const tds = $doc(row).find('td');
+                        if (tds.length >= 4) {
+                            const fileName = $doc(tds[1]).text().replace(/\s+/g, ' ').trim();
+                            const description = $doc(tds[2]).text().replace(/\s+/g, ' ').trim();
+                            const href = $doc(tds[3]).find('a').attr('href') || '';
+                            if (href && href.includes('/student/class/material/download/')) {
+                                const fullUrl = href.startsWith('http')
+                                    ? href
+                                    : `https://horizon.ucp.edu.pk${href}`;
+                                const token = href.split('/').pop() || '';
+                                if (fileName) {
+                                    links.push({ fileName, description, downloadUrl: fullUrl, token });
+                                }
+                            }
+                        }
+                    });
+
+                    return {
+                        courseUrl: url,
+                        courseName: courseData.name || '',
+                        courseCode: courseData.code || '',
+                        links
+                    };
+                } catch (e) {
+                    return null;
+                }
+            });
+        };
+
         // 3. Execute all scrapers
         console.log("[SERVER_SCRAPER] Running all sub-scrapers concurrently...");
-        const [gradesResult, historyResult, timetableResult, attendanceResult, submissionsResult, announcementsResult, datesheetResult] = await Promise.allSettled([
+        const isFull = (mode === 'FULL');
+        const promises = [
             scrapeGrades(), scrapeHistory(), scrapeTimetable(), scrapeAttendance(), scrapeSubmissions(), scrapeAnnouncements(), scrapeDatesheet()
-        ]);
+        ];
+        if (isFull) {
+            promises.push(scrapeMaterialLinks());
+        }
+
+        const results = await Promise.allSettled(promises);
+
+        const gradesResult = results[0];
+        const historyResult = results[1];
+        const timetableResult = results[2];
+        const attendanceResult = results[3];
+        const submissionsResult = results[4];
+        const announcementsResult = results[5];
+        const datesheetResult = results[6];
+        const materialLinksResult = isFull ? results[7] : { status: 'rejected' };
+
+        let detectedSemester = null;
+        for (const info of courseMap.values()) {
+            if (info.code) {
+                const parsed = parseSemesterFromCourseCode(info.code);
+                if (parsed) {
+                    detectedSemester = parsed;
+                    break;
+                }
+            }
+        }
 
         const finalPayload = {
             portalId: portalId,
-            syncMode: 'AUTO_SYNC',
+            syncMode: mode === 'FULL' ? 'LOGIN_SYNC' : (mode === 'HIGH' ? 'FORCE_SYNC' : 'AUTO_SYNC'),
             gradesData: gradesResult.status === 'fulfilled' ? gradesResult.value : [],
             historyData: historyResult.status === 'fulfilled' ? historyResult.value.historyData : [],
             statsData: historyResult.status === 'fulfilled' ? historyResult.value.statsData : { cgpa: "0.00", credits: "0", inprogressCr: exactInProgressCr.toString() },
@@ -507,8 +635,10 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
             submissionsData: submissionsResult.status === 'fulfilled' ? submissionsResult.value : [],
             announcementsData: announcementsResult.status === 'fulfilled' ? announcementsResult.value : [],
             datesheetData: datesheetResult.status === 'fulfilled' ? datesheetResult.value : [],
+            materialLinksData: materialLinksResult.status === 'fulfilled' ? (materialLinksResult.value || []).filter(Boolean) : [],
             courseLinks: courseLinks,
-            courseMap: Object.fromEntries(courseMap)
+            courseMap: Object.fromEntries(courseMap),
+            semester: detectedSemester || getCurrentSemesterCode()
         };
 
         console.log("[SERVER_SCRAPER] Scrape finished successfully.");
@@ -519,4 +649,5 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
     }
 };
 
-module.exports = { scrapeServerSide };
+module.exports = { scrapeServerSide, getCurrentSemesterCode, parseSemesterFromCourseCode };
+
