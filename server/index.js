@@ -2545,9 +2545,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         isBlocked: user.isBlocked || false,
         isLeaderboardEnabled: user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
           ? true
-          : user.isAdmin
-            ? (user.isLeaderboardEnabled !== false)
-            : (user.isLeaderboardEnabled === true),
+          : (user.isLeaderboardEnabled !== false),
         isPortalConnected: user.isPortalConnected,
         portalId: user.portalId,
         lastSyncAt: user.lastSyncAt,
@@ -2628,9 +2626,7 @@ app.put('/api/admin/users/:id/leaderboard-toggle', auth, adminAuth, async (req, 
     }
 
     // Toggle logic based on default rules
-    const currentVal = targetUser.isAdmin
-      ? (targetUser.isLeaderboardEnabled !== false) // default true for Admins
-      : (targetUser.isLeaderboardEnabled === true); // default false for students
+    const currentVal = (targetUser.isLeaderboardEnabled !== false);
 
     targetUser.isLeaderboardEnabled = !currentVal;
     await targetUser.save();
@@ -4324,7 +4320,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       const requestingUser = await User.findOne({ email: { $regex: '^' + email.trim() + '$', $options: 'i' } });
       if (requestingUser) {
         const isSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-        if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled !== true) {
+        if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled === false) {
           return res.status(403).json({ error: "Leaderboard has been disabled for your account by an administrator." });
         }
       } else {
@@ -4434,7 +4430,7 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     const isSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
     // Block non-admins (students) if access is disabled
-    if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled !== true) {
+    if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled === false) {
       return res.status(403).json({ message: "Leaderboard has been disabled for your account by an administrator." });
     }
 

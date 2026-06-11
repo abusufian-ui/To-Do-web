@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
   enrolledSections: [{ type: String }], // e.g., ["CSAL3243-S26-BS-CS-F23-F4", "EE212-S26-BS-EE-F23-G11"]
   lastScrapedAt: { type: Date, default: null }, // When this user last ran a full foreground scrape
   isBlocked: { type: Boolean, default: false },
-  isLeaderboardEnabled: { type: Boolean, default: false },
+  isLeaderboardEnabled: { type: Boolean, default: true },
   pushTokens: [{ type: String }],
   prayerNotifs: { type: Boolean, default: false },
   lastSyncAt: { type: Date, default: null },
