@@ -12,6 +12,30 @@ const CourseSubmissions = ({ submissions }) => {
     );
   }
 
+  // --- DATE FORMATTER ---
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+
+    const day = d.getDate();
+    const suffix =
+      day === 1 || day === 21 || day === 31 ? 'st'
+      : day === 2 || day === 22 ? 'nd'
+      : day === 3 || day === 23 ? 'rd'
+      : 'th';
+
+    const month = d.toLocaleString('en-US', { month: 'long' });
+    const year = d.getFullYear();
+    const time = d.toLocaleString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    return `${day}${suffix} ${month}, ${year} ${time}`;
+  };
+
   // --- TIME REMAINING CALCULATOR ---
   const getTimeLeft = (dueDateStr) => {
     const due = new Date(dueDateStr);
@@ -109,12 +133,12 @@ const CourseSubmissions = ({ submissions }) => {
               <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-gray-500 dark:text-gray-400 w-full lg:w-auto">
                 <div className="flex items-center gap-1.5">
                   <Calendar size={16} /> 
-                  <span><strong className="text-gray-700 dark:text-gray-300">Start:</strong> {task.startDate}</span>
+                  <span><strong className="text-gray-700 dark:text-gray-300">Start:</strong> {formatDate(task.startDate)}</span>
                 </div>
                 <div className="hidden sm:block w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600"></div>
                 <div className="flex items-center gap-1.5">
                   <Clock size={16} />
-                  <span><strong className="text-gray-700 dark:text-gray-300">Due:</strong> {task.dueDate}</span>
+                  <span><strong className="text-gray-700 dark:text-gray-300">Due:</strong> {formatDate(task.dueDate)}</span>
                 </div>
               </div>
               

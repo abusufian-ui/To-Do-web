@@ -52,8 +52,9 @@ const parseUCPDate = (str) => {
     }
 
     // Otherwise, do not parse to avoid junk dates like "invalid date text" resolving to year 0499
-    console.warn(`[dateParser] Failed to parse date string: "${str}"`);
-    return str; // return original if failed
+    console.warn(`[dateParser] Failed to parse date string: "${str}". Returning empty string to preserve stable fingerprints.`);
+    return ""; // Return empty string — raw strings cause fingerprint collisions in mergeUserTasks
+
 };
 
 module.exports = { parseUCPDate };

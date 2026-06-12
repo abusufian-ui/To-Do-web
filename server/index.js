@@ -36,6 +36,9 @@ const { Expo } = require('expo-server-sdk');
 const cron = require('node-cron');
 const axios = require('axios');
 
+// 🔒 Per-user sync lock: prevents concurrent syncs (race conditions / duplicate writes)
+const activeSyncs = new Set();
+
 // --- MODELS ---
 const User = require('./models/User');
 const Task = require('./models/Task');
@@ -1279,9 +1282,18 @@ const mergeUserTasks = (existingTasks, incomingTasks) => {
 };
 
 app.post('/api/extension-sync', auth, async (req, res) => {
+  const userId = req.user.id;
+  const syncKey = userId.toString();
+
+  // 🔒 Reject if a sync is already in progress for this user (prevents race-condition duplicates)
+  if (activeSyncs.has(syncKey)) {
+    console.warn(`[SYNC] ⚠️ Concurrent sync blocked for user ${syncKey}`);
+    return res.status(409).json({ message: 'Sync already in progress. Please wait.' });
+  }
+  activeSyncs.add(syncKey);
+
   try {
     const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic, syncLogId, materialLinksData } = req.body;
-    const userId = req.user.id;
     const user = await User.findById(userId);
 
     // Default mode is AUTO_SYNC if not explicitly provided
@@ -1576,12 +1588,17 @@ await Course.findOneAndUpdate(
     // ── Datesheet Sync ──
     if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC') {
       if (datesheetData && datesheetData.length > 0) {
-        await Exam.deleteMany({ userId });
+        // ✅ Use upsert instead of deleteMany+save to prevent race-condition duplicates
         for (const exam of datesheetData) {
-          await new Exam({ ...exam, userId, lastUpdated: new Date() }).save();
+          await Exam.findOneAndUpdate(
+            { userId, courseName: exam.courseName, date: exam.date },
+            { $set: { ...exam, userId, lastUpdated: new Date() } },
+            { upsert: true, new: true }
+          );
         }
       }
     }
+
 
     // ── Grades Sync ──
     if (gradesData && gradesData.length > 0) {
@@ -1761,6 +1778,9 @@ await Course.findOneAndUpdate(
     }
     const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
     res.status(statusCode).json({ message: error.message });
+  } finally {
+    // 🔓 Always release the lock, even if an error occurred
+    activeSyncs.delete(syncKey);
   }
 });
 
@@ -4680,12 +4700,22 @@ const runTieredSync = async (mode, logName) => {
 
     console.log(`[CRON] Found ${activeUsers.length} users for ${logName}.`);
 
+
     for (let user of activeUsers) {
-      // Skip if last synced less than 3 minutes ago
-      if (user.lastSyncAt && (Date.now() - new Date(user.lastSyncAt).getTime()) < 3 * 60 * 1000) {
+      // Skip if last synced less than 12 minutes ago (longer than any realistic scrape duration)
+      if (user.lastSyncAt && (Date.now() - new Date(user.lastSyncAt).getTime()) < 12 * 60 * 1000) {
         console.log(`[CRON] ⏭️ Skipping ${user.email} - synced ${Math.round((Date.now() - new Date(user.lastSyncAt).getTime()) / 1000)}s ago.`);
         continue;
       }
+
+      const cronSyncKey = user._id.toString();
+
+      // 🔒 Skip if a sync is already running for this user (e.g. mobile app opened simultaneously)
+      if (activeSyncs.has(cronSyncKey)) {
+        console.log(`[CRON] ⏭️ Skipping ${user.email} — sync already in progress (lock held).`);
+        continue;
+      }
+      activeSyncs.add(cronSyncKey);
 
       const syncLog = new SyncLog({
         userId: user._id,
@@ -4735,11 +4765,15 @@ const runTieredSync = async (mode, logName) => {
           );
           await createAcademicNotification(user._id, 'system', title, message);
         }
+      } finally {
+        // 🔓 Always release the lock for this user
+        activeSyncs.delete(cronSyncKey);
       }
 
       // Gentle inter-user delay to avoid overwhelming UCP servers
       await new Promise(r => setTimeout(r, 2000));
     }
+
   } catch (error) {
     console.error(`[CRON] ${logName} Engine Error:`, error.message);
   }
