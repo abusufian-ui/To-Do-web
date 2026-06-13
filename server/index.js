@@ -1281,7 +1281,7 @@ const mergeUserTasks = (existingTasks, incomingTasks) => {
   return mergedTasks;
 };
 
-app.post('/api/extension-sync', auth, async (req, res) => {
+app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => {
   const userId = req.user.id;
   const syncKey = userId.toString();
 
