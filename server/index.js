@@ -1321,6 +1321,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     const sectionLookup = {}; 
     const baseCodeLookup = {}; 
     if (clientCourseMap && typeof clientCourseMap === 'object') {
+      const coursePromises = [];
       for (const [url, info] of Object.entries(clientCourseMap)) {
         const fullCode = (info.code || '').trim();
         const courseName = (info.name || '').trim();
@@ -1358,7 +1359,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             }
           }
 
-          // ✅ Save creditHours + portalUrl + semester to DB dynamically
+          // Save creditHours + portalUrl + semester to DB dynamically
           const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
           const activeSemester = parseSemesterFromCourseCode(fullCode) || req.body.semester || getCurrentSemesterCode();
           const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: activeSemester };
@@ -1366,21 +1367,26 @@ app.post('/api/extension-sync', auth, async (req, res) => {
           if (sectionCode) updatePayload.section = sectionCode;
           if (url) updatePayload.portalUrl = url; // Store the full portal URL for nightly scraper
 
-          await Course.findOneAndUpdate(
+          coursePromises.push(Course.findOneAndUpdate(
             { userId, name: courseName },
             { $set: updatePayload },
             { upsert: true }
-          );
+          ));
         }
       }
+      await Promise.all(coursePromises);
     }
     
     // ── Attendance Sync & Push Notifications ──
     if (attendanceData && attendanceData.length > 0) {
+      const oldAttendances = await Attendance.find({ userId });
+      const oldAttMap = new Map(oldAttendances.map(a => [a.courseUrl, a]));
+      const attPromises = [];
+
       for (const att of attendanceData) {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
         if (att.records) {
-          const oldAtt = await Attendance.findOne({ userId, courseUrl: att.courseUrl });
+          const oldAtt = oldAttMap.get(att.courseUrl);
           const changes = detectAttendanceChanges(oldAtt, att);
           
           if (changes) {
@@ -1392,22 +1398,26 @@ app.post('/api/extension-sync', auth, async (req, res) => {
               sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
               await createAcademicNotification(userId, 'attendance', `CRITICAL: ${att.courseName}`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
             }
-            // Emit granular WebSocket event
             io.to(userId.toString()).emit('attendance_update', changes);
             changesSummary.attendance = changesSummary.attendance || [];
             if (!changesSummary.attendance.includes(att.courseName)) changesSummary.attendance.push(att.courseName);
           }
-          await Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true });
+          attPromises.push(Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true }));
         }
       }
+      await Promise.all(attPromises);
     }
 
     // ── Announcements Sync ──
     if (announcementsData && announcementsData.length > 0) {
+      const oldAnnouncements = await Announcement.find({ userId });
+      const oldAnnMap = new Map(oldAnnouncements.map(a => [a.courseUrl, a]));
+      const annPromises = [];
+
       for (const ann of announcementsData) {
         if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
         if (ann.news) {
-          const oldAnn = await Announcement.findOne({ userId, courseUrl: ann.courseUrl });
+          const oldAnn = oldAnnMap.get(ann.courseUrl);
           const changes = detectAnnouncementChanges(oldAnn, ann);
           
           if (changes) {
@@ -1417,18 +1427,23 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             changesSummary.announcements = changesSummary.announcements || [];
             if (!changesSummary.announcements.includes(ann.courseName)) changesSummary.announcements.push(ann.courseName);
           }
-          await Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true });
+          annPromises.push(Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true }));
         }
       }
+      await Promise.all(annPromises);
     }
 
     // ── Submissions & Peer Syncing ──
     if (submissionsData && submissionsData.length > 0) {
+      const oldSubmissions = await Submission.find({ userId });
+      const oldSubMap = new Map(oldSubmissions.map(s => [s.courseUrl, s]));
+      const subPromises = [];
+
       for (const sub of submissionsData) {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
 
         if (sub.tasks) {
-          const oldSub = await Submission.findOne({ userId, courseUrl: sub.courseUrl });
+          const oldSub = oldSubMap.get(sub.courseUrl);
           const mergedTasks = mergeUserTasks(oldSub?.tasks, sub.tasks);
           const changes = detectSubmissionChanges(oldSub, sub);
           
@@ -1442,11 +1457,11 @@ app.post('/api/extension-sync', auth, async (req, res) => {
           if (oldSub && oldSub.lastSyncHash === newHash) {
             console.log(`[SYNC] Submissions for ${sub.courseName} unchanged (hash match), skipping save.`);
           } else {
-            await Submission.findOneAndUpdate(
+            subPromises.push(Submission.findOneAndUpdate(
               { userId, courseUrl: sub.courseUrl },
               { $set: { courseName: sub.courseName, tasks: mergedTasks, lastSyncHash: newHash, lastUpdated: new Date() } },
               { upsert: true }
-            );
+            ));
           }
 
           const sectionCode = sectionLookup[sub.courseName] || sectionLookup[sub.courseUrl] || '';
@@ -1455,54 +1470,58 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             const peerUserIds = peerCourseDocs.map(c => c.userId.toString()).filter(id => id !== userId.toString());
             const uniquePeerIds = [...new Set(peerUserIds)];
 
-            for (const peerId of uniquePeerIds) {
-              const peerSub = await Submission.findOne({ userId: peerId, courseUrl: sub.courseUrl });
-              const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
-              const existingTaskMap = new Map(existingTasks.map(t => {
-                const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                const normDate = parseUCPDate(t.dueDate);
-                return [`${title}_${normDate}`, t];
-              }));
+            if (uniquePeerIds.length > 0) {
+              const peerSubs = await Submission.find({ userId: { $in: uniquePeerIds }, courseUrl: sub.courseUrl });
+              const peerSubMap = new Map(peerSubs.map(s => [s.userId.toString(), s]));
 
-              let merged = false;
-              let newPeerTasks = [];
-              mergedTasks.forEach(incomingTask => {
-                const title = (incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                const normDate = parseUCPDate(incomingTask.dueDate);
-                const fingerprint = `${title}_${normDate}`;
-                if (!existingTaskMap.has(fingerprint)) {
-                  // Force classmate tasks to default to Pending to prevent status contamination
-                  const peerTask = { ...incomingTask, status: 'Pending', dueDate: normDate, startDate: parseUCPDate(incomingTask.startDate) };
-                  existingTasks.push(peerTask);
-                  newPeerTasks.push(peerTask);
-                  merged = true;
-                }
-              });
+              for (const peerId of uniquePeerIds) {
+                const peerSub = peerSubMap.get(peerId);
+                const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
+                const existingTaskMap = new Map(existingTasks.map(t => {
+                  const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                  const normDate = parseUCPDate(t.dueDate);
+                  return [`${title}_${normDate}`, t];
+                }));
 
-              if (merged) {
-                const peerNewHash = computeSubmissionsHash(existingTasks);
-                await Submission.findOneAndUpdate(
-                  { userId: peerId, courseUrl: sub.courseUrl },
-                  { $set: { courseName: sub.courseName, tasks: existingTasks, lastSyncHash: peerNewHash, lastUpdated: new Date() } },
-                  { upsert: true }
-                );
-                // Broadcast to peer as well
-                io.to(peerId.toString()).emit('submission_update', {
-                  type: 'SUBMISSION_UPDATE',
-                  courseName: sub.courseName,
-                  newCount: newPeerTasks.length,
-                  newTasks: newPeerTasks
+                let merged = false;
+                let newPeerTasks = [];
+                mergedTasks.forEach(incomingTask => {
+                  const title = (incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                  const normDate = parseUCPDate(incomingTask.dueDate);
+                  const fingerprint = `${title}_${normDate}`;
+                  if (!existingTaskMap.has(fingerprint)) {
+                    // Force classmate tasks to default to Pending to prevent status contamination
+                    const peerTask = { ...incomingTask, status: 'Pending', dueDate: normDate, startDate: parseUCPDate(incomingTask.startDate) };
+                    existingTasks.push(peerTask);
+                    newPeerTasks.push(peerTask);
+                    merged = true;
+                  }
                 });
+
+                if (merged) {
+                  const peerNewHash = computeSubmissionsHash(existingTasks);
+                  subPromises.push(Submission.findOneAndUpdate(
+                    { userId: peerId, courseUrl: sub.courseUrl },
+                    { $set: { courseName: sub.courseName, tasks: existingTasks, lastSyncHash: peerNewHash, lastUpdated: new Date() } },
+                    { upsert: true }
+                  ).then(() => {
+                    io.to(peerId.toString()).emit('submission_update', {
+                      type: 'SUBMISSION_UPDATE',
+                      courseName: sub.courseName,
+                      newCount: newPeerTasks.length,
+                      newTasks: newPeerTasks
+                    });
+                  }));
+                }
               }
             }
           }
         }
       }
+      await Promise.all(subPromises);
     }
 
-    // ── FIXED: Timetable Sync (Pulled OUT of LOGIN_SYNC to allow background updates) ──
-    // By using deleteMany on EVERY sync where we have data, we completely wipe out 
-    // old makeup classes, dropped courses, and garbage data, ensuring a 1:1 mirror.
+    // ── FIXED: Timetable Sync ──
     if (timetableData && timetableData.length > 0) {
       const courseMapLocal = new Map();
       const preparedClasses = [];
@@ -1555,58 +1574,65 @@ app.post('/api/extension-sync', auth, async (req, res) => {
         await Timetable.insertMany(preparedClasses);
       }
 
+      const timetablePromises = [];
       for (const [courseName, data] of courseMapLocal.entries()) {
         const sectionCode = sectionLookup[courseName] || '';
         const fullCode = baseCodeLookup[courseName] || data.code || '';
 
         const courseUpdatePayload = {
-  userId, 
-  name: data.name, 
-  type: 'university',
-  color: data.color || '#3498db'
-};
+          userId, 
+          name: courseName, 
+          type: 'university',
+          color: data.color || '#3498db'
+        };
 
-if (fullCode) courseUpdatePayload.code = fullCode;
-if (sectionCode) courseUpdatePayload.section = sectionCode;
+        if (fullCode) courseUpdatePayload.code = fullCode;
+        if (sectionCode) courseUpdatePayload.section = sectionCode;
 
-// 🚨 CRITICAL FIX: Only overwrite instructors/rooms if the scraper actually found them in the timetable
-if (data.instructors && data.instructors.size > 0) {
-  courseUpdatePayload.instructors = Array.from(data.instructors);
-}
-if (data.rooms && data.rooms.size > 0) {
-  courseUpdatePayload.rooms = Array.from(data.rooms);
-}
+        // 🚨 CRITICAL FIX: Only overwrite instructors/rooms if the scraper actually found them in the timetable
+        if (data.instructors && data.instructors.size > 0) {
+          courseUpdatePayload.instructors = Array.from(data.instructors);
+        }
+        if (data.rooms && data.rooms.size > 0) {
+          courseUpdatePayload.rooms = Array.from(data.rooms);
+        }
 
-await Course.findOneAndUpdate(
-  { userId, name: courseName },
-  { $set: courseUpdatePayload },
-  { upsert: true }
-);
+        timetablePromises.push(Course.findOneAndUpdate(
+          { userId, name: courseName },
+          { $set: courseUpdatePayload },
+          { upsert: true }
+        ));
       }
+      await Promise.all(timetablePromises);
     }
 
     // ── Datesheet Sync ──
     if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC') {
       if (datesheetData && datesheetData.length > 0) {
-        // ✅ Use upsert instead of deleteMany+save to prevent race-condition duplicates
+        const datesheetPromises = [];
         for (const exam of datesheetData) {
-          await Exam.findOneAndUpdate(
+          datesheetPromises.push(Exam.findOneAndUpdate(
             { userId, courseName: exam.courseName, date: exam.date },
             { $set: { ...exam, userId, lastUpdated: new Date() } },
             { upsert: true, new: true }
-          );
+          ));
         }
+        await Promise.all(datesheetPromises);
       }
     }
-
 
     // ── Grades Sync ──
     if (gradesData && gradesData.length > 0) {
       if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
+      
+      const oldGrades = await Grade.find({ userId });
+      const oldGradesMap = new Map(oldGrades.map(g => [g.courseUrl, g]));
+      const gradePromises = [];
+
       for (const grade of gradesData) {
         if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
         
-        const oldGrade = await Grade.findOne({ userId, courseUrl: grade.courseUrl });
+        const oldGrade = oldGradesMap.get(grade.courseUrl);
         const changes = detectGradeChanges(oldGrade, grade);
         if (changes) {
           sendPush(user, `Grade Update: ${grade.courseName} 📊`, `Your total weight is now ${changes.newPercentage}%`);
@@ -1615,17 +1641,23 @@ await Course.findOneAndUpdate(
           changesSummary.grades = changesSummary.grades || [];
           if (!changesSummary.grades.includes(grade.courseName)) changesSummary.grades.push(grade.courseName);
         }
-        await Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true });
+        gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true }));
       }
+      await Promise.all(gradePromises);
     }
 
     // ── History Sync ──
     if (historyData && historyData.length > 0) {
       if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
+      
+      const existingHistory = await ResultHistory.find({ userId });
+      const historyMap = new Map(existingHistory.map(h => [h.term, h]));
+      const historyPromises = [];
+
       for (const sem of historyData) {
         if (!sem.term) continue;
 
-        const existing = await ResultHistory.findOne({ userId, term: sem.term });
+        const existing = historyMap.get(sem.term);
         if (existing) {
           const updateDoc = {};
           if (sem.cgpa && (sem.cgpa !== "0.00" || existing.cgpa === "0.00")) {
@@ -1642,19 +1674,20 @@ await Course.findOneAndUpdate(
           }
           updateDoc.lastUpdated = new Date();
           
-          await ResultHistory.findOneAndUpdate(
+          historyPromises.push(ResultHistory.findOneAndUpdate(
             { term: sem.term, userId },
             { $set: updateDoc },
             { upsert: true }
-          );
+          ));
         } else {
-          await ResultHistory.findOneAndUpdate(
+          historyPromises.push(ResultHistory.findOneAndUpdate(
             { term: sem.term, userId },
             { ...sem, userId, lastUpdated: new Date() },
             { upsert: true }
-          );
+          ));
         }
       }
+      await Promise.all(historyPromises);
     }
 
     // ── Stats Sync ──
@@ -1710,12 +1743,16 @@ await Course.findOneAndUpdate(
       const liveCookie = ucpCookie || user.ucpCookie;
       if (liveCookie) {
         let stagedCount = 0;
+        const userCourses = await Course.find({ userId }).lean();
+        const courseMapDb = new Map(userCourses.map(c => [c.name, c]));
+        const materialPromises = [];
+
         for (const item of materialLinksData) {
           if (!item.courseUrl) continue;
 
           // Derive section and teacher from context already parsed above
           const itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
-          const courseDoc = await Course.findOne({ userId, name: item.courseName }).lean();
+          const courseDoc = courseMapDb.get(item.courseName);
 
           // Skip 0 credit hour courses
           if (courseDoc && courseDoc.creditHours === 0) {
@@ -1732,7 +1769,7 @@ await Course.findOneAndUpdate(
 
           const isProcessed = !item.links || item.links.length === 0;
 
-          await MaterialLink.findOneAndUpdate(
+          materialPromises.push(MaterialLink.findOneAndUpdate(
             { userId, courseUrl: item.courseUrl },
             {
               $set: {
@@ -1753,9 +1790,10 @@ await Course.findOneAndUpdate(
               }
             },
             { upsert: true }
-          );
+          ));
           stagedCount++;
         }
+        await Promise.all(materialPromises);
 
         if (stagedCount > 0) {
           console.log(`[SYNC] 📥 Staged ${stagedCount} material link sets. Firing processor immediately.`);

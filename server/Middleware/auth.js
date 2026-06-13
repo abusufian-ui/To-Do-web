@@ -10,7 +10,7 @@ const auth = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123'); // Fallback matches index.js
     req.user = decoded; // Adds user ID to the request
 
-    const userId = decoded.id || (decoded.user && decoded.user.id);
+    const userId = decoded.id; // All tokens use { id: user._id } — legacy dual-decode removed
     if (!userId) return res.status(401).json({ message: 'Token is not valid' });
 
     // 🛡️ Security Patch: Validate user existence and block status in database

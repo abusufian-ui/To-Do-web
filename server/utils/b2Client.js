@@ -4,11 +4,16 @@ const { GetObjectCommand, PutObjectCommand, PutBucketCorsCommand } = require('@a
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 // BackBlaze B2 is S3-compatible — we use the AWS SDK v3
-const B2_KEY_ID = process.env.B2_KEY_ID || '003cdfb0a4cfaaf0000000001';
-const B2_APP_KEY = process.env.B2_APP_KEY || 'K003/mzimKqI8FKs1419f8UiHrWKy3E';
+const B2_KEY_ID = process.env.B2_KEY_ID;
+const B2_APP_KEY = process.env.B2_APP_KEY;
 const B2_ENDPOINT = process.env.B2_ENDPOINT || 'https://s3.eu-central-003.backblazeb2.com';
 const B2_REGION = process.env.B2_REGION || 'eu-central-003';
 const B2_BUCKET = process.env.B2_BUCKET_NAME || 'myportal-large-data';
+
+// Guard: Fail fast if credentials are missing — never silently fall back to hardcoded keys
+if (!B2_KEY_ID || !B2_APP_KEY) {
+  throw new Error('FATAL: B2_KEY_ID and B2_APP_KEY must be set in .env — hardcoded fallbacks removed for security.');
+}
 
 const b2 = new S3Client({
     endpoint: B2_ENDPOINT,

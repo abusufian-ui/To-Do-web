@@ -433,13 +433,21 @@ async function processUserMaterials(userId, cookieString) {
 async function runNightlyMaterialSync(User, Course) {
     console.log('[NIGHTLY_MATERIAL] 🌙 Starting nightly material sync...');
     const cheerio = require('cheerio');
+    const { decrypt } = require('../utils/encryption');
     const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./scraperEngine');
     try {
-        const activeUsers = await User.find({ isPortalConnected: true, ucpCookie: { $exists: true, $ne: null } }).lean();
+        const activeUsers = await User.find({
+            isPortalConnected: true,
+            $or: [
+                { ucpCookie: { $ne: null } },
+                { ucpCookieEncrypted: { $ne: null } }
+            ]
+        }).select('+ucpCookieEncrypted').lean();
         console.log(`[NIGHTLY_MATERIAL] Found ${activeUsers.length} active users`);
 
         for (const user of activeUsers) {
-            if (!user.ucpCookie) continue;
+            const cookie = user.ucpCookieEncrypted ? decrypt(user.ucpCookieEncrypted) : user.ucpCookie;
+            if (!cookie) continue;
 
             try {
                 // Scrape fresh material links for each of the user's courses
@@ -456,7 +464,7 @@ async function runNightlyMaterialSync(User, Course) {
                         const controller = new AbortController();
                         const tid = setTimeout(() => controller.abort(), 15000);
                         const res = await fetch(`https://horizon.ucp.edu.pk/student/course/material/${courseId}`, {
-                            headers: { 'Cookie': user.ucpCookie, 'User-Agent': 'Mozilla/5.0' },
+                            headers: { 'Cookie': cookie, 'User-Agent': 'Mozilla/5.0' },
                             signal: controller.signal
                         });
                         clearTimeout(tid);
@@ -506,7 +514,7 @@ async function runNightlyMaterialSync(User, Course) {
                 }
 
                 // Process the freshly staged links immediately using stored cookie
-                await processUserMaterials(user._id.toString(), user.ucpCookie);
+                await processUserMaterials(user._id.toString(), cookie);
             } catch (err) {
                 console.error(`[NIGHTLY_MATERIAL] Error for ${user.email}:`, err.message);
             }

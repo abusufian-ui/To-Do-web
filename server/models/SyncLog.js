@@ -9,7 +9,8 @@ const syncLogSchema = new mongoose.Schema({
   endTime: { type: Date },
   durationMs: { type: Number },
   error: { type: String },
-  changesSummary: { type: mongoose.Schema.Types.Mixed }
+  changesSummary: { type: mongoose.Schema.Types.Mixed },
+  syncSource: { type: String, default: 'unknown' }
 });
 
 // Auto-prune logic: Keep only the 20 most recent sync logs per user

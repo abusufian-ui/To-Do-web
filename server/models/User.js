@@ -10,7 +10,9 @@ const userSchema = new mongoose.Schema({
   adminPin: { type: String, default: '0000' },
   isPortalConnected: { type: Boolean, default: false, index: true },
   portalId: { type: String, default: null },
-  ucpCookie: { type: String, default: null },
+  ucpCookie: { type: String, default: null },          // DEPRECATED — use ucpCookieEncrypted
+  ucpCookieEncrypted: { type: String, default: null, select: false }, // AES-256-CTR encrypted session cookie
+  ucpCookieUpdatedAt: { type: Date, default: null },   // Timestamp of last cookie update (for expiry check)
   portalProfilePic: { type: String, default: null }, // Scrapped from portal
   originalPortalProfilePic: { type: String, default: null }, // First scrapped pic (for records)
   customProfilePic: { type: String, default: null }, // User uploaded

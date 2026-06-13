@@ -6,7 +6,10 @@ const crypto = require('crypto');
 const ALGORITHM = 'aes-256-ctr';
 // IMPORTANT: In production, put this in a .env file (e.g. ENCRYPTION_KEY=...)
 // It must be exactly 32 characters long.
-const SECRET_KEY = process.env.ENCRYPTION_KEY || 'vOVH6sdmpNWjRRIqCc7rdxs01lwHzfr3'; 
+const SECRET_KEY = process.env.ENCRYPTION_KEY;
+if (!SECRET_KEY || Buffer.from(SECRET_KEY).length < 32) {
+  throw new Error('FATAL: ENCRYPTION_KEY must be set in .env and be at least 32 characters long.');
+}
 const IV_LENGTH = 16;
 
 const encrypt = (text) => {

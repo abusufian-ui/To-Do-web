@@ -87,7 +87,12 @@ const detectGradeChanges = (oldGrade, newGrade) => {
   const oldPct = parseFloat(oldGrade.totalPercentage) || 0;
   const newPct = parseFloat(newGrade.totalPercentage) || 0;
 
-  if (newPct !== oldPct && newPct > 0) {
+  // Also detect when a new assessment item is graded even if total percentage hasn't changed yet
+  const countItems = (grade) => (grade.assessments || []).reduce((sum, a) => sum + (a.details || []).length, 0);
+  const oldCount = countItems(oldGrade);
+  const newCount = countItems(newGrade);
+
+  if ((newPct !== oldPct || newCount > oldCount) && newPct > 0) {
     return {
       type: 'GRADE_UPDATE',
       courseName: newGrade.courseName,
@@ -95,6 +100,7 @@ const detectGradeChanges = (oldGrade, newGrade) => {
       oldPercentage: oldPct.toFixed(1),
       newPercentage: newPct.toFixed(1),
       increased: newPct > oldPct,
+      newItemsGraded: newCount > oldCount ? newCount - oldCount : 0,
     };
   }
   return null;
