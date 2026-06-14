@@ -15,8 +15,8 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import SuperscriptExtension from '@tiptap/extension-superscript';
 import SubscriptExtension from '@tiptap/extension-subscript';
-import CodeBlock from '@tiptap/extension-code-block';
-
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { all, createLowlight } from 'lowlight';
 import { 
   Paperclip, X, Book, ArrowLeft, ChevronDown, Copy, Trash2, CheckCircle2, 
   Undo2, Redo2, Loader2, Cloud, Highlighter, Bold, Italic, Image as ImageIcon, 
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
 
+const lowlight = createLowlight(all);
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 if (typeof window !== 'undefined') {
@@ -224,6 +225,11 @@ const StaticCodeBlockNode = ({ node, deleteNode, editor }) => {
         <div className="flex items-center gap-2">
           <FileCode size={14} className="text-gray-400" />
           <span className="text-xs font-bold text-gray-300 tracking-wider uppercase">Code Snippet</span>
+          {node.attrs.language && (
+            <span className="text-[10px] font-extrabold bg-[#3b82f6]/20 text-[#60a5fa] px-2 py-0.5 rounded uppercase tracking-wider border border-[#3b82f6]/30 select-none">
+              {node.attrs.language}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button contentEditable={false} onClick={handleCopy} className="text-gray-400 hover:text-white transition-colors text-xs font-bold flex items-center gap-1.5 bg-[#3D3D3D] hover:bg-[#4D4D4D] px-2 py-1 rounded">
@@ -244,8 +250,10 @@ const StaticCodeBlockNode = ({ node, deleteNode, editor }) => {
   );
 };
 
-const StaticCodeBlockExtension = CodeBlock.extend({
+const StaticCodeBlockExtension = CodeBlockLowlight.extend({
   addNodeView() { return ReactNodeViewRenderer(StaticCodeBlockNode); }
+}).configure({
+  lowlight,
 });
 
 const EquationBlockNode = ({ node }) => {
@@ -712,6 +720,59 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         .dark .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { color: #6b7280; }
         .ProseMirror code { background-color: #f3f4f6; color: #ef4444; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.875em; }
         .dark .ProseMirror code { background-color: #2d3748; color: #fca5a5; }
+
+        /* Syntax Highlighting (Highlight.js / One Dark theme) */
+        .ProseMirror pre code .hljs-comment,
+        .ProseMirror pre code .hljs-quote {
+          color: #727b87;
+          font-style: italic;
+        }
+        .ProseMirror pre code .hljs-keyword,
+        .ProseMirror pre code .hljs-selector-tag,
+        .ProseMirror pre code .hljs-addition {
+          color: #c678dd;
+          font-weight: bold;
+        }
+        .ProseMirror pre code .hljs-number,
+        .ProseMirror pre code .hljs-string,
+        .ProseMirror pre code .hljs-meta .hljs-string,
+        .ProseMirror pre code .hljs-literal,
+        .ProseMirror pre code .hljs-doctag,
+        .ProseMirror pre code .hljs-regexp {
+          color: #98c379;
+        }
+        .ProseMirror pre code .hljs-title,
+        .ProseMirror pre code .hljs-section,
+        .ProseMirror pre code .hljs-name,
+        .ProseMirror pre code .hljs-selector-id,
+        .ProseMirror pre code .hljs-selector-class {
+          color: #61afef;
+        }
+        .ProseMirror pre code .hljs-attribute,
+        .ProseMirror pre code .hljs-attr,
+        .ProseMirror pre code .hljs-variable,
+        .ProseMirror pre code .hljs-template-variable,
+        .ProseMirror pre code .hljs-class .hljs-title,
+        .ProseMirror pre code .hljs-type {
+          color: #d19a66;
+        }
+        .ProseMirror pre code .hljs-symbol,
+        .ProseMirror pre code .hljs-bullet,
+        .ProseMirror pre code .hljs-subst,
+        .ProseMirror pre code .hljs-meta,
+        .ProseMirror pre code .hljs-link {
+          color: #56b6c2;
+        }
+        .ProseMirror pre code .hljs-built_in,
+        .ProseMirror pre code .hljs-title.class_ {
+          color: #e6c07b;
+        }
+        .ProseMirror pre code .hljs-emphasis {
+          font-style: italic;
+        }
+        .ProseMirror pre code .hljs-strong {
+          font-weight: bold;
+        }
 
         #custom-toolbar { border-bottom: 1px solid #e5e7eb !important; padding: 8px 24px !important; background-color: #f9fafb; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; position: sticky; top: 0; z-index: 40; }
         .dark #custom-toolbar { border-bottom-color: #2C2C2C !important; background-color: #1A1A1A; }
