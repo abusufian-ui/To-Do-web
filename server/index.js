@@ -1,5 +1,14 @@
 require('dotenv').config();
 
+// Global process-level exception/rejection safety net
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err.stack || err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -93,7 +102,7 @@ let lastFetchDate = null;
 async function getLahorePrayerTimes(todayStr) {
   if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
     try {
-      const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1');
+      const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1', { timeout: 5000 });
       const timings = response.data.data.timings;
       cachedPrayerTimes = {
         fajr: timings.Fajr,
@@ -1863,7 +1872,8 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
           headers: {
             'x-auth-token': token,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 60000
         });
       } catch (error) {
         console.error("[FORCE SYNC BACKGROUND ERROR]", error.message);
@@ -1889,6 +1899,13 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
 
 const dbLink = process.env.REACT_APP_MONGODB_URI;
 console.log("🔗 Connecting to MyPortal Database...");
+
+mongoose.connection.on('error', err => {
+  console.error('❌ MongoDB Connection Error:', err);
+});
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB Disconnected. Waiting for reconnection...');
+});
 
 mongoose.connect(dbLink, {
   maxPoolSize: 20,
@@ -4777,7 +4794,8 @@ const runTieredSync = async (mode, logName) => {
           headers: {
             'x-auth-token': token,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 60000
         });
         
         await SyncLog.findByIdAndUpdate(syncLog._id, { durationMs: Date.now() - startTime });
@@ -4856,7 +4874,8 @@ app.post('/api/sync-grades', auth, async (req, res) => {
         headers: {
           'x-auth-token': token,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 60000
       });
 
       await SyncLog.findByIdAndUpdate(syncLog._id, { durationMs: Date.now() - startTime });
@@ -5079,7 +5098,7 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
             try {
               // Pass the original fileName as customFilename to getSignedDownloadUrl so it downloads with original name
               const signedUrl = await getSignedDownloadUrl(m.b2Key, 300, m.fileName || m.normalizedFileName);
-              const response = await fetch(signedUrl);
+              const response = await fetch(signedUrl, { signal: AbortSignal.timeout(15000) });
               if (response.ok) {
                 const buf = Buffer.from(await response.arrayBuffer());
                 const sectionFolder = useSectionDirs ? `Section ${m.sectionCode}/` : '';
@@ -5164,7 +5183,7 @@ app.post('/api/course-material/download-zip', auth, async (req, res) => {
       if (!m.b2Key) return null;
       try {
         const signedUrl = await getSignedDownloadUrl(m.b2Key, 300);
-        const response = await fetch(signedUrl);
+        const response = await fetch(signedUrl, { signal: AbortSignal.timeout(15000) });
         if (!response.ok) return null;
         const buf = Buffer.from(await response.arrayBuffer());
         return {
@@ -5487,20 +5506,28 @@ app.get('/api/admin/course-materials/student-sections/:userId', auth, adminAuth,
   }
 });
 
-
 // 4. Get Course Vault files for a course, grouped by bucket (PUBLIC) - DISABLED
-app.get('/api/course-vault/:courseCode', auth, async (req, res) => {
+app.get('/api/course-vault/:courseCode', auth, (req, res) => {
   res.json([]);
 });
 
 // 5. Get a fresh signed URL for a single vault file (for inline PDF viewer refresh) - DISABLED
-app.get('/api/course-vault/view/:id', auth, async (req, res) => {
+app.get('/api/course-vault/view/:id', auth, (req, res) => {
   res.status(404).json({ message: 'Course Vault is disabled.' });
 });
 
 // 6. (Old manual upload endpoint — kept but hidden from public; only internal use)
-app.post('/api/course-material/upload', auth, async (req, res) => {
+app.post('/api/course-material/upload', auth, (req, res) => {
   return res.status(403).json({ message: 'Manual uploads are disabled. Course materials are synced automatically from Horizon Portal.' });
+});
+
+// Express Error Handling Middleware (must be defined AFTER all other routes and middleware)
+app.use((err, req, res, next) => {
+  console.error('[EXPRESS_ERROR]', err.stack || err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ message: err.message || 'Internal Server Error' });
 });
 
 const PORT = process.env.PORT || 5000;
@@ -5508,4 +5535,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT} with WebSockets enabled!`);
   configureBucketCors();
 });
+
+
+
 
