@@ -24,6 +24,8 @@ import {
   CheckSquare, Terminal, Superscript as SuperscriptIcon, Subscript as SubscriptIcon, Sigma, FileCode, Send, Globe, Lock, Strikethrough
 } from 'lucide-react';
 import UCPLogo from './UCPLogo'; 
+import katex from 'katex';
+import 'katex/dist/katex.min.css'; 
 
 const lowlight = createLowlight(all);
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -256,22 +258,124 @@ const StaticCodeBlockExtension = CodeBlockLowlight.extend({
   lowlight,
 });
 
-const EquationBlockNode = ({ node }) => {
+const EquationBlockNode = ({ node, updateAttributes, deleteNode, editor }) => {
+  const isEditable = editor.isEditable;
+  const [isEditing, setIsEditing] = useState(false);
+  const [inputValue, setInputValue] = useState(node.attrs.latex || '');
+  const inputRef = useRef(null);
+
   const align = node.attrs.textAlign || 'center';
   const alignClass = align === 'left' ? 'justify-start' : align === 'right' ? 'justify-end' : 'justify-center';
   const textClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
 
+  useEffect(() => {
+    setInputValue(node.attrs.latex || '');
+  }, [node.attrs.latex]);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isEditing]);
+
+  const cleanLatex = (val) => {
+    let cleaned = val.trim();
+    if (cleaned.startsWith('$$') && cleaned.endsWith('$$')) {
+      cleaned = cleaned.substring(2, cleaned.length - 2).trim();
+    } else if (cleaned.startsWith('\\[') && cleaned.endsWith('\\]')) {
+      cleaned = cleaned.substring(2, cleaned.length - 2).trim();
+    } else if (cleaned.startsWith('\\(') && cleaned.endsWith('\\)')) {
+      cleaned = cleaned.substring(2, cleaned.length - 2).trim();
+    } else if (cleaned.startsWith('$') && cleaned.endsWith('$')) {
+      cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+    }
+    return cleaned;
+  };
+
+  const handleSave = () => {
+    const cleaned = cleanLatex(inputValue);
+    updateAttributes({ latex: cleaned });
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === 'Escape') {
+      setInputValue(node.attrs.latex || '');
+      setIsEditing(false);
+    }
+  };
+
+  // Compile LaTeX to HTML
+  let renderedHtml = '';
+  const latexVal = node.attrs.latex || '';
+  if (!latexVal.trim()) {
+    renderedHtml = `<span class="text-gray-400 dark:text-gray-600 italic text-sm select-none">Empty equation. Click to edit.</span>`;
+  } else {
+    try {
+      renderedHtml = katex.renderToString(latexVal, {
+        throwOnError: false,
+        displayMode: true,
+      });
+    } catch (err) {
+      renderedHtml = `<span class="text-red-500 text-xs font-mono break-all select-none">Error: ${err.message}</span>`;
+    }
+  }
+
   return (
     <NodeViewWrapper className={`my-6 flex w-full ${alignClass}`}>
-       <div className="relative group w-full max-w-2xl bg-gray-50/50 dark:bg-[#1A1A1A]/50 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 rounded-lg py-4 px-8 transition-colors">
-          <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white dark:bg-[#121212] px-2 text-[10px] uppercase font-bold text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-             <Sigma size={10} /> Equation
+      <div 
+        onClick={() => isEditable && !isEditing && setIsEditing(true)}
+        className={`relative group w-full max-w-2xl bg-gray-50/50 dark:bg-[#1A1A1A]/50 border ${
+          isEditing 
+            ? 'border-brand-blue dark:border-blue-500 ring-2 ring-blue-100 dark:ring-blue-900/30' 
+            : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700'
+        } rounded-lg py-4 px-8 transition-all duration-200 cursor-pointer`}
+      >
+        {/* Label */}
+        <div className="absolute -top-2.5 left-6 bg-white dark:bg-[#121212] px-2 text-[10px] uppercase font-bold text-gray-400 flex items-center gap-1 select-none">
+          <Sigma size={10} /> Equation
+        </div>
+
+        {/* Delete block button for edit mode or hover */}
+        {isEditable && (
+          <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button 
+              onClick={(e) => { e.stopPropagation(); deleteNode(); }} 
+              className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 p-1 rounded hover:bg-gray-100 dark:hover:bg-[#2C2C2C] transition-colors"
+              title="Delete Equation"
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
-          <NodeViewContent 
-            className={`font-serif italic text-xl md:text-2xl outline-none text-gray-900 dark:text-gray-100 ${textClass}`} 
-            as="div" 
+        )}
+
+        {isEditing ? (
+          <div className="flex flex-col gap-2 w-full pt-1" onKeyDown={(e) => e.stopPropagation()}>
+            <textarea
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onBlur={handleSave}
+              onKeyDown={handleKeyDown}
+              rows={2}
+              className="w-full bg-transparent border-none outline-none font-mono text-sm text-gray-900 dark:text-gray-100 resize-none placeholder-gray-400 dark:placeholder-gray-600"
+              placeholder="Type or paste LaTeX here... (e.g. \lnot(P \lor Q) \leftrightarrow (\lnot P \land \lnot Q))"
+            />
+            <div className="text-[10px] text-gray-400 dark:text-gray-500 select-none flex justify-between items-center">
+              <span>Press <kbd className="bg-gray-100 dark:bg-gray-800 px-1 rounded">Enter</kbd> to save, <kbd className="bg-gray-100 dark:bg-gray-800 px-1 rounded">Shift+Enter</kbd> for new line.</span>
+              <span>Delimiters like $$ will be stripped.</span>
+            </div>
+          </div>
+        ) : (
+          <div 
+            className={`w-full overflow-x-auto custom-scrollbar font-serif italic text-xl md:text-2xl text-gray-900 dark:text-gray-100 ${textClass}`}
+            dangerouslySetInnerHTML={{ __html: renderedHtml }}
           />
-       </div>
+        )}
+      </div>
     </NodeViewWrapper>
   );
 };
@@ -279,10 +383,25 @@ const EquationBlockNode = ({ node }) => {
 const EquationExtension = Node.create({
   name: 'equationBlock',
   group: 'block',
-  content: 'inline*',
-  addAttributes() { return { textAlign: { default: 'center' } } },
-  parseHTML() { return [{ tag: 'div[data-equation]' }] },
-  renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-equation': '' }), 0] },
+  atom: true,
+  addAttributes() {
+    return {
+      latex: { default: '\\lnot(P \\lor Q) \\leftrightarrow (\\lnot P \\land \\lnot Q)' },
+      textAlign: { default: 'center' }
+    };
+  },
+  parseHTML() {
+    return [{
+      tag: 'div[data-equation]',
+      getAttrs: dom => ({
+        latex: dom.getAttribute('data-latex') || dom.textContent || '',
+        textAlign: dom.style.textAlign || 'center'
+      })
+    }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-equation': '', 'data-latex': HTMLAttributes.latex || '' })];
+  },
   addNodeView() { return ReactNodeViewRenderer(EquationBlockNode); }
 });
 
