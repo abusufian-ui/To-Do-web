@@ -84,7 +84,7 @@ const MaterialLink   = require('./models/MaterialLink');
 const { convertToPdf } = require('./utils/documentConverter');
 
 // 🚨 NEW: BACKBLAZE B2 + MATERIAL PROCESSOR
-const { getSignedDownloadUrl, b2, B2_BUCKET, uploadToB2, getPresignedUploadUrl, configureBucketCors } = require('./utils/b2Client');
+const { getSignedDownloadUrl, b2, B2_BUCKET, uploadToB2, getPresignedUploadUrl, configureBucketCors, downloadFileFromB2, getMimeType } = require('./utils/b2Client');
 const { processUserMaterials, runNightlyMaterialSync } = require('./services/materialProcessor');
 
 
@@ -207,21 +207,8 @@ const profilePicUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit 
 });
 
-const cloudinaryGeneralStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: async (req, file) => {
-    const identifier = req.user?.rollNumber || req.user?.id || 'user';
-    const cleanIdentifier = identifier.toString().toLowerCase().replace(/[^a-z0-9]/g, '');
-    return {
-      folder: 'myportal/general',
-      resource_type: 'auto',
-      public_id: `file_${cleanIdentifier}_${Date.now()}`
-    };
-  },
-});
-
 const generalUpload = multer({
-  storage: cloudinaryGeneralStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
@@ -1939,18 +1926,54 @@ mongoose.connect(dbLink, {
 
 }).catch(err => console.log(err));
 
-// --- NOTIFICATION ROUTES ---
 app.post('/api/upload', auth, (req, res) => {
-  upload.array('files', 10)(req, res, function (err) {
-    if (err) return res.status(500).json({ error: "Upload failed", details: err.message });
+  upload.array('files', 10)(req, res, async function (err) {
+    if (err) {
+      console.error('[UPLOAD_ERROR]', err);
+      return res.status(500).json({ error: "Upload failed", details: err.message });
+    }
     try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
+
       const baseUrl = getBaseUrl(req);
-      const urls = req.files.map(file => file.path || file.secure_url || `${baseUrl}/media/${file.filename}`);
+      const urls = [];
+
+      for (const file of req.files) {
+        const timestamp = Date.now();
+        const cleanName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const userIdentifier = req.user?.rollNumber || req.user?.id || 'anonymous';
+        const b2Key = `notes_media/${userIdentifier}_${timestamp}_${cleanName}`;
+        
+        await uploadToB2(b2Key, file.buffer, file.mimetype || 'application/octet-stream');
+        urls.push(`${baseUrl}/api/media/view/${b2Key}`);
+      }
+
       res.json({ urls });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to process files after upload' });
+      console.error('[UPLOAD_ERROR_B2]', error);
+      res.status(500).json({ error: 'Failed to upload files to B2 storage', details: error.message });
     }
   });
+});
+
+app.get('/api/media/view/:folder/:filename', async (req, res) => {
+  const { folder, filename } = req.params;
+  if (!folder || !filename) return res.status(400).send("Bad Request");
+  const key = `${folder}/${filename}`;
+
+  try {
+    const buffer = await downloadFileFromB2(key);
+    const mimeType = getMimeType(key);
+    
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.send(buffer);
+  } catch (error) {
+    console.error(`[MEDIA_VIEW_ERROR] Error retrieving file ${key}:`, error);
+    res.status(404).send("File not found");
+  }
 });
 
 app.get('/api/download/:filename', (req, res) => {
