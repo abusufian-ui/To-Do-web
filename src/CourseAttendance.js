@@ -87,7 +87,7 @@ const CourseAttendance = ({ attendance }) => {
           {/* Recharts Donut */}
           {(totalConducted > 0) ? (
             <div className="relative w-48 h-48 shrink-0 hover:scale-105 transition-transform duration-500">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <PieChart>
                   <Pie
                     data={chartData}
