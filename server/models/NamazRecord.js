@@ -12,6 +12,8 @@ const namazSchema = new mongoose.Schema({
   }
 });
 
+namazSchema.index({ userId: 1, dateStr: 1 }, { unique: true });
+
 // THIS PREVENTS THE OVERWRITE ERROR
 const NamazRecord = mongoose.models.NamazRecord || mongoose.model('NamazRecord', namazSchema);
 

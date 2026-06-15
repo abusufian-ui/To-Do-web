@@ -14,4 +14,6 @@ const KeynoteSchema = new mongoose.Schema({
   isPrivate: { type: Boolean, default: false },
 });
 
+KeynoteSchema.index({ userId: 1, isDeleted: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Keynote', KeynoteSchema);

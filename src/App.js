@@ -559,38 +559,108 @@ function AppLayout() {
     setCourses(fetchedCourses);
   }, [authHeaders]);
 
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard`, { headers: authHeaders });
+      if (res.status === 401) return handleLogout();
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // 1. User
+      if (data.user) {
+        setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+
+      // 2. Tasks
+      if (Array.isArray(data.tasks)) {
+        setTasks(data.tasks.map(t => ({ ...t, id: t._id })));
+      } else {
+        setTasks([]);
+      }
+
+      // 3. Notes
+      if (Array.isArray(data.notes)) {
+        setNotes(data.notes);
+      } else {
+        setNotes([]);
+      }
+
+      // 4. Keynotes
+      if (Array.isArray(data.keynotes)) {
+        setKeynotes(data.keynotes);
+      } else {
+        setKeynotes([]);
+      }
+
+      // 5. Notifications
+      if (Array.isArray(data.notifications)) {
+        setNotifications(data.notifications);
+      } else {
+        setNotifications([]);
+      }
+
+      // 6. Bin
+      if (data.bin) {
+        const formattedBin = [
+          ...(data.bin.tasks || []).map(t => ({ ...t, id: t._id, binType: 'Task', name: t.name, subtitle: t.course })),
+          ...(data.bin.transactions || []).map(t => ({ ...t, id: t._id, binType: 'Transaction', name: t.description || 'Transaction', subtitle: `Rs ${t.amount}` })),
+          ...(data.bin.habits || []).map(h => ({ ...h, id: h._id, binType: 'Habit', name: h.name, subtitle: h.type === 'good' ? 'Good Protocol' : 'Bad Protocol' })),
+          ...(data.bin.notes || []).map(n => ({ ...n, id: n._id, binType: 'Note', name: n.title, subtitle: n.courseId })),
+          ...(data.bin.keynotes || []).map(k => ({ ...k, id: k._id, binType: 'Keynote', name: k.title, subtitle: k.courseName }))
+        ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+        setBinItems(formattedBin);
+      } else {
+        setBinItems([]);
+      }
+
+      // 7. Courses
+      if (Array.isArray(data.courses)) {
+        const fetchedCourses = data.courses.map(c => ({ 
+          id: c._id, 
+          name: c.name, 
+          type: c.type === 'university' ? 'uni' : 'general',
+          code: c.code,
+          section: c.section,
+          creditHours: c.creditHours
+        }));
+        setCourses(fetchedCourses);
+      } else {
+        setCourses([]);
+      }
+
+      // 8. Exams
+      if (Array.isArray(data.exams)) {
+        setExams(data.exams);
+      } else {
+        setExams([]);
+      }
+
+      // 9. Active Group
+      setActiveGroup(data.group || null);
+
+      // 10. Pending Invitations
+      setPendingInvitations(data.invitations || []);
+
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    }
+  }, [authHeaders, handleLogout]);
+
   useEffect(() => {
     if (isAuthenticated && token) {
-      fetchUser();
-      fetchTasks();
-      fetchNotes();
-      fetchKeynotes();
-      fetchNotifications();
-      fetchBin();
-      fetchCourses();
-      fetchExams();
-      fetchActiveGroup();
-      fetchPendingInvitations();
+      fetchDashboardData();
     }
-  }, [isAuthenticated, token, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchNotifications, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
+  }, [isAuthenticated, token, fetchDashboardData]);
 
   const handleLiveUpdate = useCallback(() => {
     if (token && isAuthenticated) {
       if (window.liveSyncTimeout) clearTimeout(window.liveSyncTimeout);
       window.liveSyncTimeout = setTimeout(() => {
-        fetchUser();
-        fetchTasks();
-        fetchNotes();
-        fetchKeynotes();
-        fetchNotifications();
-        fetchBin();
-        fetchCourses();
-        fetchExams();
-        fetchActiveGroup();
-        fetchPendingInvitations();
+        fetchDashboardData();
       }, 500);
     }
-  }, [token, isAuthenticated, fetchUser, fetchTasks, fetchNotes, fetchKeynotes, fetchNotifications, fetchBin, fetchCourses, fetchExams, fetchActiveGroup, fetchPendingInvitations]);
+  }, [token, isAuthenticated, fetchDashboardData]);
 
   useLiveSync(handleLiveUpdate, handleLogout, user?._id || user?.id);
 

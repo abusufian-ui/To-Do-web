@@ -12,11 +12,15 @@ const TransactionSchema = new mongoose.Schema({
   deletedAt: { type: Date, default: null }
 });
 
+TransactionSchema.index({ userId: 1, isDeleted: 1, date: -1, createdAt: -1 });
+
 const BudgetSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   category: { type: String, required: true },
   limit: { type: Number, required: true }
 });
+
+BudgetSchema.index({ userId: 1 });
 
 // NEW: Debt Schema
 const DebtSchema = new mongoose.Schema({
@@ -31,6 +35,8 @@ const DebtSchema = new mongoose.Schema({
   isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null }
 });
+
+DebtSchema.index({ userId: 1, isDeleted: 1 });
 
 module.exports = {
   Transaction: mongoose.model('Transaction', TransactionSchema),

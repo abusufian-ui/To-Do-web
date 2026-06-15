@@ -9,4 +9,6 @@ const focusSessionSchema = new mongoose.Schema({
   completedAt: { type: Date, default: Date.now }
 });
 
+focusSessionSchema.index({ userId: 1, completedAt: -1 });
+
 module.exports = mongoose.model('FocusSession', focusSessionSchema);

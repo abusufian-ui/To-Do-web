@@ -391,7 +391,7 @@ app.use((req, res, next) => {
                            req.originalUrl.includes('/notes');
       
       if (isSharedPath) {
-        Group.find({ members: activeUserId }).then(groups => {
+        Group.find({ members: activeUserId }).lean().select('members').then(groups => {
           groups.forEach(group => {
             group.members.forEach(memberId => {
               if (memberId.toString() !== activeUserId.toString()) {
@@ -407,15 +407,11 @@ app.use((req, res, next) => {
   next();
 });
 
-const auth = async (req, res, next) => {
+const auth = (req, res, next) => {
   const token = req.header('x-auth-token');
   if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
   try {
     const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
-    const userExists = await User.findById(decoded.id);
-    if (!userExists) {
-      return res.status(401).json({ message: 'User account has been deleted' });
-    }
     req.user = decoded;
     next();
   } catch (e) {
@@ -425,7 +421,7 @@ const auth = async (req, res, next) => {
 
 const adminAuth = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id).select('isAdmin').lean();
     if (!user || !user.isAdmin) {
       return res.status(403).json({ message: "Access Denied: Admins Only" });
     }
@@ -1134,14 +1130,14 @@ app.get('/api/submissions', auth, async (req, res) => {
 
 app.get('/api/datesheet', auth, async (req, res) => {
   try {
-    const exams = await Exam.find({ userId: req.user.id }).sort({ date: 1 });
+    const exams = await Exam.find({ userId: req.user.id }).sort({ date: 1 }).lean();
     res.json(exams);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
 app.get('/api/assessments', auth, async (req, res) => {
   try {
-    const assessments = await Assessment.find({ userId: req.user.id }).sort({ dueDate: 1 });
+    const assessments = await Assessment.find({ userId: req.user.id }).sort({ dueDate: 1 }).lean();
     res.json(assessments);
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
@@ -1988,7 +1984,7 @@ app.get('/api/download/:filename', (req, res) => {
 });
 
 app.get('/api/keynotes', auth, async (req, res) => {
-  try { res.json(await Keynote.find({ userId: req.user.id, isDeleted: { $ne: true } }).sort({ createdAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); }
+  try { res.json(await Keynote.find({ userId: req.user.id, isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean()); } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 app.post('/api/keynotes', auth, async (req, res) => {
   try { res.json(await new Keynote({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); }
@@ -2263,7 +2259,8 @@ app.get('/api/groups/my', auth, async (req, res) => {
   try {
     const group = await Group.findOne({ members: req.user.id })
       .populate('members', 'name email profilePic customProfilePic portalId createdAt')
-      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt');
+      .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt')
+      .lean();
     res.json(group);
   } catch (error) {
     console.error("Fetch My Group Error:", error);
@@ -2418,7 +2415,8 @@ app.get('/api/groups/invitations', auth, async (req, res) => {
   try {
     const invites = await GroupInvitation.find({ receiverId: req.user.id, status: 'pending' })
       .populate('senderId', 'name email profilePic')
-      .populate('groupId', 'name');
+      .populate('groupId', 'name')
+      .lean();
     res.json(invites);
   } catch (error) {
     console.error("Fetch Invites Error:", error);
@@ -2856,7 +2854,7 @@ app.put('/api/notes/:id', auth, async (req, res) => {
 
 app.get('/api/notes', auth, async (req, res) => {
   try {
-    const userGroups = await Group.find({ members: req.user.id });
+    const userGroups = await Group.find({ members: req.user.id }).lean().select('_id');
     const groupIds = userGroups.map(g => g._id);
 
     const notes = await Note.find({
@@ -2867,7 +2865,8 @@ app.get('/api/notes', auth, async (req, res) => {
     })
     .populate('user', 'name email profilePic')
     .populate('sender', 'name profilePic') // Hydrate the sender details for Inbox
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 
     res.json(notes);
   } catch (error) {
@@ -3283,8 +3282,8 @@ app.post('/api/admin/trigger-processor', auth, adminAuth, async (req, res) => {
 
 app.get('/api/courses', auth, async (req, res) => {
   try {
-    if (!(await Course.findOne({ userId: req.user.id, name: 'General Course' }))) await new Course({ userId: req.user.id, name: 'General Course', type: 'general' }).save();
-    res.json(await Course.find({ userId: req.user.id }).sort({ createdAt: 1 }));
+    if (!(await Course.findOne({ userId: req.user.id, name: 'General Course' }).lean())) await new Course({ userId: req.user.id, name: 'General Course', type: 'general' }).save();
+    res.json(await Course.find({ userId: req.user.id }).sort({ createdAt: 1 }).lean());
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 app.post('/api/courses', auth, async (req, res) => {
@@ -3339,7 +3338,137 @@ app.post('/api/login', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password')); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password').lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+
+app.get('/api/dashboard', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Fetch user groups to get active group tasks/notes
+    const userGroups = await Group.find({ members: userId }).lean().select('_id');
+    const groupIds = userGroups.map(g => g._id);
+
+    const [
+      user,
+      tasks,
+      notes,
+      keynotes,
+      notifications,
+      binTasks,
+      binTransactions,
+      binHabits,
+      binNotes,
+      binKeynotes,
+      courses,
+      exams,
+      group,
+      invitations
+    ] = await Promise.all([
+      User.findById(userId).select('-password').lean(),
+
+      Task.find({
+        $or: [
+          { userId, groupId: null, isDeleted: false },
+          { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: userId } }
+        ]
+      })
+      .populate('userId', 'name email profilePic')
+      .sort({ createdAt: -1 })
+      .lean(),
+
+      Note.find({
+        $or: [
+          { user: userId, groupId: null, isDeleted: false },
+          { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: userId } }
+        ]
+      })
+      .populate('user', 'name email profilePic')
+      .populate('sender', 'name profilePic')
+      .sort({ createdAt: -1 })
+      .lean(),
+
+      Keynote.find({ userId, isDeleted: { $ne: true } }).sort({ createdAt: -1 }).lean(),
+
+      Notification.find({ userId }).sort({ createdAt: -1 }).limit(50).lean(),
+
+      Task.find({
+        $or: [
+          { userId, isDeleted: true },
+          { groupId: { $in: groupIds }, deletedByUsers: userId }
+        ]
+      }).populate('userId', 'name email profilePic').lean(),
+
+      Transaction.find({ userId, isDeleted: true }).lean(),
+
+      Habit.find({ userId, isDeleted: true }).lean(),
+
+      Note.find({
+        $or: [
+          { user: userId, isDeleted: true },
+          { groupId: { $in: groupIds }, deletedByUsers: userId }
+        ]
+      }).populate('user', 'name email profilePic').lean(),
+
+      Keynote.find({ userId, isDeleted: true }).lean(),
+
+      Course.find({ userId }).sort({ createdAt: 1 }).lean(),
+
+      Exam.find({ userId }).sort({ date: 1 }).lean(),
+
+      Group.findOne({ members: userId })
+        .populate('members', 'name email profilePic customProfilePic portalId createdAt')
+        .populate('creatorId', 'name email profilePic customProfilePic portalId createdAt')
+        .lean(),
+
+      GroupInvitation.find({ receiverId: userId, status: 'pending' })
+        .populate('senderId', 'name email profilePic')
+        .populate('groupId', 'name')
+        .lean()
+    ]);
+
+    // Localize tasks
+    const localizedTasks = tasks.map(task => {
+      const taskObj = { ...task };
+      if (taskObj.groupId) {
+        const personalStatusOverride = taskObj.memberStatuses?.find(ms => ms.userId.toString() === userId);
+        if (personalStatusOverride) {
+          taskObj.status = personalStatusOverride.status;
+        }
+      }
+      return taskObj;
+    });
+
+    // Handle course creation check if user has no courses
+    let finalCourses = courses;
+    if (courses.length === 0) {
+      const generalCourse = new Course({ userId, name: 'General Course', type: 'general' });
+      await generalCourse.save();
+      finalCourses = [generalCourse.toObject()];
+    }
+
+    res.json({
+      user,
+      tasks: localizedTasks,
+      notes,
+      keynotes,
+      notifications,
+      bin: {
+        tasks: binTasks,
+        transactions: binTransactions,
+        habits: binHabits,
+        notes: binNotes,
+        keynotes: binKeynotes
+      },
+      courses: finalCourses,
+      exams,
+      group,
+      invitations
+    });
+  } catch (error) {
+    console.error("Dashboard error:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
 
 app.post('/api/auth/check-admin', async (req, res) => {
   try {
@@ -3604,12 +3733,12 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
     res.json({ success: true });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
-app.get('/api/user/portal-status', auth, async (req, res) => { try { const user = await User.findById(req.user.id); res.json({ isConnected: !!user.portalId && user.isPortalConnected, portalId: user.portalId }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/user/portal-status', auth, async (req, res) => { try { const user = await User.findById(req.user.id).select('portalId isPortalConnected').lean(); res.json({ isConnected: !!user?.portalId && user?.isPortalConnected, portalId: user?.portalId }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-app.get('/api/timetable', auth, async (req, res) => { try { const now = new Date(); res.json((await Timetable.find({ userId: req.user.id, $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }] })).map(i => ({ ...i.toObject(), id: i._id }))); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await StudentStats.findOne({ userId: req.user.id }) || { cgpa: "0.00", credits: "0", inprogressCr: "0" }); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.get('/api/results-history', auth, async (req, res) => { try { res.json(await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/timetable', auth, async (req, res) => { try { const now = new Date(); res.json((await Timetable.find({ userId: req.user.id, $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }] }).lean()).map(i => ({ ...i, id: i._id }))); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await StudentStats.findOne({ userId: req.user.id }).lean() || { cgpa: "0.00", credits: "0", inprogressCr: "0" }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 }).lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/results-history', auth, async (req, res) => { try { res.json(await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 }).lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 app.get('/api/sync-diagnostics/users', auth, async (req, res) => {
   try {
@@ -3691,7 +3820,7 @@ async function broadcastLiveUpdate(groupId, activeUserId) {
 // ==========================================
 app.get('/api/notifications', auth, async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(50);
+    const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(50).lean();
     res.json(notifications);
   } catch (error) {
     res.status(500).json({ message: "Server Error" });
@@ -3792,7 +3921,7 @@ const createAcademicNotification = async (userId, type, title, message, link = '
 // 1. Fetch Active Dashboard Tasks (with status masking per member)
 app.get('/api/tasks', auth, async (req, res) => {
   try {
-    const userGroups = await Group.find({ members: req.user.id });
+    const userGroups = await Group.find({ members: req.user.id }).lean().select('_id');
     const groupIds = userGroups.map(g => g._id);
 
     const tasks = await Task.find({
@@ -3802,11 +3931,12 @@ app.get('/api/tasks', auth, async (req, res) => {
       ]
     })
     .populate('userId', 'name email profilePic')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 
     // Map status out dynamically so group members see their personal overrides seamlessly
     const localizedTasks = tasks.map(task => {
-      const taskObj = task.toObject();
+      const taskObj = { ...task };
       if (taskObj.groupId) {
         const personalStatusOverride = taskObj.memberStatuses?.find(ms => ms.userId.toString() === req.user.id);
         if (personalStatusOverride) {

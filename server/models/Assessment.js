@@ -18,4 +18,6 @@ const assessmentSchema = new mongoose.Schema({
   isManual: { type: Boolean, default: true }
 }, { timestamps: true });
 
+assessmentSchema.index({ userId: 1, dueDate: 1 });
+
 module.exports = mongoose.model('Assessment', assessmentSchema);
