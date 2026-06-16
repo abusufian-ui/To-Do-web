@@ -723,16 +723,20 @@ function AppLayout() {
 
   const handleAddKeynoteSubmit = async (formData) => {
     try {
-      const uploadRes = await fetch(`${API_BASE}/api/upload`, { method: 'POST', headers: { 'x-auth-token': token }, body: formData });
-      if (!uploadRes.ok) throw new Error("Media upload failed");
-      const uploadData = await uploadRes.json();
+      let mediaUrls = [];
+      if (formData.has('files')) {
+        const uploadRes = await fetch(`${API_BASE}/api/upload`, { method: 'POST', headers: { 'x-auth-token': token }, body: formData });
+        if (!uploadRes.ok) throw new Error("Media upload failed");
+        const uploadData = await uploadRes.json();
+        mediaUrls = uploadData.urls || [];
+      }
 
       const payload = {
         title: formData.get('title'),
         courseName: formData.get('courseName') || 'General',
         content: formData.get('content') || '',
         type: formData.get('type') || 'text',
-        mediaUrls: uploadData.urls || []
+        mediaUrls
       };
 
       await fetch(`${API_BASE}/api/keynotes`, { method: 'POST', headers: authHeaders, body: JSON.stringify(payload) });

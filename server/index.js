@@ -1923,7 +1923,7 @@ mongoose.connect(dbLink, {
 }).catch(err => console.log(err));
 
 app.post('/api/upload', auth, (req, res) => {
-  upload.array('files', 10)(req, res, async function (err) {
+  upload.any()(req, res, async function (err) {
     if (err) {
       console.error('[UPLOAD_ERROR]', err);
       return res.status(500).json({ error: "Upload failed", details: err.message });
