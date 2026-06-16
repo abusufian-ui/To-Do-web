@@ -544,10 +544,26 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         if (!items) return false;
         for (const item of items) {
           if (item.type.indexOf('image') === 0) {
-            event.preventDefault();
             const file = item.getAsFile();
-            uploadImageToBackend(file);
-            return true; 
+            if (file) {
+              event.preventDefault();
+              uploadImageToBackend(file);
+              return true; 
+            }
+          }
+        }
+        return false;
+      },
+      handleDrop: (view, event, slice, moved) => {
+        if (readOnly || moved) return false;
+        const files = event.dataTransfer?.files;
+        if (files && files.length > 0) {
+          for (const file of files) {
+            if (file.type.indexOf('image') === 0) {
+              event.preventDefault();
+              uploadImageToBackend(file);
+              return true;
+            }
           }
         }
         return false;
@@ -619,6 +635,10 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
   const uploadImageToBackend = async (file) => {
     if (readOnly) return;
+    if (!file || !(file instanceof File)) {
+      console.warn('uploadImageToBackend: invalid file skipped', file);
+      return;
+    }
     setSaveStatus('Uploading image...');
     const formData = new FormData();
     formData.append('files', file);
