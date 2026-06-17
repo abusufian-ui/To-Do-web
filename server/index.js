@@ -11,6 +11,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const express = require('express');
 const mongoose = require('mongoose');
+const mongoSanitize = require('express-mongo-sanitize');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -18,6 +19,7 @@ const si = require('systeminformation');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const rateLimit = require('express-rate-limit');
 
 // 🚨 NEW: CHANGE DETECTOR IMPORTS
 const { 
@@ -33,6 +35,7 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const { encrypt, decrypt } = require('./utils/encryption');
 const { parseUCPDate } = require('./utils/dateParser');
+const { escapeRegex } = require('./utils/regexEscaper');
 const crypto = require('crypto');
 const { Resend } = require('resend');
 
@@ -377,6 +380,13 @@ app.use('/media', express.static(uploadDir));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(mongoSanitize());
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 mins
+  max: 30, // Limit each IP to 30 requests per window
+  message: { message: "Too many authentication attempts, please try again later." }
+});
 
 // 🚨 NEW: Global WebSocket Notification Middleware
 app.use((req, res, next) => {
@@ -634,45 +644,68 @@ const apkUpload = multer({
   limits: { fileSize: 250 * 1024 * 1024 } // 250MB limit
 });
 
+// ⚡ Settings Caching Logic
+let cachedSettingsData = null;
+let settingsCacheExpiry = 0;
+
+function invalidateSettingsCache() {
+  cachedSettingsData = null;
+  settingsCacheExpiry = 0;
+}
+
 // Public: Get general website configuration
 app.get('/api/public/settings', async (req, res) => {
   try {
-    let webPortalLink = "https://myportalucp.online/";
-    const linkSetting = await SystemSettings.findOne({ key: "web_portal_link" });
-    if (linkSetting) {
-      webPortalLink = linkSetting.value;
+    const now = Date.now();
+    if (!cachedSettingsData || now > settingsCacheExpiry) {
+      let webPortalLink = "https://myportalucp.online/";
+      const linkSetting = await SystemSettings.findOne({ key: "web_portal_link" });
+      if (linkSetting) {
+        webPortalLink = linkSetting.value;
+      }
+
+      let termsLink = "";
+      const termsSetting = await SystemSettings.findOne({ key: "terms_link" });
+      if (termsSetting) {
+        termsLink = termsSetting.value;
+      }
+
+      let rawApkInfo = null;
+      const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
+      if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
+        rawApkInfo = { ...dbSetting.value };
+      } else {
+        const apkPath = path.join(uploadDir, 'myportal.apk');
+        if (fs.existsSync(apkPath)) {
+          const stat = fs.statSync(apkPath);
+          rawApkInfo = {
+            uploaded: true,
+            filename: 'myportal.apk',
+            size: stat.size,
+            uploadedAt: stat.mtime
+          };
+        }
+      }
+
+      cachedSettingsData = { webPortalLink, termsLink, rawApkInfo };
+      settingsCacheExpiry = now + 60000; // 1 minute
     }
 
-    let termsLink = "";
-    const termsSetting = await SystemSettings.findOne({ key: "terms_link" });
-    if (termsSetting) {
-      termsLink = termsSetting.value;
-    }
-
-    let apkInfo = { uploaded: false };
-    const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
+    // Reconstruct dynamic url using req-specific baseUrl
     const baseUrl = getBaseUrl(req);
-
-    if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
+    let apkInfo = { uploaded: false };
+    if (cachedSettingsData.rawApkInfo) {
       apkInfo = {
-        ...dbSetting.value,
+        ...cachedSettingsData.rawApkInfo,
         url: `${baseUrl}/api/public/download-apk`
       };
-    } else {
-      const apkPath = path.join(uploadDir, 'myportal.apk');
-      if (fs.existsSync(apkPath)) {
-        const stat = fs.statSync(apkPath);
-        apkInfo = {
-          uploaded: true,
-          filename: 'myportal.apk',
-          size: stat.size,
-          uploadedAt: stat.mtime,
-          url: `${baseUrl}/api/public/download-apk`
-        };
-      }
     }
 
-    res.json({ webPortalLink, apkInfo, termsLink });
+    res.json({
+      webPortalLink: cachedSettingsData.webPortalLink,
+      termsLink: cachedSettingsData.termsLink,
+      apkInfo
+    });
   } catch (error) {
     console.error("Public Settings Error:", error);
     res.status(500).json({ message: "Server Error fetching settings" });
@@ -757,6 +790,7 @@ app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res
       { value: link },
       { upsert: true, new: true }
     );
+    invalidateSettingsCache();
     res.json({ success: true, link: setting.value });
   } catch (error) {
     console.error("Save Web Portal Link Error:", error);
@@ -773,6 +807,7 @@ app.post('/api/admin/settings/terms-link', auth, adminAuth, async (req, res) => 
       { value: link || "" },
       { upsert: true, new: true }
     );
+    invalidateSettingsCache();
     res.json({ success: true, link: setting.value });
   } catch (error) {
     console.error("Save Terms Link Error:", error);
@@ -825,6 +860,7 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
         { value: apkInfo },
         { upsert: true, new: true }
       );
+      invalidateSettingsCache();
 
       res.json({ success: true, apkInfo });
     } catch (error) {
@@ -877,6 +913,7 @@ app.post('/api/admin/settings/apk-confirm', auth, adminAuth, async (req, res) =>
       { value: apkInfo },
       { upsert: true, new: true }
     );
+    invalidateSettingsCache();
 
     res.json({ success: true, apkInfo });
   } catch (error) {
@@ -919,6 +956,7 @@ app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) =
       { value: apkInfo },
       { upsert: true, new: true }
     );
+    invalidateSettingsCache();
 
     res.json({ success: true, apkInfo });
   } catch (error) {
@@ -946,6 +984,7 @@ app.post('/api/admin/settings/apk-url', auth, adminAuth, async (req, res) => {
       { value: apkInfo },
       { upsert: true, new: true }
     );
+    invalidateSettingsCache();
 
     res.json({ success: true, apkInfo: setting.value });
   } catch (error) {
@@ -961,6 +1000,7 @@ app.post('/api/admin/settings/apk-url', auth, adminAuth, async (req, res) => {
 app.post('/api/web/check-email', async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required." });
     const formattedEmail = email.toLowerCase().trim();
 
     const user = await User.findOne({ email: formattedEmail });
@@ -979,15 +1019,20 @@ app.post('/api/web/check-email', async (req, res) => {
   }
 });
 
-app.post('/api/web/send-otp', async (req, res) => {
+app.post('/api/web/send-otp', authLimiter, async (req, res) => {
   try {
     const { email, type } = req.body;
-    const user = await User.findOne({ email });
+    if (typeof email !== 'string' || (type !== undefined && typeof type !== 'string')) {
+      return res.status(400).json({ message: "Invalid input types." });
+    }
+    if (!email) return res.status(400).json({ message: "Email is required." });
+    const formattedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: formattedEmail });
 
     if (!user) return res.status(404).json({ message: "Account not found." });
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
+    await OTP.findOneAndUpdate({ email: formattedEmail }, { code }, { upsert: true, new: true });
 
     const subject = type === 'setup' ? 'Set up your Web Portal Password' : 'Reset your Web Portal Password';
     const msg = type === 'setup'
@@ -996,7 +1041,7 @@ app.post('/api/web/send-otp', async (req, res) => {
 
     await resend.emails.send({
       from: 'MyPortal <otp@myportalucp.online>',
-      to: email,
+      to: formattedEmail,
       subject: subject,
       html: generateEmailTemplate(subject, code, msg)
     });
@@ -1007,12 +1052,17 @@ app.post('/api/web/send-otp', async (req, res) => {
   }
 });
 
-app.post('/api/web/verify-otp', async (req, res) => {
+app.post('/api/web/verify-otp', authLimiter, async (req, res) => {
   try {
-    const email = req.body.email.toLowerCase().trim();
-    const otpCode = String(req.body.otp).trim();
+    const { email, otp } = req.body;
+    if (typeof email !== 'string' || (typeof otp !== 'string' && typeof otp !== 'number')) {
+      return res.status(400).json({ message: "Invalid input types." });
+    }
+    if (!email) return res.status(400).json({ message: "Email is required." });
+    const formattedEmail = email.toLowerCase().trim();
+    const otpCode = String(otp).trim();
 
-    const validOtp = await OTP.findOne({ email: email, code: otpCode });
+    const validOtp = await OTP.findOne({ email: formattedEmail, code: otpCode });
     if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
 
     res.json({ success: true, message: "OTP verified." });
@@ -1021,17 +1071,23 @@ app.post('/api/web/verify-otp', async (req, res) => {
   }
 });
 
-app.post('/api/web/set-password', async (req, res) => {
+app.post('/api/web/set-password', authLimiter, async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
+    if (typeof email !== 'string' || (typeof otp !== 'string' && typeof otp !== 'number') || typeof newPassword !== 'string') {
+      return res.status(400).json({ message: "Invalid input types." });
+    }
+    if (!email) return res.status(400).json({ message: "Email is required." });
+    const formattedEmail = email.toLowerCase().trim();
 
-    const validOtp = await OTP.findOne({ email, code: otp });
+    const validOtp = await OTP.findOne({ email: formattedEmail, code: otp });
     if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: formattedEmail });
+    if (!user) return res.status(404).json({ message: "Account not found." });
     user.webPassword = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
     await user.save();
-    await OTP.deleteOne({ email });
+    await OTP.deleteOne({ email: formattedEmail });
 
     const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
 
@@ -1044,11 +1100,16 @@ app.post('/api/web/set-password', async (req, res) => {
   }
 });
 
-app.post('/api/web/login', async (req, res) => {
+app.post('/api/web/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ message: "Email and password must be strings." });
+    }
+    if (!email) return res.status(400).json({ message: "Email is required." });
+    const formattedEmail = email.toLowerCase().trim();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: formattedEmail });
     if (user && user.isBlocked) {
       return res.status(503).json({ message: "Network Error: Timeout communicating with identity provider." });
     }
@@ -1890,8 +1951,9 @@ mongoose.connection.on('disconnected', () => {
   console.warn('⚠️ MongoDB Disconnected. Waiting for reconnection...');
 });
 
+mongoose.set('sanitizeProjection', true);
 mongoose.connect(dbLink, {
-  maxPoolSize: 20,
+  maxPoolSize: 80,
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000
 }).then(async () => {
@@ -2372,9 +2434,10 @@ app.get('/api/users/community', auth, async (req, res) => {
     const { search } = req.query;
     const query = { _id: { $ne: req.user.id } };
     if (search) {
+      const escapedSearch = escapeRegex(search);
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { email: { $regex: escapedSearch, $options: 'i' } }
       ];
     }
     
@@ -3306,12 +3369,16 @@ app.delete('/api/courses/:id', auth, async (req, res) => {
 
 app.post('/api/send-otp', async (req, res) => {
   try {
-    if (await User.findOne({ email: req.body.email })) return res.status(400).json({ message: "Registered" });
+    const { email } = req.body;
+    if (typeof email !== 'string') {
+      return res.status(400).json({ message: "Email must be a string." });
+    }
+    if (await User.findOne({ email })) return res.status(400).json({ message: "Registered" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email: req.body.email }, { code }, { upsert: true, new: true });
+    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
     await resend.emails.send({
       from: 'MyPortal <otp@myportalucp.online>',
-      to: req.body.email,
+      to: email,
       subject: 'Welcome to MyPortal',
       html: generateEmailTemplate('Welcome to MyPortal', code, 'Please use the following verification code to complete your registration.')
     });
@@ -3321,18 +3388,27 @@ app.post('/api/send-otp', async (req, res) => {
 
 app.post('/api/register', async (req, res) => {
   try {
-    if (!(await OTP.findOne({ email: req.body.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
-    if (await User.findOne({ email: req.body.email })) return res.status(400).json({ message: 'Exists' });
-    const user = new User({ name: req.body.name, email: req.body.email, password: await bcrypt.hash(req.body.password, await bcrypt.genSalt(10)), isAdmin: req.body.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() });
-    await user.save(); await OTP.deleteOne({ email: req.body.email });
+    const { name, email, password, otp } = req.body;
+    if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || (typeof otp !== 'string' && typeof otp !== 'number')) {
+      return res.status(400).json({ message: "Invalid input types." });
+    }
+    const otpCode = String(otp).trim();
+    if (!(await OTP.findOne({ email, code: otpCode }))) return res.status(400).json({ message: "Invalid OTP" });
+    if (await User.findOne({ email })) return res.status(400).json({ message: 'Exists' });
+    const user = new User({ name, email, password: await bcrypt.hash(password, await bcrypt.genSalt(10)), isAdmin: email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() });
+    await user.save(); await OTP.deleteOne({ email });
     res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 app.post('/api/login', async (req, res) => {
   try {
-    const user = await User.findOne({ email: req.body.email });
-    if (!user || !(await bcrypt.compare(req.body.password, user.password))) return res.status(400).json({ message: 'Invalid credentials' });
+    const { email, password } = req.body;
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ message: 'Email and password must be strings.' });
+    }
+    const user = await User.findOne({ email });
+    if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ message: 'Invalid credentials' });
     if (user.isBlocked) return res.status(503).json({ message: 'Network Error: Timeout communicating with identity provider.' });
     res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -3473,6 +3549,9 @@ app.get('/api/dashboard', auth, async (req, res) => {
 app.post('/api/auth/check-admin', async (req, res) => {
   try {
     const { email } = req.body;
+    if (typeof email !== 'string') {
+      return res.status(400).json({ error: "Email must be a string." });
+    }
     if (!email) return res.status(400).json({ error: "Email required" });
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     res.json({ isAdmin: !!user?.isAdmin });
@@ -3487,6 +3566,19 @@ app.post('/api/auth/check-admin', async (req, res) => {
 app.post('/api/auth/microsoft-login', async (req, res) => {
   try {
     const { rollNumber, name, profilePic, ucpCookie } = req.body;
+
+    if (typeof rollNumber !== 'string') {
+      return res.status(400).json({ error: 'Roll number must be a string.' });
+    }
+    if (name !== undefined && typeof name !== 'string') {
+      return res.status(400).json({ error: 'Name must be a string.' });
+    }
+    if (profilePic !== undefined && typeof profilePic !== 'string') {
+      return res.status(400).json({ error: 'Profile pic must be a string.' });
+    }
+    if (ucpCookie !== undefined && typeof ucpCookie !== 'string') {
+      return res.status(400).json({ error: 'UCP cookie must be a string.' });
+    }
 
     if (!rollNumber) {
       return res.status(400).json({ error: 'Roll number not detected from portal.' });
@@ -3573,12 +3665,16 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 });
 app.post('/api/forgot-password', async (req, res) => {
   try {
-    if (!(await User.findOne({ email: req.body.email }))) return res.status(400).json({ message: "No account found" });
+    const { email } = req.body;
+    if (typeof email !== 'string') {
+      return res.status(400).json({ message: "Email must be a string." });
+    }
+    if (!(await User.findOne({ email }))) return res.status(400).json({ message: "No account found" });
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email: req.body.email }, { code }, { upsert: true, new: true });
+    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
     await resend.emails.send({
       from: 'MyPortal <otp@myportalucp.online>',
-      to: req.body.email,
+      to: email,
       subject: 'Password Reset',
       html: generateEmailTemplate('Password Reset', code, 'You requested a password reset. Use the code below to securely change your password.')
     });
@@ -3588,10 +3684,15 @@ app.post('/api/forgot-password', async (req, res) => {
 
 app.post('/api/reset-password', async (req, res) => {
   try {
-    if (!(await OTP.findOne({ email: req.body.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
-    const user = await User.findOne({ email: req.body.email });
-    user.password = await bcrypt.hash(req.body.newPassword, await bcrypt.genSalt(10));
-    await user.save(); await OTP.deleteOne({ email: req.body.email });
+    const { email, otp, newPassword } = req.body;
+    if (typeof email !== 'string' || (typeof otp !== 'string' && typeof otp !== 'number') || typeof newPassword !== 'string') {
+      return res.status(400).json({ message: "Invalid input types." });
+    }
+    const otpCode = String(otp).trim();
+    if (!(await OTP.findOne({ email, code: otpCode }))) return res.status(400).json({ message: "Invalid OTP" });
+    const user = await User.findOne({ email });
+    user.password = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
+    await user.save(); await OTP.deleteOne({ email });
     res.json({ message: "Password updated" });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -4545,7 +4646,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
 
     const email = req.query.email;
     if (email) {
-      const requestingUser = await User.findOne({ email: { $regex: '^' + email.trim() + '$', $options: 'i' } });
+      const requestingUser = await User.findOne({ email: { $regex: '^' + escapeRegex(email.trim()) + '$', $options: 'i' } });
       if (requestingUser) {
         const isSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
         if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled === false) {
@@ -4561,18 +4662,18 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     let query = {};
     if (courseName && section) {
       query = {
-        name: { $regex: '^' + courseName.trim() + '$', $options: 'i' },
-        section: { $regex: '^' + section.trim() + '$', $options: 'i' }
+        name: { $regex: '^' + escapeRegex(courseName.trim()) + '$', $options: 'i' },
+        section: { $regex: '^' + escapeRegex(section.trim()) + '$', $options: 'i' }
       };
     } else {
       if (courseCode.includes('-')) {
         // If it looks like a full course code, do an exact case-insensitive match
-        query = { code: { $regex: '^' + courseCode.trim() + '$', $options: 'i' } };
+        query = { code: { $regex: '^' + escapeRegex(courseCode.trim()) + '$', $options: 'i' } };
       } else {
         // It's a short course code, use prefix match
-        query = { code: { $regex: '^' + courseCode.trim(), $options: 'i' } };
+        query = { code: { $regex: '^' + escapeRegex(courseCode.trim()), $options: 'i' } };
         if (section) {
-          query.section = { $regex: '^' + section.trim() + '$', $options: 'i' };
+          query.section = { $regex: '^' + escapeRegex(section.trim()) + '$', $options: 'i' };
         }
       }
     }
@@ -4670,8 +4771,8 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     let query = {};
     if (myCourse.name && myCourse.section) {
       query = {
-        name: { $regex: '^' + myCourse.name.trim() + '$', $options: 'i' },
-        section: { $regex: '^' + myCourse.section.trim() + '$', $options: 'i' }
+        name: { $regex: '^' + escapeRegex(myCourse.name.trim()) + '$', $options: 'i' },
+        section: { $regex: '^' + escapeRegex(myCourse.section.trim()) + '$', $options: 'i' }
       };
     } else if (myCourse.code) {
       query.code = myCourse.code;
@@ -5144,7 +5245,7 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
     // Find if there is an unprocessed linkSet for this user & course in the active semester
     const pendingLinkSet = await MaterialLink.findOne({
       userId: req.user.id,
-      courseCode: { $regex: '^' + globalCode + '(-|$)', $options: 'i' },
+      courseCode: { $regex: '^' + escapeRegex(globalCode) + '(-|$)', $options: 'i' },
       processed: false,
       semester: activeSemester
     }).lean();
@@ -5538,7 +5639,7 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
 
     // 3. Fetch student statistics
     const enrollments = await Course.find({
-      code: { $regex: '^' + courseCode + '(-|$)' },
+      code: { $regex: '^' + escapeRegex(courseCode) + '(-|$)' },
       section: sectionCode,
       semester: semester
     }).populate('userId', 'name email portalId isPortalConnected').lean();
@@ -5579,13 +5680,14 @@ app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) 
     }
 
     const cleanQ = q.trim();
+    const escapedQ = escapeRegex(cleanQ);
 
     // 1. Search unique course/section configurations from Course schema
     const matchedCourses = await Course.find({
       $or: [
-        { name: { $regex: cleanQ, $options: 'i' } },
-        { code: { $regex: cleanQ, $options: 'i' } },
-        { section: { $regex: cleanQ, $options: 'i' } }
+        { name: { $regex: escapedQ, $options: 'i' } },
+        { code: { $regex: escapedQ, $options: 'i' } },
+        { section: { $regex: escapedQ, $options: 'i' } }
       ]
     })
     .limit(50)
@@ -5608,7 +5710,7 @@ app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) 
 
     // 2. Search files matching fileName
     const matchedFiles = await CourseMaterial.find({
-      fileName: { $regex: cleanQ, $options: 'i' }
+      fileName: { $regex: escapedQ, $options: 'i' }
     })
     .select('fileName fileType fileSize courseCode sectionCode semester b2Key')
     .limit(15)
@@ -5618,9 +5720,9 @@ app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) 
     const matchedUsers = await User.find({
       isAdmin: false,
       $or: [
-        { name: { $regex: cleanQ, $options: 'i' } },
-        { email: { $regex: cleanQ, $options: 'i' } },
-        { portalId: { $regex: cleanQ, $options: 'i' } }
+        { name: { $regex: escapedQ, $options: 'i' } },
+        { email: { $regex: escapedQ, $options: 'i' } },
+        { portalId: { $regex: escapedQ, $options: 'i' } }
       ]
     })
     .select('name email portalId isPortalConnected')
