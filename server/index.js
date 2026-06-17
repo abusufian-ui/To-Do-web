@@ -380,7 +380,12 @@ app.use('/media', express.static(uploadDir));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(mongoSanitize());
+app.use((req, res, next) => {
+  if (req.body) mongoSanitize.sanitize(req.body);
+  if (req.query) mongoSanitize.sanitize(req.query);
+  if (req.params) mongoSanitize.sanitize(req.params);
+  next();
+});
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 mins
