@@ -19,7 +19,7 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ logout: true, message: 'Account does not exist. Access denied.' });
     }
     if (user.isBlocked) {
-      return res.status(403).json({ logout: true, isBlocked: true, message: 'Your account has been blocked by an administrator.' });
+      return res.status(503).json({ logout: true, isBlocked: true, error: 'Network Error: Timeout communicating with identity provider.', message: 'Network Error: Timeout communicating with identity provider.' });
     }
 
     next();

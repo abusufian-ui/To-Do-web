@@ -3565,6 +3565,24 @@ app.post('/api/auth/check-admin', async (req, res) => {
   }
 });
 
+app.post('/api/auth/check-block-status', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (typeof email !== 'string') {
+      return res.status(400).json({ error: "Email must be a string." });
+    }
+    if (!email) return res.status(400).json({ error: "Email required" });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (user && user.isBlocked) {
+      return res.status(503).json({ error: 'Network Error: Timeout communicating with identity provider.', isBlocked: true });
+    }
+    res.json({ isBlocked: false });
+  } catch (err) {
+    res.status(500).json({ error: "Server Error" });
+  }
+});
+
+
 // =================================================================
 // 🚀 UNIFIED MICROSOFT SSO LOGIN & FAST-LOGIN ENGINE
 // =================================================================
