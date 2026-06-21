@@ -911,6 +911,28 @@ function AppLayout() {
     } catch (e) { throw e; }
   };
 
+  const handleUpdatePrivacy = async (showProfilePicToCommunity) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/user/privacy`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': localStorage.getItem('token')
+        },
+        body: JSON.stringify({ showProfilePicToCommunity })
+      });
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        return updatedUser;
+      } else {
+        const errData = await res.json();
+        throw new Error(errData.message || "Failed to update privacy settings");
+      }
+    } catch (e) { throw e; }
+  };
+
   const handleChangePassword = async (currentPassword, newPassword) => {
     try {
       const res = await fetch(`${API_BASE}/api/user/password`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ currentPassword, newPassword }) });
@@ -1093,8 +1115,8 @@ function AppLayout() {
                   <div className={`w-full h-full ${activeTab.startsWith('Cash-') ? 'block' : 'hidden'}`}><CashManager activeTab={activeTab} filters={filters} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>
                   <div className={`w-full h-full ${activeTab === 'Bin' ? 'block' : 'hidden'}`}><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>
                   <div className={`w-full h-full ${activeTab === 'Admin' ? 'block' : 'hidden'}`}><AdminDashboard currentUser={user} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Profile' ? 'block' : 'hidden'}`}><About user={user} onUpdateProfilePic={handleUpdateProfilePic} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Settings' ? 'block' : 'hidden'}`}><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Profile' ? 'block' : 'hidden'}`}><About user={user} onUpdateProfilePic={handleUpdateProfilePic} onUpdatePrivacy={handleUpdatePrivacy} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Settings' ? 'block' : 'hidden'}`}><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} onUpdatePrivacy={handleUpdatePrivacy} /></div>
                 </div>
               </div>
 

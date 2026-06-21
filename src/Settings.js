@@ -32,7 +32,7 @@ const Toast = ({ message, type, onClose }) => {
 
 // --- 1. PROFILE TAB ---
 // --- 1. PROFILE TAB ---
-const ProfileSection = ({ user, showToast, onUpdateProfilePic }) => {
+const ProfileSection = ({ user, showToast, onUpdateProfilePic, onUpdatePrivacy }) => {
     const [name, setName] = useState(user?.name || "");
     const [loading, setLoading] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -123,9 +123,6 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic }) => {
                 </div>
 
                 <div className="flex-1 space-y-4 w-full text-center md:text-left">
-                    <p className="text-xs text-red-500 font-bold">
-                        If you change the profile pic it will show to other community members as a profile pic
-                    </p>
                     <div>
                         <h3 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-1">{user?.name}</h3>
                         <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">{user?.email}</p>
@@ -136,6 +133,40 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic }) => {
                         </span>
                         <span className="px-3 py-1 bg-gray-100 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-[10px] font-bold rounded-full uppercase tracking-wider flex items-center gap-1.5">
                             <Calendar size={12} /> Joined {formatDate(user?.createdAt)}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-center md:justify-start gap-3 pt-2">
+                        <span className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1.5 uppercase tracking-wider">
+                            {(user?.showProfilePicToCommunity ?? false) ? <Eye size={14} className="text-emerald-500" /> : <EyeOff size={14} className="text-amber-500" />}
+                            Profile Pic:
+                        </span>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    const currentVal = user?.showProfilePicToCommunity ?? false;
+                                    await onUpdatePrivacy(!currentVal);
+                                    showToast(`Profile picture is now ${!currentVal ? 'public' : 'private'}.`, "success");
+                                } catch (err) {
+                                    showToast(err.message || "Failed to update visibility.", "error");
+                                }
+                            }}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                (user?.showProfilePicToCommunity ?? false) ? 'bg-blue-600' : 'bg-gray-300 dark:bg-[#333]'
+                            }`}
+                        >
+                            <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    (user?.showProfilePicToCommunity ?? false) ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                            />
+                        </button>
+                        <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                            (user?.showProfilePicToCommunity ?? false) 
+                                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400' 
+                                : 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400'
+                        }`}>
+                            {(user?.showProfilePicToCommunity ?? false) ? 'Public' : 'Private'}
                         </span>
                     </div>
                 </div>
@@ -1077,7 +1108,8 @@ const Settings = ({
     removeCourse,
     tasks = [],
     idleTimeout = 900000,
-    setIdleTimeout
+    setIdleTimeout,
+    onUpdatePrivacy
 }) => {
     const [activeTab, setActiveTab] = useState('profile');
     const [toast, setToast] = useState({ msg: null, type: null });
@@ -1141,7 +1173,7 @@ const Settings = ({
             {/* RIGHT CONTENT AREA */}
             <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-8 md:p-12 relative">
                 <div className="max-w-3xl mx-auto pb-24">
-                    {activeTab === 'profile' && <ProfileSection user={user} showToast={showToast} onUpdateProfilePic={(formData) => {
+                    {activeTab === 'profile' && <ProfileSection user={user} showToast={showToast} onUpdatePrivacy={onUpdatePrivacy} onUpdateProfilePic={(formData) => {
                         const token = localStorage.getItem('token');
                         return fetch(`${API_BASE}/api/user/profile-pic`, {
                             method: 'POST',

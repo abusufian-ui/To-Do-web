@@ -1,8 +1,8 @@
 import React from 'react';
-import { User, Calendar, Shield, Link2, CheckCircle2, XCircle, Activity, Mail, Camera, Loader2, X } from 'lucide-react';
+import { User, Calendar, Shield, Link2, CheckCircle2, XCircle, Activity, Mail, Camera, Loader2, X, Eye, EyeOff } from 'lucide-react';
 import { ToastConfig } from './CustomToast';
 
-const MyProfile = ({ user, onUpdateProfilePic }) => {
+const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
   const [isUploading, setIsUploading] = React.useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false); // 🚀 Profile picture full screen preview state
   const fileInputRef = React.useRef(null);
@@ -101,9 +101,40 @@ const MyProfile = ({ user, onUpdateProfilePic }) => {
                 <Mail size={12} /> {user.email}
               </span>
             </div>
-            <p className="text-xs font-semibold text-red-500 dark:text-red-400 mt-4">
-              Note: Changing your profile picture will make it visible to all community members.
-            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1.5 uppercase tracking-wider">
+                {(user.showProfilePicToCommunity ?? false) ? <Eye size={14} className="text-emerald-500" /> : <EyeOff size={14} className="text-amber-500" />}
+                Profile Pic:
+              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const currentVal = user.showProfilePicToCommunity ?? false;
+                    await onUpdatePrivacy(!currentVal);
+                    ToastConfig.show({ title: "Success", message: `Profile picture is now ${!currentVal ? 'public' : 'private'}.`, type: "success" });
+                  } catch (err) {
+                    ToastConfig.show({ title: "Error", message: err.message || "Failed to update visibility.", type: "error" });
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  (user.showProfilePicToCommunity ?? false) ? 'bg-blue-500' : 'bg-gray-300 dark:bg-[#333]'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    (user.showProfilePicToCommunity ?? false) ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
+                (user.showProfilePicToCommunity ?? false) 
+                  ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30' 
+                  : 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30'
+              }`}>
+                {(user.showProfilePicToCommunity ?? false) ? 'Public' : 'Private'}
+              </span>
+            </div>
           </div>
         </div>
 
