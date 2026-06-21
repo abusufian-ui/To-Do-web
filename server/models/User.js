@@ -22,6 +22,28 @@ const userSchema = new mongoose.Schema({
     autoLockEnabled: { type: Boolean, default: false },
     autoLockTimer: { type: Number, default: 900000 } // 15 minutes in ms
   },
+  // Detailed Profile Info
+  secondaryEmail: { type: String, default: null },
+  phone: { type: String, default: null },
+  emergencyContact: { type: String, default: null },
+  presentAddress: { type: String, default: null },
+  permanentAddress: { type: String, default: null },
+  dob: { type: String, default: null },
+  gender: { type: String, default: null },
+  cnic: { type: String, default: null },
+  domicile: { type: String, default: null },
+  nationality: { type: String, default: null },
+  religion: { type: String, default: null },
+  bloodGroup: { type: String, default: null },
+  fatherName: { type: String, default: null },
+  fatherCnic: { type: String, default: null },
+  guardianName: { type: String, default: null },
+  guardianCnic: { type: String, default: null },
+  maritalStatus: { type: String, default: null },
+  faculty: { type: String, default: null },
+  careerType: { type: String, default: null },
+  program: { type: String, default: null },
+  currentSemester: { type: String, default: null },
   // Crowdsourced sync: which sections this student is enrolled in
   enrolledSections: [{ type: String }], // e.g., ["CSAL3243-S26-BS-CS-F23-F4", "EE212-S26-BS-EE-F23-G11"]
   lastScrapedAt: { type: Date, default: null }, // When this user last ran a full foreground scrape
@@ -30,7 +52,10 @@ const userSchema = new mongoose.Schema({
   pushTokens: [{ type: String }],
   prayerNotifs: { type: Boolean, default: false },
   lastSyncAt: { type: Date, default: null },
-  coursePreferences: { type: Map, of: Boolean, default: {} } // true = visible, false = hidden
+  coursePreferences: { type: Map, of: Boolean, default: {} }, // true = visible, false = hidden
+  accessedWeb: { type: Boolean, default: false },
+  accessedMobile: { type: Boolean, default: false },
+  accessedExtension: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

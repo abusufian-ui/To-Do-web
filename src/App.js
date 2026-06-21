@@ -15,7 +15,7 @@ import ResultHistory from './ResultHistory';
 import AdminDashboard from './AdminDashboard';
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
-import MyProfile from './MyProfile';
+import About from './About';
 import Timetable from './TimeTable';
 import HabitTracker from './HabitTracker';
 import Notes from './Notes';
@@ -1093,7 +1093,7 @@ function AppLayout() {
                   <div className={`w-full h-full ${activeTab.startsWith('Cash-') ? 'block' : 'hidden'}`}><CashManager activeTab={activeTab} filters={filters} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>
                   <div className={`w-full h-full ${activeTab === 'Bin' ? 'block' : 'hidden'}`}><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>
                   <div className={`w-full h-full ${activeTab === 'Admin' ? 'block' : 'hidden'}`}><AdminDashboard currentUser={user} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Profile' ? 'block' : 'hidden'}`}><MyProfile user={user} onUpdateProfilePic={handleUpdateProfilePic} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Profile' ? 'block' : 'hidden'}`}><About user={user} onUpdateProfilePic={handleUpdateProfilePic} /></div>
                   <div className={`w-full h-full ${activeTab === 'Settings' ? 'block' : 'hidden'}`}><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} /></div>
                 </div>
               </div>

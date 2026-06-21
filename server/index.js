@@ -352,7 +352,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.105:8081',
+  'http://192.168.0.104:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -675,6 +675,12 @@ app.get('/api/public/settings', async (req, res) => {
         termsLink = termsSetting.value;
       }
 
+      let whatsappGroupLink = "https://chat.whatsapp.com/";
+      const whatsappSetting = await SystemSettings.findOne({ key: "whatsapp_group_link" });
+      if (whatsappSetting) {
+        whatsappGroupLink = whatsappSetting.value;
+      }
+
       let rawApkInfo = null;
       const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
       if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
@@ -692,7 +698,7 @@ app.get('/api/public/settings', async (req, res) => {
         }
       }
 
-      cachedSettingsData = { webPortalLink, termsLink, rawApkInfo };
+      cachedSettingsData = { webPortalLink, termsLink, whatsappGroupLink, rawApkInfo };
       settingsCacheExpiry = now + 60000; // 1 minute
     }
 
@@ -709,6 +715,7 @@ app.get('/api/public/settings', async (req, res) => {
     res.json({
       webPortalLink: cachedSettingsData.webPortalLink,
       termsLink: cachedSettingsData.termsLink,
+      whatsappGroupLink: cachedSettingsData.whatsappGroupLink,
       apkInfo
     });
   } catch (error) {
@@ -817,6 +824,23 @@ app.post('/api/admin/settings/terms-link', auth, adminAuth, async (req, res) => 
   } catch (error) {
     console.error("Save Terms Link Error:", error);
     res.status(500).json({ message: "Server Error saving terms link" });
+  }
+});
+
+// Admin: Save whatsapp link configuration
+app.post('/api/admin/settings/whatsapp-link', auth, adminAuth, async (req, res) => {
+  try {
+    const { link } = req.body;
+    const setting = await SystemSettings.findOneAndUpdate(
+      { key: "whatsapp_group_link" },
+      { value: link || "" },
+      { upsert: true, new: true }
+    );
+    invalidateSettingsCache();
+    res.json({ success: true, link: setting.value });
+  } catch (error) {
+    console.error("Save WhatsApp Link Error:", error);
+    res.status(500).json({ message: "Server Error saving whatsapp link" });
   }
 });
 
@@ -1289,50 +1313,57 @@ const computeSubmissionsHash = (tasks) => {
 const mergeUserTasks = (existingTasks, incomingTasks) => {
   const existingTasksList = existingTasks || [];
   const existingTaskMap = new Map();
+  
+  // Map existing tasks by title, prioritizing 'Submitted' status if duplicates exist
   for (const t of existingTasksList) {
     const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const normDate = parseUCPDate(t.dueDate);
-    const fp = `${title}_${normDate}`;
-    existingTaskMap.set(fp, t);
+    if (existingTaskMap.has(title)) {
+      const current = existingTaskMap.get(title);
+      if (t.status === 'Submitted' && current.status !== 'Submitted') {
+        existingTaskMap.set(title, t);
+      }
+    } else {
+      existingTaskMap.set(title, t);
+    }
   }
 
   const mergedTasks = [];
+  const processedTitles = new Set();
+
   for (const incomingTask of incomingTasks) {
     const title = (incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const normDate = parseUCPDate(incomingTask.dueDate);
-    const fp = `${title}_${normDate}`;
+    const normDueDate = parseUCPDate(incomingTask.dueDate);
+    const normStartDate = parseUCPDate(incomingTask.startDate);
 
-    if (existingTaskMap.has(fp)) {
-      const existingTask = existingTaskMap.get(fp);
+    if (existingTaskMap.has(title)) {
+      const existingTask = existingTaskMap.get(title);
       const status = (existingTask.status === 'Submitted' || incomingTask.status === 'Submitted') ? 'Submitted' : 'Pending';
+      const existingObj = existingTask.toObject ? existingTask.toObject() : existingTask;
+
       mergedTasks.push({
+        ...existingObj,
         ...incomingTask,
-        dueDate: normDate,
-        startDate: parseUCPDate(incomingTask.startDate),
+        dueDate: normDueDate,
+        startDate: normStartDate,
         status
       });
     } else {
       mergedTasks.push({
         ...incomingTask,
-        dueDate: normDate,
-        startDate: parseUCPDate(incomingTask.startDate)
+        dueDate: normDueDate,
+        startDate: normStartDate
       });
     }
+    processedTitles.add(title);
   }
 
-  const incomingFps = new Set(incomingTasks.map(t => {
-    const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const normDate = parseUCPDate(t.dueDate);
-    return `${title}_${normDate}`;
-  }));
-
+  // Keep historical tasks that are no longer in incoming (active) portal list
   for (const existingTask of existingTasksList) {
     const title = (existingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const normDate = parseUCPDate(existingTask.dueDate);
-    const fp = `${title}_${normDate}`;
-
-    if (!incomingFps.has(fp)) {
-      mergedTasks.push(existingTask);
+    if (!processedTitles.has(title)) {
+      const bestTask = existingTaskMap.get(title) || existingTask;
+      mergedTasks.push(bestTask);
+      processedTitles.add(title);
     }
   }
 
@@ -1370,6 +1401,25 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       throw new Error(`Mismatch! Linked to ${user.portalId}, but found ${activePortalId}.`);
     }
     if (!user.portalId) user.portalId = activePortalId.toUpperCase();
+
+    // Update detailed student profile if any fields are sent
+    let userUpdated = false;
+    if (req.path === '/api/extension-sync') {
+      if (!user.accessedExtension) {
+        user.accessedExtension = true;
+        userUpdated = true;
+      }
+    } else if (req.path === '/api/mobile-sync') {
+      if (!user.accessedMobile) {
+        user.accessedMobile = true;
+        userUpdated = true;
+      }
+    }
+
+    const profileChanged = updateProfileFields(user, req.body);
+    if (profileChanged || userUpdated) {
+      await user.save();
+    }
 
     // ── Tracker for SyncLog ──
     let changesSummary = {};
@@ -1535,21 +1585,66 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
               for (const peerId of uniquePeerIds) {
                 const peerSub = peerSubMap.get(peerId);
                 const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
-                const existingTaskMap = new Map(existingTasks.map(t => {
+
+                // Map classmate's existing tasks by title to avoid duplicates.
+                // Also actively deduplicate existing tasks if any duplicates are found in classmate DB.
+                const existingTaskMap = new Map();
+                const cleanExistingTasks = [];
+                const seenTitles = new Set();
+
+                for (const t of existingTasks) {
                   const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                  const normDate = parseUCPDate(t.dueDate);
-                  return [`${title}_${normDate}`, t];
-                }));
+                  if (seenTitles.has(title)) {
+                    const current = existingTaskMap.get(title);
+                    if (t.status === 'Submitted' && current.status !== 'Submitted') {
+                      existingTaskMap.set(title, t);
+                      const idx = cleanExistingTasks.findIndex(item => 
+                        (item.title || '').replace(/\s+/g, ' ').trim().toLowerCase() === title
+                      );
+                      if (idx !== -1) cleanExistingTasks[idx] = t;
+                    }
+                  } else {
+                    existingTaskMap.set(title, t);
+                    cleanExistingTasks.push(t);
+                    seenTitles.add(title);
+                  }
+                }
+
+                // Replace existing tasks with the clean/deduplicated list
+                existingTasks.length = 0;
+                existingTasks.push(...cleanExistingTasks);
 
                 let merged = false;
                 let newPeerTasks = [];
+                let updatedPeerTasks = [];
+
                 mergedTasks.forEach(incomingTask => {
                   const title = (incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                  const normDate = parseUCPDate(incomingTask.dueDate);
-                  const fingerprint = `${title}_${normDate}`;
-                  if (!existingTaskMap.has(fingerprint)) {
+                  const normDueDate = parseUCPDate(incomingTask.dueDate);
+                  const normStartDate = parseUCPDate(incomingTask.startDate);
+
+                  if (existingTaskMap.has(title)) {
+                    const existingTask = existingTaskMap.get(title);
+                    const oldDateParsed = parseUCPDate(existingTask.dueDate);
+
+                    if (oldDateParsed !== normDueDate) {
+                      existingTask.dueDate = normDueDate;
+                      existingTask.startDate = normStartDate;
+                      if (incomingTask.description) existingTask.description = incomingTask.description;
+                      if (incomingTask.attachmentUrl) existingTask.attachmentUrl = incomingTask.attachmentUrl;
+                      if (incomingTask.submissionUrl) existingTask.submissionUrl = incomingTask.submissionUrl;
+
+                      updatedPeerTasks.push(existingTask);
+                      merged = true;
+                    }
+                  } else {
                     // Force classmate tasks to default to Pending to prevent status contamination
-                    const peerTask = { ...incomingTask, status: 'Pending', dueDate: normDate, startDate: parseUCPDate(incomingTask.startDate) };
+                    const peerTask = { 
+                      ...incomingTask, 
+                      status: 'Pending', 
+                      dueDate: normDueDate, 
+                      startDate: normStartDate 
+                    };
                     existingTasks.push(peerTask);
                     newPeerTasks.push(peerTask);
                     merged = true;
@@ -1566,8 +1661,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                     io.to(peerId.toString()).emit('submission_update', {
                       type: 'SUBMISSION_UPDATE',
                       courseName: sub.courseName,
-                      newCount: newPeerTasks.length,
-                      newTasks: newPeerTasks
+                      newCount: newPeerTasks.length + updatedPeerTasks.length,
+                      newTasks: [...newPeerTasks, ...updatedPeerTasks]
                     });
                   }));
                 }
@@ -1676,6 +1771,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           ));
         }
         await Promise.all(datesheetPromises);
+        changesSummary.datesheet = [...new Set(datesheetData.map(exam => exam.courseName))];
       }
     }
 
@@ -1775,7 +1871,17 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       ...(enrolledSections.length > 0 ? { enrolledSections } : {})
     };
     if (studentName && studentName !== 'UCP Student') updateFields.name = studentName;
-    if (profilePic) updateFields.portalProfilePic = profilePic;
+    if (profilePic) {
+      updateFields.portalProfilePic = profilePic;
+      if (!user.originalPortalProfilePic) {
+        updateFields.originalPortalProfilePic = profilePic;
+      }
+      if (user.showProfilePicToCommunity === true && !user.customProfilePic) {
+        updateFields.profilePic = profilePic;
+      } else if (user.showProfilePicToCommunity !== true) {
+        updateFields.profilePic = null;
+      }
+    }
 
     await User.updateOne({ _id: userId }, {
       $set: updateFields
@@ -1835,12 +1941,13 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 courseCode: item.courseCode || '',
                 sectionCode: itemSectionCode,
                 teacherName: itemTeacherName,
-                links: (item.links || []).map(l => ({
+                links: (item.links || []).map((l, index) => ({
                   fileName: l.fileName || '',
                   description: l.description || '',
                   downloadUrl: l.downloadUrl || '',
                   token: l.token || '',
-                  processed: false
+                  processed: false,
+                  sequenceNumber: index
                 })),
                 lastScrapedAt: new Date(),
                 processed: isProcessed,
@@ -1852,6 +1959,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           stagedCount++;
         }
         await Promise.all(materialPromises);
+        changesSummary.courseMaterials = [...new Set(materialLinksData.map(m => m.courseName))];
 
         if (stagedCount > 0) {
           console.log(`[SYNC] 📥 Staged ${stagedCount} material link sets. Firing processor immediately.`);
@@ -2671,6 +2779,7 @@ app.post('/api/groups/remove-member', auth, async (req, res) => {
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
+    const isCompact = req.query.compact === 'true';
 
     const modelsToMeasure = [
       { model: Task, field: 'userId' },
@@ -2685,15 +2794,17 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
     const usersWithStorage = await Promise.all(users.map(async (user) => {
       let storageBytes = 15360; // base footprint
 
-      for (const { model, field } of modelsToMeasure) {
-        try {
-          const result = await model.aggregate([
-            { $match: { [field]: user._id } },
-            { $group: { _id: null, size: { $sum: { $bsonSize: "$$ROOT" } } } }
-          ]);
-          if (result && result.length > 0) storageBytes += result[0].size;
-        } catch (e) {
-          // Fallback if $bsonSize fails
+      if (!isCompact) {
+        for (const { model, field } of modelsToMeasure) {
+          try {
+            const result = await model.aggregate([
+              { $match: { [field]: user._id } },
+              { $group: { _id: null, size: { $sum: { $bsonSize: "$$ROOT" } } } }
+            ]);
+            if (result && result.length > 0) storageBytes += result[0].size;
+          } catch (e) {
+            // Fallback if $bsonSize fails
+          }
         }
       }
 
@@ -3419,7 +3530,46 @@ app.post('/api/login', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-app.get('/api/auth/user', auth, async (req, res) => { try { res.json(await User.findById(req.user.id).select('-password').lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/auth/user', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    let changed = false;
+    const origin = req.headers.origin || req.headers.referer || '';
+    const ua = req.headers['user-agent'] || '';
+
+    // Check if accessed from Web Portal
+    if (!user.accessedWeb) {
+      if (origin.includes('web.myportalucp.online') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        user.accessedWeb = true;
+        changed = true;
+      }
+    }
+
+    // Check if accessed from Mobile App
+    if (!user.accessedMobile) {
+      const isMobileUA = ua.includes('okhttp') || ua.includes('Expo') || ua.includes('React-Native') || ua.includes('Darwin') || ua.includes('Android');
+      if (isMobileUA || (user.pushTokens && user.pushTokens.length > 0)) {
+        user.accessedMobile = true;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await user.save();
+    }
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    res.json(userObj);
+  } catch (error) {
+    console.error('[AUTH_USER] Error:', error);
+    res.status(500).json({ message: "Error" });
+  }
+});
 
 app.get('/api/dashboard', auth, async (req, res) => {
   try {
@@ -3583,6 +3733,49 @@ app.post('/api/auth/check-block-status', async (req, res) => {
 });
 
 
+// Helper to compare, log, and update detailed student profile fields
+const updateProfileFields = (user, body) => {
+  const fields = [
+    'secondaryEmail', 'phone', 'emergencyContact', 'presentAddress', 'permanentAddress',
+    'dob', 'gender', 'cnic', 'domicile', 'nationality', 'religion', 'bloodGroup',
+    'fatherName', 'fatherCnic', 'guardianName', 'guardianCnic', 'maritalStatus',
+    'faculty', 'careerType', 'program', 'currentSemester'
+  ];
+
+  let hasChanges = false;
+  const logDetails = {};
+
+  for (const field of fields) {
+    let bodyKey = field;
+    if (body[field] === undefined) {
+      const lowerField = field.toLowerCase();
+      const matchKey = Object.keys(body).find(k => k.toLowerCase() === lowerField);
+      if (matchKey) bodyKey = matchKey;
+    }
+
+    const incomingValue = body[bodyKey] !== undefined ? String(body[bodyKey]).trim() : undefined;
+    const existingValue = user[field] ? String(user[field]).trim() : '';
+
+    if (incomingValue === undefined || incomingValue === '') {
+      logDetails[field] = { status: 'SKIPPED_EMPTY' };
+      continue;
+    }
+
+    if (incomingValue !== existingValue) {
+      console.log(`[PROFILE_SYNC] 🔄 Field '${field}' changed: "${existingValue}" -> "${incomingValue}"`);
+      user[field] = incomingValue;
+      hasChanges = true;
+      logDetails[field] = { status: 'REPLACED', old: existingValue, new: incomingValue };
+    } else {
+      logDetails[field] = { status: 'SKIPPED_MATCH' };
+    }
+  }
+
+  console.log(`[PROFILE_SYNC] Summary for user ${user.email || user._id}:`, JSON.stringify(logDetails, null, 2));
+  return hasChanges;
+};
+
+
 // =================================================================
 // 🚀 UNIFIED MICROSOFT SSO LOGIN & FAST-LOGIN ENGINE
 // =================================================================
@@ -3646,8 +3839,11 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         if (!user.originalPortalProfilePic) {
           user.originalPortalProfilePic = finalProfilePicUrl;
         }
-        // profilePic is now strictly for the custom uploaded picture
+        if (user.showProfilePicToCommunity === true && !user.customProfilePic) {
+          user.profilePic = finalProfilePicUrl;
+        }
       }
+      updateProfileFields(user, req.body);
       await user.save();
     } else {
       isNewUser = true;
@@ -3661,6 +3857,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         originalPortalProfilePic: finalProfilePicUrl
         // profilePic is strictly left empty so it doesn't show to community
       });
+      updateProfileFields(user, req.body);
       await user.save();
     }
 
@@ -3732,16 +3929,19 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
 
     console.log(`📸 [PROFILE] Successful Cloudinary upload for user ${req.user.id}. URL: ${fileUrl}`);
 
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user.id,
-      {
-        customProfilePic: fileUrl,
-        profilePic: fileUrl // Always use custom pic if uploaded
-      },
-      { new: true }
-    ).select('-password');
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    res.json(updatedUser);
+    user.customProfilePic = fileUrl;
+    if (user.showProfilePicToCommunity === true) {
+      user.profilePic = fileUrl;
+    } else {
+      user.profilePic = null;
+    }
+
+    await user.save();
+    const freshUser = await User.findById(req.user.id).select('-password');
+    res.json(freshUser);
   } catch (error) {
     console.error("Profile Pic Upload Error:", error);
     res.status(500).json({ message: "Failed to upload profile picture" });
@@ -3756,10 +3956,10 @@ app.put('/api/user/privacy', auth, async (req, res) => {
     
     user.showProfilePicToCommunity = req.body.showProfilePicToCommunity;
     
-    if (user.showProfilePicToCommunity === false && !user.customProfilePic) {
-      user.profilePic = null; // Hide the portal pic
-    } else if (user.showProfilePicToCommunity === true && !user.customProfilePic && user.portalProfilePic) {
-      user.profilePic = user.portalProfilePic; // Restore it
+    if (user.showProfilePicToCommunity === true) {
+      user.profilePic = user.customProfilePic || user.portalProfilePic || user.originalPortalProfilePic || null;
+    } else {
+      user.profilePic = null;
     }
     
     await user.save();
@@ -3890,7 +4090,7 @@ app.get('/api/sync-diagnostics', auth, async (req, res) => {
       }
     }
 
-    const [attendance, announcements, submissions, grades, timetable, syncLogs, courses, studentStats, userInfo] = await Promise.all([
+    const [attendance, announcements, submissions, grades, timetable, syncLogs, courses, studentStats, userInfo, courseMaterials, materialLinks, datesheet] = await Promise.all([
       Attendance.find({ userId: targetUserId }),
       Announcement.find({ userId: targetUserId }),
       Submission.find({ userId: targetUserId }),
@@ -3899,7 +4099,10 @@ app.get('/api/sync-diagnostics', auth, async (req, res) => {
       SyncLog.find({ userId: targetUserId }).sort({ startTime: -1 }).limit(20),
       Course.find({ userId: targetUserId }),
       StudentStats.findOne({ userId: targetUserId }),
-      User.findById(targetUserId).select('-password')
+      User.findById(targetUserId).select('-password'),
+      CourseMaterial.find({ userId: targetUserId }),
+      MaterialLink.find({ userId: targetUserId }),
+      Exam.find({ userId: targetUserId })
     ]);
     res.json({
       attendance,
@@ -3910,7 +4113,10 @@ app.get('/api/sync-diagnostics', auth, async (req, res) => {
       syncLogs,
       courses,
       studentStats,
-      user: userInfo
+      user: userInfo,
+      courseMaterials,
+      materialLinks,
+      datesheet
     });
   } catch (error) {
     console.error("Diagnostic error:", error);
@@ -5120,6 +5326,66 @@ cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync + Announceme
 
 cron.schedule('0 2 * * *', () => runNightlyMaterialSync(User, Course), { timezone: "Asia/Karachi" });
 
+// 3. Lightweight UCP/Odoo Session Heartbeat - Every 10 minutes
+cron.schedule('*/10 * * * *', async () => {
+  console.log('[CRON] 💓 Starting session keep-alive ping cycle (10m)...');
+  try {
+    const activeUsers = await User.find({
+      isPortalConnected: true,
+      $or: [
+        { ucpCookie: { $exists: true, $ne: null } },
+        { ucpCookieEncrypted: { $exists: true, $ne: null } }
+      ]
+    }).select('+ucpCookieEncrypted ucpCookie email portalId');
+
+    console.log(`[CRON] Found ${activeUsers.length} users to ping keep-alive.`);
+
+    for (const user of activeUsers) {
+      // Stagger delay between users (ms) — prevents hammering UCP portal
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const cookie = user.ucpCookieEncrypted ? decrypt(user.ucpCookieEncrypted) : user.ucpCookie;
+        if (!cookie) continue;
+
+        const response = await fetch('https://horizon.ucp.edu.pk/student/dashboard', {
+          method: 'GET',
+          headers: {
+            'Cookie': cookie,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+          }
+        });
+
+        if (response.url && response.url.toLowerCase().includes('login')) {
+          console.log(`[CRON] Session expired for user ${user.email} during keep-alive`);
+          await User.findByIdAndUpdate(user._id, { 
+            isPortalConnected: false,
+            ucpCookieEncrypted: null,
+            ucpCookie: null
+          });
+          const title = "UCP Session Expired ⚠️";
+          const message = "Your background sync failed because your session expired. Tap here to log in again.";
+          await sendPush(
+            user,
+            title,
+            message,
+            { type: "session_expired", action: "OPEN_APP" },
+            "smart-alert",
+            "default"
+          );
+          await createAcademicNotification(user._id, 'system', title, message);
+        } else {
+          console.log(`[CRON] Session kept alive successfully for user ${user.email}`);
+        }
+      } catch (err) {
+        console.error(`[CRON] Keep-alive failed for user ${user.email}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[CRON] ❌ Session keep-alive cron error:', err.message);
+  }
+});
+
 // POST /api/sync-grades - Manual portal FULL sync endpoint triggered from Settings
 app.post('/api/sync-grades', auth, async (req, res) => {
   try {
@@ -5213,8 +5479,8 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
     const activeSemester = course?.semester || getCurrentSemesterCode();
 
     const materials = await CourseMaterial.find({ courseCode: globalCode, sectionCode, semester: activeSemester })
-      .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key')
-      .sort({ isArchiveExtracted: 1, fileName: 1 })
+      .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key sequenceNumber')
+      .sort({ isArchiveExtracted: 1, sequenceNumber: 1, fileName: 1 })
       .lean();
 
     // Generate direct download URLs pointing to the proxy endpoint

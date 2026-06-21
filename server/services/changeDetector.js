@@ -61,19 +61,36 @@ const detectAnnouncementChanges = (oldAnn, newAnn) => {
 const detectSubmissionChanges = (oldSub, newSub) => {
   if (!newSub || !newSub.tasks) return null;
   const oldTasks = (oldSub && oldSub.tasks) ? oldSub.tasks : [];
-  const oldFingerprints = new Set(oldTasks.map(t => `${(t.title || '').trim().toLowerCase()}_${(t.dueDate || '').trim()}`));
-  const newTasks = newSub.tasks.filter(t => {
-    const fp = `${(t.title || '').trim().toLowerCase()}_${(t.dueDate || '').trim()}`;
-    return !oldFingerprints.has(fp);
-  });
+  
+  const oldTaskMap = new Map(oldTasks.map(t => [
+    (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase(),
+    t
+  ]));
 
-  if (newTasks.length > 0) {
+  const newTasks = [];
+  const updatedTasks = [];
+
+  for (const t of newSub.tasks) {
+    const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const existing = oldTaskMap.get(title);
+    if (!existing) {
+      newTasks.push(t);
+    } else {
+      const oldDueDate = (existing.dueDate || '').trim();
+      const newDueDate = (t.dueDate || '').trim();
+      if (oldDueDate !== newDueDate) {
+        updatedTasks.push(t);
+      }
+    }
+  }
+
+  if (newTasks.length > 0 || updatedTasks.length > 0) {
     return {
       type: 'SUBMISSION_UPDATE',
       courseName: newSub.courseName,
       courseUrl: newSub.courseUrl,
-      newCount: newTasks.length,
-      newTasks: newTasks.map(t => ({ title: t.title, dueDate: t.dueDate, status: t.status })),
+      newCount: newTasks.length + updatedTasks.length,
+      newTasks: [...newTasks, ...updatedTasks].map(t => ({ title: t.title, dueDate: t.dueDate, status: t.status })),
     };
   }
   return null;

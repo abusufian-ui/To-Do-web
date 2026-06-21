@@ -28,6 +28,7 @@ const CourseMaterialSchema = new mongoose.Schema({
     parentArchive:      { type: String, default: '' },      // parent zip/rar filename
 
     semester:           { type: String, required: true },   // e.g. fall 26, spring 26
+    sequenceNumber:     { type: Number },
 
     createdAt:          { type: Date, default: Date.now }
 });

@@ -18,7 +18,8 @@ const MaterialLinkSchema = new mongoose.Schema({
         description: { type: String, default: '' },
         downloadUrl: { type: String, default: '' },   // full URL (session-bound)
         token:       { type: String, default: '' },   // the token at end of URL
-        processed:   { type: Boolean, default: false } // tracking progress
+        processed:   { type: Boolean, default: false }, // tracking progress
+        sequenceNumber: { type: Number }
     }],
 
     // Processing state — reset to false on every sync so processor always re-runs

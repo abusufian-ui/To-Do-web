@@ -7,8 +7,8 @@
 const { decrypt } = require('../utils/encryption');
 const User = require('../models/User');
 
-// 20 hours — if cookie is older than this, it is likely expired
-const COOKIE_EXPIRY_MS = 20 * 60 * 60 * 1000;
+// 3 hours — if cookie is older than this, it is likely expired (matches Odoo inactivity window)
+const COOKIE_EXPIRY_MS = 3 * 60 * 60 * 1000;
 
 // Per-user lock — prevents concurrent background scrapes for the same user
 const activeScrapes = new Set();

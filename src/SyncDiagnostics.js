@@ -13,7 +13,10 @@ const SyncDiagnostics = () => {
     syncLogs: [],
     courses: [],
     studentStats: null,
-    user: null
+    user: null,
+    courseMaterials: [],
+    materialLinks: [],
+    datesheet: []
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('courses');
@@ -99,6 +102,9 @@ const SyncDiagnostics = () => {
     { id: 'submissions', label: 'Submissions', count: data.submissions?.length || 0 },
     { id: 'grades', label: 'Grades', count: data.grades?.length || 0 },
     { id: 'timetable', label: 'Timetable', count: data.timetable?.length || 0 },
+    { id: 'courseMaterials', label: 'Course Materials', count: data.courseMaterials?.length || 0 },
+    { id: 'materialLinks', label: 'Material Links', count: data.materialLinks?.length || 0 },
+    { id: 'datesheet', label: 'Datesheet', count: data.datesheet?.length || 0 },
   ];
 
   const getActiveData = () => {

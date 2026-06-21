@@ -1581,6 +1581,11 @@ const WebsiteConfigApp = ({ token }) => {
   const [isEditingTerms, setIsEditingTerms] = useState(false);
   const [savingTerms, setSavingTerms] = useState(false);
 
+  const [whatsappLink, setWhatsappLink] = useState('');
+  const [savedWhatsappLink, setSavedWhatsappLink] = useState('');
+  const [isEditingWhatsapp, setIsEditingWhatsapp] = useState(false);
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+
   const [apkInfo, setApkInfo] = useState({ uploaded: false });
   const [loadingInfo, setLoadingInfo] = useState(true);
   const [uploadingApk, setUploadingApk] = useState(false);
@@ -1598,6 +1603,8 @@ const WebsiteConfigApp = ({ token }) => {
         setSavedLink(data.webPortalLink || '');
         setTermsLink(data.termsLink || '');
         setSavedTermsLink(data.termsLink || '');
+        setWhatsappLink(data.whatsappGroupLink || '');
+        setSavedWhatsappLink(data.whatsappGroupLink || '');
         setApkInfo(data.apkInfo || { uploaded: false });
       }
     } catch (err) {
@@ -1672,6 +1679,36 @@ const WebsiteConfigApp = ({ token }) => {
   const handleCancelTerms = () => {
     setTermsLink(savedTermsLink);
     setIsEditingTerms(false);
+  };
+
+  const handleSaveWhatsapp = async () => {
+    setSavingWhatsapp(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings/whatsapp-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ link: whatsappLink.trim() })
+      });
+      if (res.ok) {
+        setSavedWhatsappLink(whatsappLink.trim());
+        setIsEditingWhatsapp(false);
+        ToastConfig.show({ title: 'Success', message: 'WhatsApp Group Link updated.', type: 'success' });
+      } else {
+        const errData = await res.json();
+        ToastConfig.show({ title: 'Error', message: errData.message || 'Failed to update WhatsApp link.', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error saving WhatsApp link.', type: 'error' });
+    }
+    setSavingWhatsapp(false);
+  };
+
+  const handleCancelWhatsapp = () => {
+    setWhatsappLink(savedWhatsappLink);
+    setIsEditingWhatsapp(false);
   };
 
   const handleApkUpload = async (e) => {
@@ -1887,6 +1924,55 @@ const WebsiteConfigApp = ({ token }) => {
             </div>
             <button
               onClick={() => setIsEditingTerms(true)}
+              className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-blue-600/10"
+            >
+              Edit Link
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* WhatsApp Community Link configuration */}
+      <div className="bg-gray-50 dark:bg-[#18181b] rounded-2xl border border-gray-200 dark:border-[#27272a] p-5">
+        <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+          <Server size={16} className="text-blue-500" /> WhatsApp Group Join Link
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          This is the link mobile users will be redirected to when they click the WhatsApp group card in the onboarding or settings screen.
+        </p>
+
+        {isEditingWhatsapp ? (
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder="e.g. https://chat.whatsapp.com/..."
+              value={whatsappLink}
+              onChange={e => setWhatsappLink(e.target.value)}
+              className="flex-1 px-4 py-2.5 bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
+            />
+            <button
+              onClick={handleSaveWhatsapp}
+              disabled={savingWhatsapp}
+              className="px-5 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {savingWhatsapp ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={handleCancelWhatsapp}
+              disabled={savingWhatsapp}
+              className="px-5 py-2.5 rounded-xl font-bold bg-gray-200 hover:bg-gray-300 dark:bg-[#27272a] dark:hover:bg-[#323237] text-gray-800 dark:text-gray-200 text-sm transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50/50 dark:bg-blue-900/5 border border-blue-200/50 dark:border-blue-900/10">
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-blue-500 dark:text-blue-400">Currently Saved</span>
+              <p className="text-sm font-bold text-gray-800 dark:text-gray-200 truncate mt-0.5">{savedWhatsappLink || 'None (Using default)'}</p>
+            </div>
+            <button
+              onClick={() => setIsEditingWhatsapp(true)}
               className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-blue-600/10"
             >
               Edit Link

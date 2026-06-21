@@ -196,7 +196,7 @@ async function uploadVaultToB2(buffer, ext, originalFileName, courseCode, teache
  */
 async function processOneFile({
     buffer, fileName, ext, courseCode, courseName,
-    sectionCode, teacherName, userId, portalUrl, semester
+    sectionCode, teacherName, userId, portalUrl, semester, sequenceNumber
 }) {
     const normalized = normalizeFileName(fileName);
     if (!normalized) return;
@@ -213,7 +213,7 @@ async function processOneFile({
                 fileName, normalizedFileName: normalized,
                 b2Key, fileType: ext.replace('.', ''),
                 fileSize: buffer.length, originalPortalUrl: portalUrl,
-                isArchiveExtracted: false, semester
+                isArchiveExtracted: false, semester, sequenceNumber
             });
             console.log(`[MATERIAL] ✅ Stored: ${fileName} (section: ${sectionCode}, semester: ${semester})`);
         } catch (err) {
@@ -224,14 +224,22 @@ async function processOneFile({
             }
         }
     } else {
-        console.log(`[MATERIAL] ⏭️  Exists in course/semester: ${fileName}`);
+        try {
+            await CourseMaterial.updateOne(
+                { courseCode: globalCourseCode, normalizedFileName: normalized, semester },
+                { $set: { sequenceNumber } }
+            );
+            console.log(`[MATERIAL] 🔄 Updated sequence number: ${fileName} -> ${sequenceNumber}`);
+        } catch (err) {
+            console.error(`[MATERIAL] Failed to update sequence number for ${fileName}:`, err.message);
+        }
     }
 }
 
 /**
  * Process a ZIP file: extract contents, process each entry individually.
  */
-async function processZipFile({ buffer, fileName, courseCode, courseName, sectionCode, teacherName, userId, portalUrl, semester }) {
+async function processZipFile({ buffer, fileName, courseCode, courseName, sectionCode, teacherName, userId, portalUrl, semester, sequenceNumber }) {
     const normalized = normalizeFileName(fileName);
     const globalCourseCode = courseCode ? courseCode.split('-')[0].trim() : '';
 
@@ -244,11 +252,21 @@ async function processZipFile({ buffer, fileName, courseCode, courseName, sectio
                 userId, courseCode: globalCourseCode, courseName, sectionCode, teacherName,
                 fileName, normalizedFileName: normalized,
                 b2Key, fileType: 'zip', fileSize: buffer.length,
-                originalPortalUrl: portalUrl, semester
+                originalPortalUrl: portalUrl, semester, sequenceNumber
             });
             console.log(`[MATERIAL] ✅ Stored ZIP: ${fileName} (section: ${sectionCode}, semester: ${semester})`);
         } catch (err) {
             if (err.code !== 11000) console.error(`[MATERIAL] ZIP store failed: ${err.message}`);
+        }
+    } else {
+        try {
+            await CourseMaterial.updateOne(
+                { courseCode: globalCourseCode, normalizedFileName: normalized, semester },
+                { $set: { sequenceNumber } }
+            );
+            console.log(`[MATERIAL] 🔄 Updated ZIP sequence number: ${fileName} -> ${sequenceNumber}`);
+        } catch (err) {
+            console.error(`[MATERIAL] Failed to update ZIP sequence number for ${fileName}:`, err.message);
         }
     }
 
@@ -350,7 +368,12 @@ async function processUserMaterials(userId, cookieString) {
 
                         const fileExists = await CourseMaterial.exists({ courseCode: globalCourseCode, normalizedFileName: normalized, semester });
                         if (fileExists) {
-                            console.log(`[MATERIAL_PROC] ⏭️ Fast-pass skip (exists): ${link.fileName}`);
+                            console.log(`[MATERIAL_PROC] ⏭️ Fast-pass skip (exists): ${link.fileName}. Updating sequenceNumber to ${link.sequenceNumber}`);
+                            // Update sequenceNumber in CourseMaterial database
+                            await CourseMaterial.updateOne(
+                                { courseCode: globalCourseCode, normalizedFileName: normalized, semester },
+                                { $set: { sequenceNumber: link.sequenceNumber } }
+                            );
                             // Mark this link as processed in MaterialLink subdocument
                             await MaterialLink.updateOne(
                                 { _id: linkSet._id, "links.downloadUrl": link.downloadUrl },
@@ -380,13 +403,15 @@ async function processUserMaterials(userId, cookieString) {
                             await processZipFile({
                                 buffer, fileName: link.fileName,
                                 courseCode, courseName, sectionCode, teacherName,
-                                userId: userIdStr, portalUrl: link.downloadUrl, semester
+                                userId: userIdStr, portalUrl: link.downloadUrl, semester,
+                                sequenceNumber: link.sequenceNumber
                             });
                         } else {
                             await processOneFile({
                                 buffer, fileName: link.fileName, ext,
                                 courseCode, courseName, sectionCode, teacherName,
-                                userId: userIdStr, portalUrl: link.downloadUrl, semester
+                                userId: userIdStr, portalUrl: link.downloadUrl, semester,
+                                sequenceNumber: link.sequenceNumber
                             });
                         }
 
@@ -478,6 +503,7 @@ async function runNightlyMaterialSync(User, Course) {
 
                         const $ = cheerio.load(html);
                         const links = [];
+                        let seqIndex = 0;
                         $('table tbody tr').each((_, row) => {
                             const tds = $(row).find('td');
                             if (tds.length >= 4) {
@@ -486,7 +512,7 @@ async function runNightlyMaterialSync(User, Course) {
                                 const href = $(tds[3]).find('a').attr('href') || '';
                                 if (href.includes('/student/class/material/download/')) {
                                     const fullUrl = href.startsWith('http') ? href : `https://horizon.ucp.edu.pk${href}`;
-                                    links.push({ fileName, description, downloadUrl: fullUrl, token: href.split('/').pop() });
+                                    links.push({ fileName, description, downloadUrl: fullUrl, token: href.split('/').pop(), sequenceNumber: seqIndex++ });
                                 }
                             }
                         });
