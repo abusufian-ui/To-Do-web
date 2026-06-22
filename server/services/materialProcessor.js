@@ -175,7 +175,7 @@ async function processOneFile({
     const globalCourseCode = courseCode ? courseCode.split('-')[0].trim() : '';
 
     
-    const materialExists = await CourseMaterial.exists({ courseCode: globalCourseCode, normalizedFileName: normalized, semester });
+    const materialExists = await CourseMaterial.exists({ courseCode: globalCourseCode, sectionCode, normalizedFileName: normalized, semester });
     if (!materialExists) {
         try {
             const b2Key = await uploadMaterialToB2(buffer, globalCourseCode, sectionCode, fileName);
@@ -197,7 +197,7 @@ async function processOneFile({
     } else {
         try {
             await CourseMaterial.updateOne(
-                { courseCode: globalCourseCode, normalizedFileName: normalized, semester },
+                { courseCode: globalCourseCode, sectionCode, normalizedFileName: normalized, semester },
                 { $set: { sequenceNumber } }
             );
             console.log(`[MATERIAL] 🔄 Updated sequence number: ${fileName} -> ${sequenceNumber}`);
@@ -213,7 +213,7 @@ async function processZipFile({ buffer, fileName, courseCode, courseName, sectio
     const globalCourseCode = courseCode ? courseCode.split('-')[0].trim() : '';
 
     
-    const materialExists = await CourseMaterial.exists({ courseCode: globalCourseCode, normalizedFileName: normalized, semester });
+    const materialExists = await CourseMaterial.exists({ courseCode: globalCourseCode, sectionCode, normalizedFileName: normalized, semester });
     if (!materialExists) {
         try {
             const b2Key = await uploadMaterialToB2(buffer, globalCourseCode, sectionCode, fileName);
@@ -230,7 +230,7 @@ async function processZipFile({ buffer, fileName, courseCode, courseName, sectio
     } else {
         try {
             await CourseMaterial.updateOne(
-                { courseCode: globalCourseCode, normalizedFileName: normalized, semester },
+                { courseCode: globalCourseCode, sectionCode, normalizedFileName: normalized, semester },
                 { $set: { sequenceNumber } }
             );
             console.log(`[MATERIAL] 🔄 Updated ZIP sequence number: ${fileName} -> ${sequenceNumber}`);
@@ -259,7 +259,7 @@ async function processZipFile({ buffer, fileName, courseCode, courseName, sectio
         const entryNorm = normalizeFileName(entry.name);
         if (!entryNorm) continue;
 
-        const entryMaterialExists = await CourseMaterial.exists({ courseCode: globalCourseCode, normalizedFileName: entryNorm, semester });
+        const entryMaterialExists = await CourseMaterial.exists({ courseCode: globalCourseCode, sectionCode, normalizedFileName: entryNorm, semester });
         if (!entryMaterialExists) {
             try {
                 const b2Key = await uploadMaterialToB2(entry.buffer, globalCourseCode, sectionCode, entry.name);
@@ -304,10 +304,27 @@ async function processUserMaterials(userId, cookieString) {
 
         
         await Promise.all(pendingLinks.map(async (linkSet) => {
-            const { courseUrl, courseName, courseCode, sectionCode, teacherName, links, semester } = linkSet;
+            let { courseUrl, courseName, courseCode, sectionCode, teacherName, links, semester } = linkSet;
+
+            if (!sectionCode) {
+                const Course = require('../models/Course');
+                const courseDoc = await Course.findOne({
+                    userId: userIdStr,
+                    $or: [
+                        { name: courseName },
+                        { code: courseCode },
+                        { code: { $regex: '^' + courseCode.split('-')[0].trim() + '(-|$)', $options: 'i' } }
+                    ]
+                }).lean();
+                if (courseDoc && courseDoc.section) {
+                    sectionCode = courseDoc.section;
+                    console.log(`[MATERIAL_PROC] Resolved section dynamically for ${courseName}: ${sectionCode}`);
+                    await MaterialLink.findByIdAndUpdate(linkSet._id, { $set: { sectionCode } });
+                }
+            }
 
             if (!sectionCode || !courseCode || !links || links.length === 0) {
-                await MaterialLink.findByIdAndUpdate(linkSet._id, { processed: true, processedAt: new Date() });
+                console.log(`[MATERIAL_PROC] Skipping course ${courseCode} due to missing sectionCode or links.`);
                 return;
             }
 
@@ -327,12 +344,12 @@ async function processUserMaterials(userId, cookieString) {
                         const normalized = normalizeFileName(link.fileName);
                         if (!normalized) return;
 
-                        const fileExists = await CourseMaterial.exists({ courseCode: globalCourseCode, normalizedFileName: normalized, semester });
+                        const fileExists = await CourseMaterial.exists({ courseCode: globalCourseCode, sectionCode, normalizedFileName: normalized, semester });
                         if (fileExists) {
                             console.log(`[MATERIAL_PROC] ⏭️ Fast-pass skip (exists): ${link.fileName}. Updating sequenceNumber to ${link.sequenceNumber}`);
                             
                             await CourseMaterial.updateOne(
-                                { courseCode: globalCourseCode, normalizedFileName: normalized, semester },
+                                { courseCode: globalCourseCode, sectionCode, normalizedFileName: normalized, semester },
                                 { $set: { sequenceNumber: link.sequenceNumber } }
                             );
                             
@@ -388,12 +405,16 @@ async function processUserMaterials(userId, cookieString) {
             }
 
             if (!sessionExpired) {
-                
-                await MaterialLink.findByIdAndUpdate(linkSet._id, {
-                    processed: true,
-                    processedAt: new Date()
-                });
-                console.log(`[MATERIAL_PROC] ✅ Done: ${courseCode} (${sectionCode})`);
+                const freshLinkSet = await MaterialLink.findById(linkSet._id).lean();
+                if (freshLinkSet && freshLinkSet.links && freshLinkSet.links.every(l => l.processed)) {
+                    await MaterialLink.findByIdAndUpdate(linkSet._id, {
+                        processed: true,
+                        processedAt: new Date()
+                    });
+                    console.log(`[MATERIAL_PROC] ✅ Done: ${courseCode} (${sectionCode})`);
+                } else {
+                    console.log(`[MATERIAL_PROC] ⚠️ Partial processing: ${courseCode} (${sectionCode}) has unprocessed links remaining.`);
+                }
             }
         }));
 
@@ -403,8 +424,10 @@ async function processUserMaterials(userId, cookieString) {
         }
 
         console.log(`[MATERIAL_PROC] 🏁 Completed for user ${userIdStr}`);
+        return { success: !sessionExpired, sessionExpired };
     } catch (err) {
         console.error(`[MATERIAL_PROC] ❌ Unexpected error for user ${userIdStr}:`, err.message);
+        return { success: false, error: err.message };
     }
 }
 

@@ -120,6 +120,31 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
   const [userToDelete, setUserToDelete] = useState(null);
   const [roleToToggle, setRoleToToggle] = useState(null);
   const [blockingId, setBlockingId] = useState(null);
+  const [processingId, setProcessingId] = useState(null);
+
+  const triggerMaterialSync = async (u) => {
+    setProcessingId(u._id);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/trigger-processor`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ userId: u._id, type: 'single_user_process' })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        ToastConfig.show({ title: 'Success', message: data.message || 'Material processing complete.', type: 'success' });
+      } else {
+        ToastConfig.show({ title: 'Processing Failed', message: data.message || 'Error processing materials.', type: 'error' });
+      }
+    } catch (err) {
+      ToastConfig.show({ title: 'Error', message: 'Failed to communicate with processor server.', type: 'error' });
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   const filtered = users.filter(u =>
     u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -335,6 +360,15 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
                   </td>
                   <td className="px-6 py-3">
                     <div className="flex justify-end gap-1">
+                      {u.isPortalConnected && (
+                        <button onClick={() => triggerMaterialSync(u)} disabled={processingId === u._id}
+                          className="p-2 rounded-lg text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all disabled:opacity-50"
+                          title="Trigger Material Sync & Process">
+                          {processingId === u._id 
+                            ? <span className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin block"></span> 
+                            : <RefreshCw size={16} />}
+                        </button>
+                      )}
                       {!isTargetSuperAdmin && (isSuperAdmin || !u.isAdmin) && (
                         <button onClick={() => toggleBlock(u)} disabled={blockingId === u._id}
                           className={`p-2 rounded-lg transition-all ${u.isBlocked ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/10' : 'text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/10'} disabled:opacity-50`}

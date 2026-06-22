@@ -1170,6 +1170,12 @@ app.post('/api/session/keep-alive', auth, async (req, res) => {
   if (!ucpCookie) return res.status(400).json({ error: "No cookie provided" });
   try {
     await User.findByIdAndUpdate(req.user.id, { $set: { ucpCookie: ucpCookie, isPortalConnected: true, lastSyncAt: new Date() } }, { strict: false });
+    
+    setTimeout(() => {
+      processUserMaterials(req.user.id.toString(), ucpCookie)
+        .catch(err => console.error(`[SESSION_KEEP_ALIVE_PROC] Async processing failed:`, err.message));
+    }, 500);
+
     res.status(200).json({ message: "Cookies saved to vault." });
   } catch (err) {
     res.status(500).json({ error: "Failed to secure cookie in vault" });
@@ -1915,8 +1921,20 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           if (!item.courseUrl) continue;
 
           
-          const itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
+          let itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
           const courseDoc = courseMapDb.get(item.courseName);
+
+          if (!itemSectionCode && courseDoc && courseDoc.section) {
+            itemSectionCode = courseDoc.section;
+          }
+
+          if (!itemSectionCode && item.courseCode && item.courseCode.includes('-')) {
+            const parts = item.courseCode.split('-');
+            const candidate = parts[parts.length - 1].trim();
+            if (candidate && candidate.length <= 15 && /^[a-zA-Z0-9-]+$/.test(candidate)) {
+              itemSectionCode = candidate;
+            }
+          }
 
           
           if (courseDoc && courseDoc.creditHours === 0) {
@@ -1933,12 +1951,14 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
           const isProcessed = !item.links || item.links.length === 0;
 
+          const finalCourseCode = item.courseCode || courseDoc?.code || '';
+
           materialPromises.push(MaterialLink.findOneAndUpdate(
             { userId, courseUrl: item.courseUrl },
             {
               $set: {
                 courseName: item.courseName || '',
-                courseCode: item.courseCode || '',
+                courseCode: finalCourseCode,
                 sectionCode: itemSectionCode,
                 teacherName: itemTeacherName,
                 links: (item.links || []).map((l, index) => ({
@@ -3362,11 +3382,17 @@ app.post('/api/admin/trigger-processor', auth, adminAuth, async (req, res) => {
       if (!user) return res.status(404).json({ message: 'User not found.' });
       if (!user.ucpCookie) return res.status(400).json({ message: 'User has no saved UCP Cookie.' });
 
+      const result = await processUserMaterials(user._id.toString(), user.ucpCookie);
       
-      processUserMaterials(user._id.toString(), user.ucpCookie)
-        .catch(err => console.error(`[MANUAL_PROC] Async processing failed for ${user.email}:`, err.message));
+      if (result && result.sessionExpired) {
+        return res.status(400).json({ message: 'Session expired or cookie is invalid.' });
+      }
 
-      return res.json({ success: true, message: `Manual material processing triggered for ${user.name || user.email}.` });
+      if (result && !result.success) {
+        return res.status(500).json({ message: result.error || 'Failed to process materials.' });
+      }
+
+      return res.json({ success: true, message: `Material processing completed successfully for ${user.name || user.email}.` });
 
     } else if (type === 'single_user_nightly') {
       if (!userId) return res.status(400).json({ message: 'User ID is required.' });
@@ -3859,6 +3885,13 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       });
       updateProfileFields(user, req.body);
       await user.save();
+    }
+
+    if (ucpCookie) {
+      setTimeout(() => {
+        processUserMaterials(user._id.toString(), ucpCookie)
+          .catch(err => console.error(`[MICROSOFT_LOGIN_PROC] Async processing failed:`, err.message));
+      }, 500);
     }
 
     const payload = { id: user.id };
