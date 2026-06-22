@@ -8,13 +8,13 @@ import { ToastConfig } from './CustomToast';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// Module-level cache to persist data across section selections
+
 const adminDetailsCache = {};
 
 const AdminCourseMaterialsApp = ({ token }) => {
   const [courses, setCourses] = useState([]);
   const [loadingCourses, setLoadingCourses] = useState(false);
-  const [selectedSection, setSelectedSection] = useState(null); // { courseCode, courseName, sectionCode, semester }
+  const [selectedSection, setSelectedSection] = useState(null); 
 
   const [files, setFiles] = useState([]);
   const [studentStats, setStudentStats] = useState(null);
@@ -24,21 +24,21 @@ const AdminCourseMaterialsApp = ({ token }) => {
   const [expandedCourses, setExpandedCourses] = useState(new Set());
   const [expandedArchives, setExpandedArchives] = useState(new Set());
 
-  // Multiple File Selection & Zip progress states
+  
   const [selected, setSelected] = useState(new Set());
   const [downloading, setDownloading] = useState(false);
   const [zipProgress, setZipProgress] = useState(null);
 
-  // Search Engine states
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [selectedStudentSections, setSelectedStudentSections] = useState(null); // { student, sections: [] }
+  const [selectedStudentSections, setSelectedStudentSections] = useState(null); 
   const [highlightFileId, setHighlightFileId] = useState(null);
 
   const searchContainerRef = useRef(null);
 
-  // Fetch courses list
+  
   const fetchCourses = useCallback(async () => {
     setLoadingCourses(true);
     try {
@@ -62,7 +62,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
     fetchCourses();
   }, [fetchCourses]);
 
-  // Fetch files and student stats for a selected section
+  
   const fetchSectionDetails = useCallback(async (sec, showLoader = true) => {
     const cacheKey = `${sec.courseCode}_${sec.sectionCode}_${sec.semester}`;
     if (showLoader) {
@@ -87,7 +87,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
   }, [token]);
 
   useEffect(() => {
-    setSelected(new Set()); // Reset selections on section change
+    setSelected(new Set()); 
     if (selectedSection) {
       const cacheKey = `${selectedSection.courseCode}_${selectedSection.sectionCode}_${selectedSection.semester}`;
       const cachedData = adminDetailsCache[cacheKey];
@@ -96,7 +96,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
         setFiles(cachedData.files || []);
         setStudentStats(cachedData.studentStats || null);
         setLoadingDetails(false);
-        // Silent background fetch to update cache/UI
+        
         fetchSectionDetails(selectedSection, false);
       } else {
         fetchSectionDetails(selectedSection, true);
@@ -107,7 +107,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
     }
   }, [selectedSection, fetchSectionDetails]);
 
-  // Premium search debounce handler
+  
   useEffect(() => {
     if (searchQuery.trim().length === 0) {
       setSearchResults(null);
@@ -131,7 +131,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
     return () => clearTimeout(timer);
   }, [searchQuery, token]);
 
-  // Click outside search container close overlay
+  
   useEffect(() => {
     const handleClickOutsideSearch = (event) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
@@ -142,7 +142,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
     return () => document.removeEventListener('mousedown', handleClickOutsideSearch);
   }, []);
 
-  // Smooth scroll and highlight searched file
+  
   useEffect(() => {
     if (highlightFileId && files.length > 0) {
       const element = document.getElementById(`file-row-${highlightFileId}`);
@@ -191,7 +191,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
   const selectSearchFile = (f) => {
     setSelectedSection({
       courseCode: f.courseCode,
-      courseName: f.courseCode, // fallback
+      courseName: f.courseCode, 
       sectionCode: f.sectionCode,
       semester: f.semester
     });
@@ -489,10 +489,10 @@ const AdminCourseMaterialsApp = ({ token }) => {
   return (
     <div className="flex flex-col lg:flex-row h-full w-full bg-gray-50 dark:bg-[#0c0c0e] text-gray-900 dark:text-white relative overflow-hidden">
       
-      {/* LEFT SIDEBAR: Course & Section Buckets Tree */}
+      {}
       <div className="w-full lg:w-80 border-r border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#111113] flex flex-col shrink-0">
         
-        {/* Search bar & Refresh header */}
+        {}
         <div className="p-4 border-b border-gray-200 dark:border-[#27272a] space-y-3 shrink-0 relative z-40" ref={searchContainerRef}>
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 flex items-center gap-2">
@@ -507,7 +507,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
             </button>
           </div>
 
-          {/* Unified search bar */}
+          {}
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-focus-within:text-blue-500">
               <Search size={15} />
@@ -528,7 +528,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
               </button>
             )}
 
-            {/* Search results dropdown overlay */}
+            {}
             {searchResults && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn max-h-96 overflow-y-auto custom-scrollbar">
                 
@@ -548,7 +548,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
                     </div>
                 )}
 
-                {/* Courses section */}
+                {}
                 {!searchLoading && searchResults.courses.length > 0 && (
                   <div>
                     <div className="px-3 py-1.5 text-[9px] font-black uppercase text-gray-400 bg-gray-50 dark:bg-[#252525] border-b border-gray-100 dark:border-[#2a2a2d]">Courses</div>
@@ -565,7 +565,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
                   </div>
                 )}
 
-                {/* Files section */}
+                {}
                 {!searchLoading && searchResults.files.length > 0 && (
                   <div>
                     <div className="px-3 py-1.5 text-[9px] font-black uppercase text-gray-400 bg-gray-50 dark:bg-[#252525] border-b border-gray-100 dark:border-[#2a2a2d]">Files</div>
@@ -585,7 +585,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
                   </div>
                 )}
 
-                {/* Students section */}
+                {}
                 {!searchLoading && searchResults.students.length > 0 && (
                   <div>
                     <div className="px-3 py-1.5 text-[9px] font-black uppercase text-gray-400 bg-gray-50 dark:bg-[#252525] border-b border-gray-100 dark:border-[#2a2a2d]">Students</div>
@@ -608,7 +608,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
           </div>
         </div>
 
-        {/* Tree listings */}
+        {}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
           {loadingCourses ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
@@ -624,7 +624,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
               const isExpanded = expandedCourses.has(course.courseCode);
               return (
                 <div key={course.courseCode} className="space-y-0.5">
-                  {/* Course Folder Header */}
+                  {}
                   <div className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-[#1c1c1f] text-left transition-colors group relative">
                     <button
                       onClick={() => toggleCourseExpand(course.courseCode)}
@@ -652,7 +652,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
                     </button>
                   </div>
 
-                  {/* Course Sections */}
+                  {}
                   {isExpanded && (
                     <div className="pl-6 space-y-0.5 border-l border-gray-100 dark:border-gray-800 ml-5">
                       {course.sections.map(sec => {
@@ -709,7 +709,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
         </div>
       </div>
 
-      {/* RIGHT PANE: Details, Files List & Connection Statistics */}
+      {}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
         {!selectedSection ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 py-24 bg-white dark:bg-[#111113]/30 rounded-3xl border border-dashed border-gray-200 dark:border-[#27272a]">
@@ -722,7 +722,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
         ) : (
           <div className="space-y-6">
             
-            {/* Header Detail */}
+            {}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] p-6 rounded-2xl shadow-sm">
               <div>
                 <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider font-mono">
@@ -746,7 +746,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
               </button>
             </div>
 
-            {/* Student Connection Stats Section */}
+            {}
             <div className="bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] p-6 rounded-2xl shadow-sm">
               <h3 className="text-sm font-black text-gray-800 dark:text-gray-200 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Users size={16} className="text-blue-500" /> Student Enrollment & Link Status
@@ -759,7 +759,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
                 </div>
               ) : studentStats ? (
                 <div className="space-y-4">
-                  {/* Progress bar visual */}
+                  {}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
                     <div className="md:col-span-2">
                       <div className="flex justify-between text-xs mb-1.5 font-bold">
@@ -787,7 +787,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
                     </div>
                   </div>
 
-                  {/* Connected list */}
+                  {}
                   {studentsRoster.length > 0 ? (
                     <div>
                       <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Section Enrolled Students Roster ({studentsRoster.length})</p>
@@ -818,25 +818,9 @@ const AdminCourseMaterialsApp = ({ token }) => {
               )}
             </div>
 
-            {/* Zip Download progress overlay */}
-            {zipProgress && (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600 dark:text-emerald-400 text-sm space-y-2">
-                <div className="flex items-center space-x-3">
-                  <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
-                  <span className="font-bold">
-                    Preparing download zip: {zipProgress.processed} / {zipProgress.total} files processed
-                  </span>
-                </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                  <div 
-                    className="bg-emerald-500 h-full rounded-full transition-all duration-300 ease-out" 
-                    style={{ width: `${(zipProgress.processed / zipProgress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
 
-            {/* Toolbar */}
+
+            {}
             {files.length > 0 && (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#111113] p-4 rounded-2xl border border-gray-200 dark:border-[#27272a] shadow-sm">
                 <div className="flex items-center space-x-3">
@@ -865,7 +849,7 @@ const AdminCourseMaterialsApp = ({ token }) => {
               </div>
             )}
 
-            {/* Files List Panel */}
+            {}
             <div className="bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] rounded-2xl overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#151518] flex items-center justify-between">
                 <h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm">Course Materials</h4>
@@ -1049,6 +1033,51 @@ const AdminCourseMaterialsApp = ({ token }) => {
                     </span>
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* GLOBAL DOWNLOAD PROGRESS MODAL/OVERLAY */}
+      {downloading && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center animate-fadeIn p-4">
+          <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6 text-center animate-scaleIn relative">
+            <div className="mx-auto w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500 animate-pulse">
+              <Download size={32} />
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-gray-900 dark:text-white">Creating Zip Archive</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Fetching and packing your course materials from the cloud.
+              </p>
+            </div>
+
+            {zipProgress ? (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-gray-450 dark:text-gray-400 uppercase tracking-wider">Progress</span>
+                  <span className="text-blue-500 font-mono">
+                    {zipProgress.processed} / {zipProgress.total} Files
+                  </span>
+                </div>
+                
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden p-[2px] border border-slate-200/20">
+                  <div 
+                    className="bg-blue-600 h-full rounded-full transition-all duration-300 ease-out" 
+                    style={{ width: `${zipProgress.total > 0 ? (zipProgress.processed / zipProgress.total) * 100 : 0}%` }}
+                  />
+                </div>
+                
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                  {Math.round((zipProgress.total > 0 ? (zipProgress.processed / zipProgress.total) * 100 : 0))}% Completed
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Initializing download job...</p>
               </div>
             )}
           </div>

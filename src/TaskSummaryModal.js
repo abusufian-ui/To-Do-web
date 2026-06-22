@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
-// --- HELPERS ---
+
 const formatTime = (timeString) => {
   if (!timeString) return '';
   const [hours, minutes] = timeString.split(':');
@@ -37,7 +37,7 @@ const getStatusConfig = (s) => {
   }
 };
 
-// --- REUSABLE DROPDOWN ---
+
 const EditDropdown = ({ value, options, onChange, getConfig, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -86,7 +86,7 @@ const EditDropdown = ({ value, options, onChange, getConfig, placeholder }) => {
   );
 };
 
-// --- ADVANCED COURSE DROPDOWN ---
+
 const ModalCourseDropdown = ({ value, courses, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -218,7 +218,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-end bg-black/60 backdrop-blur-sm animate-fadeIn">
-      {/* 🚀 EXPANDED PANEL - max-w-xl md:max-w-2xl */}
+      {}
       <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-xl md:max-w-2xl h-full shadow-2xl overflow-hidden border-l border-gray-200 dark:border-[#2C2C2C] animate-slideInRight flex flex-col">
 
         <style>{`
@@ -228,7 +228,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
           .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; }
         `}</style>
 
-        {/* HEADER */}
+        {}
         <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-brand-blue/10 rounded-xl">
@@ -251,7 +251,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
           </div>
         </div>
 
-        {/* CONTENT VIEWPORT */}
+        {}
         <div className="p-8 overflow-y-auto custom-scrollbar">
           <div className="mb-8">
             {isEditing ? (
@@ -286,7 +286,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
             )}
           </div>
 
-          {/* GRID COLUMNS */}
+          {}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 pt-6 border-t border-gray-100 dark:border-[#2C2C2C]">
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm min-h-[36px]">
@@ -377,7 +377,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user }) =>
             </div>
           </div>
 
-          {/* REAL-TIME SUB-TASKS CONFIGURATION LIST */}
+          {}
           <div className="bg-gray-50 dark:bg-[#181818] p-6 rounded-2xl border border-gray-100 dark:border-[#2C2C2C]">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <CheckSquare size={16} /> Sub Tasks Management

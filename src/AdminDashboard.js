@@ -79,7 +79,7 @@ const StorageBar = ({ label, used, total, color, percentage, icon: Icon }) => {
   );
 };
 
-// App tile for main grid
+
 const AppTile = ({ icon: Icon, label, color, textColor, onClick, badge }) => (
   <button
     onClick={onClick}
@@ -95,12 +95,12 @@ const AppTile = ({ icon: Icon, label, color, textColor, onClick, badge }) => (
   </button>
 );
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Primary profile pic helper — portal pic is the "primary" face
-// ────────────────────────────────────────────────────────────────────────────────
+
+
+
 const getPrimaryPic = (u) => u.portalProfilePic || u.originalPortalProfilePic || u.profilePic || u.customProfilePic || null;
 
-// User avatar
+
 const UserAvatar = ({ u, size = 10, showBlock = false }) => {
   const pic = getPrimaryPic(u);
   return (
@@ -112,9 +112,9 @@ const UserAvatar = ({ u, size = 10, showBlock = false }) => {
   );
 };
 
-// ────────────────────────────────────────────────────────────────────────────────
-// APP 1: USER DIRECTORY
-// ────────────────────────────────────────────────────────────────────────────────
+
+
+
 const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, onRefresh }) => {
   const [search, setSearch] = useState('');
   const [userToDelete, setUserToDelete] = useState(null);
@@ -374,9 +374,9 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
   );
 };
 
-// ────────────────────────────────────────────────────────────────────────────────
-// APP 2: SESSION INSPECTOR
-// ────────────────────────────────────────────────────────────────────────────────
+
+
+
 const SessionInspectorApp = ({ users, token, loading, onRefresh }) => {
   const [results, setResults] = useState({});
   const [checking, setChecking] = useState({});
@@ -806,9 +806,9 @@ const SecurityApp = ({ token }) => {
   );
 };
 
-// ────────────────────────────────────────────────────────────────────────────────
-// APP 6: SUPPORT TICKETS
-// ────────────────────────────────────────────────────────────────────────────────
+
+
+
 const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -817,7 +817,7 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
   const [submittingReplyId, setSubmittingReplyId] = useState(null);
   const [lightboxImage, setLightboxImage] = useState(null);
   
-  // Bulk selection states
+  
   const [selectedIds, setSelectedIds] = useState([]);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -837,7 +837,7 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
     return matchesSearch && matchesStatus;
   });
 
-  // Clear selections when filter or search changes
+  
   useEffect(() => {
     setSelectedIds([]);
   }, [search, statusFilter]);

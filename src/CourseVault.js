@@ -6,7 +6,7 @@ const CourseVault = () => {
     <div className="w-full min-h-[70vh] flex items-center justify-center p-4 md:p-8 animate-fadeIn">
       <div className="relative w-full max-w-md bg-white/50 dark:bg-black/30 backdrop-blur-md rounded-3xl border border-gray-200/50 dark:border-white/10 p-8 md:p-12 shadow-xl text-center transition-all duration-300">
         
-        {/* Glow Effects */}
+        {}
         <div className="absolute -top-20 -left-20 w-60 h-60 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none"></div>
         <div className="absolute -bottom-20 -right-20 w-60 h-60 bg-purple-500/10 rounded-full blur-[80px] pointer-events-none"></div>
 

@@ -22,7 +22,7 @@ const SyncDiagnostics = () => {
   const [activeTab, setActiveTab] = useState('courses');
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
 
-  // Admin Features
+  
   const [usersList, setUsersList] = useState([]);
   const [selectedUser, setSelectedUser] = useState('');
   const [userSearch, setUserSearch] = useState('');
@@ -127,7 +127,7 @@ const SyncDiagnostics = () => {
   return (
     <div className="flex w-full h-full overflow-hidden bg-[#FAFAFA] dark:bg-[#09090B] flex-col p-6">
       
-      {/* Header */}
+      {}
       <div className="flex justify-between items-center mb-6 shrink-0 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-extrabold flex items-center gap-2 text-gray-900 dark:text-white">
@@ -193,7 +193,7 @@ const SyncDiagnostics = () => {
 
       <div className="flex flex-1 overflow-hidden gap-6">
         
-        {/* Left Panel: Sync Logs */}
+        {}
         <div className="w-1/3 flex flex-col bg-white dark:bg-[#121214] rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#1A1A1D] flex justify-between items-center">
             <h2 className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
@@ -239,7 +239,7 @@ const SyncDiagnostics = () => {
                       )}
                     </div>
 
-                    {/* Diff Tracker Visualization */}
+                    {}
                     {log.status === 'SUCCESS' && (
                       <div className="mt-2 text-[11px]">
                         {!log.changesSummary ? (
@@ -270,7 +270,7 @@ const SyncDiagnostics = () => {
           </div>
         </div>
 
-        {/* Right Panel: Data Explorer */}
+        {}
         <div className="w-2/3 flex flex-col bg-white dark:bg-[#121214] rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
           <div className="p-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#1A1A1D]">
             <div className="flex overflow-x-auto gap-1 pb-1 custom-scrollbar">

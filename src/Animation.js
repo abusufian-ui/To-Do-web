@@ -2,15 +2,15 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 const AnimatedLogo = () => {
-  // --- PREMIUM ANIMATION TIMING ---
   
-  // 1. Stagger the drawing of the lines
+  
+  
   const containerVariants = {
     hidden: {},
-    visible: { transition: { staggerChildren: 0.01 } }, // Lowered to 0.01
+    visible: { transition: { staggerChildren: 0.01 } }, 
   };
 
-  // 2. The draw effect (stroke) + the final solid white fill & glow
+  
   const premiumPathVariants = {
     hidden: { 
       pathLength: 0, 
@@ -24,17 +24,17 @@ const AnimatedLogo = () => {
       fill: "rgba(255, 255, 255, 1)",
       filter: "drop-shadow(0px 0px 15px rgba(255,255,255,0.4))",
       transition: {
-        // 👇 The trace now takes just 1.2 seconds
+        
         pathLength: { type: "tween", duration: 1.2, ease: "linear" }, 
         opacity: { duration: 0.01 },
-        // 👇 The fill triggers instantly as the trace ends, and fades in faster (0.5s)
+        
         fill: { duration: 0.5, delay: 1.2, ease: "easeInOut" },
         filter: { duration: 0.5, delay: 1.2 }
       },
     },
   };
 
-  // 3. The slide-up effect specifically for the text
+  
   const textGroupVariants = {
     hidden: { y: 600 }, 
     visible: {
@@ -43,15 +43,15 @@ const AnimatedLogo = () => {
         type: "spring", 
         damping: 20, 
         stiffness: 100, 
-        // 👇 The text slides up while the trace is finishing (1.0s delay)
+        
         delay: 1.0 
       }
     }
   };
 
-  // --- PATH SORTING ---
-  // 🚨 TO DO: You need to manually move these strings between the two arrays 
-  // until the building stays still and ONLY the text slides up.
+  
+  
+  
 
   const buildingPaths = [
     `M15667 7908 c-26 -5 -80 -12 -120 -16 -72 -7 -72 -7 -75 -141 -1 -74 1 -138 6 -143 10 -10 224 27 255 43 15 8 17 26 17 129 0 138 -3 142 -83 128z`,
@@ -466,10 +466,10 @@ m-1819 -111 c-10 -31 -21 -753 -19 -1190 3 -467 3 -467 -67 -489 -38 -12 -84
         animate="visible"
         variants={containerVariants}
       >
-        {/* We flip the whole SVG right-side up here */}
+        {}
         <g transform="translate(0, 1967) scale(0.1, -0.1)">
           
-          {/* GROUP 1: The Building (Draws and stays put) */}
+          {}
           <g>
             {buildingPaths.map((pathString, index) => (
               <motion.path
@@ -482,7 +482,7 @@ m-1819 -111 c-10 -31 -21 -753 -19 -1190 3 -467 3 -467 -67 -489 -38 -12 -84
             ))}
           </g>
 
-          {/* GROUP 2: The Text (Draws while sitting down below, then slides up!) */}
+          {}
           <motion.g variants={textGroupVariants}>
             {textPaths.map((pathString, index) => (
               <motion.path

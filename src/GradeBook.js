@@ -36,7 +36,7 @@ const getAbsoluteGrade = (pct) => {
   return { grade: 'F', points: 0.0, color: 'text-red-600' };
 };
 
-// --- Helper to strictly calculate weighted score from an array of assessments ---
+
 const calculateTrueScore = (assessments) => {
   let marked = 0;
   let earned = 0;
@@ -260,7 +260,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   const [gradingMode, setGradingMode] = useState('relative');
   const [expandedRows, setExpandedRows] = useState({});
 
-  // Leaderboard & Settings states
+  
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [isLeaderboardExpanded, setIsLeaderboardExpanded] = useState(false);
@@ -294,7 +294,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Filter ONLY university courses that exist in the synced `courses` array
+  
   const grades = useMemo(() => {
     if (!courses || courses.length === 0) return allGrades;
     const uniCourseNames = new Set(courses.filter(c => c.type === 'uni').map(c => c.name));
@@ -321,7 +321,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     return courses.find(c => c.name === selectedCourse.courseName);
   }, [selectedCourse, courses]);
 
-  // 🚀 LEADERBOARD DATA FETCHER 🚀
+  
   useEffect(() => {
     setLeaderboard([]);
     setIsLeaderboardDisabled(false);
@@ -360,7 +360,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     setBestOfConfigs(prev => ({ ...prev, [`${selectedCourse._id}_${categoryName}`]: newBestOf }));
   };
 
-  // ─── PROCESSED GRADEBOOK ENGINE (Handles "Best of X") ───
+  
   const processedGradebook = useMemo(() => {
     if (!selectedCourse || !selectedCourse.assessments) return [];
     return selectedCourse.assessments.map((cat) => {
@@ -403,7 +403,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     return { totalMarkedWeight, totalEarnedWeight, currentStandingPct };
   }, [processedGradebook]);
 
-  // ─── DYNAMIC LEADERBOARD GENERATOR (Live Local Merge) ───
+  
   const combinedLeaderboard = useMemo(() => {
     const myScore = courseGradingStats.currentStandingPct;
 
@@ -454,7 +454,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
 
   const myRankData = useMemo(() => combinedLeaderboard.find(s => s.isMe), [combinedLeaderboard]);
 
-  // Ensure every course has a projected grade, falling back to absolute if relative is missing
+  
   const activeProjectedGrade = leaderboardLoading
     ? '-' 
     : (myRankData ? myRankData.grade : getAbsoluteGrade(courseGradingStats.currentStandingPct).grade);
@@ -469,7 +469,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     );
   }, [selectedCourse, gradingMode, leaderboard, user, stats]);
 
-  // ─── PROJECTED CGPA CALCULATOR (CREDIT-AWARE) ───
+  
   const projectedCgpa = useMemo(() => {
     if (!grades.length || !stats) return parseFloat(stats.cgpa || "0");
 
@@ -477,9 +477,9 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     let totalInProgressCredits = 0;
 
     grades.forEach(courseGrade => {
-        // Find matching course to get credits
+        
         const cInfo = courses.find(c => c.name === courseGrade.courseName);
-        const credits = cInfo?.creditHours || 0; // Use real credits or fallback to 0
+        const credits = cInfo?.creditHours || 0; 
 
         const proj = getProjectedGradeForCourse(courseGrade, "relative", {}, stats?.rollNo);
         const gradePoints = proj.points; 
@@ -492,7 +492,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     
     const currentCGPA = parseFloat(stats.cgpa || "0");
     const completedCr = parseFloat(stats.credits || "0");
-    const inProgressCr = totalInProgressCredits > 0 ? totalInProgressCredits : parseFloat(stats.inprogressCr || "0"); // Trust live calculated credits if available
+    const inProgressCr = totalInProgressCredits > 0 ? totalInProgressCredits : parseFloat(stats.inprogressCr || "0"); 
 
     if (completedCr + inProgressCr === 0) return predictedTermGPA;
 
@@ -512,7 +512,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   return (
     <div className="flex w-full h-full overflow-hidden bg-[#FAFAFA] dark:bg-[#09090B] relative">
       
-      {/* 🚀 COURSES SIDEBAR (Always Visible & Displays Credit Hours) */}
+      {}
       <div className="w-72 md:w-80 shrink-0 h-full bg-white dark:bg-[#121214] border-r border-gray-200 dark:border-gray-800/80 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)] flex flex-col z-30">
         <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-800/50 shrink-0 bg-white dark:bg-[#121214] z-10 sticky top-0">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
@@ -526,7 +526,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
             grades.map((course) => {
               const isActive = course._id === selectedCourseId;
               
-              // 🚀 Calculating live score & fetching exact credit hours
+              
               const totalScore = calculateTrueScore(course.assessments);
               const courseInfo = courses.find(c => c.name === course.courseName);
               const credits = courseInfo?.creditHours ?? 0;
@@ -548,7 +548,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                     <div className="flex-1 min-w-0">
                       <p className={`text-[13px] font-bold leading-snug line-clamp-2 ${isActive ? 'text-white' : 'text-gray-800 dark:text-gray-200'}`}>{course.courseName}</p>
                       
-                      {/* 🚀 BUG FIXED: Shows exact Score AND Credit Hours */}
+                      {}
                       <p className={`text-[10px] font-semibold tracking-wider uppercase mt-1 ${isActive ? 'text-blue-200' : 'text-gray-400'}`}>
                         {totalScore.marked > 0 ? `Score: ${totalScore.percentage.toFixed(1)}%` : 'Active'} • {credits} Cr. Hrs
                       </p>
@@ -561,7 +561,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
         </div>
       </div>
 
-      {/* 🚀 OVERLAY FADE: Dim GradeBook if Main Portal Sidebar opens */}
+      {}
       <div className={`flex-1 h-full overflow-y-auto custom-scrollbar p-4 md:p-8 transition-all duration-300 relative ${isMainSidebarOpen ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
         <div className="w-full max-w-7xl mx-auto pb-24">
           
@@ -576,7 +576,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
             </div>
           </div>
 
-          {/* BENTO BOX STATS GRID */}
+          {}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <div className="md:col-span-2 relative overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 rounded-3xl p-8 text-white shadow-xl shadow-indigo-500/20 border border-white/10 group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2 group-hover:scale-110 transition-transform duration-700"></div>
@@ -619,7 +619,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
               
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#121214] p-4 rounded-3xl border border-gray-200 dark:border-gray-800/80 shadow-sm">
                 
-                {/* 🚀 TOP HEADER WITH BADGE FOR CREDIT HOURS */}
+                {}
                 <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 ml-2 flex items-center gap-2">
                   <Award size={18} className="text-blue-500" /> {selectedCourse.courseName}
                   <span className="ml-2 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20 shadow-sm whitespace-nowrap">
@@ -643,7 +643,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                 </div>
               </div>
 
-              {/* Absolute View Dashboard */}
+              {}
               {gradingMode === 'absolute' && (
                 <div className="bg-gradient-to-br from-blue-900 to-slate-900 dark:from-blue-950 dark:to-black rounded-3xl p-6 md:p-8 shadow-lg text-white flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden border border-blue-800/30">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
@@ -666,7 +666,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                 </div>
               )}
 
-              {/* Relative View Dashboard & Leaderboard */}
+              {}
               {gradingMode === 'relative' && (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/30 rounded-xl p-4 flex gap-3 items-start">
@@ -682,7 +682,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                   <div className="bg-gradient-to-br from-indigo-600 to-violet-800 dark:from-indigo-900 dark:to-violet-950 rounded-3xl p-6 md:p-8 shadow-lg text-white flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden border border-indigo-500/20">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
                     <div className="relative z-10 w-full md:w-auto text-center md:text-left">
-                      {/* 🚀 BUG FIXED: Whitespace nowrap keeps labels from breaking on small screens */}
+                      {}
                       <p className="text-indigo-200 text-[11px] font-bold uppercase tracking-widest mb-1 whitespace-nowrap">Relative Grading Mode</p>
                       <h2 className="text-3xl font-black mb-2 whitespace-nowrap">Class Curve Projection</h2>
                       <p className="text-sm text-indigo-100/90 max-w-md">Your grade is evaluated against the class average and curve set by the instructor.</p>
@@ -701,7 +701,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                     </div>
                   </div>
 
-                  {/* LEADERBOARD TABLE */}
+                  {}
                   {isLeaderboardDisabled ? (
                     <div className="bg-white dark:bg-[#121214] border border-red-200 dark:border-red-950/30 rounded-3xl overflow-hidden shadow-sm mt-8 mb-6 p-6 flex items-center gap-4">
                       <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-950/20 flex items-center justify-center text-red-500 shrink-0">
@@ -810,7 +810,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                 </div>
               )}
 
-              {/* Assessments Details List */}
+              {}
               <div className="mt-8 space-y-4">
                 <div className="flex items-center justify-between pl-2 pr-2">
                   {(() => {

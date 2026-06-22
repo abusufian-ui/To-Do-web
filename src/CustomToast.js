@@ -21,8 +21,8 @@ const ToastComponent = forwardRef((props, ref) => {
       setToast(options);
       setTimeout(() => {
         setToast((prev) => {
-          // Only clear if it's the exact same toast object (so subsequent rapid toasts don't get cleared early)
-          // Simple workaround: just set null
+          
+          
           return null;
         });
       }, 3500);

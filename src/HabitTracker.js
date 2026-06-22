@@ -35,18 +35,18 @@ export default function HabitTracker({ activeTab }) {
   const [isLoading, setIsLoading] = useState(true);
   const [showConfetti, setShowConfetti] = useState(false);
   
-  // Modals
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editId, setEditId] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, type: null, id: null, title: '', message: '', confirmText: '', btnStyle: '' });
   
-  // Relapse Modal
+  
   const [relapseModal, setRelapseModal] = useState({ isOpen: false, id: null });
   const [relapseTrigger, setRelapseTrigger] = useState('Stress');
   const [relapseNote, setRelapseNote] = useState('');
 
-  // Form State
+  
   const [newHabitName, setNewHabitName] = useState('');
   const [newHabitType, setNewHabitType] = useState('good');
   const [category, setCategory] = useState('custom');
@@ -67,7 +67,7 @@ export default function HabitTracker({ activeTab }) {
 
   useEffect(() => {
     fetchHabits();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, []);
 
   const fetchHabits = async () => {
@@ -203,7 +203,7 @@ export default function HabitTracker({ activeTab }) {
       const res = await fetch(`${API_BASE}/api/habits/${id}/checkin`, { method: 'PUT', headers: { 'x-auth-token': token } });
       if (res.ok) {
          const updatedHabit = await res.json();
-         // Check for new milestones to trigger confetti
+         
          const oldHabit = habits.find(h => h._id === id);
          if (updatedHabit.milestones?.length > (oldHabit.milestones?.length || 0)) {
            setShowConfetti(true);
@@ -222,7 +222,7 @@ export default function HabitTracker({ activeTab }) {
     }
   };
 
-  // --- HELPERS ---
+  
   const isThisWeek = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -269,7 +269,7 @@ export default function HabitTracker({ activeTab }) {
     );
   };
 
-  // --- RENDERERS ---
+  
   const renderOverview = () => {
     const totalGood = habits.filter(h => h.type === 'good' && !h.isSystemNamaz).length;
     const totalBad = habits.filter(h => h.type === 'bad').length;
@@ -321,7 +321,7 @@ export default function HabitTracker({ activeTab }) {
           </div>
         </div>
 
-        {/* Weekly Heatmap Overview */}
+        {}
         <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-100 dark:border-[#2C2C2C]">
            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Category Focus</h3>
            <div className="flex flex-wrap gap-3">
@@ -413,7 +413,7 @@ export default function HabitTracker({ activeTab }) {
           <button onClick={openAddModal} className="bg-brand-blue hover:bg-blue-600 text-white p-2 rounded-xl transition-colors"><Plus size={20}/></button>
         </div>
 
-        {/* Category Filters */}
+        {}
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           <button onClick={() => setActiveCategoryFilter('all')} className={`whitespace-nowrap px-4 py-2 rounded-full font-bold text-sm transition-all ${activeCategoryFilter === 'all' ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900' : 'bg-gray-100 dark:bg-[#252525] text-gray-500 hover:bg-gray-200'}`}>All</button>
           {CATEGORIES.map(c => (
@@ -425,7 +425,7 @@ export default function HabitTracker({ activeTab }) {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-4">
           
-          {/* GOOD HABITS */}
+          {}
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 border-b border-gray-100 dark:border-[#333] pb-2">
               <Target size={20} /> Active Pursuits
@@ -463,7 +463,7 @@ export default function HabitTracker({ activeTab }) {
                     </div>
                   </div>
                   
-                  {/* Daily Target */}
+                  {}
                   <div className="flex justify-between text-[10px] font-bold text-gray-500 mb-1.5">
                     <span>DAILY PROGRESS</span>
                     <span className={checksToday >= targetDaily ? "text-emerald-500" : ""}>{checksToday} / {targetDaily}</span>
@@ -474,7 +474,7 @@ export default function HabitTracker({ activeTab }) {
                     ))}
                   </div>
 
-                  {/* Weekly Target */}
+                  {}
                   <div className="mb-5">
                     <div className="flex justify-between text-[10px] font-bold text-gray-500 mb-1.5">
                       <span>WEEKLY TARGET</span>
@@ -497,7 +497,7 @@ export default function HabitTracker({ activeTab }) {
             {goodHabits.length === 0 && <p className="text-gray-400 text-sm italic py-4">No active pursuits established in this category.</p>}
           </div>
 
-          {/* BAD HABITS */}
+          {}
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2 border-b border-gray-100 dark:border-[#333] pb-2">
               <Skull size={20} /> Vice Eradication
@@ -550,7 +550,7 @@ export default function HabitTracker({ activeTab }) {
     const customGoodHabits = habits.filter(h => h.type === 'good' && !h.isSystemNamaz);
     const badHabits = habits.filter(h => h.type === 'bad');
 
-    // 30 day heatmap generator
+    
     const generateHeatmap = (checkIns) => {
       const days = [];
       for(let i=29; i>=0; i--) {
@@ -658,7 +658,7 @@ export default function HabitTracker({ activeTab }) {
       {showConfetti && <Confetti recycle={false} numberOfPieces={500} />}
       {renderContent()}
 
-      {/* Add/Edit Modal */}
+      {}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-slideUp">
@@ -668,7 +668,7 @@ export default function HabitTracker({ activeTab }) {
             </div>
             
             <form onSubmit={handleSaveHabit} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-              {/* Type Toggle */}
+              {}
               {!isEditMode && (
                 <div className="flex bg-gray-100 dark:bg-[#252525] p-1 rounded-xl">
                   <button type="button" onClick={() => setNewHabitType('good')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${newHabitType === 'good' ? 'bg-white dark:bg-[#333] shadow-sm text-brand-blue' : 'text-gray-500'}`}>Target Objective</button>
@@ -676,13 +676,13 @@ export default function HabitTracker({ activeTab }) {
                 </div>
               )}
 
-              {/* Name */}
+              {}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Protocol Name</label>
                 <input type="text" value={newHabitName} onChange={(e) => setNewHabitName(e.target.value)} placeholder={newHabitType === 'good' ? 'e.g. Read 10 Pages' : 'e.g. Doomscrolling'} className="w-full bg-gray-50 dark:bg-[#252525] border border-gray-200 dark:border-[#333] rounded-xl px-4 py-3 outline-none focus:border-brand-blue dark:text-white transition-colors" required />
               </div>
               
-              {/* Category */}
+              {}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Category</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -694,7 +694,7 @@ export default function HabitTracker({ activeTab }) {
                 </div>
               </div>
 
-              {/* Icon & Color */}
+              {}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Icon</label>
@@ -712,7 +712,7 @@ export default function HabitTracker({ activeTab }) {
                 </div>
               </div>
 
-              {/* Good Habit Fields */}
+              {}
               {newHabitType === 'good' && (
                 <>
                   <div>
@@ -738,7 +738,7 @@ export default function HabitTracker({ activeTab }) {
                 </>
               )}
 
-              {/* Bad Habit Fields */}
+              {}
               {newHabitType === 'bad' && (
                 <>
                   <div>
@@ -775,7 +775,7 @@ export default function HabitTracker({ activeTab }) {
         </div>
       )}
 
-      {/* Relapse Journal Modal */}
+      {}
       {relapseModal.isOpen && (
          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-slideUp">
@@ -802,7 +802,7 @@ export default function HabitTracker({ activeTab }) {
          </div>
       )}
 
-      {/* Confirmation Modal */}
+      {}
       {confirmDialog.isOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-slideUp">

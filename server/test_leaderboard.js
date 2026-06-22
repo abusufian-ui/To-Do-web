@@ -5,7 +5,7 @@ const User = require('./models/User');
 require('dotenv').config({path: './.env'});
 
 mongoose.connect(process.env.REACT_APP_MONGODB_URI).then(async () => {
-  const myCourse = await Course.findOne({ name: 'Artificial Intelligence - Lab', userId: '698d82ecfd7fe29835c9a7e8' }); // Sufian's course
+  const myCourse = await Course.findOne({ name: 'Artificial Intelligence - Lab', userId: '698d82ecfd7fe29835c9a7e8' }); 
   console.log("My course code:", myCourse.code);
   
   let query = {};

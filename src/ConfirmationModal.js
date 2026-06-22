@@ -9,18 +9,18 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
       <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#333] overflow-hidden transform scale-100 transition-all">
         
         <div className="p-6 text-center">
-          {/* Warning Icon Circle */}
+          {}
           <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
             <AlertTriangle className="text-red-600 dark:text-red-500" size={24} />
           </div>
           
-          {/* Text Content */}
+          {}
           <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">{title}</h3>
           <p className="text-gray-500 dark:text-gray-400 text-sm mb-6 leading-relaxed">
             {message}
           </p>
 
-          {/* Action Buttons */}
+          {}
           <div className="flex gap-3 justify-center">
             <button 
               onClick={onClose}

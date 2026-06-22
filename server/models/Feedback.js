@@ -39,7 +39,7 @@ const feedbackSchema = new mongoose.Schema({
   },
   screenshots: [String]
 }, { 
-  // This single line magically creates and updates 'createdAt' and 'updatedAt' automatically!
+  
   timestamps: true 
 });
 

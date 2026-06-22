@@ -64,7 +64,7 @@ const ParallelSyncDashboard = ({ courses, statuses, onClose, onRefresh }) => {
                   </p>
                 </div>
                 
-                {/* Status Badge & Icon */}
+                {}
                 <div className="shrink-0">
                   {isProcessing ? (
                     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-400 text-[10px] font-bold uppercase tracking-wider animate-pulse">
@@ -85,7 +85,7 @@ const ParallelSyncDashboard = ({ courses, statuses, onClose, onRefresh }) => {
                 </div>
               </div>
 
-              {/* Progress Bar & Counter */}
+              {}
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-xs font-mono text-slate-400">
                   <span>

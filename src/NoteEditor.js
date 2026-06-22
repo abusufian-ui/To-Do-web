@@ -10,7 +10,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import Editor from '@monaco-editor/react';
 import { ToastConfig } from './CustomToast';
 
-// New Extensions
+
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import SuperscriptExtension from '@tiptap/extension-superscript';
@@ -308,7 +308,7 @@ const EquationBlockNode = ({ node, updateAttributes, deleteNode, editor }) => {
     }
   };
 
-  // Compile LaTeX to HTML
+  
   let renderedHtml = '';
   const latexVal = node.attrs.latex || '';
   if (!latexVal.trim()) {
@@ -334,12 +334,12 @@ const EquationBlockNode = ({ node, updateAttributes, deleteNode, editor }) => {
             : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700'
         } rounded-lg py-4 px-8 transition-all duration-200 cursor-pointer`}
       >
-        {/* Label */}
+        {}
         <div className="absolute -top-2.5 left-6 bg-white dark:bg-[#121212] px-2 text-[10px] uppercase font-bold text-gray-400 flex items-center gap-1 select-none">
           <Sigma size={10} /> Equation
         </div>
 
-        {/* Delete block button for edit mode or hover */}
+        {}
         {isEditable && (
           <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
@@ -472,7 +472,7 @@ const CustomImageExtension = Image.extend({
   addNodeView() { return ReactNodeViewRenderer(InteractiveImageNode); },
 });
 
-// ==========================================
+
 
 const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete, onShare, readOnly = false, defaultIsPrivate = true }) => {
   const [, setCurrentNoteId] = useState(initialNote?._id || null);
@@ -678,7 +678,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
     };
   };
 
-  // Keep latest props and state in refs to avoid resetting the timeout
+  
   const onSaveRef = useRef(onSave);
   useEffect(() => {
     onSaveRef.current = onSave;
@@ -925,7 +925,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         .dark .toolbar-divider { background-color: #444; }
       `}</style>
         
-      {/* 🚀 BUG FIXED: Responsive Toolbars & Flexible Wrapped Headings */}
+      {}
       <div className="bg-white dark:bg-[#121212] px-4 md:px-6 py-3 border-b border-gray-200 dark:border-[#2C2C2C] z-50 shrink-0 flex flex-col md:flex-row md:items-center gap-3 md:gap-4 shadow-sm">
         
         <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto flex-1 min-w-0">
@@ -956,7 +956,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
           )}
         </div>
         
-        {/* Scrollable action bar for smaller devices so nothing overflows */}
+        {}
         <div className="flex items-center gap-2 flex-wrap pb-1 md:pb-0 w-full md:w-auto shrink-0">
           
           <div className="relative group shrink-0" ref={dropdownRef}>
@@ -1138,7 +1138,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         <EditorContent editor={editor} />
       </div>
 
-      {/* 🚀 BUG FIXED: Footer correctly stacked to avoid button-squishing */}
+      {}
       <div className="bg-white dark:bg-[#1A1A1A] border-t border-gray-200 dark:border-[#333] px-4 md:px-6 py-3 z-40 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           

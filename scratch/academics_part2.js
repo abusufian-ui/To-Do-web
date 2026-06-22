@@ -66,14 +66,14 @@ app.get('/api/sync-diagnostics', auth, async (req, res) => {
 app.get('/api/focus-sessions', auth, async (req, res) => { try { res.json(await FocusSession.find({ userId: req.user.id }).sort({ completedAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await new FocusSession({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-// ==========================================
-// 🚀 INSTANT WEBSOCKET BROADCAST HELPER
-// ==========================================
+
+
+
 async function broadcastLiveUpdate(groupId, activeUserId) {
-  // Notify the action initiator instantly
+  
   io.to(activeUserId.toString()).emit('live_db_update');
   
-  // If it's a shared group task, instantly broadcast to all members in that group workspace
+  
   if (groupId) {
     const group = await Group.findById(groupId);
     if (group) {
@@ -84,9 +84,9 @@ async function broadcastLiveUpdate(groupId, activeUserId) {
   }
 }
 
-// ==========================================
-// 🔔 NOTIFICATIONS API
-// ==========================================
+
+
+
 app.get('/api/notifications', auth, async (req, res) => {
   try {
     const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(50);
@@ -150,7 +150,7 @@ const createGroupNotification = async (groupId, senderId, type, title, message, 
     if (notifications.length > 0) {
       await Notification.insertMany(notifications);
       
-      // 🚀 SEND PUSH NOTIFICATIONS TO ALL OTHER MEMBERS
+      
       const usersToPush = await User.find({ _id: { $in: memberIds } });
       for (const u of usersToPush) {
         await sendPush(u, title, message, { link, type, senderName: sender?.name }, "smart-alert", "default");
@@ -166,7 +166,7 @@ const createAcademicNotification = async (userId, type, title, message, link = '
   try {
     const notification = new Notification({
       userId,
-      type, // 'marks', 'attendance', 'submission', 'announcement'
+      type, 
       title,
       message,
       link,
@@ -174,7 +174,7 @@ const createAcademicNotification = async (userId, type, title, message, link = '
     });
     await notification.save();
     
-    // Trigger WebSocket so Bell icon updates instantly
+    
     io.to(userId.toString()).emit('live_db_update');
   } catch (error) {
     console.error("Failed to create academic notification", error);
@@ -183,11 +183,11 @@ const createAcademicNotification = async (userId, type, title, message, link = '
 
 
 
-// ==========================================
-// 📝 STRICT TASK MANAGEMENT ROUTES
-// ==========================================
 
-// 1. Fetch Active Dashboard Tasks (with status masking per member)
+
+
+
+
 app.get('/api/tasks', auth, async (req, res) => {
   try {
     const userGroups = await Group.find({ members: req.user.id });
@@ -195,14 +195,14 @@ app.get('/api/tasks', auth, async (req, res) => {
 
     const tasks = await Task.find({
       $or: [
-        { userId: req.user.id, groupId: null, isDeleted: false }, // Private tasks owned by user
-        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } // Active Group tasks
+        { userId: req.user.id, groupId: null, isDeleted: false }, 
+        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } 
       ]
     })
     .populate('userId', 'name email profilePic')
     .sort({ createdAt: -1 });
 
-    // Map status out dynamically so group members see their personal overrides seamlessly
+    
     const localizedTasks = tasks.map(task => {
       const taskObj = task.toObject();
       if (taskObj.groupId) {
@@ -241,7 +241,7 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    // STRICT RULE: Only the literal creator matches. Admin bypass completely removed.
+    
     const isCreator = task.userId.toString() === req.user.id;
 
     let isMember = false;
@@ -256,7 +256,7 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       return res.status(403).json({ message: "Unauthorized interaction with workspace task." });
     }
 
-    // SCENARIO A: TASK CREATOR - Full modifications & privacy changes allowed
+    
     if (isCreator) {
       const targetPrivacy = req.body.isPrivate;
 
@@ -279,10 +279,10 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
         else task.memberStatuses.push({ userId: req.user.id, status: req.body.status });
       }
     } 
-    // SCENARIO B: GROUP MEMBER - Strict View-Only (Status exceptions)
+    
     else {
-      // Members can only modify their personal isolated status
-      const allowedKeys = ['status', 'acknowledged']; // Safe keys for members
+      
+      const allowedKeys = ['status', 'acknowledged']; 
       const modifications = Object.keys(req.body);
       const isViolatingPermissions = modifications.some(key => !allowedKeys.includes(key));
 
@@ -327,22 +327,22 @@ app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// 5. Delete Task (Creator vs Member isolation rules)
+
 app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    // STRICT RULE: Admin bypass removed.
+    
     const isCreator = task.userId.toString() === req.user.id;
     const oldGroupId = task.groupId;
 
     if (isCreator) {
-      // Creator deletes: Master deletion flag triggers (Disappears from everyone's hub)
+      
       task.isDeleted = true;
       task.deletedAt = new Date();
     } else if (task.groupId) {
-      // Member deletes: Stored purely in local deletion array on their side only
+      
       if (!task.deletedByUsers.map(id => id.toString()).includes(req.user.id)) {
         task.deletedByUsers.push(req.user.id);
       }
@@ -484,7 +484,7 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
     habit.checkIns.push(new Date());
     
-    // Calculate consecutive streak
+    
     const uniqueDays = [...new Set(habit.checkIns.map(d => new Date(d).setHours(0, 0, 0, 0)))].sort((a,b) => b - a);
     let streak = 0;
     let currentDate = new Date().setHours(0,0,0,0);
@@ -496,7 +496,7 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
     
     if (streak > habit.longestStreak) habit.longestStreak = streak;
     
-    // Check milestones
+    
     const MILESTONES = [7, 21, 30, 60, 90, 100, 365];
     for (let m of MILESTONES) {
       if (streak >= m && !habit.milestones.find(mil => mil.days === m)) {
@@ -593,8 +593,8 @@ app.get('/api/bin', auth, async (req, res) => {
     const userGroups = await Group.find({ members: req.user.id });
     const groupIds = userGroups.map(g => g._id);
 
-    // Tasks are in bin if the user is the creator and it's marked master deleted,
-    // OR if it's a shared group task and the member explicitly trashed it on their side.
+    
+    
     const tasks = await Task.find({
       $or: [
         { userId: req.user.id, isDeleted: true },
@@ -602,8 +602,8 @@ app.get('/api/bin', auth, async (req, res) => {
       ]
     }).populate('userId', 'name email profilePic').lean();
 
-    // Notes are in bin if creator and isDeleted,
-    // OR if it's a shared group note and the member explicitly trashed it on their side.
+    
+    
     const notes = await Note.find({
       $or: [
         { user: req.user.id, isDeleted: true },
@@ -654,13 +654,13 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
 
 app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
 
-// ==========================================
-// 🚨 COMMUNITY NOTES & WORKSPACE ROUTES
-// ==========================================
+
+
+
 
 app.get('/api/community/users', auth, async (req, res) => {
   try {
-    // Fetch everyone except the current user
+    
     const users = await User.find({ _id: { $ne: req.user.id } }).select('name email profilePic');
     res.json(users);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -683,7 +683,7 @@ app.post('/api/notes/share', auth, async (req, res) => {
       const message = `${senderUser?.name || 'A user'} shared ${notesStr} with you.`;
 
       for (let note of notesToShare) {
-        // Create a clone in the target user's Inbox
+        
         const newNote = new Note({
           user: targetId,
           title: note.title,
@@ -691,9 +691,9 @@ app.post('/api/notes/share', auth, async (req, res) => {
           courseId: note.courseId,
           referenceFiles: note.referenceFiles,
           source: note.source,
-          isPrivate: true, // Inherently private to the new user once accepted
+          isPrivate: true, 
           groupId: null,
-          isInbox: true,   // Triggers the Inbox status
+          isInbox: true,   
           sender: req.user.id
         });
         await newNote.save();
@@ -701,12 +701,12 @@ app.post('/api/notes/share', auth, async (req, res) => {
       }
 
       if (targetUser && notesCount > 0) {
-        // Send push notification
+        
         if (typeof sendPush === 'function') {
           await sendPush(targetUser, title, message, { type: 'note' }, 'smart-alert', 'default');
         }
         
-        // Save in-app Notification log
+        
         const notification = new Notification({
           userId: targetId,
           type: 'note',
@@ -729,14 +729,14 @@ app.put('/api/notes/:id/accept', auth, async (req, res) => {
     const note = await Note.findById(req.params.id);
     if (note.user.toString() !== req.user.id) return res.status(403).json({ error: "Unauthorized" });
     
-    note.isInbox = false; // Move from Inbox to active workspace
+    note.isInbox = false; 
     await note.save();
     
     io.to(req.user.id.toString()).emit('live_db_update');
     res.json(await Note.findById(note._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-// Notes routes defined under the primary notes section at line 1766
+
 
 app.put('/api/notes/:id', auth, async (req, res) => {
   try {
@@ -768,7 +768,7 @@ app.put('/api/notes/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// Notes delete route defined under the primary notes section at line 1881
+
 
 app.put('/api/notes/:id/restore', auth, async (req, res) => {
   try {
@@ -802,9 +802,9 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Error deleting note" }); }
 });
 
-// ==========================================
-// 🏆 RELATIVE GRADING LEADERBOARD API (EXTENSION)
-// ==========================================
+
+
+
 app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   try {
     const courseCode = req.params.courseCode;
@@ -834,10 +834,10 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       };
     } else {
       if (courseCode.includes('-')) {
-        // If it looks like a full course code, do an exact case-insensitive match
+        
         query = { code: { $regex: '^' + courseCode.trim() + '$', $options: 'i' } };
       } else {
-        // It's a short course code, use prefix match
+        
         query = { code: { $regex: '^' + courseCode.trim(), $options: 'i' } };
         if (section) {
           query.section = { $regex: '^' + section.trim() + '$', $options: 'i' };
@@ -845,7 +845,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       }
     }
 
-    // Find all courses matching this course code prefix (and section if provided)
+    
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic');
     
     if (!matchingCourses || matchingCourses.length === 0) {
@@ -856,7 +856,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     const grades = await Grade.find({ userId: { $in: userIds } });
 
     let leaderboard = matchingCourses.map(course => {
-      // Find matching grade entry for this user
+      
       const userGrade = grades.find(g =>
         g.userId.toString() === course.userId?._id.toString() &&
         (
@@ -891,7 +891,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     leaderboard = leaderboard.filter(s => s.id !== 'Unknown ID');
     leaderboard.sort((a, b) => b.score - a.score);
 
-    // Add rank and relative grading properties
+    
     const total = leaderboard.length;
     leaderboard = leaderboard.map((s, idx) => {
       const pctile = (idx / total) * 100;
@@ -914,23 +914,23 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   }
 });
 
-// ==========================================
-// 🏆 RELATIVE GRADING & LEADERBOARD API (ADMIN & SUPER ADMIN ONLY)
-// ==========================================
+
+
+
 app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
   try {
-    // 🔒 Strict security guard: Reject request if requester is not an administrator
+    
     const requestingUser = await User.findById(req.user.id);
     if (!requestingUser) return res.status(404).json({ message: "User not found" });
 
     const isSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
-    // Block non-admins (students) if access is disabled
+    
     if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled !== true) {
       return res.status(403).json({ message: "Leaderboard has been disabled for your account by an administrator." });
     }
 
-    const gradeName = req.query.gradeName; // NEW: Precise identifier 
+    const gradeName = req.query.gradeName; 
 
     const myCourse = await Course.findById(req.params.courseId);
     if (!myCourse) return res.status(404).json({ message: "Course not found" });
@@ -949,7 +949,7 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
       if (myCourse.section) query.section = myCourse.section;
     }
 
-    // Aggregates all registered students in this specific section block
+    
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic'); 
     
     if (!matchingCourses || matchingCourses.length === 0) {
@@ -964,12 +964,12 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
         if (!g.userId || !course.userId?._id) return false;
         if (g.userId.toString() !== course.userId._id.toString()) return false;
         
-        // Exact match injection forces lab logic if passed
+        
         if (gradeName) {
           return g.courseName === gradeName;
         }
 
-        // Web logic fallback mapping
+        
         return (
           (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
           (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
@@ -1024,9 +1024,9 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
   }
 });
 
-// ==========================================
-// 📅 HABITS PUSH NOTIFICATION CRON
-// ==========================================
+
+
+
 cron.schedule('0 20 * * *', async () => {
   try {
     const habits = await Habit.find({ isDeleted: false }).populate('userId');
@@ -1054,9 +1054,9 @@ cron.schedule('0 20 * * *', async () => {
   } catch (error) { console.error("[CRON] Habit Reminder Error:", error); }
 }, { timezone: "Asia/Karachi" });
 
-// ==========================================
-// 🔔 THE 1-MINUTE CRON ENGINES 
-// ==========================================
+
+
+
 
 cron.schedule('* * * * *', async () => {
 
@@ -1097,9 +1097,9 @@ cron.schedule('* * * * *', async () => {
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
 });
 
-// ==========================================
-// 🗑️ RECYCLE BIN 30-DAY AUTO-PURGE CRON
-// ==========================================
+
+
+
 cron.schedule('0 0 * * *', async () => {
   console.log('[CRON] 🗑️ Initiating 30-Day Recycle Bin auto-purge...');
   try {
@@ -1127,10 +1127,10 @@ cron.schedule('0 0 * * *', async () => {
   }
 }, { timezone: "Asia/Karachi" });
 
-// ==========================================
-// 🔔 3x DAILY SYNC PROMPT NOTIFICATIONS
-// 9:00 AM PKT (4:00 AM UTC), 1:00 PM PKT (8:00 AM UTC), 6:00 PM PKT (1:00 PM UTC)
-// ==========================================
+
+
+
+
 async function sendSyncPromptToAll(title, body) {
   try {
     const activeUsers = await User.find({
@@ -1158,14 +1158,14 @@ async function sendSyncPromptToAll(title, body) {
   }
 }
 
-// Removed all sync crons
 
-// ==========================================
-// 🚀 TIERED BACKGROUND SCRAPER ENGINES (CRON)
-// ==========================================
+
+
+
+
 const { scrapeServerSide } = require('./services/scraperEngine');
 
-// Helper to run background sync for a specific mode
+
 const runTieredSync = async (mode, logName) => {
   console.log(`[CRON] 🌐 Starting ${logName} Scrape Engine...`);
   try {
@@ -1177,7 +1177,7 @@ const runTieredSync = async (mode, logName) => {
     console.log(`[CRON] Found ${activeUsers.length} users for ${logName}.`);
 
     for (let user of activeUsers) {
-      // Skip if last synced less than 3 minutes ago
+      
       if (user.lastSyncAt && (Date.now() - new Date(user.lastSyncAt).getTime()) < 3 * 60 * 1000) {
         console.log(`[CRON] ⏭️ Skipping ${user.email} - synced ${Math.round((Date.now() - new Date(user.lastSyncAt).getTime()) / 1000)}s ago.`);
         continue;
@@ -1197,7 +1197,7 @@ const runTieredSync = async (mode, logName) => {
         const scrapedPayload = await scrapeServerSide(user.ucpCookie, mode, user.portalId);
         scrapedPayload.syncLogId = syncLog._id.toString();
 
-        // Generate an internal token to call our own endpoint
+        
         const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
         const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
         
@@ -1233,7 +1233,7 @@ const runTieredSync = async (mode, logName) => {
         }
       }
 
-      // Gentle inter-user delay to avoid overwhelming UCP servers
+      
       await new Promise(r => setTimeout(r, 2000));
     }
   } catch (error) {
@@ -1241,15 +1241,15 @@ const runTieredSync = async (mode, logName) => {
   }
 };
 
-// 1. Submissions + Attendance + Grades - Every 20 minutes during university hours (8 AM - 6 PM PKT)
+
 cron.schedule('*/20 8-18 * * *', () => runTieredSync('HIGH', 'Submissions/Attendance/Grades (20m)'), { timezone: "Asia/Karachi" });
 
-// 2. Full Sync (History/Timetable/Announcements) - Every 6 hours
+
 cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync + Announcements (6h)'), { timezone: "Asia/Karachi" });
 
 cron.schedule('0 2 * * *', () => runNightlyMaterialSync(User, Course), { timezone: "Asia/Karachi" });
 
-// POST /api/sync-grades - Manual portal FULL sync endpoint triggered from Settings
+
 app.post('/api/sync-grades', auth, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1305,11 +1305,11 @@ app.post('/api/sync-grades', auth, async (req, res) => {
   }
 });
 
-// ==========================================
-// 🗂️ COURSE MATERIAL & COURSE VAULT APIS (Fully Automated)
-// ==========================================
 
-// Direct download proxy redirect to avoid heavy cryptographic signing during file listing API requests
+
+
+
+
 app.get('/api/course-material/download/:fileId', async (req, res) => {
   try {
     const token = req.header('x-auth-token') || req.query.token;
@@ -1321,7 +1321,7 @@ app.get('/api/course-material/download/:fileId', async (req, res) => {
     if (!file || !file.b2Key) {
       return res.status(404).json({ message: 'File not found.' });
     }
-    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300); // 5 min expiry is enough for immediate redirect
+    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300); 
     res.redirect(signedUrl);
   } catch (err) {
     console.error('[API] download redirect error:', err.message);
@@ -1329,14 +1329,14 @@ app.get('/api/course-material/download/:fileId', async (req, res) => {
   }
 });
 
-// 1. Get all scraped course materials for a section (returns files + signed download URLs)
+
 app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) => {
   try {
     const { courseCode, sectionCode } = req.params;
     const globalCode = courseCode.split('-')[0].trim();
     const { getCurrentSemesterCode } = require('./services/scraperEngine');
 
-    // Find the active semester for this course
+    
     const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
     const activeSemester = course?.semester || getCurrentSemesterCode();
 
@@ -1345,7 +1345,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
       .sort({ isArchiveExtracted: 1, fileName: 1 })
       .lean();
 
-    // Generate direct download URLs pointing to the proxy endpoint
+    
     const token = req.header('x-auth-token');
     const baseUrl = getBaseUrl(req);
     const withUrls = materials.map((m) => ({
@@ -1353,7 +1353,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
       downloadUrl: m.b2Key ? `${baseUrl}/api/course-material/download/${m._id}?token=${encodeURIComponent(token)}` : null
     }));
 
-    // Group extracted files under their parent archives
+    
     const grouped = [];
     const archives = {};
     for (const m of withUrls) {
@@ -1367,7 +1367,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
         grouped.push(m);
       }
     }
-    // Attach orphan extracted files to their zip parent
+    
     for (const m of grouped) {
       if ((m.fileType === 'zip' || m.fileType === 'rar') && archives[m.fileName]) {
         m.contents = archives[m.fileName];
@@ -1381,7 +1381,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
   }
 });
 
-// 2. Get scraping status for a section (including file progress count)
+
 app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req, res) => {
   try {
     const { courseCode, sectionCode } = req.params;
@@ -1393,7 +1393,7 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
 
     const count = await CourseMaterial.countDocuments({ courseCode: globalCode, sectionCode, semester: activeSemester });
     
-    // Find if there is an unprocessed linkSet for this user & course in the active semester
+    
     const pendingLinkSet = await MaterialLink.findOne({
       userId: req.user.id,
       courseCode: { $regex: '^' + globalCode + '(-|$)', $options: 'i' },
@@ -1430,7 +1430,7 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
   }
 });
 
-// 3. Download multiple files as a ZIP (server zips them from B2)
+
 app.post('/api/course-material/download-zip', auth, async (req, res) => {
   try {
     const { fileIds, courseName } = req.body;
@@ -1445,7 +1445,7 @@ app.post('/api/course-material/download-zip', auth, async (req, res) => {
     for (const m of materials) {
       if (!m.b2Key) continue;
       try {
-        // Get signed URL and fetch the file
+        
         const signedUrl = await getSignedDownloadUrl(m.b2Key, 300);
         const response = await fetch(signedUrl);
         if (!response.ok) continue;
@@ -1466,11 +1466,11 @@ app.post('/api/course-material/download-zip', auth, async (req, res) => {
   }
 });
 
-// ============================================================================
-// ADMIN VAULT ENDPOINTS (Course Vault Moderation & Buckets)
-// ============================================================================
 
-// A1. Get all pending files for moderation
+
+
+
+
 app.get('/api/admin/vault/files/pending', adminAuth, async (req, res) => {
   try {
     const files = await CourseVaultFile.find({ status: 'pending' }).sort({ createdAt: -1 }).lean();
@@ -1480,7 +1480,7 @@ app.get('/api/admin/vault/files/pending', adminAuth, async (req, res) => {
   }
 });
 
-// A2. Get buckets for a course
+
 app.get('/api/admin/vault/buckets/:courseCode', adminAuth, async (req, res) => {
   try {
     const courseCode = req.params.courseCode.split('-')[0].trim();
@@ -1491,7 +1491,7 @@ app.get('/api/admin/vault/buckets/:courseCode', adminAuth, async (req, res) => {
   }
 });
 
-// A3. Create a bucket
+
 app.post('/api/admin/vault/buckets', adminAuth, async (req, res) => {
   try {
     const { name, courseCode } = req.body;
@@ -1503,11 +1503,11 @@ app.post('/api/admin/vault/buckets', adminAuth, async (req, res) => {
   }
 });
 
-// A4. Delete a bucket
+
 app.delete('/api/admin/vault/buckets/:id', adminAuth, async (req, res) => {
   try {
     await CourseVaultBucket.findByIdAndDelete(req.params.id);
-    // Optionally move files in this bucket back to pending or unbucketed
+    
     await CourseVaultFile.updateMany({ bucketId: req.params.id }, { $set: { status: 'pending', bucketId: null } });
     res.json({ success: true });
   } catch (err) {
@@ -1515,7 +1515,7 @@ app.delete('/api/admin/vault/buckets/:id', adminAuth, async (req, res) => {
   }
 });
 
-// A5. Publish/Approve a pending file into a bucket
+
 app.put('/api/admin/vault/files/:id/publish', adminAuth, async (req, res) => {
   try {
     const { bucketId } = req.body;
@@ -1529,13 +1529,13 @@ app.put('/api/admin/vault/files/:id/publish', adminAuth, async (req, res) => {
   }
 });
 
-// A6. Delete/Reject a file
+
 app.delete('/api/admin/vault/files/:id', adminAuth, async (req, res) => {
   try {
     const file = await CourseVaultFile.findById(req.params.id);
     if (!file) return res.status(404).json({ message: 'Not found' });
     if (file.b2Key) {
-        // We could delete from B2 here, skipping for safety or implement via b2Client delete function if it existed.
+        
     }
     await CourseVaultFile.findByIdAndDelete(req.params.id);
     res.json({ success: true });
@@ -1544,11 +1544,11 @@ app.delete('/api/admin/vault/files/:id', adminAuth, async (req, res) => {
   }
 });
 
-// ============================================================================
-// ADMIN COURSE MATERIALS ENDPOINTS
-// ============================================================================
 
-// 1. Get all unique courses and sections from CourseMaterial (for tree structure)
+
+
+
+
 app.get('/api/admin/course-materials/courses', auth, adminAuth, async (req, res) => {
   try {
     const courses = await CourseMaterial.aggregate([
@@ -1594,7 +1594,7 @@ app.get('/api/admin/course-materials/courses', auth, adminAuth, async (req, res)
   }
 });
 
-// 2. Get files and student connection statistics for a specific course section
+
 app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) => {
   try {
     const { courseCode, sectionCode, semester } = req.query;
@@ -1602,13 +1602,13 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
       return res.status(400).json({ message: 'Missing courseCode, sectionCode, or semester.' });
     }
 
-    // 1. Fetch materials files
+    
     const materials = await CourseMaterial.find({ courseCode, sectionCode, semester })
       .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key createdAt')
       .sort({ isArchiveExtracted: 1, fileName: 1 })
       .lean();
 
-    // 2. Generate direct download URLs pointing to the proxy endpoint
+    
     const token = req.header('x-auth-token');
     const baseUrl = getBaseUrl(req);
     const withUrls = materials.map((m) => ({
@@ -1616,7 +1616,7 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
       downloadUrl: m.b2Key ? `${baseUrl}/api/course-material/download/${m._id}?token=${encodeURIComponent(token)}` : null
     }));
 
-    // Group zip extracts
+    
     const grouped = [];
     const archives = {};
     for (const m of withUrls) {
@@ -1633,7 +1633,7 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
       }
     }
 
-    // 3. Fetch student statistics
+    
     const enrollments = await Course.find({
       code: { $regex: '^' + courseCode + '(-|$)' },
       section: sectionCode,
@@ -1666,22 +1666,22 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
 });
 
 
-// 4. Get Course Vault files for a course, grouped by bucket (PUBLIC)
+
 app.get('/api/course-vault/:courseCode', auth, async (req, res) => {
   try {
     const rawCourseCode = decodeURIComponent(req.params.courseCode).trim();
     const courseCode = rawCourseCode.split('-')[0].trim();
-    // Only published files
+    
     const files = await CourseVaultFile.find({ courseCode, status: 'published' }).sort({ createdAt: -1 }).lean();
     const buckets = await CourseVaultBucket.find({ courseCode }).sort({ createdAt: 1 }).lean();
 
-    // Generate signed URLs for vault files (view-only, 2 hour expiry for PDF readers)
+    
     const withUrls = await Promise.all(files.map(async (f) => {
       const viewUrl = f.b2Key ? await getSignedDownloadUrl(f.b2Key, 7200) : null;
       return { ...f, viewUrl };
     }));
 
-    // Group by bucket
+    
     const grouped = {};
     for (const b of buckets) {
       grouped[b._id.toString()] = { bucket: b, files: [] };
@@ -1710,7 +1710,7 @@ app.get('/api/course-vault/:courseCode', auth, async (req, res) => {
   }
 });
 
-// 5. Get a fresh signed URL for a single vault file (for inline PDF viewer refresh)
+
 app.get('/api/course-vault/view/:id', auth, async (req, res) => {
   try {
     const vaultFile = await CourseVaultFile.findById(req.params.id).lean();
@@ -1722,7 +1722,7 @@ app.get('/api/course-vault/view/:id', auth, async (req, res) => {
   }
 });
 
-// 6. (Old manual upload endpoint — kept but hidden from public; only internal use)
+
 app.post('/api/course-material/upload', auth, async (req, res) => {
   return res.status(403).json({ message: 'Manual uploads are disabled. Course materials are synced automatically from Horizon Portal.' });
 });

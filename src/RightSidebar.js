@@ -144,7 +144,7 @@ const RightSidebar = ({
   const handleSendInvite = async (receiverId) => {
     const originalCommunity = [...communityUsers];
     
-    // Optimistic UI Update: immediately mark invited
+    
     setCommunityUsers(prev => prev.map(u => u._id === receiverId ? { ...u, isInvited: true } : u));
     
     try {
@@ -160,12 +160,12 @@ const RightSidebar = ({
       } else {
         const err = await res.json();
         ToastConfig.show({ title: "Error", message: err.message || "Failed to send invitation", type: "error" });
-        // Revert on failure
+        
         setCommunityUsers(originalCommunity);
       }
     } catch (e) {
       console.error(e);
-      // Revert on failure
+      
       setCommunityUsers(originalCommunity);
     }
   };
@@ -244,7 +244,7 @@ const RightSidebar = ({
         <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
           {pendingInvitations.length > 0 && (
             <div className="space-y-3">
-              {/* 🚀 REQUEST 2 FIXED: TEXT HEADING (NO DIVIDER LINES BELOW) */}
+              {}
               <h3 className="text-[10px] uppercase tracking-wider font-black text-orange-500 flex items-center gap-1.5"><Mail size={12} /> Received Invitations ({pendingInvitations.length})</h3>
               <div className="space-y-2.5">
                 {pendingInvitations.map((inv) => (
@@ -281,10 +281,10 @@ const RightSidebar = ({
                   <div className="text-[10px] font-black uppercase tracking-wider text-brand-blue">Your Workspace & Group</div>
                   {renderUserRow({ _id: user.id || user._id, name: user.name, email: user.email, profilePic: user.customProfilePic || user.profilePic }, null, true)}
                   
-                  {/* Show other group members */}
+                  {}
                   {activeGroup && activeGroup.members?.filter(m => (m._id !== user.id && m._id !== user._id && m !== user.id)).map(memberId => {
                     const memberObj = filteredUsers.find(u => u._id === memberId || u._id === memberId._id) || memberId;
-                    if (!memberObj.name) return null; // Wait for full population or if not in filtered
+                    if (!memberObj.name) return null; 
                     return renderUserRow(memberObj, activeGroup.admins?.includes(memberObj._id) ? 'Admin' : null);
                   })}
                 </div>
@@ -298,7 +298,7 @@ const RightSidebar = ({
                 <>
                   {(superAdmins.length > 0 || admins.length > 0) && (
                     <div className="space-y-2">
-                      {/* 🚀 REQUEST 2 FIXED: TEXT HEADING (NO DIVIDER LINES BELOW) */}
+                      {}
                       <div className="text-[10px] font-black uppercase tracking-wider text-gray-400 dark:text-gray-500">Management</div>
                       {superAdmins.map(u => renderUserRow(u, 'Super Admin'))}
                       {admins.map(u => renderUserRow(u, 'Admin'))}
@@ -307,7 +307,7 @@ const RightSidebar = ({
 
                   {students.length > 0 && (
                     <div className="space-y-2 pt-2">
-                      {/* 🚀 REQUEST 2 FIXED: TEXT HEADING (NO DIVIDER LINES BELOW) */}
+                      {}
                       <div className="text-[10px] font-black uppercase tracking-wider text-gray-400 dark:text-gray-500">Students</div>
                       {students.map(u => renderUserRow(u, null))}
                     </div>
@@ -319,7 +319,7 @@ const RightSidebar = ({
         </div>
       </div>
 
-      {/* User Details View Window */}
+      {}
       {selectedUser && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-[2rem] shadow-2xl border border-gray-100 p-6 flex flex-col items-center text-center animate-slideUp relative">

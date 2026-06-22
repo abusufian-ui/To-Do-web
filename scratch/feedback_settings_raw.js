@@ -1,9 +1,9 @@
   }
 };
 
-// ==========================================
-// 🚀 ROUTES: FEEDBACK & SUPPORT
-// ==========================================
+
+
+
 app.post('/api/feedback', auth, async (req, res) => {
   try {
     const { subject, description, screenshots } = req.body;
@@ -24,7 +24,7 @@ app.post('/api/feedback', auth, async (req, res) => {
   }
 });
 
-// Fetch current user's submitted support tickets
+
 app.get('/api/feedback/my', auth, async (req, res) => {
   try {
     const tickets = await Feedback.find({ userId: req.user.id }).sort({ createdAt: -1 });
@@ -35,7 +35,7 @@ app.get('/api/feedback/my', auth, async (req, res) => {
   }
 });
 
-// Fetch all tickets for admin panel
+
 app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
   try {
     const feedbacks = await Feedback.find().populate('userId', 'name email customProfilePic portalProfilePic originalPortalProfilePic profilePic').sort({ createdAt: -1 });
@@ -43,7 +43,7 @@ app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Server Error" }); }
 });
 
-// Resolve and close a support ticket
+
 app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => {
   try {
     const { adminResponse } = req.body;
@@ -57,7 +57,7 @@ app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => 
 
     if (!ticket) return res.status(404).json({ message: "Ticket not found." });
 
-    // Send push notification to the user
+    
     if (ticket.userId) {
       try {
         await sendPush(
@@ -78,7 +78,7 @@ app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => 
   }
 });
 
-// User disputes a resolved support ticket
+
 app.put('/api/feedback/:id/dispute', auth, async (req, res) => {
   try {
     const { disputeMessage } = req.body;
@@ -99,7 +99,7 @@ app.put('/api/feedback/:id/dispute', auth, async (req, res) => {
   }
 });
 
-// Admin deny dispute and mark ticket as invalid
+
 app.put('/api/admin/feedback/:id/deny-dispute', auth, adminAuth, async (req, res) => {
   try {
     const ticket = await Feedback.findByIdAndUpdate(
@@ -110,7 +110,7 @@ app.put('/api/admin/feedback/:id/deny-dispute', auth, adminAuth, async (req, res
 
     if (!ticket) return res.status(404).json({ message: "Ticket not found." });
 
-    // Send push notification to the user
+    
     if (ticket.userId) {
       try {
         await sendPush(
@@ -131,7 +131,7 @@ app.put('/api/admin/feedback/:id/deny-dispute', auth, adminAuth, async (req, res
   }
 });
 
-// Bulk delete support tickets
+
 app.post('/api/admin/feedback/bulk-delete', auth, adminAuth, async (req, res) => {
   try {
     const { ids } = req.body;
@@ -147,7 +147,7 @@ app.post('/api/admin/feedback/bulk-delete', auth, adminAuth, async (req, res) =>
   }
 });
 
-// Re-open a resolved support ticket
+
 app.put('/api/admin/feedback/:id/reopen', auth, adminAuth, async (req, res) => {
   try {
     const ticket = await Feedback.findByIdAndUpdate(
@@ -158,7 +158,7 @@ app.put('/api/admin/feedback/:id/reopen', auth, adminAuth, async (req, res) => {
 
     if (!ticket) return res.status(404).json({ message: "Ticket not found." });
 
-    // Send push notification to the user
+    
     if (ticket.userId) {
       try {
         await sendPush(
@@ -179,9 +179,9 @@ app.put('/api/admin/feedback/:id/reopen', auth, adminAuth, async (req, res) => {
   }
 });
 
-// ==========================================
-// 🚀 NEW: PUBLIC AND ADMIN WEBSITE SETTINGS & APK ENDPOINTS
-// ==========================================
+
+
+
 
 const apkDiskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -201,10 +201,10 @@ const apkUpload = multer({
     }
     cb(null, true);
   },
-  limits: { fileSize: 250 * 1024 * 1024 } // 250MB limit
+  limits: { fileSize: 250 * 1024 * 1024 } 
 });
 
-// Public: Get general website configuration
+
 app.get('/api/public/settings', async (req, res) => {
   try {
     let webPortalLink = "https://myportalucp.online/";
@@ -243,12 +243,12 @@ app.get('/api/public/settings', async (req, res) => {
   }
 });
 
-// Public: Stream and download the active APK file with forced filename
+
 app.get('/api/public/download-apk', async (req, res) => {
   try {
     const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
     
-    // Check if Cloudinary URL is stored and valid
+    
     if (dbSetting && dbSetting.value && dbSetting.value.uploaded && dbSetting.value.url && !dbSetting.value.url.includes('/api/public/download-apk')) {
       const cloudinaryUrl = dbSetting.value.url;
       
@@ -258,12 +258,12 @@ app.get('/api/public/download-apk', async (req, res) => {
         responseType: 'stream'
       });
       
-      // Set forced download headers so browser always saves as myportal.apk
+      
       res.setHeader('Content-Disposition', 'attachment; filename="myportal.apk"');
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
       
-      // Forward Content-Length so browsers/download managers show accurate file size
-      // and don't stall waiting for an unknown-length stream on large 100-200MB files
+      
+      
       if (streamRes.headers['content-length']) {
         res.setHeader('Content-Length', streamRes.headers['content-length']);
       }
@@ -271,7 +271,7 @@ app.get('/api/public/download-apk', async (req, res) => {
       return streamRes.data.pipe(res);
     }
     
-    // Local storage fallback
+    
     const apkPath = path.join(uploadDir, 'myportal.apk');
     if (!fs.existsSync(apkPath)) {
       return res.status(404).json({ message: "APK release not found on server storage." });
@@ -283,7 +283,7 @@ app.get('/api/public/download-apk', async (req, res) => {
   }
 });
 
-// Public: Submit support feedback from general website
+
 app.post('/api/feedback/public', async (req, res) => {
   try {
     const { name, email, subject, description } = req.body;
@@ -305,7 +305,7 @@ app.post('/api/feedback/public', async (req, res) => {
   }
 });
 
-// Admin: Save web portal link configuration
+
 app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res) => {
   try {
     const { link } = req.body;
@@ -323,7 +323,7 @@ app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res
   }
 });
 
-// Admin: Upload APK release
+
 app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
   apkUpload.single('file')(req, res, async (err) => {
     if (err) {
@@ -357,7 +357,7 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
   });
 });
 
-// Admin: Delete APK release from filesystem & database
+
 app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) => {
   try {
     const apkPath = path.join(uploadDir, 'myportal.apk');
@@ -386,9 +386,9 @@ app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) =
   }
 });
 
-// Admin: Receive a single binary chunk from a chunked APK upload.
-// Each request is ~10MB so it safely passes through Nginx's client_max_body_size.
-// Route uses express.raw() so the binary body is available as req.body (Buffer).
+
+
+
 app.post(
   '/api/admin/apk-chunk',
   auth,
@@ -418,7 +418,7 @@ app.post(
   }
 );
 
-// Admin: Finalize a chunked APK upload — assemble all chunks into myportal.apk.
+
 app.post('/api/admin/apk-finalize', auth, adminAuth, async (req, res) => {
   try {
     const { totalChunks, totalSize } = req.body;
@@ -428,13 +428,13 @@ app.post('/api/admin/apk-finalize', auth, adminAuth, async (req, res) => {
 
     const finalApkPath = path.join(uploadDir, 'myportal.apk');
 
-    // Remove old APK if it exists
+    
     if (fs.existsSync(finalApkPath)) {
       fs.unlinkSync(finalApkPath);
       console.log('🗑️  Deleted old myportal.apk before assembly.');
     }
 
-    // Verify all chunks exist before assembling
+    
     for (let i = 0; i < totalChunks; i++) {
       const cp = path.join(chunkDir, `chunk_${i}`);
       if (!fs.existsSync(cp)) {
@@ -442,7 +442,7 @@ app.post('/api/admin/apk-finalize', auth, adminAuth, async (req, res) => {
       }
     }
 
-    // Assemble chunks in order into myportal.apk
+    
     const writeStream = fs.createWriteStream(finalApkPath);
     for (let i = 0; i < totalChunks; i++) {
       const cp = path.join(chunkDir, `chunk_${i}`);
@@ -451,13 +451,13 @@ app.post('/api/admin/apk-finalize', auth, adminAuth, async (req, res) => {
     }
     writeStream.end();
 
-    // Wait for the write stream to finish
+    
     await new Promise((resolve, reject) => {
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
     });
 
-    // Clean up all chunk temp files
+    
     for (let i = 0; i < totalChunks; i++) {
       try { fs.unlinkSync(path.join(chunkDir, `chunk_${i}`)); } catch {}
     }
@@ -465,7 +465,7 @@ app.post('/api/admin/apk-finalize', auth, adminAuth, async (req, res) => {
     const assembledSize = fs.statSync(finalApkPath).size;
     console.log(`✅ APK assembled successfully: ${(assembledSize / 1024 / 1024).toFixed(2)} MB`);
 
-    // Build the download URL using backend base URL
+    
     const baseUrl = getBaseUrl(req);
     const apkInfo = {
       uploaded: true,
@@ -488,7 +488,7 @@ app.post('/api/admin/apk-finalize', auth, adminAuth, async (req, res) => {
   }
 });
 
-// Admin: Save APK Cloudinary CDN URL and size metadata (KEPT for backwards compatibility)
+
 app.post('/api/admin/settings/apk-url', auth, adminAuth, async (req, res) => {
   try {
     const { url, size, filename } = req.body;
@@ -513,4 +513,4 @@ app.post('/api/admin/settings/apk-url', auth, adminAuth, async (req, res) => {
     console.error("Save APK URL Error:", error);
     res.status(500).json({ message: "Server Error saving APK URL" });
   }
-});
+});

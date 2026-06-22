@@ -103,7 +103,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
       />
       <div className="max-w-4xl mx-auto space-y-8">
         
-        {/* HEADER SECTION (GLASSMORPHIC) */}
+        {}
         <div className="relative overflow-hidden bg-white/70 dark:bg-[#1E1E1E]/60 backdrop-blur-md rounded-2xl p-8 border border-gray-200 dark:border-white/10 shadow-sm flex flex-col md:flex-row items-center gap-6 text-center md:text-left transition-all">
           <div className="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/10 dark:bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none"></div>
           
@@ -185,7 +185,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
           </div>
         </div>
 
-        {/* PLATFORM CONNECTIONS HUB */}
+        {}
         <div className="space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <Link2 className="text-indigo-500" size={20} />
@@ -194,7 +194,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             
-            {/* Web Portal */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-white/10 rounded-xl p-5 flex flex-col justify-between transition-all hover:border-indigo-500/30">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/5 text-indigo-500 flex items-center justify-center shrink-0">
@@ -212,7 +212,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
               </div>
             </div>
 
-            {/* Mobile App */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-white/10 rounded-xl p-5 flex flex-col justify-between transition-all hover:border-indigo-500/30">
               <div className="flex items-start gap-4 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-sky-500/10 dark:bg-sky-500/5 text-sky-500 flex items-center justify-center shrink-0">
@@ -246,7 +246,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
               )}
             </div>
 
-            {/* Chrome Extension */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-white/10 rounded-xl p-5 flex flex-col justify-between transition-all hover:border-indigo-500/30">
               <div className="flex items-start gap-4 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-yellow-500/10 dark:bg-yellow-500/5 text-yellow-500 flex items-center justify-center shrink-0">
@@ -283,10 +283,10 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
           </div>
         </div>
 
-        {/* DETAILS GRID */}
+        {}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* PERSONAL DETAILS */}
+          {}
           <div className="bg-white dark:bg-[#1E1E1E] rounded-xl p-6 border border-gray-200 dark:border-white/10 shadow-sm">
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <User size={16} className="text-indigo-500" /> Personal Details
@@ -309,7 +309,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
 
           <div className="space-y-6">
             
-            {/* CONTACT INFORMATION */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] rounded-xl p-6 border border-gray-200 dark:border-white/10 shadow-sm">
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Phone size={16} className="text-indigo-500" /> Contact Information
@@ -339,7 +339,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
               </div>
             </div>
 
-            {/* ACADEMIC RECORDS */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] rounded-xl p-6 border border-gray-200 dark:border-white/10 shadow-sm">
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <GraduationCap size={16} className="text-indigo-500" /> Academic Records
@@ -356,7 +356,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
 
       </div>
 
-      {/* FULL SCREEN PROFILE PIC PREVIEW */}
+      {}
       {isPreviewOpen && (
         <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl animate-fadeIn">
           <button 

@@ -23,20 +23,20 @@ import HyperFocus from './HyperFocus';
 import Keynote from './Keynote';
 import AddKeynoteModal from './AddKeynoteModal';
 import CoursePortalView from './CoursePortalView';
-// Assessments section removed
+
 import Datesheet from './Datesheet';
-import AnimatedLogo from './Animation'; // 🚀 IMPORTED YOUR NEW LOGO ANIMATION HERE
+import AnimatedLogo from './Animation'; 
 import { CustomToast, ToastConfig } from './CustomToast';
 import SyncDiagnostics from './SyncDiagnostics';
 
 import useLiveSync from './hooks/useLiveSync';
 import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock, Users } from 'lucide-react';
-// 🚨 Notice we imported a few extra router tools here
+
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// Global fetch interceptor for immediate security termination
+
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
   try {
@@ -99,9 +99,9 @@ const PATH_TAB_MAP = Object.fromEntries(
   Object.entries(TAB_PATH_MAP).map(([tab, path]) => [path, tab])
 );
 
-// =========================================================
-// 🚀 APP LAYOUT COMPONENT (Has access to useNavigate now!)
-// =========================================================
+
+
+
 function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -117,7 +117,7 @@ function AppLayout() {
     }
   });
 
-  // Smart Authentication check (prevents bounce back to login if navigating fast)
+  
   const isAuthenticated = !!token || !!localStorage.getItem('token');
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -348,7 +348,7 @@ function AppLayout() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 🚨 FIXED: Now explicitly uses react-router to kick you back to login
+  
   const handleLogout = useCallback(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -380,7 +380,7 @@ function AppLayout() {
     return () => window.removeEventListener('security_logout', onSecurityLogout);
   }, [handleLogout]);
 
-  // 🚨 FIXED: Manually redirects you into the dashboard and sets state
+  
   const handleLogin = (authToken, userData) => {
     localStorage.setItem('token', authToken);
     localStorage.setItem('user', JSON.stringify(userData));
@@ -389,7 +389,7 @@ function AppLayout() {
     navigate('/dashboard');
   };
 
-  // 🚨 SMART SYNC: Listens for URL changes to ensure state is perfectly synced
+  
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
     if (storedToken && storedToken !== token) {
@@ -401,7 +401,7 @@ function AppLayout() {
     }
   }, [location.pathname, token]);
 
-  // 🚨 Sync URL changes back to activeTab state (supports browser back/forward and direct links)
+  
   useEffect(() => {
     const path = location.pathname;
     if (isAuthenticated) {
@@ -416,13 +416,13 @@ function AppLayout() {
         }
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [location.pathname, isAuthenticated, navigate]);
 
   const checkForInactivity = useCallback(() => {
     if (!isAuthenticated) return;
 
-    // Use user-defined security settings if available, otherwise fallback to local state
+    
     const isAutoLockEnabled = user?.securitySettings?.autoLockEnabled ?? false;
     const currentTimer = user?.securitySettings?.autoLockTimer ?? idleTimeout;
 
@@ -566,41 +566,41 @@ function AppLayout() {
       if (!res.ok) return;
       const data = await res.json();
 
-      // 1. User
+      
       if (data.user) {
         setUser(data.user);
         localStorage.setItem('user', JSON.stringify(data.user));
       }
 
-      // 2. Tasks
+      
       if (Array.isArray(data.tasks)) {
         setTasks(data.tasks.map(t => ({ ...t, id: t._id })));
       } else {
         setTasks([]);
       }
 
-      // 3. Notes
+      
       if (Array.isArray(data.notes)) {
         setNotes(data.notes);
       } else {
         setNotes([]);
       }
 
-      // 4. Keynotes
+      
       if (Array.isArray(data.keynotes)) {
         setKeynotes(data.keynotes);
       } else {
         setKeynotes([]);
       }
 
-      // 5. Notifications
+      
       if (Array.isArray(data.notifications)) {
         setNotifications(data.notifications);
       } else {
         setNotifications([]);
       }
 
-      // 6. Bin
+      
       if (data.bin) {
         const formattedBin = [
           ...(data.bin.tasks || []).map(t => ({ ...t, id: t._id, binType: 'Task', name: t.name, subtitle: t.course })),
@@ -614,7 +614,7 @@ function AppLayout() {
         setBinItems([]);
       }
 
-      // 7. Courses
+      
       if (Array.isArray(data.courses)) {
         const fetchedCourses = data.courses.map(c => ({ 
           id: c._id, 
@@ -629,17 +629,17 @@ function AppLayout() {
         setCourses([]);
       }
 
-      // 8. Exams
+      
       if (Array.isArray(data.exams)) {
         setExams(data.exams);
       } else {
         setExams([]);
       }
 
-      // 9. Active Group
+      
       setActiveGroup(data.group || null);
 
-      // 10. Pending Invitations
+      
       setPendingInvitations(data.invitations || []);
 
     } catch (error) {
@@ -984,9 +984,9 @@ function AppLayout() {
     }
   };
 
-  // ==========================================
-  // 🛡️ SECURE ROUTES RETURN
-  // ==========================================
+  
+  
+  
   
   const visibleCourses = useMemo(() => {
     return courses.filter(c => {
@@ -1001,7 +1001,7 @@ function AppLayout() {
 
   return (
     <Routes>
-      {/* 🚀 ADDED THIS ROUTE JUST FOR TESTING THE LOGO */}
+      {}
       <Route path="/test-logo" element={<AnimatedLogo />} />
 
       <Route
@@ -1127,7 +1127,7 @@ function AppLayout() {
                 @keyframes slideInRight { 0% { transform: translateX(120%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
               `}</style>
 
-              {/* --- MODALS --- */}
+              {}
               <AddTaskModal isOpen={isAddTaskOpen} onClose={() => setIsAddTaskOpen(false)} onSave={handleAddTask} courses={visibleCourses} initialDate={prefilledDate} tasks={tasks} activeGroup={activeGroup} />
               <TaskSummaryModal isOpen={!!viewTask} onClose={() => setViewTask(null)} task={viewTask} courses={visibleCourses} onUpdate={updateTask} user={user} activeGroup={activeGroup} />
               <AddKeynoteModal isOpen={isAddKeynoteOpen} onClose={() => setIsAddKeynoteOpen(false)} onSave={handleAddKeynoteSubmit} courses={visibleCourses} />
@@ -1136,7 +1136,7 @@ function AppLayout() {
               <ConfirmationModal isOpen={!!keynoteToDelete} onClose={() => setKeynoteToDelete(null)} onConfirm={executeDeleteKeynote} title="Move Snap to Bin?" message="Are you sure you want to move this Keynote to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
               <ConfirmationModal isOpen={isBatchDeleteKeynotes} onClose={() => { setIsBatchDeleteKeynotes(false); setKeynotesToBatchDelete([]); }} onConfirm={executeBatchDeleteKeynotes} title={`Move ${keynotesToBatchDelete.length} Snaps to Bin?`} message="Are you sure you want to move the selected Keynotes to the Recycle Bin?" confirmText="Move to Bin" confirmStyle="danger" />
 
-              {/* --- SERVER SELECTION MODAL --- */}
+              {}
               {isServerModalOpen && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fadeIn">
                   <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 w-full max-w-sm shadow-2xl relative border border-gray-200 dark:border-[#333]">

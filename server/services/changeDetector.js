@@ -1,15 +1,6 @@
-/**
- * Change Detector Module
- * Compares freshly scraped portal data with stored data to detect meaningful changes.
- * Returns structured change objects for targeted notifications and WebSocket events.
- */
 
-/**
- * Detects changes between old and new attendance data.
- * @param {Object} oldAtt - The existing attendance record from DB
- * @param {Object} newAtt - The freshly scraped attendance record
- * @returns {Object|null} Change object or null if no change
- */
+
+
 const detectAttendanceChanges = (oldAtt, newAtt) => {
   if (!oldAtt || !oldAtt.summary || !newAtt || !newAtt.summary) return null;
   const oldAbsents = oldAtt.summary.conducted - oldAtt.summary.attended;
@@ -33,13 +24,11 @@ const detectAttendanceChanges = (oldAtt, newAtt) => {
   return null;
 };
 
-/**
- * Detects changes between old and new announcement data.
- */
+
 const detectAnnouncementChanges = (oldAnn, newAnn) => {
   if (!oldAnn || !oldAnn.news || !newAnn || !newAnn.news) return null;
   if (newAnn.news.length > oldAnn.news.length) {
-    // Find the new announcements by comparing
+    
     const oldSubjects = new Set(oldAnn.news.map(n => `${n.subject}_${n.date}`));
     const newAnnouncements = newAnn.news.filter(n => !oldSubjects.has(`${n.subject}_${n.date}`));
     if (newAnnouncements.length > 0) {
@@ -55,9 +44,7 @@ const detectAnnouncementChanges = (oldAnn, newAnn) => {
   return null;
 };
 
-/**
- * Detects changes between old and new submission data.
- */
+
 const detectSubmissionChanges = (oldSub, newSub) => {
   if (!newSub || !newSub.tasks) return null;
   const oldTasks = (oldSub && oldSub.tasks) ? oldSub.tasks : [];
@@ -96,15 +83,13 @@ const detectSubmissionChanges = (oldSub, newSub) => {
   return null;
 };
 
-/**
- * Detects changes between old and new grade data.
- */
+
 const detectGradeChanges = (oldGrade, newGrade) => {
   if (!oldGrade || !newGrade) return null;
   const oldPct = parseFloat(oldGrade.totalPercentage) || 0;
   const newPct = parseFloat(newGrade.totalPercentage) || 0;
 
-  // Also detect when a new assessment item is graded even if total percentage hasn't changed yet
+  
   const countItems = (grade) => (grade.assessments || []).reduce((sum, a) => sum + (a.details || []).length, 0);
   const oldCount = countItems(oldGrade);
   const newCount = countItems(newGrade);

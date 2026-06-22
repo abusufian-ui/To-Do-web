@@ -14,7 +14,7 @@ async function run() {
   await mongoose.connect(MONGO_URI);
   console.log("✅ Connected");
 
-  // Models
+  
   const CourseMaterial = mongoose.model('CourseMaterial', new mongoose.Schema({
     courseCode: String,
     sectionCode: String,
@@ -40,7 +40,7 @@ async function run() {
     return code.split('-')[0].trim();
   };
 
-  // 1. CourseMaterial Migration
+  
   console.log("\n📦 Migrating CourseMaterial...");
   const materials = await CourseMaterial.find({}).lean();
   console.log(`Loaded ${materials.length} records.`);
@@ -80,7 +80,7 @@ async function run() {
     console.log(`Updated ${updateRes.modifiedCount} records.`);
   }
 
-  // 2. CourseVaultFile Migration
+  
   console.log("\n📁 Migrating CourseVaultFile...");
   const vaultFiles = await CourseVaultFile.find({}).lean();
   console.log(`Loaded ${vaultFiles.length} records.`);
@@ -120,7 +120,7 @@ async function run() {
     console.log(`Updated ${updateRes.modifiedCount} records.`);
   }
 
-  // 3. CourseVaultBucket Migration
+  
   console.log("\n🪣 Migrating CourseVaultBucket...");
   const buckets = await CourseVaultBucket.find({ courseCode: { $regex: '-' } }).lean();
   console.log(`Found ${buckets.length} buckets to update.`);

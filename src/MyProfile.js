@@ -4,14 +4,14 @@ import { ToastConfig } from './CustomToast';
 
 const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
   const [isUploading, setIsUploading] = React.useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false); // 🚀 Profile picture full screen preview state
+  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false); 
   const fileInputRef = React.useRef(null);
   if (!user) return null;
 
   const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
   const isSuperAdmin = user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
-  // Format Date Helper
+  
   const formatDate = (dateString) => {
     if (!dateString) return 'Unknown';
     return new Date(dateString).toLocaleDateString('en-US', { 
@@ -23,7 +23,7 @@ const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validate file type and size
+    
     if (!file.type.startsWith('image/')) {
       ToastConfig.show({ title: "Invalid File", message: "Please select an image file.", type: "error" });
       return;
@@ -59,7 +59,7 @@ const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
       />
       <div className="max-w-3xl mx-auto space-y-6">
         
-        {/* HEADER CARD */}
+        {}
         <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-8 border border-gray-200 dark:border-[#333] shadow-sm flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
           <div 
             className="relative group cursor-pointer"
@@ -138,10 +138,10 @@ const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
           </div>
         </div>
 
-        {/* DETAILS GRID */}
+        {}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* ACCOUNT INFO */}
+          {}
           <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 border border-gray-200 dark:border-[#333] shadow-sm">
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6 flex items-center gap-2">
               <Shield size={16} /> Account Details
@@ -169,7 +169,7 @@ const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
             </div>
           </div>
 
-          {/* UNIVERSITY PORTAL INFO (PORTAL CONNECTION SWAPPED & SPACED) */}
+          {}
           <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 border border-gray-200 dark:border-[#333] shadow-sm">
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6 flex items-center gap-2">
               <Link2 size={16} /> Portal Connection
@@ -216,10 +216,10 @@ const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
         </div>
       </div>
 
-      {/* FULL SCREEN PROFILE PIC PREVIEW */}
+      {}
       {isPreviewOpen && (
         <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl animate-fadeIn">
-          {/* Close Button */}
+          {}
           <button 
             onClick={() => setIsPreviewOpen(false)} 
             className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all hover:rotate-90 animate-slide-up-fade"
@@ -228,7 +228,7 @@ const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
             <X size={24} />
           </button>
           
-          {/* Profile Pic Container */}
+          {}
           <div className="relative max-w-[90vw] max-h-[75vh] flex flex-col items-center justify-center">
             {(user.customProfilePic || user.portalProfilePic || user.profilePic) ? (
               <img 
@@ -242,7 +242,7 @@ const MyProfile = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
               </div>
             )}
             
-            {/* Edit / Change Picture Button */}
+            {}
             <div className="mt-6 flex gap-3">
               <button 
                 onClick={(e) => {

@@ -6,7 +6,7 @@ import axios from 'axios';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// Module-level cache to persist data across component mounts
+
 const materialsCache = {};
 const statusCache = {};
 
@@ -26,9 +26,9 @@ const CourseMaterial = ({
   const [status, setStatus] = useState(null);
   const [selected, setSelected] = useState(new Set());
   
-  // Zip download progress states
+  
   const [downloading, setDownloading] = useState(false);
-  const [zipProgress, setZipProgress] = useState(null); // { processed: number, total: number }
+  const [zipProgress, setZipProgress] = useState(null); 
 
   const [expandedArchives, setExpandedArchives] = useState(new Set());
 
@@ -74,10 +74,10 @@ const CourseMaterial = ({
     }
   }, [courseCode, sectionCode]);
 
-  // Handle course sync on mount / change
+  
   useEffect(() => {
     if (courseCode && sectionCode) {
-      setSelected(new Set()); // Reset selections on course change
+      setSelected(new Set()); 
       const cacheKey = `${courseCode}_${sectionCode}`;
       const cachedMaterials = materialsCache[cacheKey];
       const cachedStatus = statusCache[cacheKey];
@@ -86,7 +86,7 @@ const CourseMaterial = ({
         setMaterials(cachedMaterials);
         if (cachedStatus) setStatus(cachedStatus);
         setLoading(false);
-        // Silent background fetch to update cache/UI
+        
         fetchMaterials(false);
         fetchStatus();
       } else {
@@ -96,7 +96,7 @@ const CourseMaterial = ({
     }
   }, [courseCode, sectionCode, fetchMaterials, fetchStatus]);
 
-  // Polling for processing updates
+  
   useEffect(() => {
     let interval;
     if (status?.isProcessing) {
@@ -108,12 +108,12 @@ const CourseMaterial = ({
     return () => clearInterval(interval);
   }, [status?.isProcessing, fetchStatus, fetchMaterials]);
 
-  // Search/genre filtering
+  
   const filteredMaterials = useMemo(() => {
     if (!searchQuery || searchQuery.trim() === '') return materials;
     const query = searchQuery.toLowerCase().trim();
     
-    // Check if query is an extension search, e.g. ".pdf" or "pdf"
+    
     const isExtensionSearch = query.startsWith('.');
     const extToMatch = isExtensionSearch ? query.slice(1) : query;
 
@@ -168,7 +168,7 @@ const CourseMaterial = ({
           window.open(file.downloadUrl, '_blank');
         }
       } else {
-        // Multi-file ZIP download with progress tracking
+        
         setZipProgress({ processed: 0, total: selected.size });
 
         const startRes = await axios.post(
@@ -179,7 +179,7 @@ const CourseMaterial = ({
 
         const { jobId } = startRes.data;
 
-        // Poll job status every 500ms
+        
         await new Promise((resolve, reject) => {
           const pollInterval = setInterval(async () => {
             try {
@@ -205,7 +205,7 @@ const CourseMaterial = ({
           }, 500);
         });
 
-        // Trigger file download
+        
         const fileRes = await axios.get(
           `${API_BASE}/api/course-material/download-zip/file/${jobId}`,
           { headers: { 'x-auth-token': token }, responseType: 'blob' }
@@ -274,7 +274,7 @@ const CourseMaterial = ({
         }, 500);
       });
 
-      // Trigger file download
+      
       const fileRes = await axios.get(
         `${API_BASE}/api/course-material/download-zip/file/${jobId}`,
         { headers: { 'x-auth-token': token }, responseType: 'blob' }
@@ -317,7 +317,7 @@ const CourseMaterial = ({
   return (
     <div className="flex w-full h-full overflow-hidden bg-[#FAFAFA] dark:bg-[#09090B] relative">
       
-      {/* 🚀 COURSES SIDEBAR */}
+      {}
       <div className="w-72 md:w-80 shrink-0 h-full bg-white dark:bg-[#121214] border-r border-gray-200 dark:border-gray-800/80 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.2)] flex flex-col z-30">
         <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-800/50 shrink-0 bg-white dark:bg-[#121214] z-10 sticky top-0">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
@@ -371,7 +371,7 @@ const CourseMaterial = ({
         </div>
       </div>
 
-      {/* RIGHT CONTENT AREA */}
+      {}
       <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-4 md:p-8">
         {showSyncDashboard ? (
           <ParallelSyncDashboard 
@@ -383,7 +383,7 @@ const CourseMaterial = ({
         ) : (
           <div className="w-full max-w-5xl mx-auto pb-24 space-y-6">
             
-            {/* Header */}
+            {}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
               <div>
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold tracking-widest uppercase mb-3 border border-blue-100 dark:border-blue-500/20">
@@ -398,7 +398,7 @@ const CourseMaterial = ({
               </div>
             </div>
 
-            {/* Sync Status Banner */}
+            {}
             {status?.isProcessing && (() => {
               const total = status.totalFiles || 0;
               const completed = status.processedFiles || 0;
@@ -425,7 +425,7 @@ const CourseMaterial = ({
               );
             })()}
 
-            {/* Zip Download progress overlay */}
+            {}
             {zipProgress && (
               <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600 dark:text-emerald-400 text-sm space-y-2">
                 <div className="flex items-center space-x-3">
@@ -443,7 +443,7 @@ const CourseMaterial = ({
               </div>
             )}
 
-            {/* Toolbar */}
+            {}
             {filteredMaterials.length > 0 && (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#121214] p-4 rounded-2xl border border-gray-200 dark:border-gray-800/80 shadow-sm">
                 <div className="flex items-center space-x-3">
@@ -486,7 +486,7 @@ const CourseMaterial = ({
               </div>
             )}
 
-            {/* Materials List */}
+            {}
             <div className="bg-white dark:bg-[#121214] rounded-2xl border border-gray-200 dark:border-gray-800/85 overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800/50 bg-gray-50/50 dark:bg-[#121214]/50 flex items-center justify-between">
                 <div>
@@ -528,7 +528,7 @@ const CourseMaterial = ({
                       <div key={file._id} className="transition-colors hover:bg-gray-50/30 dark:hover:bg-[#1C1C1F]/20">
                         <div className="px-6 py-4 flex items-center justify-between">
                           <div className="flex items-center space-x-4 min-w-0">
-                            {/* Checkbox */}
+                            {}
                             <button 
                               onClick={() => toggleSelect(file._id)} 
                               className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition"
@@ -536,7 +536,7 @@ const CourseMaterial = ({
                               {isSelected ? <CheckSquare className="w-5 h-5 text-blue-500" /> : <Square className="w-5 h-5" />}
                             </button>
 
-                            {/* Icon */}
+                            {}
                             {getFileIcon(file.fileName, file.fileType)}
 
                             <div className="min-w-0">
@@ -552,7 +552,7 @@ const CourseMaterial = ({
                           </div>
 
                           <div className="flex items-center space-x-2 shrink-0">
-                            {/* Archive Toggle */}
+                            {}
                             {hasContents && (
                               <button 
                                 onClick={() => toggleArchive(file.fileName)}
@@ -563,7 +563,7 @@ const CourseMaterial = ({
                               </button>
                             )}
 
-                            {/* Preview (only for PDFs) */}
+                            {}
                             {file.fileType === 'pdf' && file.downloadUrl && (
                               <button 
                                 onClick={() => onViewFile(file.downloadUrl, file.fileName)}
@@ -574,7 +574,7 @@ const CourseMaterial = ({
                               </button>
                             )}
 
-                            {/* Direct download */}
+                            {}
                             {file.downloadUrl && (
                               <a 
                                 href={file.downloadUrl} 
@@ -590,7 +590,7 @@ const CourseMaterial = ({
                           </div>
                         </div>
 
-                        {/* Expanded Archive contents */}
+                        {}
                         {isArchive && isExpanded && hasContents && (
                           <div className="bg-gray-50/50 dark:bg-black/10 pl-16 pr-6 py-2 border-t border-gray-150 dark:border-gray-800/40 space-y-2">
                             {file.contents.map((entry) => (

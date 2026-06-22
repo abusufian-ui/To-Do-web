@@ -29,9 +29,9 @@ const parseSemesterFromCourseCode = (courseCode) => {
 };
 
 
-// --- Bulletproof Helper: Prevents infinite hanging on dead university servers ---
+
 async function fetchWithTimeout(resource, options = {}) {
-    const { timeout = 15000 } = options; // 15 second strict timeout
+    const { timeout = 15000 } = options; 
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     try {
@@ -44,7 +44,7 @@ async function fetchWithTimeout(resource, options = {}) {
     }
 }
 
-// Concurrency helper
+
 const runWithConcurrency = async (items, limit, worker) => {
     const results = [];
     if (!items || items.length === 0) return results;
@@ -64,34 +64,29 @@ const runWithConcurrency = async (items, limit, worker) => {
     return results;
 };
 
-/**
- * Predicts the current semester code based on date.
- * Spring: Feb end (Feb 20) to Jul start (Jul 10)
- * Summer: Jul End (Jul 11) to Sep start (Sep 20)
- * Fall: Sep End (Sep 21) to Feb start (Feb 19)
- */
+
 function getCurrentSemesterCode() {
     const now = new Date();
-    const month = now.getMonth(); // 0 = Jan, 11 = Dec
+    const month = now.getMonth(); 
     const date = now.getDate();
     const year = now.getFullYear();
-    const shortYear = year.toString().slice(-2); // e.g. "26"
+    const shortYear = year.toString().slice(-2); 
 
     let season = '';
     let semesterYear = shortYear;
 
-    // Spring: Feb 20 (month 1, day 20) to Jul 10 (month 6, day 10)
+    
     if ((month === 1 && date >= 20) || (month > 1 && month < 6) || (month === 6 && date <= 10)) {
         season = 'spring';
     } 
-    // Summer: Jul 11 (month 6, day 11) to Sep 20 (month 8, day 20)
+    
     else if ((month === 6 && date >= 11) || (month === 7) || (month === 8 && date <= 20)) {
         season = 'summer';
     } 
-    // Fall: Sep 21 (month 8, day 21) to Feb 19 (month 1, day 19)
+    
     else {
         season = 'fall';
-        // If it is Jan (month 0) or early Feb (month 1, date < 20), it belongs to the previous year's Fall semester
+        
         if (month === 0 || (month === 1 && date < 20)) {
             semesterYear = (year - 1).toString().slice(-2);
         }
@@ -100,7 +95,7 @@ function getCurrentSemesterCode() {
     return `${season} ${semesterYear}`;
 }
 
-// Main Scrape Function
+
 const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = null) => {
     try {
         console.log(`[SERVER_SCRAPER] Starting ${mode} scrape with cookies for portalId: ${portalIdFallback || 'UNKNOWN'}`);
@@ -155,7 +150,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
         }
 
         console.log("[SERVER_SCRAPER] Fetching enrolled courses...");
-        // 1. Fetch Clean Enrolled Courses & Calculate Accurate Credits
+        
         const enrolledRes = await fetchWithTimeout('https://horizon.ucp.edu.pk/student/enrolled/courses', defaultOptions);
         console.log("[SERVER_SCRAPER] Enrolled courses fetched, status:", enrolledRes.status);
         const enrolledHtml = await enrolledRes.text();
@@ -210,7 +205,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                         const parsed = parseFloat(rawNumText);
                         if (!isNaN(parsed)) {
                             credits = parsed;
-                            return false; // break the loop
+                            return false; 
                         }
                     }
                 });
@@ -222,7 +217,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
 
         console.log("[SERVER_SCRAPER] Starting high priority scrapers...");
 
-        // 2. Define Granular Scrapers
+        
         const scrapeGrades = async () => {
             return runWithConcurrency(courseLinks, COURSE_CONCURRENCY, async (url) => {
                 const courseId = url.split('/').pop();
@@ -427,7 +422,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                 const allClassBlocks = $ttDoc('a[data-start][data-end]').toArray();
                 const instructorMap = new Map();
 
-                // PASS 1: Find actual instructors from regular classes
+                
                 for (const el of allClassBlocks) {
                     const rawText = ($ttDoc(el).text() || "").replace(/\s+/g, ' ').trim();
                     const rawTextLower = rawText.toLowerCase();
@@ -449,7 +444,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                     }
                 }
 
-                // PASS 2: Parse Timetable blocks & use mapped instructors for Makeup classes
+                
                 allClassBlocks.forEach((el) => {
                     const rawText = ($ttDoc(el).text() || "").replace(/\s+/g, ' ').trim();
                     const rawTextLower = rawText.toLowerCase();
@@ -555,7 +550,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                     const $doc = cheerio.load(html);
                     const courseData = courseMap.get(url) || {};
 
-                    // Skip 0 credit hour courses
+                    
                     if (courseData.creditHours === 0) {
                         console.log(`[SERVER_SCRAPER] Skipping 0 credit hour course materials: ${courseData.code || courseData.name}`);
                         return null;
@@ -592,7 +587,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
             });
         };
 
-        // 3. Execute all scrapers
+        
         console.log("[SERVER_SCRAPER] Running all sub-scrapers concurrently...");
         const isFull = (mode === 'FULL');
         const promises = [

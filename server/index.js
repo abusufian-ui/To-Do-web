@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-// Global process-level exception/rejection safety net
+
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught Exception:', err.stack || err);
 });
@@ -21,7 +21,7 @@ const fs = require('fs');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 
-// 🚨 NEW: CHANGE DETECTOR IMPORTS
+
 const { 
   detectAttendanceChanges, 
   detectAnnouncementChanges, 
@@ -29,7 +29,7 @@ const {
   detectGradeChanges 
 } = require('./services/changeDetector');
 
-// 🚨 NEW: CLOUDINARY IMPORTS
+
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
@@ -39,19 +39,19 @@ const { escapeRegex } = require('./utils/regexEscaper');
 const crypto = require('crypto');
 const { Resend } = require('resend');
 
-// 🚨 NEW: IMPORT HTTP AND SOCKET.IO
+
 const http = require('http');
 const { Server } = require('socket.io');
 
-// --- PUSH NOTIFICATIONS & CRON ---
+
 const { Expo } = require('expo-server-sdk');
 const cron = require('node-cron');
 const axios = require('axios');
 
-// 🔒 Per-user sync lock: prevents concurrent syncs (race conditions / duplicate writes)
+
 const activeSyncs = new Set();
 
-// --- MODELS ---
+
 const User = require('./models/User');
 const Task = require('./models/Task');
 const Grade = require('./models/Grade');
@@ -73,32 +73,32 @@ const Feedback = require('./models/Feedback');
 const SystemSettings = require('./models/SystemSettings');
 const AdminNotification = require('./models/AdminNotification');
 const Assessment = require('./models/Assessment');
-const Exam = require('./models/Exam'); // 🚨 NEW: DATESHEET EXAM MODEL
+const Exam = require('./models/Exam'); 
 const Group = require('./models/Group');
 const GroupInvitation = require('./models/GroupInvitation');
-const SyncLog = require('./models/SyncLog'); // 🚨 NEW: SYNC DIAGNOSTICS LOG
+const SyncLog = require('./models/SyncLog'); 
 const { spawn } = require('child_process');
 
-// 🚨 NEW: COURSE MATERIAL & VAULT MODELS & CONVERTER
+
 const CourseMaterial = require('./models/CourseMaterial');
 const CourseVaultFile = require('./models/CourseVaultFile');
 const CourseVaultBucket = require('./models/CourseVaultBucket');
 const MaterialLink   = require('./models/MaterialLink');
 const { convertToPdf } = require('./utils/documentConverter');
 
-// 🚨 NEW: BACKBLAZE B2 + MATERIAL PROCESSOR
+
 const { getSignedDownloadUrl, b2, B2_BUCKET, uploadToB2, getPresignedUploadUrl, configureBucketCors, downloadFileFromB2, getMimeType } = require('./utils/b2Client');
 const { processUserMaterials, runNightlyMaterialSync } = require('./services/materialProcessor');
 
 
-// --- CONFIGURATION ---
+
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || "l1f23bscs1329@ucp.edu.pk";
 const resend = new Resend(process.env.RESEND_API_KEY);
 let expo = new Expo();
 
-// ==========================================
-// 🕌 ALADHAN API HELPER (Bulletproof caching)
-// ==========================================
+
+
+
 let cachedPrayerTimes = null;
 let lastFetchDate = null;
 
@@ -124,17 +124,17 @@ async function getLahorePrayerTimes(todayStr) {
 }
 
 
-// --- API URL CONFIG ---
+
 const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp.online' : 'http://localhost:5000';
 
-// ==========================================
-// 📂 LOCAL MEDIA STORAGE CONFIGURATION (For general uploads)
-// ==========================================
+
+
+
 let uploadDir = process.env.UPLOAD_DIR || (process.env.NODE_ENV === 'production'
   ? '/var/www/student_portal/media/'
   : path.join(__dirname, 'media'));
 
-// Ensure the media directory exists safely
+
 try {
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -147,9 +147,9 @@ try {
 }
 
 
-// ==========================================
-// 📂 TEMP MATERIALS UPLOAD DIRECTORY
-// ==========================================
+
+
+
 const tempDir = path.join(__dirname, 'uploads', 'temp');
 try {
   if (!fs.existsSync(tempDir)) {
@@ -162,11 +162,11 @@ try {
 
 const tempUpload = multer({
   dest: tempDir,
-  limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit
+  limits: { fileSize: 25 * 1024 * 1024 } 
 });
 
 
-// Keep local storage for things like general files or Keynote media
+
 const localDiskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadDir);
@@ -180,9 +180,9 @@ const localDiskStorage = multer.diskStorage({
   }
 });
 
-// ==========================================
-// ☁️ NEW: CLOUDINARY CONFIGURATION (For Profile Pics)
-// ==========================================
+
+
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -196,18 +196,18 @@ const cloudinaryProfileStorage = new CloudinaryStorage({
     const cleanIdentifier = identifier.toString().toLowerCase().replace(/[^a-z0-9]/g, '');
 
     return {
-      folder: 'myportal/avatars', // Folder name in Cloudinary
+      folder: 'myportal/avatars', 
       allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
       public_id: `profile_${cleanIdentifier}_${Date.now()}`,
-      transformation: [{ width: 500, height: 500, crop: 'limit' }] // Compresses on the fly
+      transformation: [{ width: 500, height: 500, crop: 'limit' }] 
     };
   },
 });
 
-// 🚨 NEW: Profile pic uses Cloudinary, general upload uses local disk
+
 const profilePicUpload = multer({
   storage: cloudinaryProfileStorage,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit 
+  limits: { fileSize: 5 * 1024 * 1024 } 
 });
 
 const generalUpload = multer({
@@ -217,9 +217,9 @@ const generalUpload = multer({
 
 const upload = generalUpload;
 
-// ==========================================
-// 🎨 PREMIUM EMAIL HTML TEMPLATE
-// ==========================================
+
+
+
 const generateEmailTemplate = (title, code, message) => `
   <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f9fafb; padding: 40px 20px; text-align: center;">
     <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; padding: 40px 30px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); border: 1px solid #f3f4f6;">
@@ -236,9 +236,9 @@ const generateEmailTemplate = (title, code, message) => `
   </div>
 `;
 
-// ==========================================
-// 🚀 SILENT PUSH NOTIFICATION HELPER
-// ==========================================
+
+
+
 async function sendSilentPush(user, data = {}) {
   let tokens = [];
   if (user.pushTokens && user.pushTokens.length > 0) {
@@ -269,9 +269,9 @@ async function sendSilentPush(user, data = {}) {
   }
 }
 
-// ==========================================
-// 🚀 MULTI-DEVICE PUSH NOTIFICATION HELPER
-// ==========================================
+
+
+
 async function sendPush(user, title, body, data = {}, categoryId = "smart-alert", channelId = "default") {
   let tokens = [];
   if (user.pushTokens && user.pushTokens.length > 0) {
@@ -326,7 +326,7 @@ const getBaseUrl = (req) => {
   return `${protocol}://${host}`;
 };
 
-// 🚨 NEW: WRAP APP IN HTTP SERVER & ATTACH WEBSOCKETS
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -335,7 +335,7 @@ const io = new Server(server, {
   }
 });
 
-// 🌍 ROOT PING (For quick testing)
+
 app.get('/ping', (req, res) => res.json({ status: "alive", environment: process.env.NODE_ENV, time: new Date() }));
 app.get('/api/ping', (req, res) => res.json({ status: "alive", prefix: "api", time: new Date() }));
 
@@ -375,7 +375,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// Serve static media files
+
 app.use('/media', express.static(uploadDir));
 
 app.use(express.json({ limit: '50mb' }));
@@ -388,12 +388,12 @@ app.use((req, res, next) => {
 });
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 mins
-  max: 30, // Limit each IP to 30 requests per window
+  windowMs: 15 * 60 * 1000, 
+  max: 30, 
   message: { message: "Too many authentication attempts, please try again later." }
 });
 
-// 🚨 NEW: Global WebSocket Notification Middleware
+
 app.use((req, res, next) => {
   const originalJson = res.json;
   res.json = function (data) {
@@ -446,9 +446,9 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-// ==========================================
-// 🚀 ROUTES: FEEDBACK & SUPPORT
-// ==========================================
+
+
+
 app.post('/api/feedback', auth, async (req, res) => {
   try {
     const { subject, description, screenshots } = req.body;
@@ -469,7 +469,7 @@ app.post('/api/feedback', auth, async (req, res) => {
   }
 });
 
-// Fetch current user's submitted support tickets
+
 app.get('/api/feedback/my', auth, async (req, res) => {
   try {
     const tickets = await Feedback.find({ userId: req.user.id }).sort({ createdAt: -1 });
@@ -480,7 +480,7 @@ app.get('/api/feedback/my', auth, async (req, res) => {
   }
 });
 
-// Fetch all tickets for admin panel
+
 app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
   try {
     const feedbacks = await Feedback.find().populate('userId', 'name email customProfilePic portalProfilePic originalPortalProfilePic profilePic').sort({ createdAt: -1 });
@@ -488,7 +488,7 @@ app.get('/api/admin/feedback', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Server Error" }); }
 });
 
-// Resolve and close a support ticket
+
 app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => {
   try {
     const { adminResponse } = req.body;
@@ -502,7 +502,7 @@ app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => 
 
     if (!ticket) return res.status(404).json({ message: "Ticket not found." });
 
-    // Send push notification to the user
+    
     if (ticket.userId) {
       try {
         await sendPush(
@@ -523,7 +523,7 @@ app.put('/api/admin/feedback/:id/resolve', auth, adminAuth, async (req, res) => 
   }
 });
 
-// User disputes a resolved support ticket
+
 app.put('/api/feedback/:id/dispute', auth, async (req, res) => {
   try {
     const { disputeMessage } = req.body;
@@ -544,7 +544,7 @@ app.put('/api/feedback/:id/dispute', auth, async (req, res) => {
   }
 });
 
-// Admin deny dispute and mark ticket as invalid
+
 app.put('/api/admin/feedback/:id/deny-dispute', auth, adminAuth, async (req, res) => {
   try {
     const ticket = await Feedback.findByIdAndUpdate(
@@ -555,7 +555,7 @@ app.put('/api/admin/feedback/:id/deny-dispute', auth, adminAuth, async (req, res
 
     if (!ticket) return res.status(404).json({ message: "Ticket not found." });
 
-    // Send push notification to the user
+    
     if (ticket.userId) {
       try {
         await sendPush(
@@ -576,7 +576,7 @@ app.put('/api/admin/feedback/:id/deny-dispute', auth, adminAuth, async (req, res
   }
 });
 
-// Bulk delete support tickets
+
 app.post('/api/admin/feedback/bulk-delete', auth, adminAuth, async (req, res) => {
   try {
     const { ids } = req.body;
@@ -592,7 +592,7 @@ app.post('/api/admin/feedback/bulk-delete', auth, adminAuth, async (req, res) =>
   }
 });
 
-// Re-open a resolved support ticket
+
 app.put('/api/admin/feedback/:id/reopen', auth, adminAuth, async (req, res) => {
   try {
     const ticket = await Feedback.findByIdAndUpdate(
@@ -603,7 +603,7 @@ app.put('/api/admin/feedback/:id/reopen', auth, adminAuth, async (req, res) => {
 
     if (!ticket) return res.status(404).json({ message: "Ticket not found." });
 
-    // Send push notification to the user
+    
     if (ticket.userId) {
       try {
         await sendPush(
@@ -624,9 +624,9 @@ app.put('/api/admin/feedback/:id/reopen', auth, adminAuth, async (req, res) => {
   }
 });
 
-// ==========================================
-// 🚀 NEW: PUBLIC AND ADMIN WEBSITE SETTINGS & APK ENDPOINTS
-// ==========================================
+
+
+
 
 const apkDiskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -646,10 +646,10 @@ const apkUpload = multer({
     }
     cb(null, true);
   },
-  limits: { fileSize: 250 * 1024 * 1024 } // 250MB limit
+  limits: { fileSize: 250 * 1024 * 1024 } 
 });
 
-// ⚡ Settings Caching Logic
+
 let cachedSettingsData = null;
 let settingsCacheExpiry = 0;
 
@@ -658,7 +658,7 @@ function invalidateSettingsCache() {
   settingsCacheExpiry = 0;
 }
 
-// Public: Get general website configuration
+
 app.get('/api/public/settings', async (req, res) => {
   try {
     const now = Date.now();
@@ -699,10 +699,10 @@ app.get('/api/public/settings', async (req, res) => {
       }
 
       cachedSettingsData = { webPortalLink, termsLink, whatsappGroupLink, rawApkInfo };
-      settingsCacheExpiry = now + 60000; // 1 minute
+      settingsCacheExpiry = now + 60000; 
     }
 
-    // Reconstruct dynamic url using req-specific baseUrl
+    
     const baseUrl = getBaseUrl(req);
     let apkInfo = { uploaded: false };
     if (cachedSettingsData.rawApkInfo) {
@@ -724,18 +724,18 @@ app.get('/api/public/settings', async (req, res) => {
   }
 });
 
-// Public: Stream and download the active APK file with forced filename
+
 app.get('/api/public/download-apk', async (req, res) => {
   try {
     const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
     
-    // Check if Backblaze B2 key is stored and valid
+    
     if (dbSetting && dbSetting.value && dbSetting.value.uploaded && dbSetting.value.b2Key) {
-      const signedUrl = await getSignedDownloadUrl(dbSetting.value.b2Key, 3600, 'myportal.apk'); // 1 hour expiry
+      const signedUrl = await getSignedDownloadUrl(dbSetting.value.b2Key, 3600, 'myportal.apk'); 
       return res.redirect(signedUrl);
     }
     
-    // Check if older Cloudinary URL is stored and valid (legacy support)
+    
     if (dbSetting && dbSetting.value && dbSetting.value.uploaded && dbSetting.value.url && !dbSetting.value.url.includes('/api/public/download-apk')) {
       const cloudinaryUrl = dbSetting.value.url;
       
@@ -745,11 +745,11 @@ app.get('/api/public/download-apk', async (req, res) => {
         responseType: 'stream'
       });
       
-      // Set forced download headers so browser always saves as myportal.apk
+      
       res.setHeader('Content-Disposition', 'attachment; filename="myportal.apk"');
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
       
-      // Forward Content-Length so browsers/download managers show accurate file size
+      
       if (streamRes.headers['content-length']) {
         res.setHeader('Content-Length', streamRes.headers['content-length']);
       }
@@ -757,7 +757,7 @@ app.get('/api/public/download-apk', async (req, res) => {
       return streamRes.data.pipe(res);
     }
     
-    // Local storage fallback
+    
     const apkPath = path.join(uploadDir, 'myportal.apk');
     if (!fs.existsSync(apkPath)) {
       return res.status(404).json({ message: "APK release not found on server storage." });
@@ -769,7 +769,7 @@ app.get('/api/public/download-apk', async (req, res) => {
   }
 });
 
-// Public: Submit support feedback from general website
+
 app.post('/api/feedback/public', async (req, res) => {
   try {
     const { name, email, subject, description } = req.body;
@@ -791,7 +791,7 @@ app.post('/api/feedback/public', async (req, res) => {
   }
 });
 
-// Admin: Save web portal link configuration
+
 app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res) => {
   try {
     const { link } = req.body;
@@ -810,7 +810,7 @@ app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res
   }
 });
 
-// Admin: Save terms link configuration
+
 app.post('/api/admin/settings/terms-link', auth, adminAuth, async (req, res) => {
   try {
     const { link } = req.body;
@@ -827,7 +827,7 @@ app.post('/api/admin/settings/terms-link', auth, adminAuth, async (req, res) => 
   }
 });
 
-// Admin: Save whatsapp link configuration
+
 app.post('/api/admin/settings/whatsapp-link', auth, adminAuth, async (req, res) => {
   try {
     const { link } = req.body;
@@ -844,7 +844,7 @@ app.post('/api/admin/settings/whatsapp-link', auth, adminAuth, async (req, res) 
   }
 });
 
-// Admin: Upload APK release
+
 app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
   apkUpload.single('file')(req, res, async (err) => {
     if (err) {
@@ -858,21 +858,21 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
     const filePath = req.file.path;
 
     try {
-      // 1. Read file from disk
+      
       const buffer = fs.readFileSync(filePath);
 
-      // 2. Upload to BackBlaze B2
+      
       const b2Key = `apk_releases/myportal_${version.replace(/[^a-zA-Z0-9.-]/g, '_')}_${Date.now()}.apk`;
       await uploadToB2(b2Key, buffer, 'application/vnd.android.package-archive');
 
-      // 3. Remove local temporary file
+      
       try {
         fs.unlinkSync(filePath);
       } catch (unlinkErr) {
         console.error("Failed to delete temp APK file:", unlinkErr.message);
       }
 
-      // 4. Update SystemSettings in DB
+      
       const baseUrl = getBaseUrl(req);
       const apkInfo = {
         uploaded: true,
@@ -902,7 +902,7 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
   });
 });
 
-// Admin: Get B2 pre-signed upload URL for APK
+
 app.get('/api/admin/settings/apk-upload-url', auth, adminAuth, async (req, res) => {
   const version = req.query.version || '1.0.0';
   const filename = req.query.filename || 'myportal.apk';
@@ -918,7 +918,7 @@ app.get('/api/admin/settings/apk-upload-url', auth, adminAuth, async (req, res) 
   }
 });
 
-// Admin: Confirm completed APK upload and update db setting
+
 app.post('/api/admin/settings/apk-confirm', auth, adminAuth, async (req, res) => {
   const { b2Key, version, size, filename } = req.body;
   if (!b2Key || !version) {
@@ -951,7 +951,7 @@ app.post('/api/admin/settings/apk-confirm', auth, adminAuth, async (req, res) =>
   }
 });
 
-// Admin: Delete APK release from filesystem & database
+
 app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) => {
   try {
     const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
@@ -994,7 +994,7 @@ app.delete('/api/admin/settings/apk-delete', auth, adminAuth, async (req, res) =
   }
 });
 
-// Admin: Save APK Cloudinary CDN URL and size metadata (KEPT for backwards compatibility)
+
 app.post('/api/admin/settings/apk-url', auth, adminAuth, async (req, res) => {
   try {
     const { url, size, filename } = req.body;
@@ -1022,9 +1022,9 @@ app.post('/api/admin/settings/apk-url', auth, adminAuth, async (req, res) => {
   }
 });
 
-// =================================================================
-// 🌐 NEW PREMIUM WEB PORTAL AUTHENTICATION FLOW
-// =================================================================
+
+
+
 
 app.post('/api/web/check-email', async (req, res) => {
   try {
@@ -1161,9 +1161,9 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
   }
 });
 
-// ==========================================
-// ROUTES: UCP DATA & SYNC ENGINE
-// ==========================================
+
+
+
 
 app.post('/api/session/keep-alive', auth, async (req, res) => {
   const { ucpCookie } = req.body;
@@ -1293,7 +1293,7 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error fetching course records" }); }
 });
 
-// Helper to compute a consistent content hash for a submissions tasks list
+
 const computeSubmissionsHash = (tasks) => {
   const hash = crypto.createHash('md5');
   const serialized = (tasks || []).map(t => {
@@ -1309,12 +1309,12 @@ const computeSubmissionsHash = (tasks) => {
   return hash.digest('hex');
 };
 
-// Helper to merge newly scraped tasks with existing DB tasks, preserving 'Submitted' statuses
+
 const mergeUserTasks = (existingTasks, incomingTasks) => {
   const existingTasksList = existingTasks || [];
   const existingTaskMap = new Map();
   
-  // Map existing tasks by title, prioritizing 'Submitted' status if duplicates exist
+  
   for (const t of existingTasksList) {
     const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
     if (existingTaskMap.has(title)) {
@@ -1357,7 +1357,7 @@ const mergeUserTasks = (existingTasks, incomingTasks) => {
     processedTitles.add(title);
   }
 
-  // Keep historical tasks that are no longer in incoming (active) portal list
+  
   for (const existingTask of existingTasksList) {
     const title = (existingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
     if (!processedTitles.has(title)) {
@@ -1374,7 +1374,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
   const userId = req.user.id;
   const syncKey = userId.toString();
 
-  // 🔒 Reject if a sync is already in progress for this user (prevents race-condition duplicates)
+  
   if (activeSyncs.has(syncKey)) {
     console.warn(`[SYNC] ⚠️ Concurrent sync blocked for user ${syncKey}`);
     return res.status(409).json({ message: 'Sync already in progress. Please wait.' });
@@ -1385,7 +1385,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic, syncLogId, materialLinksData } = req.body;
     const user = await User.findById(userId);
 
-    // Default mode is AUTO_SYNC if not explicitly provided
+    
     const mode = syncMode || 'AUTO_SYNC';
 
     let activePortalId = portalId;
@@ -1402,7 +1402,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     }
     if (!user.portalId) user.portalId = activePortalId.toUpperCase();
 
-    // Update detailed student profile if any fields are sent
+    
     let userUpdated = false;
     if (req.path === '/api/extension-sync') {
       if (!user.accessedExtension) {
@@ -1421,10 +1421,10 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       await user.save();
     }
 
-    // ── Tracker for SyncLog ──
+    
     let changesSummary = {};
 
-    // ── Extract enrolled sections from courseMap and ensure Courses exist ──
+    
     const enrolledSections = [];
     const sectionLookup = {}; 
     const baseCodeLookup = {}; 
@@ -1467,13 +1467,13 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
             }
           }
 
-          // Save creditHours + portalUrl + semester to DB dynamically
+          
           const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
           const activeSemester = parseSemesterFromCourseCode(fullCode) || req.body.semester || getCurrentSemesterCode();
           const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: activeSemester };
           if (fullCode) updatePayload.code = fullCode;
           if (sectionCode) updatePayload.section = sectionCode;
-          if (url) updatePayload.portalUrl = url; // Store the full portal URL for nightly scraper
+          if (url) updatePayload.portalUrl = url; 
 
           coursePromises.push(Course.findOneAndUpdate(
             { userId, name: courseName },
@@ -1485,7 +1485,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       await Promise.all(coursePromises);
     }
     
-    // ── Attendance Sync & Push Notifications ──
+    
     if (attendanceData && attendanceData.length > 0) {
       const oldAttendances = await Attendance.find({ userId });
       const oldAttMap = new Map(oldAttendances.map(a => [a.courseUrl, a]));
@@ -1516,7 +1516,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       await Promise.all(attPromises);
     }
 
-    // ── Announcements Sync ──
+    
     if (announcementsData && announcementsData.length > 0) {
       const oldAnnouncements = await Announcement.find({ userId });
       const oldAnnMap = new Map(oldAnnouncements.map(a => [a.courseUrl, a]));
@@ -1541,7 +1541,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       await Promise.all(annPromises);
     }
 
-    // ── Submissions & Peer Syncing ──
+    
     if (submissionsData && submissionsData.length > 0) {
       const oldSubmissions = await Submission.find({ userId });
       const oldSubMap = new Map(oldSubmissions.map(s => [s.courseUrl, s]));
@@ -1586,8 +1586,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 const peerSub = peerSubMap.get(peerId);
                 const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
 
-                // Map classmate's existing tasks by title to avoid duplicates.
-                // Also actively deduplicate existing tasks if any duplicates are found in classmate DB.
+                
+                
                 const existingTaskMap = new Map();
                 const cleanExistingTasks = [];
                 const seenTitles = new Set();
@@ -1610,7 +1610,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                   }
                 }
 
-                // Replace existing tasks with the clean/deduplicated list
+                
                 existingTasks.length = 0;
                 existingTasks.push(...cleanExistingTasks);
 
@@ -1638,7 +1638,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                       merged = true;
                     }
                   } else {
-                    // Force classmate tasks to default to Pending to prevent status contamination
+                    
                     const peerTask = { 
                       ...incomingTask, 
                       status: 'Pending', 
@@ -1674,7 +1674,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       await Promise.all(subPromises);
     }
 
-    // ── FIXED: Timetable Sync ──
+    
     if (timetableData && timetableData.length > 0) {
       const courseMapLocal = new Map();
       const preparedClasses = [];
@@ -1742,7 +1742,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         if (fullCode) courseUpdatePayload.code = fullCode;
         if (sectionCode) courseUpdatePayload.section = sectionCode;
 
-        // 🚨 CRITICAL FIX: Only overwrite instructors/rooms if the scraper actually found them in the timetable
+        
         if (data.instructors && data.instructors.size > 0) {
           courseUpdatePayload.instructors = Array.from(data.instructors);
         }
@@ -1759,7 +1759,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       await Promise.all(timetablePromises);
     }
 
-    // ── Datesheet Sync ──
+    
     if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC') {
       if (datesheetData && datesheetData.length > 0) {
         const datesheetPromises = [];
@@ -1775,7 +1775,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       }
     }
 
-    // ── Grades Sync ──
+    
     if (gradesData && gradesData.length > 0) {
       if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
       
@@ -1800,7 +1800,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       await Promise.all(gradePromises);
     }
 
-    // ── History Sync ──
+    
     if (historyData && historyData.length > 0) {
       if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
       
@@ -1844,12 +1844,12 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       await Promise.all(historyPromises);
     }
 
-    // ── Stats Sync ──
+    
     if (statsData && Object.keys(statsData).length > 0) {
       const existingStats = await StudentStats.findOne({ userId });
       const updatePayload = { ...statsData, userId, lastUpdated: new Date() };
 
-      // Safety: Don't overwrite valid CGPA with 0.00
+      
       if (existingStats && statsData.cgpa === "0.00" && existingStats.cgpa !== "0.00") {
         delete updatePayload.cgpa;
       }
@@ -1861,7 +1861,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       );
     }
 
-    // ── User Profile Sync ──
+    
     const updateFields = {
       isPortalConnected: true,
       lastSyncAt: new Date(),
@@ -1888,7 +1888,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     });
 
     if (syncLogId) {
-      // Clean up empty changesSummary
+      
       if (Object.keys(changesSummary).length === 0) changesSummary = null;
 
       await SyncLog.findByIdAndUpdate(syncLogId, {
@@ -1899,10 +1899,10 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     }
 
 
-    // ── 🗂️ Material Links: Stage + Immediately Trigger Processing ──
-    // Session-bound download URLs expire when cookie expires.
-    // Process IMMEDIATELY while session is live. Even duplicate links trigger a re-run
-    // so any newly added files by the teacher are picked up.
+    
+    
+    
+    
     if (materialLinksData && Array.isArray(materialLinksData) && materialLinksData.length > 0) {
       const liveCookie = ucpCookie || user.ucpCookie;
       if (liveCookie) {
@@ -1914,11 +1914,11 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         for (const item of materialLinksData) {
           if (!item.courseUrl) continue;
 
-          // Derive section and teacher from context already parsed above
+          
           const itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
           const courseDoc = courseMapDb.get(item.courseName);
 
-          // Skip 0 credit hour courses
+          
           if (courseDoc && courseDoc.creditHours === 0) {
             console.log(`[SYNC] Skipping 0 credit hour course material staging: ${item.courseName}`);
             continue;
@@ -1926,8 +1926,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
           const itemTeacherName = (courseDoc?.instructors || [])[0] || '';
 
-          // Always upsert with fresh links + reset processed = false
-          // so the processor always re-checks for new files
+          
+          
           const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
           const activeSemester = parseSemesterFromCourseCode(item.courseCode) || req.body.semester || getCurrentSemesterCode();
 
@@ -1963,7 +1963,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
         if (stagedCount > 0) {
           console.log(`[SYNC] 📥 Staged ${stagedCount} material link sets. Firing processor immediately.`);
-          // Fire immediately in background — session cookie is live right now
+          
           setTimeout(() => processUserMaterials(userId.toString(), liveCookie), 200);
         }
       }
@@ -1983,7 +1983,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
     res.status(statusCode).json({ message: error.message });
   } finally {
-    // 🔓 Always release the lock, even if an error occurred
+    
     activeSyncs.delete(syncKey);
   }
 });
@@ -1997,7 +1997,7 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
       return res.status(400).json({ message: "No cookie or portalId found. Please login again." });
     }
 
-    // Create pending SyncLog
+    
     const syncLog = new SyncLog({
       userId: user._id,
       portalId: user.portalId,
@@ -2007,17 +2007,17 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
     });
     await syncLog.save();
 
-    // Acknowledge immediately to prevent mobile app timeouts
+    
     res.json({ message: "Server-side scraping triggered successfully." });
 
-    // Run the scrape in the background
+    
     setTimeout(async () => {
       const startTime = Date.now();
       try {
         const { scrapeServerSide } = require('./services/scraperEngine');
         const scrapedPayload = await scrapeServerSide(user.ucpCookie, 'FULL', user.portalId);
 
-        // Append log ID to payload so extension-sync can mark it as success
+        
         scrapedPayload.syncLogId = syncLog._id.toString();
 
         const jwt = require('jsonwebtoken');
@@ -2050,9 +2050,9 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
   }
 });
 
-// ==========================================
-// REST OF THE ROUTES
-// ==========================================
+
+
+
 
 const dbLink = process.env.REACT_APP_MONGODB_URI;
 console.log("🔗 Connecting to MyPortal Database...");
@@ -2073,7 +2073,7 @@ mongoose.connect(dbLink, {
   console.log("✅ MongoDB Connected Successfully!");
 
   try {
-    // 🚨 FIX: Added `Note` to the watch array to allow WebSockets to trigger live updates on Notes
+    
     const modelsToWatch = [Task, Transaction, Debt, Habit, Keynote, Note, NamazRecord, Attendance, Submission, Announcement, Timetable, Grade, Course, Assessment, Exam];
 
     modelsToWatch.forEach(model => {
@@ -2139,7 +2139,7 @@ app.get('/api/media/view/:folder/:filename', async (req, res) => {
     const mimeType = getMimeType(key);
     
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); 
     res.send(buffer);
   } catch (error) {
     console.error(`[MEDIA_VIEW_ERROR] Error retrieving file ${key}:`, error);
@@ -2191,7 +2191,7 @@ app.put('/api/keynotes/:id/delete', auth, async (req, res) => {
   try {
     const u = await User.findById(req.user.id);
     const q = u.isAdmin ? { _id: req.params.id } : { _id: req.params.id, userId: req.user.id };
-    // Transfer ownership to deleting admin
+    
     res.json(await Keynote.findOneAndUpdate(q, { isDeleted: true, deletedAt: new Date(), userId: req.user.id }, { new: true }));
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -2231,11 +2231,11 @@ app.get('/api/admin/system-stats', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Failed" }); }
 });
 
-// ==========================================
-// 👥 MULTI-USER STUDY GROUP & COMMUNITY SYSTEM API
-// ==========================================
 
-// 1. Create a Study Group
+
+
+
+
 app.post('/api/groups', auth, async (req, res) => {
   try {
     const { name } = req.body;
@@ -2250,7 +2250,7 @@ app.post('/api/groups', auth, async (req, res) => {
       name: name.trim(),
       creatorId: req.user.id,
       members: [req.user.id],
-      admins: [req.user.id] // Creator is also added to structural admins array
+      admins: [req.user.id] 
     });
     await group.save();
     await broadcastLiveUpdate(group._id, req.user.id);
@@ -2260,14 +2260,14 @@ app.post('/api/groups', auth, async (req, res) => {
   }
 });
 
-// 🚀 REFACTORED ENDPOINT: TOGGLE MEMBER ROLE TO ADMIN/STUDENT (Creator Only)
+
 app.put('/api/groups/toggle-admin', auth, async (req, res) => {
   try {
     const { memberId } = req.body;
     const group = await Group.findOne({ members: req.user.id });
     if (!group) return res.status(404).json({ message: "Group not found." });
 
-    // Only original group creator can shift member permissions/roles
+    
     if (group.creatorId.toString() !== req.user.id) {
       return res.status(403).json({ message: "Only the group creator can manage admin assignments." });
     }
@@ -2302,7 +2302,7 @@ app.put('/api/groups/toggle-admin', auth, async (req, res) => {
   }
 });
 
-// 🚀 REFACTORED ENDPOINT: UPDATE GROUP DETAILS/NAME (Creators & Admins)
+
 app.put('/api/groups/update-name', auth, async (req, res) => {
   try {
     const { name } = req.body;
@@ -2329,7 +2329,7 @@ app.put('/api/groups/update-name', auth, async (req, res) => {
   }
 });
 
-// 🚀 NEW ENDPOINT: UPDATE GRADING PREFERENCE
+
 app.put('/api/groups/grading-preference', auth, async (req, res) => {
   try {
     const { gradingPreference } = req.body;
@@ -2358,13 +2358,13 @@ app.put('/api/groups/grading-preference', auth, async (req, res) => {
   }
 });
 
-// 🚀 REFACTORED ENDPOINT: ANY MEMBER CAN INVITE STUDENTS DIRECTLY NOW
+
 app.post('/api/groups/invite', auth, async (req, res) => {
   try {
     const { receiverId } = req.body;
     if (!receiverId) return res.status(400).json({ message: "Receiver ID is required" });
 
-    // Validate that sender belongs to the target active group
+    
     const group = await Group.findOne({ members: req.user.id });
     if (!group) return res.status(400).json({ message: "You must belong to a group to dispatch invites." });
 
@@ -2383,7 +2383,7 @@ app.post('/api/groups/invite', auth, async (req, res) => {
     await invite.save();
     await broadcastLiveUpdate(group._id, req.user.id);
     
-    // Notify receiver
+    
     const sender = await User.findById(req.user.id);
     const receiver = await User.findById(receiverId);
     if (receiver && sender) {
@@ -2398,7 +2398,7 @@ app.post('/api/groups/invite', auth, async (req, res) => {
   }
 });
 
-// 8. Update Group Profile Pic (Creators & Structural Promoted Admins)
+
 app.put('/api/groups/:id/profile-pic', auth, profilePicUpload.single('profilePic'), async (req, res) => {
   try {
     const group = await Group.findById(req.params.id);
@@ -2429,7 +2429,7 @@ app.put('/api/groups/:id/profile-pic', auth, profilePicUpload.single('profilePic
   }
 });
 
-// 2. Fetch User's Active Group
+
 app.get('/api/groups/my', auth, async (req, res) => {
   try {
     const group = await Group.findOne({ members: req.user.id })
@@ -2443,7 +2443,7 @@ app.get('/api/groups/my', auth, async (req, res) => {
   }
 });
 
-// 3. Leave or Disband Group (Robust Admin Leaving Protocol)
+
 app.post('/api/groups/leave', auth, async (req, res) => {
   try {
     const group = await Group.findOne({ members: req.user.id });
@@ -2457,16 +2457,16 @@ app.post('/api/groups/leave', auth, async (req, res) => {
 
     if (isGroupAdmin) {
       if (otherAdmins.length > 0) {
-        // Case 1: Group has another admin -> Do nothing, just exit current admin from admins and members list
+        
         group.admins = otherAdmins;
         group.members = otherMembers;
         if (group.creatorId.toString() === userIdStr) {
-          // If original creator is leaving, reassign creator status to the next active admin
+          
           group.creatorId = otherAdmins[0];
         }
         await group.save();
 
-        // Clean up tasks states for this leaving user
+        
         await Task.updateMany(
           { groupId: group._id },
           { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
@@ -2475,7 +2475,7 @@ app.post('/api/groups/leave', auth, async (req, res) => {
         res.json({ message: "Left group successfully. Workspace continues under other administrators." });
       }
       else if (otherMembers.length > 0) {
-        // Case 2: Group has no other admin but has other members -> Must promote selected member to Admin next
+        
         const { nextAdminId } = req.body;
         if (!nextAdminId) {
           return res.status(400).json({ message: "Please specify who should be promoted to Admin next." });
@@ -2487,13 +2487,13 @@ app.post('/api/groups/leave', auth, async (req, res) => {
           return res.status(400).json({ message: "Selected user is not a member of this group." });
         }
 
-        // Re-assign admin and creator roles to the chosen member, then remove leaving admin
+        
         group.admins = [nextAdminId];
         group.creatorId = nextAdminId;
         group.members = otherMembers;
         await group.save();
 
-        // Notify promoted member
+        
         const memberUser = await User.findById(nextAdminId);
         if (memberUser) {
           await createAcademicNotification(nextAdminId, 'group', `Admin Promoted 👑`, `You are now the Admin of "${group.name}".`);
@@ -2501,7 +2501,7 @@ app.post('/api/groups/leave', auth, async (req, res) => {
           io.to(nextAdminIdStr).emit('live_db_update');
         }
 
-        // Clean up tasks states for this leaving user
+        
         await Task.updateMany(
           { groupId: group._id },
           { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
@@ -2510,7 +2510,7 @@ app.post('/api/groups/leave', auth, async (req, res) => {
         res.json({ message: "Left group successfully. Administrative role reassigned." });
       }
       else {
-        // Case 3: Group has no one except admin -> Delete that group permanently
+        
         const pendingInvites = await GroupInvitation.find({ groupId: group._id });
         for (const invite of pendingInvites) {
           io.to(invite.receiverId.toString()).emit('live_db_update');
@@ -2522,12 +2522,12 @@ app.post('/api/groups/leave', auth, async (req, res) => {
         res.json({ message: "Group deleted permanently." });
       }
     } else {
-      // Regular Member Exit: Leave Group
+      
       group.members = otherMembers;
       group.admins = group.admins.filter(a => a.toString() !== userIdStr);
       await group.save();
 
-      // Clean up member-specific states
+      
       await Task.updateMany(
         { groupId: group._id },
         { $pull: { deletedByUsers: req.user.id, memberStatuses: { userId: req.user.id } } }
@@ -2541,7 +2541,7 @@ app.post('/api/groups/leave', auth, async (req, res) => {
   }
 });
 
-// 4. Fetch Community Students
+
 app.get('/api/users/community', auth, async (req, res) => {
   try {
     const { search } = req.query;
@@ -2586,7 +2586,7 @@ app.get('/api/users/community', auth, async (req, res) => {
   }
 });
 
-// 6. Fetch Received Pending Invitations
+
 app.get('/api/groups/invitations', auth, async (req, res) => {
   try {
     const invites = await GroupInvitation.find({ receiverId: req.user.id, status: 'pending' })
@@ -2600,7 +2600,7 @@ app.get('/api/groups/invitations', auth, async (req, res) => {
   }
 });
 
-// 7. Accept or Decline Invitation
+
 app.put('/api/groups/invitations/:id', auth, async (req, res) => {
   try {
     const { status } = req.body;
@@ -2620,15 +2620,15 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
       return res.json({ message: "Invitation declined successfully" });
     }
 
-    // Accepting
-    // If the user is already in a group, automatically exit it and handle admin promotion
+    
+    
     const userInGroup = await Group.findOne({ members: req.user.id });
     if (userInGroup) {
       userInGroup.members = userInGroup.members.filter(m => m.toString() !== req.user.id);
       userInGroup.admins = userInGroup.admins.filter(a => a.toString() !== req.user.id);
       
       if (userInGroup.members.length === 0) {
-        // Disband Group
+        
         const pendingInvites = await GroupInvitation.find({ groupId: userInGroup._id });
         for (const invite of pendingInvites) {
           io.to(invite.receiverId.toString()).emit('live_db_update');
@@ -2637,17 +2637,17 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
         await GroupInvitation.deleteMany({ groupId: userInGroup._id });
         await Task.updateMany({ groupId: userInGroup._id }, { groupId: null, memberStatuses: [] });
       } else {
-        // Leave Group and Auto-promote a member if no admins left
+        
         const userIdStr = req.user.id.toString();
         const isOldGroupAdmin = userInGroup.admins.length === 0 || userInGroup.creatorId.toString() === userIdStr;
 
         if (isOldGroupAdmin && userInGroup.admins.length === 0) {
-          // Promote first remaining member to admin and creator
+          
           const nextAdmin = userInGroup.members[0];
           userInGroup.admins = [nextAdmin];
           userInGroup.creatorId = nextAdmin;
           
-          // Notify the newly promoted admin
+          
           const memberUser = await User.findById(nextAdmin);
           if (memberUser) {
             await createAcademicNotification(nextAdmin, 'group', `Admin Promoted 👑`, `You are now the Admin of "${userInGroup.name}".`);
@@ -2655,7 +2655,7 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
             io.to(nextAdmin.toString()).emit('live_db_update');
           }
         } else if (userInGroup.creatorId.toString() === userIdStr) {
-          // If leaving user was creator but other admins exist, reassign creator to first remaining admin
+          
           userInGroup.creatorId = userInGroup.admins[0];
         }
 
@@ -2670,18 +2670,18 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
     const group = await Group.findById(invite.groupId);
     if (!group) return res.status(404).json({ message: "Associated study group no longer exists." });
 
-    // Add to group
+    
     group.members.push(req.user.id);
     await group.save();
 
-    // Mark as accepted
+    
     invite.status = 'accepted';
     await invite.save();
 
     const sender = await User.findById(req.user.id);
     await createGroupNotification(group._id, req.user.id, 'group', 'New Member Joined', `${sender?.name || 'A user'} accepted the invitation and joined the group.`);
 
-    // Notify the inviter
+    
     const inviter = await User.findById(invite.senderId);
     if (inviter) {
       await createAcademicNotification(invite.senderId, 'group', `Invitation Accepted ✅`, `${sender?.name || 'A user'} accepted your invite to "${group.name}".`);
@@ -2689,7 +2689,7 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
       io.to(invite.senderId.toString()).emit('live_db_update');
     }
 
-    // Reject all other pending invitations for this user
+    
     await GroupInvitation.updateMany(
       { receiverId: req.user.id, status: 'pending' },
       { status: 'rejected' }
@@ -2703,7 +2703,7 @@ app.put('/api/groups/invitations/:id', auth, async (req, res) => {
   }
 });
 
-// 9. Add Member Directly (Admins only)
+
 app.post('/api/groups/add-member', auth, async (req, res) => {
   try {
     const { memberId } = req.body;
@@ -2720,7 +2720,7 @@ app.post('/api/groups/add-member', auth, async (req, res) => {
     group.members.push(memberId);
     await group.save();
 
-    // delete any pending invitations for this user
+    
     await GroupInvitation.deleteMany({ receiverId: memberId, status: 'pending' });
     await broadcastLiveUpdate(group._id, req.user.id);
     io.to(memberId.toString()).emit('live_db_update');
@@ -2735,7 +2735,7 @@ app.post('/api/groups/add-member', auth, async (req, res) => {
   }
 });
 
-// 10. Remove Member Directly (Admins only)
+
 app.post('/api/groups/remove-member', auth, async (req, res) => {
   try {
     const { memberId } = req.body;
@@ -2751,14 +2751,14 @@ app.post('/api/groups/remove-member', auth, async (req, res) => {
     group.members = group.members.filter(m => m.toString() !== memberId);
     await group.save();
 
-    // Clean up member-specific states in tasks
+    
     await Task.updateMany(
       { groupId: group._id },
       { $pull: { deletedByUsers: memberId, memberStatuses: { userId: memberId } } }
     );
     await broadcastLiveUpdate(group._id, req.user.id);
     
-    // Notify removed member
+    
     const member = await User.findById(memberId);
     if (member) {
       await createAcademicNotification(memberId, 'group', `Removed from Group 🚪`, `You have been removed from "${group.name}".`);
@@ -2792,7 +2792,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
     ];
 
     const usersWithStorage = await Promise.all(users.map(async (user) => {
-      let storageBytes = 15360; // base footprint
+      let storageBytes = 15360; 
 
       if (!isCompact) {
         for (const { model, field } of modelsToMeasure) {
@@ -2803,7 +2803,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
             ]);
             if (result && result.length > 0) storageBytes += result[0].size;
           } catch (e) {
-            // Fallback if $bsonSize fails
+            
           }
         }
       }
@@ -2874,7 +2874,7 @@ app.put('/api/admin/users/leaderboard-toggle-all', auth, adminAuth, async (req, 
     const requestingUser = await User.findById(req.user.id);
     const isReqSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
-    // Bulk toggle only affects regular students (non-admins)
+    
     await User.updateMany({ isAdmin: { $ne: true } }, { isLeaderboardEnabled: enable === true });
     io.emit('leaderboard_toggle_all', { isLeaderboardEnabled: enable === true });
     res.json({ success: true, message: `Leaderboard access toggled for all students to ${enable === true}` });
@@ -2900,7 +2900,7 @@ app.put('/api/admin/users/:id/leaderboard-toggle', auth, adminAuth, async (req, 
       return res.status(403).json({ message: "Only Super Admin can change Admin leaderboard access." });
     }
 
-    // Toggle logic based on default rules
+    
     const currentVal = (targetUser.isLeaderboardEnabled !== false);
 
     targetUser.isLeaderboardEnabled = !currentVal;
@@ -2934,9 +2934,9 @@ app.post('/api/debts/:id/pay', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// ==========================================
-// 🚨 FIX: FULLY SECURED AND CORRECTED NOTES ROUTES 
-// ==========================================
+
+
+
 app.post('/api/notes', auth, async (req, res) => {
   try {
     const { _id, title, courseId, content, referenceFiles, source, isPrivate } = req.body;
@@ -2949,7 +2949,7 @@ app.post('/api/notes', auth, async (req, res) => {
       if (userGroup) {
         finalGroupId = userGroup._id;
       } else {
-        finalIsPrivate = true; // Fallback to private if user is not in a group
+        finalIsPrivate = true; 
       }
     }
 
@@ -3038,12 +3038,12 @@ app.get('/api/notes', auth, async (req, res) => {
 
     const notes = await Note.find({
       $or: [
-        { user: req.user.id, groupId: null, isDeleted: false }, // Private Notes & Inbox Notes
-        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } // Active Group Notes
+        { user: req.user.id, groupId: null, isDeleted: false }, 
+        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } 
       ]
     })
     .populate('user', 'name email profilePic')
-    .populate('sender', 'name profilePic') // Hydrate the sender details for Inbox
+    .populate('sender', 'name profilePic') 
     .sort({ createdAt: -1 })
     .lean();
 
@@ -3062,11 +3062,11 @@ app.put('/api/notes/:id/delete', auth, async (req, res) => {
     const oldGroupId = note.groupId;
 
     if (isCreator) {
-      // Owner Delete -> Global Bin Move
+      
       note.isDeleted = true;
       note.deletedAt = new Date();
     } else if (note.groupId) {
-      // Member Delete -> Isolated Local Array Only
+      
       if (!note.deletedByUsers.map(id => id.toString()).includes(req.user.id)) {
         note.deletedByUsers.push(req.user.id);
       }
@@ -3092,7 +3092,7 @@ app.put('/api/notes/:id/restore', auth, async (req, res) => {
       note.deletedAt = null;
     }
     
-    // Always clear from personal bin if member restores
+    
     note.deletedByUsers = note.deletedByUsers.filter(id => id.toString() !== req.user.id);
 
     await note.save();
@@ -3152,7 +3152,7 @@ app.put('/api/admin/change-pin', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 
-// === ADMIN: Block / Unblock a user ===
+
 app.put('/api/admin/users/:id/block', auth, adminAuth, async (req, res) => {
   try {
     const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
@@ -3162,7 +3162,7 @@ app.put('/api/admin/users/:id/block', auth, adminAuth, async (req, res) => {
     if (targetUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
       return res.status(403).json({ message: 'Super Admin cannot be blocked.' });
     }
-    // Only super admin can block other admins
+    
     if (targetUser.isAdmin && requestingUser.email.toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase()) {
       return res.status(403).json({ message: 'Only Super Admin can block other admins.' });
     }
@@ -3175,7 +3175,7 @@ app.put('/api/admin/users/:id/block', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// === ADMIN: Validate UCP session for a user ===
+
 app.get('/api/admin/validate-session/:userId', auth, adminAuth, async (req, res) => {
   try {
     const targetUser = await User.findById(req.params.userId);
@@ -3205,7 +3205,7 @@ app.get('/api/admin/validate-session/:userId', auth, adminAuth, async (req, res)
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// === ADMIN: Broadcast push notification ===
+
 app.post('/api/admin/push-notification', auth, adminAuth, async (req, res) => {
   try {
     const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
@@ -3247,7 +3247,7 @@ app.post('/api/admin/push-notification', auth, adminAuth, async (req, res) => {
       }
     }
 
-    // Save user-facing in-app Notification records in bulk & emit WebSocket pings
+    
     const notificationsToSave = targetUsers.map(u => ({
       userId: u._id,
       type: 'broadcast',
@@ -3283,7 +3283,7 @@ app.post('/api/admin/push-notification', auth, adminAuth, async (req, res) => {
   }
 });
 
-// === ADMIN: Get broadcast history ===
+
 app.get('/api/admin/notifications', auth, adminAuth, async (req, res) => {
   try {
     const records = await AdminNotification.find().sort({ createdAt: -1 }).limit(100);
@@ -3291,7 +3291,7 @@ app.get('/api/admin/notifications', auth, adminAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// === SUPER ADMIN ONLY: Delete a broadcast record ===
+
 app.delete('/api/admin/notifications/:id', auth, adminAuth, async (req, res) => {
   try {
     const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
@@ -3304,7 +3304,7 @@ app.delete('/api/admin/notifications/:id', auth, adminAuth, async (req, res) => 
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// === ADMIN: Get BackBlaze B2 files list ===
+
 app.get('/api/admin/b2-files', auth, adminAuth, async (req, res) => {
   try {
     const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
@@ -3326,7 +3326,7 @@ app.get('/api/admin/b2-files', auth, adminAuth, async (req, res) => {
   }
 });
 
-// === ADMIN: Delete file from BackBlaze B2 ===
+
 app.delete('/api/admin/b2-files', auth, adminAuth, async (req, res) => {
   try {
     const { key } = req.query;
@@ -3339,7 +3339,7 @@ app.delete('/api/admin/b2-files', auth, adminAuth, async (req, res) => {
     });
     await b2.send(command);
 
-    // Also delete references from the DB if they exist
+    
     await CourseMaterial.deleteMany({ b2Key: key });
     await CourseVaultFile.deleteMany({ b2Key: key });
 
@@ -3350,10 +3350,10 @@ app.delete('/api/admin/b2-files', auth, adminAuth, async (req, res) => {
   }
 });
 
-// === ADMIN: Trigger manual processing ===
+
 app.post('/api/admin/trigger-processor', auth, adminAuth, async (req, res) => {
   try {
-    const { userId, type } = req.body; // type can be 'single_user_process', 'single_user_nightly', or 'nightly_sync_all'
+    const { userId, type } = req.body; 
 
     if (type === 'single_user_process') {
       if (!userId) return res.status(400).json({ message: 'User ID is required for single user processing.' });
@@ -3362,7 +3362,7 @@ app.post('/api/admin/trigger-processor', auth, adminAuth, async (req, res) => {
       if (!user) return res.status(404).json({ message: 'User not found.' });
       if (!user.ucpCookie) return res.status(400).json({ message: 'User has no saved UCP Cookie.' });
 
-      // Run immediately in the background
+      
       processUserMaterials(user._id.toString(), user.ucpCookie)
         .catch(err => console.error(`[MANUAL_PROC] Async processing failed for ${user.email}:`, err.message));
 
@@ -3375,14 +3375,14 @@ app.post('/api/admin/trigger-processor', auth, adminAuth, async (req, res) => {
       if (!user) return res.status(404).json({ message: 'User not found.' });
       if (!user.ucpCookie) return res.status(400).json({ message: 'User has no saved UCP Cookie.' });
 
-      // Trigger crawl + sync for this user in background
+      
       (async () => {
         const cheerio = require('cheerio');
         const courses = await Course.find({ userId: user._id, type: 'university', portalUrl: { $exists: true, $ne: '' } }).lean();
         console.log(`[MANUAL_NIGHTLY] Crawling ${courses.length} courses for ${user.email}`);
         
         for (const course of courses) {
-          // Skip 0 credit hour courses
+          
           if (course.creditHours === 0) {
             console.log(`[MANUAL_NIGHTLY] Skipping 0 credit hour course material: ${course.code}`);
             continue;
@@ -3541,7 +3541,7 @@ app.get('/api/auth/user', auth, async (req, res) => {
     const origin = req.headers.origin || req.headers.referer || '';
     const ua = req.headers['user-agent'] || '';
 
-    // Check if accessed from Web Portal
+    
     if (!user.accessedWeb) {
       if (origin.includes('web.myportalucp.online') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
         user.accessedWeb = true;
@@ -3549,7 +3549,7 @@ app.get('/api/auth/user', auth, async (req, res) => {
       }
     }
 
-    // Check if accessed from Mobile App
+    
     if (!user.accessedMobile) {
       const isMobileUA = ua.includes('okhttp') || ua.includes('Expo') || ua.includes('React-Native') || ua.includes('Darwin') || ua.includes('Android');
       if (isMobileUA || (user.pushTokens && user.pushTokens.length > 0)) {
@@ -3575,7 +3575,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Fetch user groups to get active group tasks/notes
+    
     const userGroups = await Group.find({ members: userId }).lean().select('_id');
     const groupIds = userGroups.map(g => g._id);
 
@@ -3657,7 +3657,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
         .lean()
     ]);
 
-    // Localize tasks
+    
     const localizedTasks = tasks.map(task => {
       const taskObj = { ...task };
       if (taskObj.groupId) {
@@ -3669,7 +3669,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
       return taskObj;
     });
 
-    // Handle course creation check if user has no courses
+    
     let finalCourses = courses;
     if (courses.length === 0) {
       const generalCourse = new Course({ userId, name: 'General Course', type: 'general' });
@@ -3733,7 +3733,7 @@ app.post('/api/auth/check-block-status', async (req, res) => {
 });
 
 
-// Helper to compare, log, and update detailed student profile fields
+
 const updateProfileFields = (user, body) => {
   const fields = [
     'secondaryEmail', 'phone', 'emergencyContact', 'presentAddress', 'permanentAddress',
@@ -3776,9 +3776,9 @@ const updateProfileFields = (user, body) => {
 };
 
 
-// =================================================================
-// 🚀 UNIFIED MICROSOFT SSO LOGIN & FAST-LOGIN ENGINE
-// =================================================================
+
+
+
 app.post('/api/auth/microsoft-login', async (req, res) => {
   try {
     const { rollNumber, name, profilePic, ucpCookie } = req.body;
@@ -3813,9 +3813,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 
     if (profilePic && profilePic.includes('base64')) {
       try {
-        const base64Data = profilePic; // Keep data URI prefix for Cloudinary
+        const base64Data = profilePic; 
 
-        // 🚨 NEW: Upload base64 directly to Cloudinary
+        
         const uploadResponse = await cloudinary.uploader.upload(base64Data, {
           folder: 'myportal/avatars',
           public_id: `portal_profile_${formattedRoll}_${Date.now()}`,
@@ -3855,7 +3855,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         ucpCookie: ucpCookie,
         portalProfilePic: finalProfilePicUrl,
         originalPortalProfilePic: finalProfilePicUrl
-        // profilePic is strictly left empty so it doesn't show to community
+        
       });
       updateProfileFields(user, req.body);
       await user.save();
@@ -3919,12 +3919,12 @@ app.post('/api/reset-password', async (req, res) => {
 app.get('/api/ping', (req, res) => res.json({ status: "alive", time: new Date() }));
 
 
-// 🚨 NEW: 📸 CLOUDINARY PROFILE PICTURE UPLOAD 
+
 app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], auth, profilePicUpload.single('profilePic'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    // Cloudinary puts the final URL in req.file.path
+    
     const fileUrl = req.file.path;
 
     console.log(`📸 [PROFILE] Successful Cloudinary upload for user ${req.user.id}. URL: ${fileUrl}`);
@@ -4001,13 +4001,13 @@ app.post('/api/user/push-token', auth, async (req, res) => {
     const removeToken = req.body.removeToken;
 
     if (token) {
-      // 1. Remove this token from any OTHER users' pushTokens lists to prevent cross-user leakage
+      
       await User.updateMany(
         { _id: { $ne: user._id }, pushTokens: token },
         { $pull: { pushTokens: token } }
       );
 
-      // 2. Add it to the current user's pushTokens list (if not already there)
+      
       if (!user.pushTokens) user.pushTokens = [];
       if (!user.pushTokens.includes(token)) {
         user.pushTokens.push(token);
@@ -4026,7 +4026,7 @@ app.post('/api/user/push-token', auth, async (req, res) => {
 
 app.put('/api/user/preferences', auth, async (req, res) => { try { await User.findByIdAndUpdate(req.user.id, { prayerNotifs: req.body.prayerNotifs }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-// Course visibility toggle
+
 app.put('/api/user/course-preferences', auth, async (req, res) => {
   try {
     const { courseName, isVisible } = req.body;
@@ -4127,14 +4127,14 @@ app.get('/api/sync-diagnostics', auth, async (req, res) => {
 app.get('/api/focus-sessions', auth, async (req, res) => { try { res.json(await FocusSession.find({ userId: req.user.id }).sort({ completedAt: -1 })); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.post('/api/focus-sessions', auth, async (req, res) => { try { res.json(await new FocusSession({ ...req.body, userId: req.user.id }).save()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-// ==========================================
-// 🚀 INSTANT WEBSOCKET BROADCAST HELPER
-// ==========================================
+
+
+
 async function broadcastLiveUpdate(groupId, activeUserId) {
-  // Notify the action initiator instantly
+  
   io.to(activeUserId.toString()).emit('live_db_update');
   
-  // If it's a shared group task, instantly broadcast to all members in that group workspace
+  
   if (groupId) {
     const group = await Group.findById(groupId);
     if (group) {
@@ -4145,9 +4145,9 @@ async function broadcastLiveUpdate(groupId, activeUserId) {
   }
 }
 
-// ==========================================
-// 🔔 NOTIFICATIONS API
-// ==========================================
+
+
+
 app.get('/api/notifications', auth, async (req, res) => {
   try {
     const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(50).lean();
@@ -4211,7 +4211,7 @@ const createGroupNotification = async (groupId, senderId, type, title, message, 
     if (notifications.length > 0) {
       await Notification.insertMany(notifications);
       
-      // 🚀 SEND PUSH NOTIFICATIONS TO ALL OTHER MEMBERS
+      
       const usersToPush = await User.find({ _id: { $in: memberIds } });
       for (const u of usersToPush) {
         await sendPush(u, title, message, { link, type, senderName: sender?.name }, "smart-alert", "default");
@@ -4227,7 +4227,7 @@ const createAcademicNotification = async (userId, type, title, message, link = '
   try {
     const notification = new Notification({
       userId,
-      type, // 'marks', 'attendance', 'submission', 'announcement'
+      type, 
       title,
       message,
       link,
@@ -4235,7 +4235,7 @@ const createAcademicNotification = async (userId, type, title, message, link = '
     });
     await notification.save();
     
-    // Trigger WebSocket so Bell icon updates instantly
+    
     io.to(userId.toString()).emit('live_db_update');
   } catch (error) {
     console.error("Failed to create academic notification", error);
@@ -4244,11 +4244,11 @@ const createAcademicNotification = async (userId, type, title, message, link = '
 
 
 
-// ==========================================
-// 📝 STRICT TASK MANAGEMENT ROUTES
-// ==========================================
 
-// 1. Fetch Active Dashboard Tasks (with status masking per member)
+
+
+
+
 app.get('/api/tasks', auth, async (req, res) => {
   try {
     const userGroups = await Group.find({ members: req.user.id }).lean().select('_id');
@@ -4256,15 +4256,15 @@ app.get('/api/tasks', auth, async (req, res) => {
 
     const tasks = await Task.find({
       $or: [
-        { userId: req.user.id, groupId: null, isDeleted: false }, // Private tasks owned by user
-        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } // Active Group tasks
+        { userId: req.user.id, groupId: null, isDeleted: false }, 
+        { groupId: { $in: groupIds }, isDeleted: false, deletedByUsers: { $ne: req.user.id } } 
       ]
     })
     .populate('userId', 'name email profilePic')
     .sort({ createdAt: -1 })
     .lean();
 
-    // Map status out dynamically so group members see their personal overrides seamlessly
+    
     const localizedTasks = tasks.map(task => {
       const taskObj = { ...task };
       if (taskObj.groupId) {
@@ -4303,7 +4303,7 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    // STRICT RULE: Only the literal creator matches. Admin bypass completely removed.
+    
     const isCreator = task.userId.toString() === req.user.id;
 
     let isMember = false;
@@ -4318,7 +4318,7 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
       return res.status(403).json({ message: "Unauthorized interaction with workspace task." });
     }
 
-    // SCENARIO A: TASK CREATOR - Full modifications & privacy changes allowed
+    
     if (isCreator) {
       const targetPrivacy = req.body.isPrivate;
 
@@ -4341,10 +4341,10 @@ app.put('/api/tasks/:id', auth, async (req, res) => {
         else task.memberStatuses.push({ userId: req.user.id, status: req.body.status });
       }
     } 
-    // SCENARIO B: GROUP MEMBER - Strict View-Only (Status exceptions)
+    
     else {
-      // Members can only modify their personal isolated status
-      const allowedKeys = ['status', 'acknowledged']; // Safe keys for members
+      
+      const allowedKeys = ['status', 'acknowledged']; 
       const modifications = Object.keys(req.body);
       const isViolatingPermissions = modifications.some(key => !allowedKeys.includes(key));
 
@@ -4389,22 +4389,22 @@ app.put('/api/tasks/:id/acknowledge', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// 5. Delete Task (Creator vs Member isolation rules)
+
 app.put('/api/tasks/:id/delete', auth, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    // STRICT RULE: Admin bypass removed.
+    
     const isCreator = task.userId.toString() === req.user.id;
     const oldGroupId = task.groupId;
 
     if (isCreator) {
-      // Creator deletes: Master deletion flag triggers (Disappears from everyone's hub)
+      
       task.isDeleted = true;
       task.deletedAt = new Date();
     } else if (task.groupId) {
-      // Member deletes: Stored purely in local deletion array on their side only
+      
       if (!task.deletedByUsers.map(id => id.toString()).includes(req.user.id)) {
         task.deletedByUsers.push(req.user.id);
       }
@@ -4546,7 +4546,7 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
     const habit = await Habit.findOne({ _id: req.params.id, userId: req.user.id });
     habit.checkIns.push(new Date());
     
-    // Calculate consecutive streak
+    
     const uniqueDays = [...new Set(habit.checkIns.map(d => new Date(d).setHours(0, 0, 0, 0)))].sort((a,b) => b - a);
     let streak = 0;
     let currentDate = new Date().setHours(0,0,0,0);
@@ -4558,7 +4558,7 @@ app.put('/api/habits/:id/checkin', auth, async (req, res) => {
     
     if (streak > habit.longestStreak) habit.longestStreak = streak;
     
-    // Check milestones
+    
     const MILESTONES = [7, 21, 30, 60, 90, 100, 365];
     for (let m of MILESTONES) {
       if (streak >= m && !habit.milestones.find(mil => mil.days === m)) {
@@ -4655,8 +4655,8 @@ app.get('/api/bin', auth, async (req, res) => {
     const userGroups = await Group.find({ members: req.user.id });
     const groupIds = userGroups.map(g => g._id);
 
-    // Tasks are in bin if the user is the creator and it's marked master deleted,
-    // OR if it's a shared group task and the member explicitly trashed it on their side.
+    
+    
     const tasks = await Task.find({
       $or: [
         { userId: req.user.id, isDeleted: true },
@@ -4664,8 +4664,8 @@ app.get('/api/bin', auth, async (req, res) => {
       ]
     }).populate('userId', 'name email profilePic').lean();
 
-    // Notes are in bin if creator and isDeleted,
-    // OR if it's a shared group note and the member explicitly trashed it on their side.
+    
+    
     const notes = await Note.find({
       $or: [
         { user: req.user.id, isDeleted: true },
@@ -4716,13 +4716,13 @@ app.delete('/api/bin/empty', auth, async (req, res) => {
 
 app.get('/', (req, res) => { res.json({ message: "API is running 🚀" }); });
 
-// ==========================================
-// 🚨 COMMUNITY NOTES & WORKSPACE ROUTES
-// ==========================================
+
+
+
 
 app.get('/api/community/users', auth, async (req, res) => {
   try {
-    // Fetch everyone except the current user
+    
     const users = await User.find({ _id: { $ne: req.user.id } }).select('name email profilePic');
     res.json(users);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -4745,7 +4745,7 @@ app.post('/api/notes/share', auth, async (req, res) => {
       const message = `${senderUser?.name || 'A user'} shared ${notesStr} with you.`;
 
       for (let note of notesToShare) {
-        // Create a clone in the target user's Inbox
+        
         const newNote = new Note({
           user: targetId,
           title: note.title,
@@ -4753,9 +4753,9 @@ app.post('/api/notes/share', auth, async (req, res) => {
           courseId: note.courseId,
           referenceFiles: note.referenceFiles,
           source: note.source,
-          isPrivate: true, // Inherently private to the new user once accepted
+          isPrivate: true, 
           groupId: null,
-          isInbox: true,   // Triggers the Inbox status
+          isInbox: true,   
           sender: req.user.id
         });
         await newNote.save();
@@ -4763,12 +4763,12 @@ app.post('/api/notes/share', auth, async (req, res) => {
       }
 
       if (targetUser && notesCount > 0) {
-        // Send push notification
+        
         if (typeof sendPush === 'function') {
           await sendPush(targetUser, title, message, { type: 'note' }, 'smart-alert', 'default');
         }
         
-        // Save in-app Notification log
+        
         const notification = new Notification({
           userId: targetId,
           type: 'note',
@@ -4791,14 +4791,14 @@ app.put('/api/notes/:id/accept', auth, async (req, res) => {
     const note = await Note.findById(req.params.id);
     if (note.user.toString() !== req.user.id) return res.status(403).json({ error: "Unauthorized" });
     
-    note.isInbox = false; // Move from Inbox to active workspace
+    note.isInbox = false; 
     await note.save();
     
     io.to(req.user.id.toString()).emit('live_db_update');
     res.json(await Note.findById(note._id).populate('user', 'name email profilePic').populate('sender', 'name profilePic'));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-// Notes routes defined under the primary notes section at line 1766
+
 
 app.put('/api/notes/:id', auth, async (req, res) => {
   try {
@@ -4830,7 +4830,7 @@ app.put('/api/notes/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// Notes delete route defined under the primary notes section at line 1881
+
 
 app.put('/api/notes/:id/restore', auth, async (req, res) => {
   try {
@@ -4864,9 +4864,9 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Error deleting note" }); }
 });
 
-// ==========================================
-// 🏆 RELATIVE GRADING LEADERBOARD API (EXTENSION)
-// ==========================================
+
+
+
 app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   try {
     const courseCode = req.params.courseCode;
@@ -4896,10 +4896,10 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       };
     } else {
       if (courseCode.includes('-')) {
-        // If it looks like a full course code, do an exact case-insensitive match
+        
         query = { code: { $regex: '^' + escapeRegex(courseCode.trim()) + '$', $options: 'i' } };
       } else {
-        // It's a short course code, use prefix match
+        
         query = { code: { $regex: '^' + escapeRegex(courseCode.trim()), $options: 'i' } };
         if (section) {
           query.section = { $regex: '^' + escapeRegex(section.trim()) + '$', $options: 'i' };
@@ -4907,7 +4907,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       }
     }
 
-    // Find all courses matching this course code prefix (and section if provided)
+    
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic');
     
     if (!matchingCourses || matchingCourses.length === 0) {
@@ -4918,7 +4918,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     const grades = await Grade.find({ userId: { $in: userIds } });
 
     let leaderboard = matchingCourses.map(course => {
-      // Find matching grade entry for this user
+      
       const userGrade = grades.find(g =>
         g.userId.toString() === course.userId?._id.toString() &&
         (
@@ -4953,7 +4953,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     leaderboard = leaderboard.filter(s => s.id !== 'Unknown ID');
     leaderboard.sort((a, b) => b.score - a.score);
 
-    // Add rank and relative grading properties
+    
     const total = leaderboard.length;
     leaderboard = leaderboard.map((s, idx) => {
       const pctile = (idx / total) * 100;
@@ -4976,23 +4976,23 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   }
 });
 
-// ==========================================
-// 🏆 RELATIVE GRADING & LEADERBOARD API (ADMIN & SUPER ADMIN ONLY)
-// ==========================================
+
+
+
 app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
   try {
-    // 🔒 Strict security guard: Reject request if requester is not an administrator
+    
     const requestingUser = await User.findById(req.user.id);
     if (!requestingUser) return res.status(404).json({ message: "User not found" });
 
     const isSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
-    // Block non-admins (students) if access is disabled
+    
     if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled === false) {
       return res.status(403).json({ message: "Leaderboard has been disabled for your account by an administrator." });
     }
 
-    const gradeName = req.query.gradeName; // NEW: Precise identifier 
+    const gradeName = req.query.gradeName; 
 
     const myCourse = await Course.findById(req.params.courseId);
     if (!myCourse) return res.status(404).json({ message: "Course not found" });
@@ -5011,7 +5011,7 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
       if (myCourse.section) query.section = myCourse.section;
     }
 
-    // Aggregates all registered students in this specific section block
+    
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic'); 
     
     if (!matchingCourses || matchingCourses.length === 0) {
@@ -5026,12 +5026,12 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
         if (!g.userId || !course.userId?._id) return false;
         if (g.userId.toString() !== course.userId._id.toString()) return false;
         
-        // Exact match injection forces lab logic if passed
+        
         if (gradeName) {
           return g.courseName === gradeName;
         }
 
-        // Web logic fallback mapping
+        
         return (
           (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
           (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
@@ -5086,9 +5086,9 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
   }
 });
 
-// ==========================================
-// 📅 HABITS PUSH NOTIFICATION CRON
-// ==========================================
+
+
+
 cron.schedule('0 20 * * *', async () => {
   try {
     const habits = await Habit.find({ isDeleted: false }).populate('userId');
@@ -5116,9 +5116,9 @@ cron.schedule('0 20 * * *', async () => {
   } catch (error) { console.error("[CRON] Habit Reminder Error:", error); }
 }, { timezone: "Asia/Karachi" });
 
-// ==========================================
-// 🔔 THE 1-MINUTE CRON ENGINES 
-// ==========================================
+
+
+
 
 cron.schedule('* * * * *', async () => {
 
@@ -5159,9 +5159,9 @@ cron.schedule('* * * * *', async () => {
   } catch (error) { console.error(`[DEADLINE ENGINE] Error:`, error.message); }
 });
 
-// ==========================================
-// 🗑️ RECYCLE BIN 30-DAY AUTO-PURGE CRON
-// ==========================================
+
+
+
 cron.schedule('0 0 * * *', async () => {
   console.log('[CRON] 🗑️ Initiating 30-Day Recycle Bin auto-purge...');
   try {
@@ -5189,10 +5189,10 @@ cron.schedule('0 0 * * *', async () => {
   }
 }, { timezone: "Asia/Karachi" });
 
-// ==========================================
-// 🔔 3x DAILY SYNC PROMPT NOTIFICATIONS
-// 9:00 AM PKT (4:00 AM UTC), 1:00 PM PKT (8:00 AM UTC), 6:00 PM PKT (1:00 PM UTC)
-// ==========================================
+
+
+
+
 async function sendSyncPromptToAll(title, body) {
   try {
     const activeUsers = await User.find({
@@ -5220,14 +5220,14 @@ async function sendSyncPromptToAll(title, body) {
   }
 }
 
-// Removed all sync crons
 
-// ==========================================
-// 🚀 TIERED BACKGROUND SCRAPER ENGINES (CRON)
-// ==========================================
+
+
+
+
 const { scrapeServerSide } = require('./services/scraperEngine');
 
-// Helper to run background sync for a specific mode
+
 const runTieredSync = async (mode, logName) => {
   console.log(`[CRON] 🌐 Starting ${logName} Scrape Engine...`);
   try {
@@ -5240,7 +5240,7 @@ const runTieredSync = async (mode, logName) => {
 
 
     for (let user of activeUsers) {
-      // Skip if last synced less than 12 minutes ago (longer than any realistic scrape duration)
+      
       if (user.lastSyncAt && (Date.now() - new Date(user.lastSyncAt).getTime()) < 12 * 60 * 1000) {
         console.log(`[CRON] ⏭️ Skipping ${user.email} - synced ${Math.round((Date.now() - new Date(user.lastSyncAt).getTime()) / 1000)}s ago.`);
         continue;
@@ -5248,7 +5248,7 @@ const runTieredSync = async (mode, logName) => {
 
       const cronSyncKey = user._id.toString();
 
-      // 🔒 Skip if a sync is already running for this user (e.g. mobile app opened simultaneously)
+      
       if (activeSyncs.has(cronSyncKey)) {
         console.log(`[CRON] ⏭️ Skipping ${user.email} — sync already in progress (lock held).`);
         continue;
@@ -5269,7 +5269,7 @@ const runTieredSync = async (mode, logName) => {
         const scrapedPayload = await scrapeServerSide(user.ucpCookie, mode, user.portalId);
         scrapedPayload.syncLogId = syncLog._id.toString();
 
-        // Generate an internal token to call our own endpoint
+        
         const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
         const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
         
@@ -5305,11 +5305,11 @@ const runTieredSync = async (mode, logName) => {
           await createAcademicNotification(user._id, 'system', title, message);
         }
       } finally {
-        // 🔓 Always release the lock for this user
+        
         activeSyncs.delete(cronSyncKey);
       }
 
-      // Gentle inter-user delay to avoid overwhelming UCP servers
+      
       await new Promise(r => setTimeout(r, 2000));
     }
 
@@ -5318,15 +5318,15 @@ const runTieredSync = async (mode, logName) => {
   }
 };
 
-// 1. Submissions + Attendance + Grades - Every 20 minutes during university hours (8 AM - 6 PM PKT)
+
 cron.schedule('*/20 8-18 * * *', () => runTieredSync('HIGH', 'Submissions/Attendance/Grades (20m)'), { timezone: "Asia/Karachi" });
 
-// 2. Full Sync (History/Timetable/Announcements) - Every 6 hours
+
 cron.schedule('0 */6 * * *', () => runTieredSync('FULL', 'Full Sync + Announcements (6h)'), { timezone: "Asia/Karachi" });
 
 cron.schedule('0 2 * * *', () => runNightlyMaterialSync(User, Course), { timezone: "Asia/Karachi" });
 
-// 3. Lightweight UCP/Odoo Session Heartbeat - Every 10 minutes
+
 cron.schedule('*/10 * * * *', async () => {
   console.log('[CRON] 💓 Starting session keep-alive ping cycle (10m)...');
   try {
@@ -5341,7 +5341,7 @@ cron.schedule('*/10 * * * *', async () => {
     console.log(`[CRON] Found ${activeUsers.length} users to ping keep-alive.`);
 
     for (const user of activeUsers) {
-      // Stagger delay between users (ms) — prevents hammering UCP portal
+      
       await new Promise(r => setTimeout(r, 2000));
       try {
         const cookie = user.ucpCookieEncrypted ? decrypt(user.ucpCookieEncrypted) : user.ucpCookie;
@@ -5386,7 +5386,7 @@ cron.schedule('*/10 * * * *', async () => {
   }
 });
 
-// POST /api/sync-grades - Manual portal FULL sync endpoint triggered from Settings
+
 app.post('/api/sync-grades', auth, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -5443,11 +5443,11 @@ app.post('/api/sync-grades', auth, async (req, res) => {
   }
 });
 
-// ==========================================
-// 🗂️ COURSE MATERIAL & COURSE VAULT APIS (Fully Automated)
-// ==========================================
 
-// Direct download proxy redirect to avoid heavy cryptographic signing during file listing API requests
+
+
+
+
 app.get('/api/course-material/download/:fileId', async (req, res) => {
   try {
     const token = req.header('x-auth-token') || req.query.token;
@@ -5459,7 +5459,7 @@ app.get('/api/course-material/download/:fileId', async (req, res) => {
     if (!file || !file.b2Key) {
       return res.status(404).json({ message: 'File not found.' });
     }
-    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300, file.fileName || file.normalizedFileName); // 5 min expiry is enough for immediate redirect
+    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300, file.fileName || file.normalizedFileName); 
     res.redirect(signedUrl);
   } catch (err) {
     console.error('[API] download redirect error:', err.message);
@@ -5467,14 +5467,14 @@ app.get('/api/course-material/download/:fileId', async (req, res) => {
   }
 });
 
-// 1. Get all scraped course materials for a section (returns files + signed download URLs)
+
 app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) => {
   try {
     const { courseCode, sectionCode } = req.params;
     const globalCode = courseCode.split('-')[0].trim();
     const { getCurrentSemesterCode } = require('./services/scraperEngine');
 
-    // Find the active semester for this course
+    
     const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
     const activeSemester = course?.semester || getCurrentSemesterCode();
 
@@ -5483,7 +5483,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
       .sort({ isArchiveExtracted: 1, sequenceNumber: 1, fileName: 1 })
       .lean();
 
-    // Generate direct download URLs pointing to the proxy endpoint
+    
     const token = req.header('x-auth-token');
     const baseUrl = getBaseUrl(req);
     const withUrls = materials.map((m) => ({
@@ -5491,7 +5491,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
       downloadUrl: m.b2Key ? `${baseUrl}/api/course-material/download/${m._id}?token=${encodeURIComponent(token)}` : null
     }));
 
-    // Group extracted files under their parent archives
+    
     const grouped = [];
     const archives = {};
     for (const m of withUrls) {
@@ -5505,7 +5505,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
         grouped.push(m);
       }
     }
-    // Attach orphan extracted files to their zip parent
+    
     for (const m of grouped) {
       if ((m.fileType === 'zip' || m.fileType === 'rar') && archives[m.fileName]) {
         m.contents = archives[m.fileName];
@@ -5519,7 +5519,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
   }
 });
 
-// 2. Get scraping status for a section (including file progress count)
+
 app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req, res) => {
   try {
     const { courseCode, sectionCode } = req.params;
@@ -5531,7 +5531,7 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
 
     const count = await CourseMaterial.countDocuments({ courseCode: globalCode, sectionCode, semester: activeSemester });
     
-    // Find if there is an unprocessed linkSet for this user & course in the active semester
+    
     const pendingLinkSet = await MaterialLink.findOne({
       userId: req.user.id,
       courseCode: { $regex: '^' + escapeRegex(globalCode) + '(-|$)', $options: 'i' },
@@ -5571,7 +5571,7 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
 
 const zipJobs = new Map();
 
-// Periodic cleanup of completed or failed zip jobs older than 10 minutes
+
 setInterval(() => {
   const now = Date.now();
   for (const [jobId, job] of zipJobs.entries()) {
@@ -5579,9 +5579,9 @@ setInterval(() => {
       zipJobs.delete(jobId);
     }
   }
-}, 5 * 60 * 1000); // Run every 5 minutes
+}, 5 * 60 * 1000); 
 
-// 3.1 Start a zip packaging background job
+
 app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
   try {
     const { fileIds, courseName, courseCode, sectionCode, semester } = req.body;
@@ -5623,7 +5623,7 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
       createdAt: Date.now()
     });
 
-    // Start background zipping (non-blocking)
+    
     (async () => {
       try {
         const AdmZip = require('adm-zip');
@@ -5635,11 +5635,11 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
 
         for (const m of materials) {
           const job = zipJobs.get(jobId);
-          if (!job) break; // Job was cleaned up or deleted
+          if (!job) break; 
           
           if (m.b2Key) {
             try {
-              // Pass the original fileName as customFilename to getSignedDownloadUrl so it downloads with original name
+              
               const signedUrl = await getSignedDownloadUrl(m.b2Key, 300, m.fileName || m.normalizedFileName);
               const response = await fetch(signedUrl, { signal: AbortSignal.timeout(15000) });
               if (response.ok) {
@@ -5679,7 +5679,7 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
   }
 });
 
-// 3.2 Poll status of a zip packaging job
+
 app.get('/api/course-material/download-zip/status/:jobId', auth, async (req, res) => {
   const job = zipJobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ message: 'Job not found or expired.' });
@@ -5691,7 +5691,7 @@ app.get('/api/course-material/download-zip/status/:jobId', auth, async (req, res
   });
 });
 
-// 3.3 Get the packaged zip file
+
 app.get('/api/course-material/download-zip/file/:jobId', auth, async (req, res) => {
   const { jobId } = req.params;
   const job = zipJobs.get(jobId);
@@ -5705,11 +5705,11 @@ app.get('/api/course-material/download-zip/file/:jobId', auth, async (req, res) 
   res.setHeader('Content-Length', job.buffer.length);
   res.send(job.buffer);
 
-  // Clear job from memory after successful transfer
+  
   zipJobs.delete(jobId);
 });
 
-// 3. Download multiple files as a ZIP (server zips them from B2)
+
 app.post('/api/course-material/download-zip', auth, async (req, res) => {
   try {
     const { fileIds, courseName } = req.body;
@@ -5721,7 +5721,7 @@ app.post('/api/course-material/download-zip', auth, async (req, res) => {
 
     const materials = await CourseMaterial.find({ _id: { $in: fileIds } }).lean();
 
-    // Fetch all files in parallel from BackBlaze B2
+    
     const downloadPromises = materials.map(async (m) => {
       if (!m.b2Key) return null;
       try {
@@ -5759,11 +5759,11 @@ app.post('/api/course-material/download-zip', auth, async (req, res) => {
   }
 });
 
-// ============================================================================
-// ADMIN VAULT ENDPOINTS (Course Vault Moderation & Buckets)
-// ============================================================================
 
-// A1. Get all pending files for moderation
+
+
+
+
 app.get('/api/admin/vault/files/pending', adminAuth, async (req, res) => {
   try {
     const files = await CourseVaultFile.find({ status: 'pending' }).sort({ createdAt: -1 }).lean();
@@ -5773,7 +5773,7 @@ app.get('/api/admin/vault/files/pending', adminAuth, async (req, res) => {
   }
 });
 
-// A2. Get buckets for a course
+
 app.get('/api/admin/vault/buckets/:courseCode', adminAuth, async (req, res) => {
   try {
     const courseCode = req.params.courseCode.split('-')[0].trim();
@@ -5784,7 +5784,7 @@ app.get('/api/admin/vault/buckets/:courseCode', adminAuth, async (req, res) => {
   }
 });
 
-// A3. Create a bucket
+
 app.post('/api/admin/vault/buckets', adminAuth, async (req, res) => {
   try {
     const { name, courseCode } = req.body;
@@ -5796,11 +5796,11 @@ app.post('/api/admin/vault/buckets', adminAuth, async (req, res) => {
   }
 });
 
-// A4. Delete a bucket
+
 app.delete('/api/admin/vault/buckets/:id', adminAuth, async (req, res) => {
   try {
     await CourseVaultBucket.findByIdAndDelete(req.params.id);
-    // Optionally move files in this bucket back to pending or unbucketed
+    
     await CourseVaultFile.updateMany({ bucketId: req.params.id }, { $set: { status: 'pending', bucketId: null } });
     res.json({ success: true });
   } catch (err) {
@@ -5808,7 +5808,7 @@ app.delete('/api/admin/vault/buckets/:id', adminAuth, async (req, res) => {
   }
 });
 
-// A5. Publish/Approve a pending file into a bucket
+
 app.put('/api/admin/vault/files/:id/publish', adminAuth, async (req, res) => {
   try {
     const { bucketId } = req.body;
@@ -5822,13 +5822,13 @@ app.put('/api/admin/vault/files/:id/publish', adminAuth, async (req, res) => {
   }
 });
 
-// A6. Delete/Reject a file
+
 app.delete('/api/admin/vault/files/:id', adminAuth, async (req, res) => {
   try {
     const file = await CourseVaultFile.findById(req.params.id);
     if (!file) return res.status(404).json({ message: 'Not found' });
     if (file.b2Key) {
-        // We could delete from B2 here, skipping for safety or implement via b2Client delete function if it existed.
+        
     }
     await CourseVaultFile.findByIdAndDelete(req.params.id);
     res.json({ success: true });
@@ -5837,11 +5837,11 @@ app.delete('/api/admin/vault/files/:id', adminAuth, async (req, res) => {
   }
 });
 
-// ============================================================================
-// ADMIN COURSE MATERIALS ENDPOINTS
-// ============================================================================
 
-// 1. Get all unique courses and sections from CourseMaterial (for tree structure)
+
+
+
+
 app.get('/api/admin/course-materials/courses', auth, adminAuth, async (req, res) => {
   try {
     const courses = await CourseMaterial.aggregate([
@@ -5887,7 +5887,7 @@ app.get('/api/admin/course-materials/courses', auth, adminAuth, async (req, res)
   }
 });
 
-// 2. Get files and student connection statistics for a specific course section
+
 app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) => {
   try {
     const { courseCode, sectionCode, semester } = req.query;
@@ -5895,13 +5895,13 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
       return res.status(400).json({ message: 'Missing courseCode, sectionCode, or semester.' });
     }
 
-    // 1. Fetch materials files
+    
     const materials = await CourseMaterial.find({ courseCode, sectionCode, semester })
       .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key createdAt')
       .sort({ isArchiveExtracted: 1, fileName: 1 })
       .lean();
 
-    // 2. Generate direct download URLs pointing to the proxy endpoint
+    
     const token = req.header('x-auth-token');
     const baseUrl = getBaseUrl(req);
     const withUrls = materials.map((m) => ({
@@ -5909,7 +5909,7 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
       downloadUrl: m.b2Key ? `${baseUrl}/api/course-material/download/${m._id}?token=${encodeURIComponent(token)}` : null
     }));
 
-    // Group zip extracts
+    
     const grouped = [];
     const archives = {};
     for (const m of withUrls) {
@@ -5926,7 +5926,7 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
       }
     }
 
-    // 3. Fetch student statistics
+    
     const enrollments = await Course.find({
       code: { $regex: '^' + escapeRegex(courseCode) + '(-|$)' },
       section: sectionCode,
@@ -5960,7 +5960,7 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
   }
 });
 
-// Admin Unified Search Endpoint for Course Materials
+
 app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) => {
   try {
     const { q } = req.query;
@@ -5971,7 +5971,7 @@ app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) 
     const cleanQ = q.trim();
     const escapedQ = escapeRegex(cleanQ);
 
-    // 1. Search unique course/section configurations from Course schema
+    
     const matchedCourses = await Course.find({
       $or: [
         { name: { $regex: escapedQ, $options: 'i' } },
@@ -5982,7 +5982,7 @@ app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) 
     .limit(50)
     .lean();
 
-    // Deduplicate courses to unique { courseCode, courseName, sectionCode, semester }
+    
     const uniqueCoursesMap = new Map();
     for (const c of matchedCourses) {
       const key = `${c.code}_${c.section}_${c.semester}`;
@@ -5997,7 +5997,7 @@ app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) 
     }
     const deduplicatedCourses = Array.from(uniqueCoursesMap.values()).slice(0, 15);
 
-    // 2. Search files matching fileName
+    
     const matchedFiles = await CourseMaterial.find({
       fileName: { $regex: escapedQ, $options: 'i' }
     })
@@ -6005,7 +6005,7 @@ app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) 
     .limit(15)
     .lean();
 
-    // 3. Search students (Users)
+    
     const matchedUsers = await User.find({
       isAdmin: false,
       $or: [
@@ -6029,7 +6029,7 @@ app.get('/api/admin/course-materials/search', auth, adminAuth, async (req, res) 
   }
 });
 
-// Admin: Get all section enrollments for a specific student
+
 app.get('/api/admin/course-materials/student-sections/:userId', auth, adminAuth, async (req, res) => {
   try {
     const enrollments = await Course.find({ userId: req.params.userId })
@@ -6050,22 +6050,22 @@ app.get('/api/admin/course-materials/student-sections/:userId', auth, adminAuth,
   }
 });
 
-// 4. Get Course Vault files for a course, grouped by bucket (PUBLIC) - DISABLED
+
 app.get('/api/course-vault/:courseCode', auth, (req, res) => {
   res.json([]);
 });
 
-// 5. Get a fresh signed URL for a single vault file (for inline PDF viewer refresh) - DISABLED
+
 app.get('/api/course-vault/view/:id', auth, (req, res) => {
   res.status(404).json({ message: 'Course Vault is disabled.' });
 });
 
-// 6. (Old manual upload endpoint — kept but hidden from public; only internal use)
+
 app.post('/api/course-material/upload', auth, (req, res) => {
   return res.status(403).json({ message: 'Manual uploads are disabled. Course materials are synced automatically from Horizon Portal.' });
 });
 
-// Express Error Handling Middleware (must be defined AFTER all other routes and middleware)
+
 app.use((err, req, res, next) => {
   console.error('[EXPRESS_ERROR]', err.stack || err);
   if (res.headersSent) {

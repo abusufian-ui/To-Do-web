@@ -18,7 +18,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-  // Keynotes operate on user's private workspace
+  
   const displayKeynotes = keynotes;
 
   const isAudio = (url) => url?.match(/\.(m4a|mp3|wav|ogg|aac|mp4|3gp)$/i) || url?.includes('video/upload');
@@ -79,7 +79,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
   return (
     <div className="p-6 max-w-7xl mx-auto h-full flex flex-col relative overflow-hidden">
 
-      {/* Header Row */}
+      {}
       <div className="flex justify-between items-end mb-8 shrink-0">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Keynotes</h1>
@@ -139,12 +139,12 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
                     </div>
                   )}
 
-                  {/* Unread Ping Dot */}
+                  {}
                   {!note.isRead && !isSelectMode && (
                     <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-blue opacity-75"></span><span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-blue-500"></span></span>
                   )}
 
-                  {/* Course Badge & Date Header */}
+                  {}
                   <div className="flex justify-between items-start mb-4 gap-3">
                     <span className="inline-flex items-start gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 uppercase tracking-wider flex-1">
                       {isUni && <UCPLogo className="w-4 h-4 text-brand-blue shrink-0 mt-[1px]" />}
@@ -163,7 +163,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
 
                   {note.content && <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 leading-relaxed">{note.content}</p>}
 
-                  {/* Media Indicators Footer */}
+                  {}
                   <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800/50 flex items-center gap-3">
                     {images.length > 0 && <div className="flex items-center gap-1.5 text-xs text-pink-600 dark:text-pink-400 font-medium bg-pink-50 dark:bg-pink-500/10 px-2 py-1 rounded-md"><ImageIcon size={12} /> {images.length}</div>}
                     {audios.length > 0 && <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded-md"><Mic size={12} /> {audios.length}</div>}
@@ -176,7 +176,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
         )}
       </div>
 
-      {/* Floating Action Bar for Select Mode */}
+      {}
       {isSelectMode && selectedIds.length > 0 && (
         <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-white dark:bg-[#222230] border border-red-200 dark:border-red-900/50 shadow-2xl rounded-2xl p-3 flex items-center gap-4 animate-slideUp z-50">
           <span className="text-sm font-bold text-gray-800 dark:text-gray-200 pl-3 border-r border-gray-200 dark:border-gray-700 pr-4">
@@ -191,7 +191,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
         </div>
       )}
 
-      {/* --- DETAILED PREVIEW MODAL --- */}
+      {}
       {selectedNote && !isSelectMode && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-fadeIn">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setSelectedNote(null)}></div>
@@ -226,7 +226,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
 
               {selectedNote.mediaUrls && selectedNote.mediaUrls.length > 0 && (
                 <div className="space-y-4">
-                  {/* Images */}
+                  {}
                   {selectedNote.mediaUrls.filter(url => !isAudio(url)).length > 0 && (
                     <div className="grid grid-cols-2 gap-3">
                       {selectedNote.mediaUrls.filter(url => !isAudio(url)).map((url, i) => (
@@ -240,7 +240,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
                     </div>
                   )}
 
-                  {/* Audio */}
+                  {}
                   {selectedNote.mediaUrls.filter(url => isAudio(url)).map((url, i) => (
                     <div key={i} className="flex items-center bg-gray-50 dark:bg-[#252533] p-3 rounded-xl border border-gray-200 dark:border-gray-700/50">
                       <div className="p-2.5 bg-emerald-500/20 rounded-lg mr-4"><Mic className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /></div>
@@ -269,7 +269,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
         </div>
       )}
 
-      {/* --- FULLSCREEN IMAGE PREVIEW --- */}
+      {}
       {previewImage && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl animate-fadeIn">
           <button onClick={() => setPreviewImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all"><X size={24} /></button>

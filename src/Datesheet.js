@@ -63,7 +63,7 @@ const Datesheet = ({ exams = [] }) => {
   const done = sorted.length - remaining;
   const progressPct = sorted.length > 0 ? Math.round((done / sorted.length) * 100) : 0;
 
-  // Group by date for the timeline
+  
   const grouped = sorted.reduce((acc, exam) => {
     const key = exam.date;
     if (!acc[key]) acc[key] = [];
@@ -74,11 +74,11 @@ const Datesheet = ({ exams = [] }) => {
   return (
     <div className="h-full flex flex-col bg-gray-50 dark:bg-[#080808] animate-fadeIn overflow-hidden">
 
-      {/* ── Hero Header ─────────────────────────────────────────────── */}
+      {}
       <div className="shrink-0 px-4 md:px-12 pt-4 pb-4 md:pt-10 md:pb-8 bg-white dark:bg-[#0d0d0d] border-b border-gray-100 dark:border-[#1a1a1a]">
         <div className="max-w-5xl mx-auto">
 
-          {/* Title row */}
+          {}
           <div className="flex items-center justify-between gap-2 md:gap-4 mb-3 md:mb-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/30 shrink-0">
@@ -89,7 +89,7 @@ const Datesheet = ({ exams = [] }) => {
               </h1>
             </div>
 
-            {/* Stats cluster */}
+            {}
             <div className="flex items-center gap-3 md:items-end shrink-0">
               <div className="text-right hidden sm:block">
                 <div className="text-2xl md:text-5xl font-black text-gray-900 dark:text-white leading-none">{remaining}</div>
@@ -103,7 +103,7 @@ const Datesheet = ({ exams = [] }) => {
             </div>
           </div>
 
-          {/* Progress bar */}
+          {}
           {sorted.length > 0 && (
             <div>
               <div className="flex justify-between items-center mb-2">
@@ -121,7 +121,7 @@ const Datesheet = ({ exams = [] }) => {
         </div>
       </div>
 
-      {/* ── Content ─────────────────────────────────────────────────── */}
+      {}
       {sorted.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
           <div className="w-20 h-20 rounded-3xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/40 flex items-center justify-center mb-5 shadow-lg shadow-emerald-500/10">

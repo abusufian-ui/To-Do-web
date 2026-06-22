@@ -12,7 +12,7 @@ const CourseSubmissions = ({ submissions }) => {
     );
   }
 
-  // --- DATE FORMATTER ---
+  
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
     const d = new Date(dateStr);
@@ -36,7 +36,7 @@ const CourseSubmissions = ({ submissions }) => {
     return `${day}${suffix} ${month}, ${year} ${time}`;
   };
 
-  // --- TIME REMAINING CALCULATOR ---
+  
   const getTimeLeft = (dueDateStr) => {
     const due = new Date(dueDateStr);
     const now = new Date();
@@ -53,7 +53,7 @@ const CourseSubmissions = ({ submissions }) => {
   };
 
   const getStatus = (dueDate, dbStatus) => {
-    // Check our new dynamic backend status
+    
     if (dbStatus === 'Submitted') return { label: 'Submitted', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800', icon: CheckCircle };
     const isExpired = new Date() > new Date(dueDate);
     if (isExpired) return { label: 'Expired', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800', icon: AlertCircle };
@@ -91,7 +91,7 @@ const CourseSubmissions = ({ submissions }) => {
         return (
           <div key={idx} className={`relative overflow-hidden bg-white dark:bg-[#1E1E1E] border rounded-3xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 ${isExpired && !isSubmitted ? 'opacity-75 border-red-100 dark:border-red-900/30' : 'border-gray-100 dark:border-[#333]'}`}>
             
-            {/* Status Top Bar */}
+            {}
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-4">
               <div className="flex items-start gap-4">
                 <div className={`p-3 rounded-2xl shrink-0 ${status.color.split(' ')[0]} ${status.color.split(' ')[2] || ''}`}>
@@ -120,14 +120,14 @@ const CourseSubmissions = ({ submissions }) => {
               </div>
             </div>
 
-            {/* Description Body */}
+            {}
             <div className={`rounded-2xl p-4 mb-5 border ${isSubmitted ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20' : 'bg-gray-50 dark:bg-[#252525] border-gray-100 dark:border-[#2C2C2C]'}`}>
               <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-line leading-relaxed">
                 {task.description || "No description provided."}
               </p>
             </div>
             
-            {/* Footer: Dates & Actions */}
+            {}
             <div className="flex flex-col lg:flex-row items-center justify-between pt-4 border-t border-gray-100 dark:border-[#2C2C2C] gap-4">
               
               <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-gray-500 dark:text-gray-400 w-full lg:w-auto">
@@ -142,9 +142,9 @@ const CourseSubmissions = ({ submissions }) => {
                 </div>
               </div>
               
-              {/* Action Buttons */}
+              {}
               <div className="flex items-center gap-3 w-full lg:w-auto justify-end">
-                {/* Conditional Submit Button */}
+                {}
                 {isSubmitted ? (
                   <span className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 cursor-default">
                     <CheckCircle size={16} /> Submitted Successfully

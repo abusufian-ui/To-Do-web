@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X, ShieldAlert, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set worker CDN matching pdfjs-dist version
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
 
 const SecureDocumentViewer = ({ fileUrl, fileName, onClose }) => {
@@ -13,22 +13,22 @@ const SecureDocumentViewer = ({ fileUrl, fileName, onClose }) => {
   const canvasRef = useRef(null);
   const [pdfDoc, setPdfDoc] = useState(null);
 
-  // Disable developer tools keys and printing
+  
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Disable Ctrl+P (Print)
+      
       if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
         e.preventDefault();
         alert("Printing is disabled for premium vault documents.");
       }
-      // Disable Ctrl+S (Save)
+      
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
       }
-      // Disable F12, Ctrl+Shift+I, Ctrl+Shift+C, Ctrl+Shift+J (DevTools)
+      
       if (e.key === 'F12' || 
           (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J')) ||
-          (e.ctrlKey && e.key === 'u')) { // Ctrl+U View Source
+          (e.ctrlKey && e.key === 'u')) { 
         e.preventDefault();
       }
     };
@@ -37,7 +37,7 @@ const SecureDocumentViewer = ({ fileUrl, fileName, onClose }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Load PDF Document
+  
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -63,7 +63,7 @@ const SecureDocumentViewer = ({ fileUrl, fileName, onClose }) => {
     loadPdf();
   }, [fileUrl]);
 
-  // Render Page
+  
   useEffect(() => {
     if (!pdfDoc) return;
 
@@ -72,7 +72,7 @@ const SecureDocumentViewer = ({ fileUrl, fileName, onClose }) => {
       try {
         const page = await pdfDoc.getPage(currentPage);
         
-        // Render at scale for crispness
+        
         const scale = 1.5; 
         const viewport = page.getViewport({ scale });
         const canvas = canvasRef.current;
@@ -123,7 +123,7 @@ const SecureDocumentViewer = ({ fileUrl, fileName, onClose }) => {
         }
       `}</style>
 
-      {/* Header bar */}
+      {}
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
         <div className="flex items-center space-x-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400">
@@ -146,7 +146,7 @@ const SecureDocumentViewer = ({ fileUrl, fileName, onClose }) => {
         </button>
       </div>
 
-      {/* Main Viewer Area */}
+      {}
       <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
         {loading ? (
           <div className="flex flex-col items-center space-y-4">
@@ -170,7 +170,7 @@ const SecureDocumentViewer = ({ fileUrl, fileName, onClose }) => {
         )}
       </div>
 
-      {/* Control Footer */}
+      {}
       {!loading && !error && (
         <div className="px-6 py-4 bg-slate-900/50 border-t border-slate-800 flex items-center justify-between text-slate-300">
           <p className="text-xs text-slate-400 hidden sm:block">

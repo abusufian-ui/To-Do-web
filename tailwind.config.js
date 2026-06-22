@@ -1,6 +1,6 @@
-/** @type {import('tailwindcss').Config} */
+
 module.exports = {
-  darkMode: 'class', // <--- IMPORTANT: Enables the toggle functionality
+  darkMode: 'class', 
   content: [
     "./src/**/*.{js,jsx,ts,tsx}", 
   ],
@@ -8,13 +8,13 @@ module.exports = {
     extend: {
       colors: {
         dark: {
-          bg: "#121212",      // Class: bg-dark-bg
-          surface: "#1E1E1E", // Class: bg-dark-surface
-          border: "#2C2C2C",  // Class: border-dark-border
+          bg: "#121212",      
+          surface: "#1E1E1E", 
+          border: "#2C2C2C",  
         },
         brand: {
-          blue: "#3B82F6",    // Class: bg-brand-blue
-          pink: "#E11D48",    // Class: bg-brand-pink
+          blue: "#3B82F6",    
+          pink: "#E11D48",    
         },
       },
       animation: {

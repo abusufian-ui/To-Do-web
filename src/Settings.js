@@ -13,7 +13,7 @@ import { StaticLogo } from './StaticLogo';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// --- HELPER: TOAST NOTIFICATION ---
+
 const Toast = ({ message, type, onClose }) => {
     if (!message) return null;
     const styles = {
@@ -30,8 +30,8 @@ const Toast = ({ message, type, onClose }) => {
     );
 };
 
-// --- 1. PROFILE TAB ---
-// --- 1. PROFILE TAB ---
+
+
 const ProfileSection = ({ user, showToast, onUpdateProfilePic, onUpdatePrivacy }) => {
     const [name, setName] = useState(user?.name || "");
     const [loading, setLoading] = useState(false);
@@ -49,7 +49,7 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic, onUpdatePrivacy }
             });
             if (res.ok) {
                 showToast("Profile updated successfully", "success");
-                // Optional: Update local user state if needed
+                
             }
             else showToast("Failed to update profile", "error");
         } catch (e) { showToast("Server error", "error"); }
@@ -208,12 +208,12 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic, onUpdatePrivacy }
     );
 };
 
-// --- 2. SECURITY TAB ---
-// --- 2. SECURITY TAB ---
+
+
 const SecuritySection = ({ user, showToast }) => {
     const [autoLock, setAutoLock] = useState(user?.securitySettings?.autoLockEnabled || false);
     const [lockTimer, setLockTimer] = useState(user?.securitySettings?.autoLockTimer || 900000);
-    // eslint-disable-next-line no-unused-vars
+    
     const [loading, setLoading] = useState(false);
 
     const handleSaveSecurity = async (enabled, timer) => {
@@ -295,14 +295,14 @@ const SecuritySection = ({ user, showToast }) => {
     );
 };
 
-// --- 3. PORTAL CONNECTION TAB ---
-// --- 3. SYNCING STATUS TAB ---
+
+
 const SyncingStatusSection = ({ user, showToast }) => {
-    // Wizard State
+    
     const [wizardStep, setWizardStep] = useState(1);
     const [verifySuccess, setVerifySuccess] = useState(false);
 
-    // Live Polling
+    
     useEffect(() => {
         let pollInterval;
         const checkStatus = async () => {
@@ -339,7 +339,7 @@ const SyncingStatusSection = ({ user, showToast }) => {
 
             <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden shadow-sm">
                 
-                {/* Status Header */}
+                {}
                 <div className="p-8 border-b border-gray-100 dark:border-[#333] flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-50/50 dark:bg-[#252525]">
                     <div className="flex items-center gap-5">
                         <div className="flex gap-3">
@@ -371,7 +371,7 @@ const SyncingStatusSection = ({ user, showToast }) => {
                 </div>
 
                 <div className="p-8">
-                    {/* --- UNLINKED STATE: The Wizard --- */}
+                    {}
                     {!user.isPortalConnected ? (
                         <div className="max-w-2xl mx-auto animate-fadeIn">
                             <h5 className="font-bold text-gray-800 dark:text-white mb-2 text-lg text-center">Secure Setup</h5>
@@ -379,7 +379,7 @@ const SyncingStatusSection = ({ user, showToast }) => {
                                 Follow these steps to connect your extension. We never store your university password.
                             </p>
 
-                            {/* Wizard Progress */}
+                            {}
                             <div className="flex items-center justify-between w-full mb-10 relative">
                                 {[1, 2, 3].map(step => (
                                     <div key={step} className="flex flex-col items-center relative z-10 flex-1">
@@ -396,7 +396,7 @@ const SyncingStatusSection = ({ user, showToast }) => {
                                 </div>
                             </div>
 
-                            {/* Wizard Content */}
+                            {}
                             <div className="bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333] rounded-2xl p-8 relative overflow-hidden">
                                 
                                 {wizardStep === 1 && (
@@ -498,7 +498,7 @@ const SyncingStatusSection = ({ user, showToast }) => {
     );
 };
 
-// --- 4. COURSE MANAGER TAB ---
+
 const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, user }) => {
     const [newCourse, setNewCourse] = useState("");
     const [type, setType] = useState('uni');
@@ -508,7 +508,7 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
     const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
     const toggleVisibility = async (courseName, currentHidden) => {
-        const isVisible = currentHidden; // If currently hidden, we want to make it visible
+        const isVisible = currentHidden; 
         try {
             const token = localStorage.getItem('token');
             const res = await fetch(`${API_BASE}/api/user/course-preferences`, {
@@ -520,7 +520,7 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
                 const data = await res.json();
                 setLocalPreferences(data.coursePreferences || {});
                 showToast(isVisible ? "Course unhidden" : "Course hidden", "success");
-                // Trigger a global reload to update the sidebar/views if necessary
+                
                 setTimeout(() => window.location.reload(), 1000);
             }
         } catch (error) {
@@ -555,20 +555,20 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
         }
     };
 
-    // THE FIX: Strict matching based on your MongoDB data
+    
     const filtered = (courses || []).filter(c => {
         const dbType = String(c.type || '').toLowerCase().trim();
         
         if (type === 'uni') {
-            // Matches your DB 'university' type (and 'uni' just in case of old data)
+            
             return dbType === 'university' || dbType === 'uni'; 
         } else {
-            // Strictly matches your DB 'general' type
+            
             return dbType === 'general'; 
         }
     });
 
-    // THE FIX: Protect the specific General course from rendering a delete button
+    
     const isProtectedGeneralCourse = (c) => {
         const name = String(c.name || '').trim().toLowerCase();
         const id = String(c.id || c._id || '').trim();
@@ -629,7 +629,7 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
                             <div className="flex items-center gap-2">
                                 {(() => {
                                     const explicitPref = localPreferences[c.name];
-                                    // Hidden if explicitPref is exactly false, OR if no explicit pref and 0 credit hours
+                                    
                                     const isHidden = explicitPref === false || (explicitPref === undefined && c.creditHrs === 0);
                                     
                                     return (
@@ -648,7 +648,7 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
                                 <span className="text-[10px] bg-gray-100 dark:bg-[#252525] text-gray-500 px-2 py-1 rounded border border-gray-200 dark:border-[#444] flex items-center gap-1 hidden sm:flex"><Lock size={10} /> Synced</span>
                             </div>
                         ) : (
-                            // THE FIX: Protect the specific General course from rendering a delete button
+                            
                             !isProtectedGeneralCourse(c) && (
                                 <button onClick={() => initiateDelete(c)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg transition-colors"><X size={20} /></button>
                             )
@@ -663,7 +663,7 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
                 )}
             </div>
 
-            {/* DELETE MODAL */}
+            {}
             {deleteModal && (
                 <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] p-6 animate-slideUp">
@@ -707,12 +707,12 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
     );
 };
 
-// --- 5. SUPPORT & HELP SECTION (TICKET SYSTEM WITH SCREENSHOT UPLOADS) ---
+
 const SupportHelpSection = ({ showToast }) => {
     const [activeSubTab, setActiveSubTab] = useState('create');
     const [subject, setSubject] = useState("");
     const [description, setDescription] = useState("");
-    const [mediaFiles, setMediaFiles] = useState([]); // Array of { file, previewUrl }
+    const [mediaFiles, setMediaFiles] = useState([]); 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [tickets, setTickets] = useState([]);
@@ -799,7 +799,7 @@ const SupportHelpSection = ({ showToast }) => {
 
             let uploadedUrls = [];
 
-            // 1. Upload screenshots if any exist
+            
             if (mediaFiles.length > 0) {
                 const formData = new FormData();
                 mediaFiles.forEach(media => {
@@ -819,7 +819,7 @@ const SupportHelpSection = ({ showToast }) => {
                 }
             }
 
-            // 2. Submit ticket
+            
             const res = await fetch(`${API_BASE}/api/feedback`, {
                 method: "POST",
                 headers: {
@@ -838,7 +838,7 @@ const SupportHelpSection = ({ showToast }) => {
                 setSubject("");
                 setDescription("");
                 setMediaFiles([]);
-                setActiveSubTab('my'); // Switch to My Tickets
+                setActiveSubTab('my'); 
             } else {
                 const errorData = await res.json();
                 showToast(errorData.message || "Failed to submit ticket.", "error");
@@ -853,7 +853,7 @@ const SupportHelpSection = ({ showToast }) => {
 
     return (
         <div className="animate-fadeIn">
-            {/* Header */}
+            {}
             <div className="mb-8 flex items-center justify-between">
                 <div>
                     <h3 className="text-2xl font-bold dark:text-white text-gray-800 mb-2">Support & Help</h3>
@@ -864,7 +864,7 @@ const SupportHelpSection = ({ showToast }) => {
                 </div>
             </div>
 
-            {/* Custom Sub Tabs */}
+            {}
             <div className="flex bg-gray-100 dark:bg-[#1E1E1E] p-1 rounded-xl mb-8">
                 <button
                     type="button"
@@ -890,7 +890,7 @@ const SupportHelpSection = ({ showToast }) => {
                 </button>
             </div>
 
-            {/* Tab content */}
+            {}
             {activeSubTab === 'create' ? (
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="bg-white dark:bg-[#1E1E1E] p-8 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] shadow-sm space-y-6">
@@ -918,7 +918,7 @@ const SupportHelpSection = ({ showToast }) => {
                             />
                         </div>
 
-                        {/* Screenshots Preview container */}
+                        {}
                         {mediaFiles.length > 0 && (
                             <div>
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Attached Screenshots ({mediaFiles.length})</label>
@@ -944,7 +944,7 @@ const SupportHelpSection = ({ showToast }) => {
                             </div>
                         )}
 
-                        {/* Dropzone Upload */}
+                        {}
                         <div>
                             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Upload Snapshots</label>
                             <label className="group flex flex-col items-center justify-center w-full h-36 bg-gray-50 dark:bg-[#121212] border-2 border-dashed border-gray-200 dark:border-[#333] hover:border-brand-blue dark:hover:border-brand-blue rounded-2xl cursor-pointer transition-all">
@@ -1036,7 +1036,7 @@ const SupportHelpSection = ({ showToast }) => {
                                                     <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed font-medium whitespace-pre-wrap">{t.description}</p>
                                                 </div>
 
-                                                {/* Screenshot Display */}
+                                                {}
                                                 {t.screenshots && t.screenshots.length > 0 && (
                                                     <div>
                                                         <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Attached Screenshots</h5>
@@ -1058,7 +1058,7 @@ const SupportHelpSection = ({ showToast }) => {
                                                     </div>
                                                 )}
 
-                                                {/* Admin resolution block */}
+                                                {}
                                                 {isResolved && t.adminResponse && (
                                                     <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-xl space-y-2 animate-slideUp">
                                                         <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
@@ -1078,7 +1078,7 @@ const SupportHelpSection = ({ showToast }) => {
                 </div>
             )}
 
-            {/* FULL SCREEN LIGHTBOX */}
+            {}
             {lightboxImage && (
                 <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-md animate-fadeIn">
                     <button onClick={() => setLightboxImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all">
@@ -1100,7 +1100,7 @@ const SupportHelpSection = ({ showToast }) => {
     );
 };
 
-// --- MAIN SETTINGS LAYOUT ---
+
 const Settings = ({
     user = {},
     courses = [],
@@ -1134,7 +1134,7 @@ const Settings = ({
         <div className="flex h-full w-full animate-fadeIn bg-gray-50 dark:bg-[#0c0c0c] overflow-hidden">
             <Toast message={toast.msg} type={toast.type} onClose={() => setToast({ msg: null, type: null })} />
 
-            {/* LEFT SIDEBAR */}
+            {}
             <div className="w-64 border-r border-gray-200 dark:border-[#2C2C2C] bg-white dark:bg-[#151518] flex flex-col h-full shrink-0">
                 <div className="p-6 pb-2">
                     <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Settings</h2>
@@ -1170,7 +1170,7 @@ const Settings = ({
                 </div>
             </div>
 
-            {/* RIGHT CONTENT AREA */}
+            {}
             <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-8 md:p-12 relative">
                 <div className="max-w-3xl mx-auto pb-24">
                     {activeTab === 'profile' && <ProfileSection user={user} showToast={showToast} onUpdatePrivacy={onUpdatePrivacy} onUpdateProfilePic={(formData) => {
@@ -1180,7 +1180,7 @@ const Settings = ({
                             headers: { 'x-auth-token': token },
                             body: formData
                         }).then(res => res.json()).then(data => {
-                            // Trigger a reload or update user state globally if needed
+                            
                             window.location.reload(); 
                         });
                     }} />}

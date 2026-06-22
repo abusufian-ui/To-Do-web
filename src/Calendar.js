@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
-// ... (KEEP ALL HELPER FUNCTIONS LIKE getAbbreviation, getCourseColor, etc. UNCHANGED) ...
+
 const getAbbreviation = (name) => {
   if (!name) return '';
   const n = name.toLowerCase().trim();
@@ -97,7 +97,7 @@ const CourseTypeIcon = ({ courseName, courses = [], className = "w-3 h-3" }) => 
   return <Book className={className} />;
 };
 
-// ... (KEEP EditDropdown and CalendarTaskModal COMPONENTS AS THEY WERE, UNCHANGED) ...
+
 const EditDropdown = ({ value, options, onChange, getConfig }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -258,7 +258,7 @@ const CalendarTaskModal = ({ task, onClose, courses, onUpdate, onDelete }) => {
   );
 };
 
-// --- 3. MAIN CALENDAR COMPONENT ---
+
 const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) => { 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedTask, setSelectedTask] = useState(null);
@@ -314,26 +314,26 @@ const Calendar = ({ tasks, courses = [], onAddWithDate, onUpdate, onDelete }) =>
             const columnDateStr = toISODateString(day);
             let dayTasks = tasks.filter(task => task.date && task.date === columnDateStr);
             
-            // --- UPDATED SORTING LOGIC ---
+            
             dayTasks.sort((a, b) => {
-              // 1. Status: Completed tasks go to the bottom
+              
               const isCompletedA = a.status === 'Completed';
               const isCompletedB = b.status === 'Completed';
               if (isCompletedA && !isCompletedB) return 1;
               if (!isCompletedA && isCompletedB) return -1;
 
-              // 2. Time: Tasks with time go before non-timed tasks
+              
               const hasTimeA = !!a.time;
               const hasTimeB = !!b.time;
               if (hasTimeA && !hasTimeB) return -1;
               if (!hasTimeA && hasTimeB) return 1;
 
-              // 3. Time Value: Earliest time first
+              
               if (hasTimeA && hasTimeB) {
                 return a.time.localeCompare(b.time);
               }
 
-              // 4. Default: Alphabetical by name if no other criteria
+              
               return a.name.localeCompare(b.name);
             });
 

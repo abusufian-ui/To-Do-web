@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const resultHistorySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  term: { type: String, required: true }, // REMOVED "unique: true" from here
+  term: { type: String, required: true }, 
   sgpa: { type: String, default: "0.00" },
   cgpa: { type: String, default: "0.00" },
   earnedCH: { type: String, default: "0" },
@@ -17,8 +17,8 @@ const resultHistorySchema = new mongoose.Schema({
   lastUpdated: { type: Date, default: Date.now }
 });
 
-// COMPOUND INDEX: This is the magic fix.
-// It ensures 'term' is unique ONLY within the same 'userId'.
+
+
 resultHistorySchema.index({ userId: 1, term: 1 }, { unique: true });
 
 module.exports = mongoose.model('ResultHistory', resultHistorySchema);

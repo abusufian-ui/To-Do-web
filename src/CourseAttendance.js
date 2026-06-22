@@ -9,7 +9,7 @@ const CourseAttendance = ({ attendance }) => {
 
   const { records } = attendance;
 
-  // --- DERIVE DATA DIRECTLY FROM RECORDS ---
+  
   const totalConducted = records.length;
   const totalAttended = records.filter(r => r.status.toLowerCase() === 'present').length;
   const totalAbsent = totalConducted - totalAttended;
@@ -22,7 +22,7 @@ const CourseAttendance = ({ attendance }) => {
     { name: 'Absent', value: totalAbsent, color: '#EF4444' } 
   ];
 
-  // --- DYNAMIC HEALTH COLORS ---
+  
   let healthGradient = 'from-emerald-500 to-teal-600';
   let HealthIcon = TrendingUp;
   let healthText = "Great Standing";
@@ -40,9 +40,9 @@ const CourseAttendance = ({ attendance }) => {
   return (
     <div className="space-y-6 animate-fadeIn">
       
-      {/* 1. THE HERO SUMMARY CARD (Ultra Pro Max Style) */}
+      {}
       <div className={`relative overflow-hidden rounded-3xl p-6 md:p-8 text-white bg-gradient-to-br ${healthGradient} shadow-xl transition-all duration-500`}>
-        {/* Background decorative elements */}
+        {}
         <div className="absolute top-0 right-0 -mr-8 -mt-8 w-40 h-40 rounded-full bg-white opacity-10 blur-2xl pointer-events-none"></div>
         <div className="absolute bottom-0 left-0 -ml-8 -mb-8 w-32 h-32 rounded-full bg-black opacity-10 blur-xl pointer-events-none"></div>
 
@@ -61,7 +61,7 @@ const CourseAttendance = ({ attendance }) => {
           </div>
         </div>
 
-        {/* Glassmorphism Stat Boxes */}
+        {}
         <div className="grid grid-cols-2 gap-4 mt-8 relative z-10">
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 flex flex-col items-center justify-center transition-transform hover:scale-105 duration-300">
             <CheckCircle size={28} className="mb-2 text-white/90" />
@@ -76,7 +76,7 @@ const CourseAttendance = ({ attendance }) => {
         </div>
       </div>
 
-      {/* 2. ATTENDANCE DISTRIBUTION (Analytics Section) */}
+      {}
       <div className="bg-white dark:bg-[#1E1E1E] border border-gray-100 dark:border-[#333] rounded-3xl p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
           <PieChartIcon size={20} className="text-blue-500" /> Attendance Distribution
@@ -84,7 +84,7 @@ const CourseAttendance = ({ attendance }) => {
         
         <div className="flex flex-col md:flex-row items-center justify-center md:justify-around gap-8">
           
-          {/* Recharts Donut */}
+          {}
           {(totalConducted > 0) ? (
             <div className="relative w-48 h-48 shrink-0 hover:scale-105 transition-transform duration-500">
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -118,7 +118,7 @@ const CourseAttendance = ({ attendance }) => {
             </div>
           )}
 
-          {/* Custom Legend */}
+          {}
           <div className="flex flex-col gap-4 w-full md:w-auto">
             <div className="flex items-center justify-between gap-6 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30">
               <div className="flex items-center gap-3">
@@ -140,7 +140,7 @@ const CourseAttendance = ({ attendance }) => {
         </div>
       </div>
 
-      {/* 3. RECENT CLASSES GRID */}
+      {}
       <div className="bg-white dark:bg-[#1E1E1E] border border-gray-100 dark:border-[#333] rounded-3xl p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
           <CalendarCheck size={20} className="text-gray-400" /> Class History

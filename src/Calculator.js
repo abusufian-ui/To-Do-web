@@ -9,7 +9,7 @@ const Calculator = () => {
   const [base, setBase] = useState(10); 
   const [history, setHistory] = useState([]);
 
-  // Safely evaluate the math string
+  
   const calculateResult = (expr, currentBase = 10) => {
     try {
       if (!expr) return '0';
@@ -36,7 +36,7 @@ const Calculator = () => {
     }
   };
 
-  // Run live evaluation
+  
   useEffect(() => {
     setResult(calculateResult(expression, base));
   }, [expression, base, mode]);
@@ -63,7 +63,7 @@ const Calculator = () => {
 
   const clearHistory = () => setHistory([]);
 
-  // Keypad Configurations
+  
   const scientificKeys = [
     { label: 'sin', val: 'sin(' }, { label: 'cos', val: 'cos(' }, { label: 'tan', val: 'tan(' }, { label: 'AC', val: 'AC', type: 'action' },
     { label: 'log', val: 'log10(' }, { label: 'ln', val: 'log(' }, { label: '(', val: '(' }, { label: ')', val: ')' },
@@ -104,10 +104,10 @@ const Calculator = () => {
   return (
     <div className="w-full h-full p-4 md:p-6 flex flex-col lg:flex-row gap-4 md:gap-6 max-w-[1600px] mx-auto animate-fadeIn">
       
-      {/* --- LEFT PANE: CALCULATOR ENGINE --- */}
+      {}
       <div className="flex-1 flex flex-col bg-white dark:bg-[#121212] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden">
         
-        {/* Top Bar & Toggles */}
+        {}
         <div className="p-4 md:p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center bg-gray-50 dark:bg-[#1A1A1A]">
           <h2 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-3">
             <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500"><CalcIcon size={20} /></div>
@@ -124,7 +124,7 @@ const Calculator = () => {
         </div>
 
         <div className="p-4 md:p-6 flex-1 flex flex-col gap-4 md:gap-6 min-h-0">
-          {/* Main Display Area */}
+          {}
           <div className="w-full bg-gray-50 dark:bg-[#1A1A1A] p-4 md:p-6 rounded-2xl text-right flex flex-col justify-end min-h-[120px] md:min-h-[160px] border border-gray-200 dark:border-[#2C2C2C] relative overflow-hidden group flex-shrink-0">
             <div className="absolute top-4 left-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-red-500" onClick={handleBackspace}>
               <Delete size={20} />
@@ -137,7 +137,7 @@ const Calculator = () => {
             </div>
           </div>
 
-          {/* FLUID KEYPAD GRID - No more missing buttons! */}
+          {}
           <div className="grid grid-cols-4 gap-2 md:gap-3 flex-1 min-h-0">
             {activeKeys.map((btn, index) => {
               const disabled = isKeyDisabled(btn);
@@ -161,10 +161,10 @@ const Calculator = () => {
         </div>
       </div>
 
-      {/* --- RIGHT PANE: CONTEXT & HISTORY --- */}
+      {}
       <div className="w-full lg:w-80 xl:w-96 flex flex-col gap-4 md:gap-6 overflow-y-auto">
         
-        {/* Live Programmer Conversions */}
+        {}
         {mode === 'programmer' && (
           <div className="bg-white dark:bg-[#121212] rounded-3xl shadow-lg border border-gray-200 dark:border-[#2C2C2C] p-5 flex-shrink-0">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-1">Live Conversions</h3>
@@ -185,7 +185,7 @@ const Calculator = () => {
           </div>
         )}
 
-        {/* The Tape (History) */}
+        {}
         <div className="flex-1 bg-white dark:bg-[#121212] rounded-3xl shadow-lg border border-gray-200 dark:border-[#2C2C2C] flex flex-col overflow-hidden min-h-[250px]">
           <div className="p-4 md:p-5 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center bg-gray-50 dark:bg-[#1A1A1A]">
             <h3 className="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">

@@ -37,16 +37,16 @@ const DEFAULT_GOALS = {
   Thu: { goal: 60, isOff: false },
   Fri: { goal: 60, isOff: false },
   Sat: { goal: 30, isOff: false },
-  Sun: { goal: 0, isOff: true } // Sunday off by default
+  Sun: { goal: 0, isOff: true } 
 };
 
 const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnabled, hfModes, skipPhase }) => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [chartView, setChartView] = useState('week'); // 'day' | 'week' | 'month'
+  const [chartView, setChartView] = useState('week'); 
   const lastScrollTime = useRef(0);
 
-  // Goal modal configurations
+  
   const [goals, setGoals] = useState(() => {
     try {
       const saved = localStorage.getItem('hfWeeklyGoals');
@@ -57,11 +57,11 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const [tempGoals, setTempGoals] = useState({});
 
-  // Safely fallback using optional chaining
+  
   const modeKey = hfState?.modeId || 'focus';
   const currentMode = hfModes?.[modeKey] || hfModes?.['focus'];
 
-  // Fetch past focus sessions whenever a session completes
+  
   useEffect(() => {
     const fetchSessions = async () => {
       const token = localStorage.getItem('token');
@@ -86,7 +86,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
     fetchSessions();
   }, [hfState?.cyclesCompleted]);
 
-  // Round off float numbers and format into hours/minutes
+  
   const formatHoursMinutes = (totalMins) => {
     if (totalMins === undefined || totalMins === null || isNaN(totalMins)) return "0m";
     const rounded = Math.round(totalMins);
@@ -98,11 +98,11 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
     return `${mins}m`;
   };
 
-  // Aggregate stats from focus sessions
+  
   const focusSessions = sessions.filter(s => s.type === 'focus');
   const totalMinutes = focusSessions.reduce((acc, s) => acc + s.durationMinutes, 0);
   
-  // Calculate focused minutes in the current calendar month
+  
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   const monthlyMinutes = focusSessions
@@ -114,41 +114,41 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
 
   const averageDuration = focusSessions.length > 0 ? Math.round(totalMinutes / focusSessions.length) : 0;
   
-  // Dynamic productivity boost formula
+  
   const productivityBoost = totalMinutes > 0 ? Math.min(95, Math.round(totalMinutes * 0.35 + focusSessions.length * 3)) : 0;
 
-  // Get current day name (Mon, Tue, etc.)
+  
   const getDayName = (date) => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     return days[date.getDay()];
   };
 
-  // Goal progress based on current day preferences
+  
   const currentDayName = getDayName(new Date());
   const todayGoalObj = goals[currentDayName] || DEFAULT_GOALS[currentDayName] || { goal: 60, isOff: false };
   const isTodayOff = todayGoalObj.isOff;
   const todayGoalMinutes = todayGoalObj.goal;
 
-  // Today's focus sessions minutes
+  
   const todayMinutes = focusSessions
     .filter(s => new Date(s.completedAt).toDateString() === new Date().toDateString())
     .reduce((acc, s) => acc + s.durationMinutes, 0);
 
   let goalProgress = 0;
   if (isTodayOff) {
-    goalProgress = 100; // Complete by default on rest days
+    goalProgress = 100; 
   } else if (todayGoalMinutes > 0) {
     goalProgress = Math.min(100, Math.round((todayMinutes / todayGoalMinutes) * 100));
   }
 
-  // Scroll zooming handler for Recharts Trend
+  
   const handleChartWheel = (e) => {
     e.preventDefault();
     const now = Date.now();
-    if (now - lastScrollTime.current < 450) return; // Throttled animation cooldown
+    if (now - lastScrollTime.current < 450) return; 
 
     if (e.deltaY > 0) {
-      // Zoom out: Day -> Week -> Month
+      
       if (chartView === 'day') {
         setChartView('week');
         lastScrollTime.current = now;
@@ -157,7 +157,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
         lastScrollTime.current = now;
       }
     } else {
-      // Zoom in: Month -> Week -> Day
+      
       if (chartView === 'month') {
         setChartView('week');
         lastScrollTime.current = now;
@@ -168,7 +168,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
     }
   };
 
-  // Group today's hours into 3-hour chunks
+  
   const getDayData = () => {
     const slots = [
       { label: '12-3 AM', hours: [0, 1, 2], minutes: 0 },
@@ -199,7 +199,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
     }));
   };
 
-  // 7-day focus history
+  
   const getWeeklyData = () => {
     const data = [];
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -232,7 +232,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
     }));
   };
 
-  // 30-day focus history grouped in 5-day ranges
+  
   const getMonthData = () => {
     const data = [];
     const now = new Date();
@@ -275,7 +275,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
 
   const activeChartData = getActiveChartData();
 
-  // Weekly Goal Editor Modal Actions
+  
   const openGoalModal = () => {
     setTempGoals(JSON.parse(JSON.stringify(goals)));
     setIsGoalModalOpen(true);
@@ -338,7 +338,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
   const totalPhaseTime = (currentMode?.minutes || 25) * 60;
   const progressOffset = circumference - ((totalPhaseTime - (hfState?.timeLeft || 0)) / totalPhaseTime) * circumference;
 
-  // Determine if timer has run or has cycles completed
+  
   const isTimerDirty = hfState?.timeLeft !== totalPhaseTime || (hfState?.cyclesCompleted || 0) > 0;
 
   return (
@@ -352,7 +352,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative z-10">
         
-        {/* LEFT COLUMN: Focus Engine Circle & Buttons */}
+        {}
         <div className="lg:col-span-5 flex flex-col items-center justify-center bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
           
           <div className="absolute top-4 right-4">
@@ -433,7 +433,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
             </span>
           </div>
 
-          {/* Master Controls Group */}
+          {}
           <div className="flex flex-col items-center gap-3 w-full">
             <div className="flex gap-3 w-full justify-center">
               <button 
@@ -468,7 +468,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
               )}
             </div>
 
-            {/* Skip Break Button (Animated Reveal) */}
+            {}
             <div className={`w-full transition-all duration-500 ${hfState?.isAutomated && hfState?.modeId === 'short_break' ? 'opacity-100 h-10 mt-1' : 'opacity-0 h-0 overflow-hidden pointer-events-none'}`}>
               <button 
                 onClick={skipPhase}
@@ -481,10 +481,10 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
 
         </div>
 
-        {/* RIGHT COLUMN: History Analytics Panel */}
+        {}
         <div className="lg:col-span-7 flex flex-col gap-6">
           
-          {/* Performance Header with Goal Configurator Toggle */}
+          {}
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight uppercase flex items-center gap-2">
@@ -504,10 +504,10 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
             </button>
           </div>
 
-          {/* Quick Metrics Grid */}
+          {}
           <div className="grid grid-cols-2 gap-4">
             
-            {/* Metric 1: Total focused (Hours and Minutes, solid rounded numbers) */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl p-4 flex items-center gap-3 shadow-sm hover:shadow transition-all group">
               <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-500 group-hover:scale-110 transition-transform">
                 <Clock size={18} />
@@ -521,7 +521,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
               </div>
             </div>
 
-            {/* Metric 2: Avg length */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl p-4 flex items-center gap-3 shadow-sm hover:shadow transition-all group">
               <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 group-hover:scale-110 transition-transform">
                 <Flame size={18} />
@@ -535,7 +535,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
               </div>
             </div>
 
-            {/* Metric 3: Prod Boost */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl p-4 flex items-center gap-3 shadow-sm hover:shadow transition-all group">
               <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 group-hover:scale-110 transition-transform">
                 <TrendingUp size={18} />
@@ -549,7 +549,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
               </div>
             </div>
 
-            {/* Metric 4: Goal Progress with rest day overrides */}
+            {}
             <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl p-4 flex items-center gap-3 shadow-sm hover:shadow transition-all group">
               <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-500 group-hover:scale-110 transition-transform">
                 <Target size={18} />
@@ -573,7 +573,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
 
           </div>
 
-          {/* Goal Progress Bar */}
+          {}
           <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl p-5 shadow-sm">
             <div className="flex justify-between items-center mb-2">
               <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
@@ -593,7 +593,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
             </div>
           </div>
 
-          {/* Interactive Recharts Graph with Scroll-Zoom capability */}
+          {}
           <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl p-5 shadow-sm relative group/chart">
             
             <div className="flex justify-between items-center mb-4">
@@ -601,7 +601,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
                 Focus Analytics
               </h3>
               
-              {/* Interactive Pill View Switchers */}
+              {}
               <div className="flex bg-gray-150 dark:bg-[#252525] p-0.5 rounded-xl border border-gray-200/40 dark:border-[#333]/40">
                 {['day', 'week', 'month'].map(v => (
                   <button
@@ -619,7 +619,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
               </div>
             </div>
 
-            {/* Scroll Zoom Indicator Hover */}
+            {}
             <div className="absolute top-3.5 left-36 text-[9px] font-bold text-gray-400 dark:text-gray-500 bg-gray-50/50 dark:bg-[#252525]/30 px-2 py-0.5 rounded-full pointer-events-none select-none opacity-0 group-hover/chart:opacity-100 transition-opacity">
               Scroll wheel to Zoom scale
             </div>
@@ -690,7 +690,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
               </div>
             )}
             
-            {/* Visual Indicator of Zoom State */}
+            {}
             <div className="mt-2 text-center">
               <span className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest bg-gray-100 dark:bg-[#252525] px-3 py-1 rounded-full">
                 Active Scale: {chartView} view
@@ -703,12 +703,12 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
 
       </div>
 
-      {/* STUNNING GLASSMORPHIC WEEKLY GOALS CONFIGURATOR MODAL */}
+      {}
       {isGoalModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fadeIn p-4">
           <div className="bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#2C2C2C] p-6 rounded-3xl w-full max-w-lg shadow-2xl animate-scaleUp max-h-[90vh] flex flex-col">
             
-            {/* Modal Header */}
+            {}
             <div className="flex justify-between items-start pb-4 border-b border-gray-100 dark:border-[#2C2C2C] shrink-0">
               <div>
                 <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight flex items-center gap-2">
@@ -726,7 +726,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
               </button>
             </div>
 
-            {/* Modal Content Scroll Area */}
+            {}
             <div className="flex-1 overflow-y-auto custom-scrollbar my-4 pr-1 flex flex-col gap-3">
               {DAYS_OF_WEEK.map(day => {
                 const dayNameFull = {
@@ -748,7 +748,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
                     </div>
 
                     <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                      {/* Toggle Rest Day */}
+                      {}
                       <button
                         onClick={() => handleToggleOff(day)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
@@ -760,7 +760,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
                         {goalObj.isOff ? 'REST DAY ☕' : 'ACTIVE 🎯'}
                       </button>
 
-                      {/* Hour/Minute Selectors */}
+                      {}
                       {!goalObj.isOff && (
                         <div className="flex items-center gap-1.5 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] p-1 rounded-xl shadow-sm">
                           <select
@@ -790,7 +790,7 @@ const HyperFocus = ({ hfState, toggleAutomation, resetAutomation, setSoundEnable
               })}
             </div>
 
-            {/* Modal Footer Actions */}
+            {}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100 dark:border-[#2C2C2C] shrink-0">
               <button 
                 onClick={() => setIsGoalModalOpen(false)}

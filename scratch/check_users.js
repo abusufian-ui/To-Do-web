@@ -13,7 +13,7 @@ mongoose.connect("mongodb://127.0.0.1:27017/todo-web").then(async () => {
   process.exit(0);
 }).catch(err => {
   console.error("Failed to connect:", err);
-  // Try another DB link if needed
+  
   mongoose.connect("mongodb://127.0.0.1:27017/todo").then(async () => {
      const users = await User.find({}, 'name email portalId').limit(50).lean();
      users.forEach(u => {

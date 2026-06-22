@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Clock, MapPin, User, CalendarDays, X, BookOpen } from 'lucide-react';
 
 const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const startHour = 8;  // 08:00 AM
-const endHour = 18; // 06:00 PM
+const startHour = 8;  
+const endHour = 18; 
 const totalHours = endHour - startHour;
-const HOUR_HEIGHT = 115; // Set to mimic 67% scale compactly
+const HOUR_HEIGHT = 115; 
 
-// Premium SaaS color themes
+
 const colorThemes = [
   { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800/50', text: 'text-blue-900 dark:text-blue-100', icon: 'text-blue-500 dark:text-blue-400', hoverRing: 'hover:ring-blue-300 dark:hover:ring-blue-700/50', accent: 'bg-blue-500' },
   { bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800/50', text: 'text-emerald-900 dark:text-emerald-100', icon: 'text-emerald-500 dark:text-emerald-400', hoverRing: 'hover:ring-emerald-300 dark:hover:ring-emerald-700/50', accent: 'bg-emerald-500' },
@@ -73,7 +73,7 @@ const TimeTable = () => {
   return (
     <div className="h-full w-full flex flex-col bg-white dark:bg-[#121212] transition-colors duration-300 animate-fadeIn">
       
-      {/* Header Section */}
+      {}
       <div className="px-6 py-4 border-b border-gray-200 dark:border-[#2A2A2A] flex justify-between items-center bg-white dark:bg-[#1A1A1A] z-40 shrink-0 shadow-sm relative">
         <div>
           <h2 className="text-xl md:text-2xl font-extrabold text-gray-900 dark:text-white flex items-center gap-3 tracking-tight">
@@ -92,7 +92,7 @@ const TimeTable = () => {
         </div>
       </div>
 
-      {/* Main Grid Container */}
+      {}
       <div className="flex-1 relative flex flex-col overflow-hidden bg-gray-50 dark:bg-[#121212]">
         
         {isLoading && (
@@ -102,12 +102,12 @@ const TimeTable = () => {
            </div>
         )}
 
-        {/* Scrollable Area - Now allows table to fit to page without forcing horizontal scroll on desktops */}
+        {}
         <div className="flex-1 overflow-auto custom-scrollbar relative">
           <div className="min-w-[850px] w-full relative h-full"> 
             
-            {/* Table Header Row (Days) - Sticky to top */}
-            {/* Shrunk the time column to 60px to give days more room */}
+            {}
+            {}
             <div className="grid grid-cols-[60px_repeat(7,1fr)] sticky top-0 z-30 shadow-sm">
               <div className="py-2.5 px-1 flex items-center justify-center text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-r border-gray-200 dark:border-[#2A2A2A] sticky left-0 z-40 bg-gray-50 dark:bg-[#1A1A1A]">
                 Time
@@ -119,10 +119,10 @@ const TimeTable = () => {
               ))}
             </div>
 
-            {/* Timetable Body Grid */}
+            {}
             <div className="grid grid-cols-[60px_repeat(7,1fr)] relative">
               
-              {/* Time Column (Y-Axis) */}
+              {}
               <div className="flex flex-col border-r border-gray-200 dark:border-[#2A2A2A] sticky left-0 z-20 bg-gray-50 dark:bg-[#1A1A1A]">
                 {Array.from({ length: totalHours + 1 }).map((_, i) => (
                   <div key={i} style={{ height: `${HOUR_HEIGHT}px` }} className="border-b border-gray-200 dark:border-[#2A2A2A] relative bg-gray-50 dark:bg-[#1A1A1A]">
@@ -133,11 +133,11 @@ const TimeTable = () => {
                 ))}
               </div>
 
-              {/* Day Columns containing the classes */}
+              {}
               {daysOfWeek.map((day) => (
                 <div key={day} className="border-r border-gray-200 dark:border-[#222] last:border-r-0 relative group">
                   
-                  {/* Background Grid Lines */}
+                  {}
                   {Array.from({ length: totalHours * 2 }).map((_, i) => (
                     <div 
                       key={i} 
@@ -146,7 +146,7 @@ const TimeTable = () => {
                     ></div>
                   ))}
 
-                  {/* Render the Classes */}
+                  {}
                   {classes
                     .filter(c => c.day === day)
                     .map(c => {
@@ -165,7 +165,7 @@ const TimeTable = () => {
                         >
                           <div className={`absolute left-0 top-0 bottom-0 w-1 ${theme.accent}`}></div>
                           
-                          {/* Tighter padding and text limits for compact view */}
+                          {}
                           <div className="p-1.5 pl-2.5 flex flex-col h-full overflow-hidden">
                               <div className={`text-[9px] font-black tracking-widest uppercase flex items-center gap-1 opacity-90 mb-0.5 shrink-0 ${theme.text}`}>
                                 <Clock size={10} strokeWidth={2.5} />
@@ -198,7 +198,7 @@ const TimeTable = () => {
         </div>
       </div>
 
-      {/* --- CLASS SUMMARY MODAL --- */}
+      {}
       {selectedClass && (
         <div 
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fadeIn"

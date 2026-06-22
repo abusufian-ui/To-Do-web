@@ -1,18 +1,6 @@
 'use strict';
 
-/**
- * materialProcessor.js
- *
- * Processes staged MaterialLink documents:
- *  1. Downloads files from Horizon portal (using the user's live session cookie)
- *  2. Applies 3-layer deduplication (section, teacher, filename)
- *  3. Extracts ZIP archives; stores RAR as-is
- *  4. Uploads originals to B2 under course-material/ (downloadable)
- *  5. Converts DOCX/PPTX to PDF and uploads to B2 under course-vault/ (view-only)
- *
- * KEY RULE: This processor MUST run while the session cookie is still valid,
- * because portal download URLs are session-bound.
- */
+
 
 const fs = require('fs');
 const path = require('path');
@@ -26,15 +14,15 @@ const CourseMaterial = require('../models/CourseMaterial');
 const CourseVaultFile = require('../models/CourseVaultFile');
 const MaterialLink    = require('../models/MaterialLink');
 
-// ── Constants ────────────────────────────────────────────────────────────────
-const TEMP_DIR = path.join(os.tmpdir(), 'myportal-materials');
-const DELAY_BETWEEN_FILES = 500;   // ms between file downloads (respect UCP server)
-const DOWNLOAD_TIMEOUT_MS = 60000; // 60s per file
 
-// Extensions that get converted to PDF for the Vault
+const TEMP_DIR = path.join(os.tmpdir(), 'myportal-materials');
+const DELAY_BETWEEN_FILES = 500;   
+const DOWNLOAD_TIMEOUT_MS = 60000; 
+
+
 const CONVERTIBLE_EXTS = new Set(['.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls']);
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+
 function ensureTempDir() {
     if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
@@ -55,9 +43,7 @@ function getExtension(filename) {
     return ('.' + (filename.split('.').pop() || '')).toLowerCase();
 }
 
-/**
- * Write a buffer to a unique temp file. Returns the file path.
- */
+
 function writeTempFile(buffer, originalName) {
     ensureTempDir();
     const safe = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -67,10 +53,7 @@ function writeTempFile(buffer, originalName) {
     return tmpPath;
 }
 
-/**
- * Download a file from the Horizon portal using the session cookie.
- * Returns a Buffer. Throws on failure.
- */
+
 async function downloadPortalFile(url, cookieString) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
@@ -91,7 +74,7 @@ async function downloadPortalFile(url, cookieString) {
             throw new Error(`HTTP ${response.status} downloading ${url}`);
         }
 
-        // Detect if session expired (redirect to login page)
+        
         const finalUrl = response.url || '';
         if (finalUrl.includes('/login') || finalUrl.includes('/web/login')) {
             throw new Error('SESSION_EXPIRED');
@@ -105,10 +88,7 @@ async function downloadPortalFile(url, cookieString) {
     }
 }
 
-/**
- * Extract a ZIP buffer. Returns array of { name, buffer }.
- * Skips directories, __MACOSX, and empty entries.
- */
+
 async function extractZipBuffer(zipBuffer) {
     const tmpZip = writeTempFile(zipBuffer, 'archive.zip');
     const unique = Math.random().toString(36).substring(2, 9);
@@ -139,12 +119,9 @@ async function extractZipBuffer(zipBuffer) {
     return entries;
 }
 
-// ── Core Upload Functions ─────────────────────────────────────────────────────
 
-/**
- * Upload a single file to B2 under course-material/.
- * Returns the b2Key.
- */
+
+
 async function uploadMaterialToB2(buffer, courseCode, sectionCode, fileName) {
     const ext = getExtension(fileName);
     const safe = normalizeFileName(fileName) || `file_${Date.now()}${ext}`;
@@ -153,18 +130,14 @@ async function uploadMaterialToB2(buffer, courseCode, sectionCode, fileName) {
     return key;
 }
 
-/**
- * Upload a single PDF to B2 under course-vault/.
- * If conversion is needed, it happens here.
- * Returns { b2Key, isConverted, finalExt }.
- */
+
 async function uploadVaultToB2(buffer, ext, originalFileName, courseCode, teacherSlug) {
     let finalBuffer = buffer;
     let finalExt = ext;
     let isConverted = false;
 
     if (CONVERTIBLE_EXTS.has(ext)) {
-        // Write to temp, convert, read PDF back
+        
         const tmpInput = writeTempFile(buffer, originalFileName);
         try {
             const pdfPath = await convertToPdf(tmpInput, TEMP_DIR);
@@ -179,7 +152,7 @@ async function uploadVaultToB2(buffer, ext, originalFileName, courseCode, teache
         }
     }
 
-    // RAR files are not stored in vault
+    
     if (ext === '.rar') return null;
 
     const safe = normalizeFileName(originalFileName.replace(ext, finalExt)) || `file_${Date.now()}${finalExt}`;
@@ -189,11 +162,9 @@ async function uploadVaultToB2(buffer, ext, originalFileName, courseCode, teache
     return { b2Key: key, isConverted, finalExt, fileSize: finalBuffer.length };
 }
 
-// ── Per-file Processing ───────────────────────────────────────────────────────
 
-/**
- * Process a single file buffer for both Material and Vault.
- */
+
+
 async function processOneFile({
     buffer, fileName, ext, courseCode, courseName,
     sectionCode, teacherName, userId, portalUrl, semester, sequenceNumber
@@ -203,7 +174,7 @@ async function processOneFile({
 
     const globalCourseCode = courseCode ? courseCode.split('-')[0].trim() : '';
 
-    // ── Course Material: store original ──────────────────────────────────────
+    
     const materialExists = await CourseMaterial.exists({ courseCode: globalCourseCode, normalizedFileName: normalized, semester });
     if (!materialExists) {
         try {
@@ -236,14 +207,12 @@ async function processOneFile({
     }
 }
 
-/**
- * Process a ZIP file: extract contents, process each entry individually.
- */
+
 async function processZipFile({ buffer, fileName, courseCode, courseName, sectionCode, teacherName, userId, portalUrl, semester, sequenceNumber }) {
     const normalized = normalizeFileName(fileName);
     const globalCourseCode = courseCode ? courseCode.split('-')[0].trim() : '';
 
-    // Store the ZIP itself in Course Material as-is
+    
     const materialExists = await CourseMaterial.exists({ courseCode: globalCourseCode, normalizedFileName: normalized, semester });
     if (!materialExists) {
         try {
@@ -270,7 +239,7 @@ async function processZipFile({ buffer, fileName, courseCode, courseName, sectio
         }
     }
 
-    // Extract and process each contained file
+    
     let entries;
     try {
         entries = await extractZipBuffer(buffer);
@@ -281,12 +250,12 @@ async function processZipFile({ buffer, fileName, courseCode, courseName, sectio
 
     for (const entry of entries) {
         const entryExt = getExtension(entry.name);
-        // Only extract and upload PDFs and convertible documents (doc, docx, ppt, pptx, xls, xlsx)
+        
         if (entryExt !== '.pdf' && !CONVERTIBLE_EXTS.has(entryExt)) {
             continue;
         }
 
-        // Upload extracted file to Course Material with parentArchive marker
+        
         const entryNorm = normalizeFileName(entry.name);
         if (!entryNorm) continue;
 
@@ -309,18 +278,10 @@ async function processZipFile({ buffer, fileName, courseCode, courseName, sectio
     }
 }
 
-// ── Main Processor ─────────────────────────────────────────────────────────────
 
-/**
- * processUserMaterials(userId, cookieString)
- *
- * Called immediately after extension-sync receives materialLinksData.
- * Runs in background. cookieString MUST be the current live session cookie.
- */
-/**
- * Phase 2: Process newly created course materials for the vault.
- * Disabled: Course Vault functionality is removed.
- */
+
+
+
 async function processVaultFilesForUser(userIdStr) {
     console.log(`[VAULT_PROC] 🚫 Course Vault sync is disabled.`);
     return;
@@ -341,7 +302,7 @@ async function processUserMaterials(userId, cookieString) {
 
         let sessionExpired = false;
 
-        // Phase 1: Download and store all course materials (in parallel)
+        
         await Promise.all(pendingLinks.map(async (linkSet) => {
             const { courseUrl, courseName, courseCode, sectionCode, teacherName, links, semester } = linkSet;
 
@@ -362,19 +323,19 @@ async function processUserMaterials(userId, cookieString) {
                         if (sessionExpired) return;
                         if (!link.downloadUrl || !link.fileName) return;
 
-                        // ── HIGH SPEED PRE-CHECK: Skip download if file exists ──
+                        
                         const normalized = normalizeFileName(link.fileName);
                         if (!normalized) return;
 
                         const fileExists = await CourseMaterial.exists({ courseCode: globalCourseCode, normalizedFileName: normalized, semester });
                         if (fileExists) {
                             console.log(`[MATERIAL_PROC] ⏭️ Fast-pass skip (exists): ${link.fileName}. Updating sequenceNumber to ${link.sequenceNumber}`);
-                            // Update sequenceNumber in CourseMaterial database
+                            
                             await CourseMaterial.updateOne(
                                 { courseCode: globalCourseCode, normalizedFileName: normalized, semester },
                                 { $set: { sequenceNumber: link.sequenceNumber } }
                             );
-                            // Mark this link as processed in MaterialLink subdocument
+                            
                             await MaterialLink.updateOne(
                                 { _id: linkSet._id, "links.downloadUrl": link.downloadUrl },
                                 { $set: { "links.$.processed": true } }
@@ -415,7 +376,7 @@ async function processUserMaterials(userId, cookieString) {
                             });
                         }
 
-                        // Mark this link as processed in MaterialLink subdocument
+                        
                         await MaterialLink.updateOne(
                             { _id: linkSet._id, "links.downloadUrl": link.downloadUrl },
                             { $set: { "links.$.processed": true } }
@@ -427,7 +388,7 @@ async function processUserMaterials(userId, cookieString) {
             }
 
             if (!sessionExpired) {
-                // Mark this link set as processed
+                
                 await MaterialLink.findByIdAndUpdate(linkSet._id, {
                     processed: true,
                     processedAt: new Date()
@@ -436,7 +397,7 @@ async function processUserMaterials(userId, cookieString) {
             }
         }));
 
-        // Phase 2: Process newly created course materials for the vault
+        
         if (!sessionExpired) {
             await processVaultFilesForUser(userIdStr);
         }
@@ -447,14 +408,7 @@ async function processUserMaterials(userId, cookieString) {
     }
 }
 
-/**
- * runMaterialSyncForAllUsers(getUserCookie)
- *
- * Used by the nightly cron. For each user, fetches fresh material links
- * from the portal (using stored cookie) then processes them.
- *
- * @param {Function} getUserCookie - async (userId) => cookieString from DB
- */
+
 async function runNightlyMaterialSync(User, Course) {
     console.log('[NIGHTLY_MATERIAL] 🌙 Starting nightly material sync...');
     const cheerio = require('cheerio');
@@ -475,7 +429,7 @@ async function runNightlyMaterialSync(User, Course) {
             if (!cookie) continue;
 
             try {
-                // Scrape fresh material links for each of the user's courses
+                
                 const courses = await Course.find({ userId: user._id, type: 'university', portalUrl: { $exists: true, $ne: '' } }).lean();
                 if (courses.length === 0) continue;
 
@@ -539,13 +493,13 @@ async function runNightlyMaterialSync(User, Course) {
                     await new Promise(r => setTimeout(r, 1000));
                 }
 
-                // Process the freshly staged links immediately using stored cookie
+                
                 await processUserMaterials(user._id.toString(), cookie);
             } catch (err) {
                 console.error(`[NIGHTLY_MATERIAL] Error for ${user.email}:`, err.message);
             }
 
-            // Delay between users
+            
             await new Promise(r => setTimeout(r, 5000));
         }
 

@@ -10,7 +10,7 @@ import {
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// --- 1. CONFIG & HELPERS ---
+
 
 const EXPENSE_CATEGORIES = [
   { id: 'food', name: 'Food & Dining', icon: Coffee, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900/30' },
@@ -38,7 +38,7 @@ const getCategoryConfig = (catName) => {
   return ALL_CATEGORIES.find(c => c.name === catName) || EXPENSE_CATEGORIES[7];
 };
 
-// --- 2. CHART & STAT COMPONENTS ---
+
 
 const MonthlyCashFlowChart = ({ income, expense }) => {
   const maxVal = Math.max(income, expense, 1000);
@@ -125,7 +125,7 @@ const TransactionRow = ({ t, onDelete }) => {
   );
 };
 
-// --- 4. MAIN COMPONENT ---
+
 const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
   const [transactions, setTransactions] = useState([]);
   const [debts, setDebts] = useState([]); 
@@ -133,7 +133,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showDebtModal, setShowDebtModal] = useState(false); 
 
-  // Dates
+  
   const [overviewDate, setOverviewDate] = useState(new Date());
   const overviewMonthISO = `${overviewDate.getFullYear()}-${String(overviewDate.getMonth() + 1).padStart(2, '0')}`;
 
@@ -142,12 +142,12 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
 
   const token = localStorage.getItem('token');
 
-  // Transaction Filters
+  
   const [filterType, setFilterType] = useState('All');
   const [filterCategory, setFilterCategory] = useState('All');
   const [sortOrder, setSortOrder] = useState('Newest');
 
-  // Sync Header "+" Button
+  
   useEffect(() => {
     if (isAddingNew) {
       setShowAddModal(true);
@@ -155,7 +155,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
     }
   }, [isAddingNew, setIsAddingNew]);
 
-  // Add Transaction Form
+  
   const [newTrans, setNewTrans] = useState({
     type: 'expense',
     amount: '',
@@ -166,7 +166,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
 
   const [selectedDebtId, setSelectedDebtId] = useState('');
 
-  // Add Debt Form
+  
   const [newDebt, setNewDebt] = useState({
     type: 'lent', 
     person: '',
@@ -209,7 +209,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
     fetchData();
   }, [token]);
 
-  // --- TRANSACTION HANDLERS ---
+  
   const validateForm = () => {
     const newErrors = {};
     if (!newTrans.amount) newErrors.amount = "Enter amount";
@@ -223,7 +223,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
   const handleAdd = async () => {
     if (!validateForm()) return;
     
-    // DEBT REPAYMENT INTEGRATION
+    
     if (isDebtCategory) {
        if (!selectedDebtId) {
           setErrors({ ...errors, debt: "Please select a record to link." });
@@ -262,7 +262,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
        return; 
     }
 
-    // STANDARD TRANSACTION LOGIC
+    
     try {
       const payload = { ...newTrans, amount: Number(newTrans.amount) };
 
@@ -291,7 +291,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
     } catch (error) { console.error("Error deleting", error); }
   };
 
-  // --- DEBT HANDLERS ---
+  
   const handleAddDebt = async () => {
     if (!newDebt.amount || !newDebt.person) return; 
     try {
@@ -356,7 +356,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
     setShowFilterModal(false);
   };
 
-  // --- CALCULATION LOGIC ---
+  
   const currentMonthTransactions = useMemo(() => {
     return transactions.filter(t => t.date.startsWith(overviewMonthISO));
   }, [transactions, overviewMonthISO]);
@@ -388,11 +388,11 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
   const monthTotalIncome = filteredTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const monthTotalExpense = filteredTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
 
-  // Debt Calculations
+  
   const totalLentPending = debts.filter(d => d.type === 'lent' && d.status === 'pending').reduce((acc, d) => acc + d.amount, 0);
   const totalBorrowedPending = debts.filter(d => d.type === 'borrowed' && d.status === 'pending').reduce((acc, d) => acc + d.amount, 0);
 
-  // --- RENDERERS ---
+  
 
   const renderOverview = () => (
     <div className="space-y-8 animate-fadeIn">
@@ -601,7 +601,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
                     <input
                       type="number"
                       autoFocus
-                      onWheel={(e) => e.target.blur()} // BLOCKS SCROLL QUIRK
+                      onWheel={(e) => e.target.blur()} 
                       className="w-20 bg-gray-50 dark:bg-[#2C2C2C] text-gray-900 dark:text-white border border-gray-300 dark:border-[#444] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue"
                       placeholder="Amount"
                       value={budgetInput}
@@ -655,7 +655,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* LENT: Owed To Me */}
+        {}
         <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm">
           <h3 className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mb-4 flex items-center gap-2">
             <ArrowDownRight size={20} /> Owed To Me
@@ -698,7 +698,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
           </div>
         </div>
 
-        {/* BORROWED: I Owe */}
+        {}
         <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-2xl border border-gray-200 dark:border-[#333] shadow-sm">
           <h3 className="text-lg font-bold text-orange-600 dark:text-orange-400 mb-4 flex items-center gap-2">
             <ArrowUpRight size={20} /> I Owe
@@ -770,7 +770,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
 
       {renderContent()}
 
-      {/* --- ADD TRANSACTION MODAL --- */}
+      {}
       {showAddModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden animate-slideUp flex flex-col max-h-[90vh]">
@@ -792,7 +792,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
                     type="number" 
                     value={newTrans.amount} 
                     onChange={e => { setNewTrans({ ...newTrans, amount: e.target.value }); setErrors({ ...errors, amount: null }); }} 
-                    onWheel={(e) => e.target.blur()} // BLOCKS SCROLL QUIRK
+                    onWheel={(e) => e.target.blur()} 
                     className={`w-full bg-gray-50 dark:bg-[#121212] border rounded-xl pl-11 pr-4 py-2.5 outline-none focus:ring-2 dark:text-white transition-all ${errors.amount ? 'border-red-500 focus:ring-red-200 bg-red-50 dark:bg-red-900/10' : 'border-gray-200 dark:border-[#333] focus:ring-brand-blue'}`} 
                     placeholder="0.00" 
                     autoFocus 
@@ -860,7 +860,7 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
         </div>
       )}
 
-      {/* --- ADD DEBT MODAL --- */}
+      {}
       {showDebtModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2C2C2C] overflow-hidden animate-slideUp flex flex-col max-h-[90vh]">

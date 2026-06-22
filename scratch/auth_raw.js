@@ -45,9 +45,9 @@ app.post('/api/auth/check-admin', async (req, res) => {
   }
 });
 
-// =================================================================
-// 🚀 UNIFIED MICROSOFT SSO LOGIN & FAST-LOGIN ENGINE
-// =================================================================
+
+
+
 app.post('/api/auth/microsoft-login', async (req, res) => {
   try {
     const { rollNumber, name, profilePic, ucpCookie } = req.body;
@@ -69,9 +69,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 
     if (profilePic && profilePic.includes('base64')) {
       try {
-        const base64Data = profilePic; // Keep data URI prefix for Cloudinary
+        const base64Data = profilePic; 
 
-        // 🚨 NEW: Upload base64 directly to Cloudinary
+        
         const uploadResponse = await cloudinary.uploader.upload(base64Data, {
           folder: 'myportal/avatars',
           public_id: `portal_profile_${formattedRoll}_${Date.now()}`,
@@ -95,7 +95,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         if (!user.originalPortalProfilePic) {
           user.originalPortalProfilePic = finalProfilePicUrl;
         }
-        // profilePic is now strictly for the custom uploaded picture
+        
       }
       await user.save();
     } else {
@@ -108,7 +108,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         ucpCookie: ucpCookie,
         portalProfilePic: finalProfilePicUrl,
         originalPortalProfilePic: finalProfilePicUrl
-        // profilePic is strictly left empty so it doesn't show to community
+        
       });
       await user.save();
     }
@@ -162,12 +162,12 @@ app.post('/api/reset-password', async (req, res) => {
 app.get('/api/ping', (req, res) => res.json({ status: "alive", time: new Date() }));
 
 
-// 🚨 NEW: 📸 CLOUDINARY PROFILE PICTURE UPLOAD 
+
 app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], auth, profilePicUpload.single('profilePic'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    // Cloudinary puts the final URL in req.file.path
+    
     const fileUrl = req.file.path;
 
     console.log(`📸 [PROFILE] Successful Cloudinary upload for user ${req.user.id}. URL: ${fileUrl}`);
@@ -176,7 +176,7 @@ app.post(['/api/user/profile-pic', '/user/profile-pic', '/api/profile-pic'], aut
       req.user.id,
       {
         customProfilePic: fileUrl,
-        profilePic: fileUrl // Always use custom pic if uploaded
+        profilePic: fileUrl 
       },
       { new: true }
     ).select('-password');
@@ -197,9 +197,9 @@ app.put('/api/user/privacy', auth, async (req, res) => {
     user.showProfilePicToCommunity = req.body.showProfilePicToCommunity;
     
     if (user.showProfilePicToCommunity === false && !user.customProfilePic) {
-      user.profilePic = null; // Hide the portal pic
+      user.profilePic = null; 
     } else if (user.showProfilePicToCommunity === true && !user.customProfilePic && user.portalProfilePic) {
-      user.profilePic = user.portalProfilePic; // Restore it
+      user.profilePic = user.portalProfilePic; 
     }
     
     await user.save();
@@ -241,13 +241,13 @@ app.post('/api/user/push-token', auth, async (req, res) => {
     const removeToken = req.body.removeToken;
 
     if (token) {
-      // 1. Remove this token from any OTHER users' pushTokens lists to prevent cross-user leakage
+      
       await User.updateMany(
         { _id: { $ne: user._id }, pushTokens: token },
         { $pull: { pushTokens: token } }
       );
 
-      // 2. Add it to the current user's pushTokens list (if not already there)
+      
       if (!user.pushTokens) user.pushTokens = [];
       if (!user.pushTokens.includes(token)) {
         user.pushTokens.push(token);
@@ -266,7 +266,7 @@ app.post('/api/user/push-token', auth, async (req, res) => {
 
 app.put('/api/user/preferences', auth, async (req, res) => { try { await User.findByIdAndUpdate(req.user.id, { prayerNotifs: req.body.prayerNotifs }); res.json({ success: true }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-// Course visibility toggle
+
 app.put('/api/user/course-preferences', auth, async (req, res) => {
   try {
     const { courseName, isVisible } = req.body;
@@ -298,4 +298,4 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
 app.get('/api/user/portal-status', auth, async (req, res) => { try { const user = await User.findById(req.user.id); res.json({ isConnected: !!user.portalId && user.isPortalConnected, portalId: user.portalId }); } catch (error) { res.status(500).json({ message: "Error" }); } });
-
+

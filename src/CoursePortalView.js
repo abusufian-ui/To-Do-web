@@ -26,7 +26,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
     }
   }, [courses, selectedCourse]);
 
-  // New States to hold ALL data at once for the badges
+  
   const [allAnnouncements, setAllAnnouncements] = useState([]);
   const [allAttendance, setAllAttendance] = useState([]);
   const [allSubmissions, setAllSubmissions] = useState([]);
@@ -38,7 +38,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Close dropdown when clicking outside
+  
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -49,7 +49,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch ALL data on mount to power the instant switching and dropdown badges
+  
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true);
@@ -74,7 +74,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
     };
 
     fetchAllData();
-  }, []); // Run once on mount
+  }, []); 
 
   const fetchStatuses = useCallback(async () => {
     try {
@@ -136,17 +136,17 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
     return () => clearInterval(interval);
   }, [activeTab, showSyncDashboard, fetchStatuses]);
 
-  // Helper for robust string matching
+  
   const normalize = (name) => name?.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  // Derive the current course data instantly from the pre-fetched state
+  
   const courseData = {
     announcements: allAnnouncements.find(a => normalize(a.courseName) === normalize(selectedCourse))?.news || [],
     attendance: allAttendance.find(a => normalize(a.courseName) === normalize(selectedCourse)) || { summary: { conducted: 0, attended: 0 }, records: [] },
     submissions: allSubmissions.find(s => normalize(s.courseName) === normalize(selectedCourse))?.tasks || []
   };
 
-  // 🎨 DYNAMIC BADGE RENDERER
+  
   const renderBadge = (courseName) => {
     const normName = normalize(courseName);
 
@@ -252,10 +252,10 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
   return (
     <div className="w-full h-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar-hide">
       
-      {/* Dynamic Header */}
+      {}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-gray-200 dark:border-[#333] pb-4 relative z-20">
         
-        {/* Title Section */}
+        {}
         <div className="flex-1">
           <h1 className="text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3">
             {activeTab}
@@ -265,7 +265,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
           </p>
         </div>
         
-        {/* EXACT UI MATCH: Custom Dropdown Menu */}
+        {}
         {activeTab !== 'Course Material' && (
           <div className="relative w-full md:w-[28rem] shrink-0" ref={dropdownRef}>
             <button
@@ -281,7 +281,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
               <ChevronDown size={18} className={`text-gray-400 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Dropdown Options */}
+            {}
             {isDropdownOpen && (
               <div className="absolute top-full right-0 mt-2 w-full bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl overflow-hidden z-[100] animate-fadeIn custom-scrollbar max-h-[350px] overflow-y-auto">
                 
@@ -309,7 +309,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
                       </span>
                     </span>
 
-                    {/* The Dynamic Tab Feedback Badge */}
+                    {}
                     {renderBadge(course.name)}
                   </button>
                 ))}
@@ -319,7 +319,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
         )}
       </div>
 
-      {/* Content Area */}
+      {}
       <div className="flex-1 transition-opacity duration-300 relative z-10">
         {loading ? (
           <div className="flex items-center justify-center h-64">
@@ -363,7 +363,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
         )}
       </div>
 
-      {/* Secure Document Viewer Modal Overlay */}
+      {}
       {previewFile && (
         <SecureDocumentViewer 
           fileUrl={previewFile} 

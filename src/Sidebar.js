@@ -85,7 +85,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     if (isHabitsExpanded) setIsHabitsExpanded(false);
   };
 
-  // 🚨 SMART CLICK HANDLER: Automatically slides away sidebar if Grade Book is selected
+  
   const handleSubItemClick = (id) => {
     setActiveTab(id);
     if (id === 'Grade Book' && isOpen) {
@@ -144,7 +144,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           );
         })}
 
-        {/* --- ACADEMICS SECTION --- */}
+        {}
         <button
           onClick={handleAcademicsClick}
           className={`
@@ -185,7 +185,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           </div>
         )}
 
-        {/* --- CASH MANAGER SECTION --- */}
+        {}
         <button
           onClick={handleCashClick}
           className={`
@@ -226,7 +226,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           </div>
         )}
 
-        {/* --- HABITS SECTION --- */}
+        {}
         <button
           onClick={handleHabitsClick}
           className={`
@@ -267,7 +267,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           </div>
         )}
 
-        {/* --- EXTERNAL LINKS SECTION --- */}
+        {}
         <button
           onClick={handleLinksClick}
           className={`
@@ -303,7 +303,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           </div>
         )}
 
-        {/* --- ADMIN SECTION --- */}
+        {}
         {user && user.isAdmin && (
           <button
             onClick={() => handleSubItemClick('Admin')}

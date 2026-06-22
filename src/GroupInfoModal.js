@@ -20,7 +20,7 @@ const GroupInfoModal = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState(activeGroup?.name || '');
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false); // 🚀 NEW: Preview State
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false); 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', action: null, confirmText: 'Confirm' });
   const [showReassignDropdown, setShowReassignDropdown] = useState(false);
   const [selectedNextAdmin, setSelectedNextAdmin] = useState('');
@@ -34,7 +34,7 @@ const GroupInfoModal = ({
     ? new Date(activeGroup.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
     : "Recently";
 
-  // 🚀 OPEN FULLSCREEN PREVIEW INSTEAD OF FILE UPLOADER
+  
   const handleAvatarClick = () => {
     setIsPreviewOpen(true);
   };
@@ -261,7 +261,7 @@ const GroupInfoModal = ({
           .animate-topDrawer { animation: slideInFromTop 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         `}</style>
         <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-lg rounded-b-[2.25rem] rounded-t-none shadow-2xl border-b border-x border-gray-100 dark:border-[#2C2C2C] animate-topDrawer overflow-hidden flex flex-col max-h-[90vh]">
-          {/* Header */}
+          {}
           <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center shrink-0">
             <h2 className="text-lg font-bold dark:text-white text-gray-800 flex items-center gap-2">
               <ShieldAlert className="text-orange-500" size={18} />
@@ -272,7 +272,7 @@ const GroupInfoModal = ({
             </button>
           </div>
 
-          {/* Content */}
+          {}
           <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
             <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/30 rounded-2xl p-4 flex gap-3 text-orange-700 dark:text-orange-400">
               <AlertCircle size={20} className="shrink-0 mt-0.5" />
@@ -318,7 +318,7 @@ const GroupInfoModal = ({
             </div>
           </div>
 
-          {/* Footer */}
+          {}
           <div className="p-5 bg-gray-50 dark:bg-[#181818] border-t border-gray-100 dark:border-[#2C2C2C] flex gap-3 shrink-0">
             <button onClick={() => setShowReassignDropdown(false)} className="flex-1 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-xl transition-colors">Cancel</button>
             <button 
@@ -348,7 +348,7 @@ const GroupInfoModal = ({
 
         <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-lg rounded-b-[2.25rem] rounded-t-none shadow-2xl border-b border-x border-gray-100 dark:border-[#2C2C2C] animate-topDrawer overflow-hidden flex flex-col max-h-[90vh]">
 
-          {/* Header */}
+          {}
           <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center shrink-0">
             <h2 className="text-lg font-bold dark:text-white text-gray-800 flex items-center gap-2">
               <Users className="text-brand-blue" size={18} />
@@ -359,11 +359,11 @@ const GroupInfoModal = ({
             </button>
           </div>
 
-          {/* Scrollable Content */}
+          {}
           <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
             <div className="flex flex-col items-center text-center">
               
-              {/* 🚀 FIXED: AVATAR PREVIEW TRIGGER & SEPARATE CAMERA BUTTON */}
+              {}
               <div className="relative group/avatar animate-fadeIn">
                 <div 
                   className={`relative cursor-pointer transition-transform ${uploading ? '' : 'hover:scale-105'}`} 
@@ -388,7 +388,7 @@ const GroupInfoModal = ({
 
               <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
 
-              {/* Editable Group Title Text Row */}
+              {}
               <div className="mt-4 w-full flex items-center justify-center gap-2 px-4 max-w-sm">
                 {isEditingName ? (
                   <div className="flex items-center gap-2 w-full animate-fadeIn">
@@ -413,7 +413,7 @@ const GroupInfoModal = ({
               <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider font-bold">Workspace initialized {creationDate}</p>
             </div>
 
-            {/* Toast Notification Responses */}
+            {}
             {successMsg && (
               <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-xl text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2 animate-fadeIn"><Check size={16} />{successMsg}</div>
             )}
@@ -421,7 +421,7 @@ const GroupInfoModal = ({
               <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-xl text-rose-500 text-xs font-semibold flex items-center gap-2 animate-fadeIn"><AlertCircle size={16} />{errorMsg}</div>
             )}
 
-            {/* Members Mapping Section */}
+            {}
             <div className="space-y-3">
               <h4 className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400">Enrolled Members ({activeGroup.members?.length || 0})</h4>
               <div className="space-y-2">
@@ -475,7 +475,7 @@ const GroupInfoModal = ({
             </div>
           </div>
 
-          {/* Footer Panel Controls */}
+          {}
           <div className="p-5 bg-gray-50 dark:bg-[#181818] border-t border-gray-100 dark:border-[#2C2C2C] flex gap-3 shrink-0">
             <button onClick={onClose} className="flex-1 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-xl transition-colors">Dismiss</button>
             <button onClick={handleLeaveGroup} className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-1.5">
@@ -486,7 +486,7 @@ const GroupInfoModal = ({
         </div>
       </div>
 
-      {/* 🚀 FULLSCREEN IMAGE PREVIEW OVERLAY */}
+      {}
       {isPreviewOpen && (
         <div onClick={() => setIsPreviewOpen(false)} className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-xl animate-fadeIn cursor-pointer">
           <button onClick={() => setIsPreviewOpen(false)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all">

@@ -9,11 +9,11 @@ mongoose.connect(dbUri)
   .then(async () => {
     console.log('Connected successfully!');
     
-    // Find all users
+    
     const allUsers = await User.find({});
     console.log(`Found ${allUsers.length} total users.`);
 
-    // Update showProfilePicToCommunity to null for all users
+    
     const result = await User.updateMany(
       {},
       { $set: { showProfilePicToCommunity: null } }
@@ -22,7 +22,7 @@ mongoose.connect(dbUri)
     console.log(`Database updated successfully!`);
     console.log(`Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}`);
 
-    // Print updated users
+    
     const updatedUsers = await User.find({}, { name: 1, showProfilePicToCommunity: 1 });
     console.log('\nUpdated User Status:');
     updatedUsers.forEach(u => {

@@ -87,7 +87,7 @@ app.get('/api/course-records/:courseName', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ message: "Error fetching course records" }); }
 });
 
-// Helper to compute a consistent content hash for a submissions tasks list
+
 const computeSubmissionsHash = (tasks) => {
   const hash = crypto.createHash('md5');
   const serialized = (tasks || []).map(t => {
@@ -103,7 +103,7 @@ const computeSubmissionsHash = (tasks) => {
   return hash.digest('hex');
 };
 
-// Helper to merge newly scraped tasks with existing DB tasks, preserving 'Submitted' statuses
+
 const mergeUserTasks = (existingTasks, incomingTasks) => {
   const existingTasksList = existingTasks || [];
   const existingTaskMap = new Map();
@@ -163,7 +163,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     const userId = req.user.id;
     const user = await User.findById(userId);
 
-    // Default mode is AUTO_SYNC if not explicitly provided
+    
     const mode = syncMode || 'AUTO_SYNC';
 
     let activePortalId = portalId;
@@ -180,10 +180,10 @@ app.post('/api/extension-sync', auth, async (req, res) => {
     }
     if (!user.portalId) user.portalId = activePortalId.toUpperCase();
 
-    // ── Tracker for SyncLog ──
+    
     let changesSummary = {};
 
-    // ── Extract enrolled sections from courseMap and ensure Courses exist ──
+    
     const enrolledSections = [];
     const sectionLookup = {}; 
     const baseCodeLookup = {}; 
@@ -225,13 +225,13 @@ app.post('/api/extension-sync', auth, async (req, res) => {
             }
           }
 
-          // ✅ Save creditHours + portalUrl + semester to DB dynamically
+          
           const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
           const activeSemester = parseSemesterFromCourseCode(fullCode) || req.body.semester || getCurrentSemesterCode();
           const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: activeSemester };
           if (fullCode) updatePayload.code = fullCode;
           if (sectionCode) updatePayload.section = sectionCode;
-          if (url) updatePayload.portalUrl = url; // Store the full portal URL for nightly scraper
+          if (url) updatePayload.portalUrl = url; 
 
           await Course.findOneAndUpdate(
             { userId, name: courseName },
@@ -242,7 +242,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
     
-    // ── Attendance Sync & Push Notifications ──
+    
     if (attendanceData && attendanceData.length > 0) {
       for (const att of attendanceData) {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
@@ -259,7 +259,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
               sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
               await createAcademicNotification(userId, 'attendance', `CRITICAL: ${att.courseName}`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
             }
-            // Emit granular WebSocket event
+            
             io.to(userId.toString()).emit('attendance_update', changes);
             changesSummary.attendance = changesSummary.attendance || [];
             if (!changesSummary.attendance.includes(att.courseName)) changesSummary.attendance.push(att.courseName);
@@ -269,7 +269,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // ── Announcements Sync ──
+    
     if (announcementsData && announcementsData.length > 0) {
       for (const ann of announcementsData) {
         if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
@@ -289,7 +289,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // ── Submissions & Peer Syncing ──
+    
     if (submissionsData && submissionsData.length > 0) {
       for (const sub of submissionsData) {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
@@ -338,7 +338,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
                 const normDate = parseUCPDate(incomingTask.dueDate);
                 const fingerprint = `${title}_${normDate}`;
                 if (!existingTaskMap.has(fingerprint)) {
-                  // Force classmate tasks to default to Pending to prevent status contamination
+                  
                   const peerTask = { ...incomingTask, status: 'Pending', dueDate: normDate, startDate: parseUCPDate(incomingTask.startDate) };
                   existingTasks.push(peerTask);
                   newPeerTasks.push(peerTask);
@@ -353,7 +353,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
                   { $set: { courseUrl: sub.courseUrl, courseName: sub.courseName, tasks: existingTasks, lastSyncHash: peerNewHash, lastUpdated: new Date() } },
                   { upsert: true }
                 );
-                // Broadcast to peer as well
+                
                 io.to(peerId.toString()).emit('submission_update', {
                   type: 'SUBMISSION_UPDATE',
                   courseName: sub.courseName,
@@ -367,9 +367,9 @@ app.post('/api/extension-sync', auth, async (req, res) => {
       }
     }
 
-    // ── FIXED: Timetable Sync (Pulled OUT of LOGIN_SYNC to allow background updates) ──
-    // By using deleteMany on EVERY sync where we have data, we completely wipe out 
-    // old makeup classes, dropped courses, and garbage data, ensuring a 1:1 mirror.
+    
+    
+    
     if (timetableData && timetableData.length > 0) {
       const courseMapLocal = new Map();
       const preparedClasses = [];
@@ -436,7 +436,7 @@ app.post('/api/extension-sync', auth, async (req, res) => {
 if (fullCode) courseUpdatePayload.code = fullCode;
 if (sectionCode) courseUpdatePayload.section = sectionCode;
 
-// 🚨 CRITICAL FIX: Only overwrite instructors/rooms if the scraper actually found them in the timetable
+
 if (data.instructors && data.instructors.size > 0) {
   courseUpdatePayload.instructors = Array.from(data.instructors);
 }
@@ -452,7 +452,7 @@ await Course.findOneAndUpdate(
       }
     }
 
-    // ── Datesheet Sync ──
+    
     if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC') {
       if (datesheetData && datesheetData.length > 0) {
         await Exam.deleteMany({ userId });
@@ -462,7 +462,7 @@ await Course.findOneAndUpdate(
       }
     }
 
-    // ── Grades Sync ──
+    
     if (gradesData && gradesData.length > 0) {
       if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
       for (const grade of gradesData) {
@@ -481,7 +481,7 @@ await Course.findOneAndUpdate(
       }
     }
 
-    // ── History Sync ──
+    
     if (historyData && historyData.length > 0) {
       if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
       for (const sem of historyData) {
@@ -519,12 +519,12 @@ await Course.findOneAndUpdate(
       }
     }
 
-    // ── Stats Sync ──
+    
     if (statsData && Object.keys(statsData).length > 0) {
       const existingStats = await StudentStats.findOne({ userId });
       const updatePayload = { ...statsData, userId, lastUpdated: new Date() };
 
-      // Safety: Don't overwrite valid CGPA with 0.00
+      
       if (existingStats && statsData.cgpa === "0.00" && existingStats.cgpa !== "0.00") {
         delete updatePayload.cgpa;
       }
@@ -536,7 +536,7 @@ await Course.findOneAndUpdate(
       );
     }
 
-    // ── User Profile Sync ──
+    
     const updateFields = {
       isPortalConnected: true,
       lastSyncAt: new Date(),
@@ -553,7 +553,7 @@ await Course.findOneAndUpdate(
     });
 
     if (syncLogId) {
-      // Clean up empty changesSummary
+      
       if (Object.keys(changesSummary).length === 0) changesSummary = null;
 
       await SyncLog.findByIdAndUpdate(syncLogId, {
@@ -564,10 +564,10 @@ await Course.findOneAndUpdate(
     }
 
 
-    // ── 🗂️ Material Links: Stage + Immediately Trigger Processing ──
-    // Session-bound download URLs expire when cookie expires.
-    // Process IMMEDIATELY while session is live. Even duplicate links trigger a re-run
-    // so any newly added files by the teacher are picked up.
+    
+    
+    
+    
     if (materialLinksData && Array.isArray(materialLinksData) && materialLinksData.length > 0) {
       const liveCookie = ucpCookie || user.ucpCookie;
       if (liveCookie) {
@@ -575,13 +575,13 @@ await Course.findOneAndUpdate(
         for (const item of materialLinksData) {
           if (!item.courseUrl || !item.links || item.links.length === 0) continue;
 
-          // Derive section and teacher from context already parsed above
+          
           const itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
           const courseDoc = await Course.findOne({ userId, name: item.courseName }).lean();
           const itemTeacherName = (courseDoc?.instructors || [])[0] || '';
 
-          // Always upsert with fresh links + reset processed = false
-          // so the processor always re-checks for new files
+          
+          
           const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
           const activeSemester = parseSemesterFromCourseCode(item.courseCode) || req.body.semester || getCurrentSemesterCode();
 
@@ -612,7 +612,7 @@ await Course.findOneAndUpdate(
 
         if (stagedCount > 0) {
           console.log(`[SYNC] 📥 Staged ${stagedCount} material link sets. Firing processor immediately.`);
-          // Fire immediately in background — session cookie is live right now
+          
           setTimeout(() => processUserMaterials(userId.toString(), liveCookie), 200);
         }
       }
@@ -643,7 +643,7 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
       return res.status(400).json({ message: "No cookie or portalId found. Please login again." });
     }
 
-    // Create pending SyncLog
+    
     const syncLog = new SyncLog({
       userId: user._id,
       portalId: user.portalId,
@@ -653,17 +653,17 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
     });
     await syncLog.save();
 
-    // Acknowledge immediately to prevent mobile app timeouts
+    
     res.json({ message: "Server-side scraping triggered successfully." });
 
-    // Run the scrape in the background
+    
     setTimeout(async () => {
       const startTime = Date.now();
       try {
         const { scrapeServerSide } = require('./services/scraperEngine');
         const scrapedPayload = await scrapeServerSide(user.ucpCookie, 'FULL', user.portalId);
 
-        // Append log ID to payload so extension-sync can mark it as success
+        
         scrapedPayload.syncLogId = syncLog._id.toString();
 
         const jwt = require('jsonwebtoken');
@@ -694,4 +694,4 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
     }
   }
 });
-
+

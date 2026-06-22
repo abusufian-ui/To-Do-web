@@ -1,4 +1,4 @@
-// models/Timetable.js
+
 const mongoose = require('mongoose');
 
 const timetableSchema = new mongoose.Schema({
@@ -15,10 +15,10 @@ const timetableSchema = new mongoose.Schema({
   lastUpdated: { type: Date, default: Date.now }
 });
 
-// Compound index to ensure uniqueness per user schedule
+
 timetableSchema.index({ userId: 1, day: 1, startTime: 1, courseName: 1 }, { unique: true });
 
-// TTL index to automatically delete expired makeup classes
+
 timetableSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('TimetableModel', timetableSchema);  

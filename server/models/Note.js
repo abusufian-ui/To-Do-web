@@ -11,11 +11,11 @@ const noteSchema = new mongoose.Schema({
   deletedAt: { type: Date, default: null },
   isPrivate: { type: Boolean, default: false },
   
-  // 👥 Multi-user Group Workspace Fields
+  
   groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null, index: true },
   deletedByUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   
-  // 🌍 Community Sharing / Inbox Fields
+  
   isInbox: { type: Boolean, default: false },
   sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
 }, { timestamps: true });

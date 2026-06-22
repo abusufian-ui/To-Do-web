@@ -323,7 +323,7 @@ const AddTaskModal = ({ isOpen, onClose, onSave, courses, timetable = [], initia
             </div>
           </div>
 
-          {/* UPDATED TIMETABLE CLASS SUGGESTION UI WITH FEEDBACK */}
+          {}
           {classesToday.length > 0 && (
             <div className="animate-fadeIn mt-1 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/30 rounded-xl">
               <label className="text-[11px] font-bold text-brand-blue uppercase flex items-center gap-1.5 mb-2">

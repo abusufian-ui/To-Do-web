@@ -12,7 +12,7 @@ const CourseAnnouncements = ({ announcements }) => {
     );
   }
 
-  // Smart Date Formatter (turns "2026-03-02" into "Mar 02, 2026")
+  
   const formatDate = (dateString) => {
     try {
       const date = new Date(dateString);
@@ -23,11 +23,11 @@ const CourseAnnouncements = ({ announcements }) => {
     }
   };
 
-  // Helper for reliable descending date sorting
+  
   const parseAnnouncementDate = (dateStr) => {
     if (!dateStr) return 0;
 
-    // 1. Direct check for ISO-like YYYY-MM-DD or YYYY/MM/DD
+    
     const isoMatch = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (isoMatch) {
       const year = parseInt(isoMatch[1], 10);
@@ -36,7 +36,7 @@ const CourseAnnouncements = ({ announcements }) => {
       return new Date(year, month, day).getTime();
     }
 
-    // 2. Direct check for DD-MM-YYYY or DD/MM/YYYY
+    
     const reverseMatch = dateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
     if (reverseMatch) {
       const day = parseInt(reverseMatch[1], 10);
@@ -45,7 +45,7 @@ const CourseAnnouncements = ({ announcements }) => {
       return new Date(year, month, day).getTime();
     }
 
-    // 3. Fallback to token-based matching for wordy months
+    
     const cleaned = dateStr.replace(/,/g, '').replace(/-/g, ' ').trim();
     const parts = cleaned.split(/\s+/);
 
@@ -80,26 +80,26 @@ const CourseAnnouncements = ({ announcements }) => {
       return new Date(year, month, day).getTime();
     }
 
-    // Final fallback to native Date.parse
+    
     const parsed = Date.parse(dateStr);
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  // Sort announcements descending by date
+  
   const sortedAnnouncements = [...announcements].sort((a, b) => {
     return parseAnnouncementDate(b.date) - parseAnnouncementDate(a.date);
   });
 
-  // Separate the newest announcement from the rest
+  
   const latestNews = sortedAnnouncements[0];
   const olderNews = sortedAnnouncements.slice(1);
 
   return (
     <div className="space-y-8 animate-fadeIn">
       
-      {/* 1. LATEST ANNOUNCEMENT HERO CARD */}
+      {}
       <div className="relative overflow-hidden rounded-3xl p-6 md:p-8 text-white bg-gradient-to-br from-blue-600 to-indigo-700 shadow-xl shadow-blue-500/20 transition-transform hover:-translate-y-1 duration-300">
-        {/* Decorative Background Elements */}
+        {}
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-white opacity-10 blur-3xl pointer-events-none"></div>
         <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full bg-black opacity-10 blur-xl pointer-events-none"></div>
 
@@ -122,25 +122,25 @@ const CourseAnnouncements = ({ announcements }) => {
         </div>
       </div>
 
-      {/* 2. OLDER ANNOUNCEMENTS TIMELINE */}
+      {}
       {olderNews.length > 0 && (
         <div className="relative pt-2">
-          {/* FIXED: Shifted absolute left to precisely [22px] to map directly to the true center of the w-11 icons */}
+          {}
           <div className="absolute left-[22px] top-2 bottom-8 w-0.5 bg-gradient-to-b from-blue-500 to-gray-200 dark:from-indigo-500 dark:to-[#333]"></div>
 
           <div className="space-y-6">
             {olderNews.map((news, idx) => (
               <div key={idx} className="relative flex items-start gap-4 md:gap-6 group">
                 
-                {/* Timeline Node/Icon */}
-                {/* FIXED: Added mt-1 to align perfectly with the first line of text content within the card */}
+                {}
+                {}
                 <div className="relative z-10 w-11 h-11 shrink-0 bg-white dark:bg-[#1E1E1E] border-4 border-gray-50 dark:border-dark-bg rounded-full flex items-center justify-center shadow-sm group-hover:border-blue-50 dark:group-hover:border-indigo-900/30 transition-colors duration-300 mt-1">
                   <div className="w-8 h-8 bg-blue-50 dark:bg-indigo-900/20 rounded-full flex items-center justify-center">
                     <Megaphone size={14} className="text-blue-600 dark:text-indigo-400" />
                   </div>
                 </div>
 
-                {/* Content Card */}
+                {}
                 <div className="flex-1 bg-white dark:bg-[#1E1E1E] border border-gray-100 dark:border-[#333] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 group-hover:-translate-y-1 group-hover:border-blue-200 dark:group-hover:border-indigo-500/30">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 gap-2">
                     <h3 className="text-lg font-bold text-gray-800 dark:text-white leading-snug">

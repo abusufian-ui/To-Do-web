@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
-// --- HELPER: CONVERT LONG NAMES TO ABBREVIATIONS ---
+
 const getAbbreviation = (name) => {
   if (!name || name === 'Select') return name;
   const n = name.toLowerCase().trim();
@@ -290,7 +290,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, acti
   const currentUserId = String(user?.id || user?._id || '');
   const taskCreatorId = String(task?.userId?._id || task?.userId?.id || task?.userId || '');
   
-  // 🚀 ABSOLUTE STRICTNESS
+  
   const isOwner = currentUserId && taskCreatorId && (currentUserId === taskCreatorId);
   const canEditFully = !task.groupId ? true : isOwner;
 
@@ -315,7 +315,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, acti
           .dark .custom-scrollbar-modal::-webkit-scrollbar-thumb:hover { background: #52525b; }
         `}</style>
 
-        {/* HEADER */}
+        {}
         <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-brand-blue/10 rounded-xl">
@@ -341,10 +341,10 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, acti
           </div>
         </div>
 
-        {/* CONTENT */}
+        {}
         <div className="p-8 overflow-y-auto custom-scrollbar-modal">
 
-          {/* TITLE & DESCRIPTION */}
+          {}
           <div className="mb-8">
             {isEditing && canEditFully ? (
               <div className="space-y-4">
@@ -378,10 +378,10 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, acti
             )}
           </div>
 
-          {/* INFO GRID */}
+          {}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 pt-6 border-t border-gray-100 dark:border-[#2C2C2C]">
 
-            {/* LEFT COLUMN */}
+            {}
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm min-h-[32px]">
                 <CalendarIcon size={16} className="text-gray-400 shrink-0" />
@@ -418,7 +418,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, acti
                 </div>
               )}
 
-              {/* PRIVACY TOGGLE */}
+              {}
               {canEditFully && (
                 <div className="flex items-center gap-3 text-sm min-h-[32px]">
                   <Shield className="text-indigo-500 shrink-0" size={16} />
@@ -435,7 +435,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, acti
               )}
             </div>
 
-            {/* RIGHT COLUMN */}
+            {}
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm min-h-[32px]">
                 <Flag size={16} className="text-orange-500 shrink-0" />
@@ -473,7 +473,7 @@ const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, acti
             </div>
           </div>
 
-          {/* SUB-TASKS CONFIGURATION SECTION */}
+          {}
           <div className="bg-gray-50 dark:bg-[#181818] p-6 rounded-2xl border border-gray-100 dark:border-[#2C2C2C]">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <CheckSquare size={16} /> Sub Tasks Management
@@ -537,7 +537,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
   const [newSubTask, setNewSubTask] = useState({});
   const [viewMode, setViewMode] = useState('private');
   
-  // 🚀 NEW: OPTIMISTIC STATE ENGINE TO FIX RELOAD DELAYS
+  
   const [optimisticPrivacy, setOptimisticPrivacy] = useState({});
 
   useEffect(() => {
@@ -549,13 +549,13 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
 
   const handleUpdateTask = (id, field, value) => {
     updateTask(id, field, value);
-    // When toggling privacy, override it locally so the UI updates instantly without waiting for WebSocket refetch
+    
     if (field === 'isPrivate') {
       setOptimisticPrivacy(prev => ({ ...prev, [id]: value }));
     }
   };
 
-  // Pre-process tasks map to cleanly inject the optimistic toggle changes downstream
+  
   const optimizedTasks = tasks.map(t => {
     const taskId = t.id || t._id;
     if (optimisticPrivacy[taskId] !== undefined) {
@@ -629,7 +629,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
 
   const isTaskCurrent = (t) => courses.some(c => c.name === t.course) || t.course === 'Event';
 
-  // 🚀 TAB VISIBILITY FILTRATION NOW USES THE OPTIMIZED ARRAY
+  
   const activeSource = viewMode === 'shared'
     ? optimizedTasks.filter(t => !!t.groupId)
     : optimizedTasks.filter(t => !t.groupId);
@@ -668,7 +668,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
     const currentUserId = String(user?.id || user?._id || '');
     const taskCreatorId = String(task?.userId?._id || task?.userId?.id || task?.userId || '');
     
-    // STRICT RULE: Absolute ownership dictates permissions
+    
     const isCreator = currentUserId && taskCreatorId && (currentUserId === taskCreatorId);
     const canEditAll = !isSharedTask ? true : isCreator;
 
@@ -765,13 +765,13 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
               <Dropdown id={`${taskId}-priority`} value={task.priority} icon={priorityConfig.icon} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => handleUpdateTask(taskId, 'priority', val)} colorClass={`font-medium ${priorityConfig.color}`} getOptionConfig={getPriorityConfig} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId} disabled={!canEditAll} />
             </div>
             
-            {/* 🚀 QUICK ACTION HOTBAR (APPEARS ON HOVER IF YOU ARE THE CREATOR) */}
+            {}
             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               {canEditAll && (
                 <button 
                   onClick={(e) => { 
                     e.stopPropagation(); 
-                    // Send inverted boolean: If it's shared, send TRUE (Make Private). If private, send FALSE (Share).
+                    
                     handleUpdateTask(taskId, 'isPrivate', isSharedTask); 
                   }} 
                   className={`p-1.5 transition-colors rounded-md ${isSharedTask ? 'text-gray-400 hover:text-indigo-500' : 'text-gray-400 hover:text-emerald-500'}`}
@@ -898,7 +898,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
         </div>
       </div>
 
-      {/* Renders the modal with the intelligently optimized task data to prevent layout delay */}
+      {}
       <TaskSummaryModal 
         isOpen={!!selectedTask} 
         onClose={() => setSelectedTask(null)} 

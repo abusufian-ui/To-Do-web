@@ -7,35 +7,35 @@ const CourseVaultFileSchema = new mongoose.Schema({
     section:            { type: String, default: '' },
     uploadedBy:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
-    // Moderation and Organization
+    
     status:             { type: String, enum: ['pending', 'published'], default: 'pending' },
     bucketId:           { type: mongoose.Schema.Types.ObjectId, ref: 'CourseVaultBucket' },
 
-    // File identity
-    fileName:           { type: String, required: true },           // display name (may be .pdf even if converted)
-    normalizedFileName: { type: String, required: true },           // normalized original name (pre-conversion)
-    originalFileName:   { type: String, default: '' },              // pre-conversion original name
+    
+    fileName:           { type: String, required: true },           
+    normalizedFileName: { type: String, required: true },           
+    originalFileName:   { type: String, default: '' },              
 
-    // Storage — BackBlaze B2 (PDFs only in vault)
-    b2Key:              { type: String, required: true },           // full B2 object key
-    fileType:           { type: String, default: 'pdf' },           // always 'pdf' in vault
-    fileSize:           { type: Number, default: 0 },               // bytes
+    
+    b2Key:              { type: String, required: true },           
+    fileType:           { type: String, default: 'pdf' },           
+    fileSize:           { type: Number, default: 0 },               
 
-    // Conversion tracking
-    isConverted:        { type: Boolean, default: false },          // was DOCX/PPTX converted to PDF?
-    isArchiveExtracted: { type: Boolean, default: false },          // came from inside a zip?
-    parentArchive:      { type: String, default: '' },              // zip name if extracted
+    
+    isConverted:        { type: Boolean, default: false },          
+    isArchiveExtracted: { type: Boolean, default: false },          
+    parentArchive:      { type: String, default: '' },              
 
     createdAt:          { type: Date, default: Date.now }
 });
 
-// Compound dedup: one file per teacher per course (across all sections)
+
 CourseVaultFileSchema.index(
     { courseCode: 1, teacherName: 1, normalizedFileName: 1 },
     { unique: true }
 );
 
-// Fast lookup by course code
+
 CourseVaultFileSchema.index({ courseCode: 1, teacherName: 1 });
 
 module.exports = mongoose.model('CourseVaultFile', CourseVaultFileSchema);

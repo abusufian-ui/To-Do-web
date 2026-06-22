@@ -57,7 +57,7 @@ const Header = ({
 
   const isCashTab = activeTab && activeTab.startsWith('Cash');
 
-  // Calculate Group Roles
+  
   const isGroupCreator = activeGroup?.creatorId?._id === user?.id || activeGroup?.creatorId === user?.id || activeGroup?.creatorId?._id === user?._id || activeGroup?.creatorId === user?._id;
   const isGroupAdmin = isGroupCreator || activeGroup?.admins?.some(adminId => adminId === user?.id || adminId?._id === user?.id || adminId === user?._id || adminId?._id === user?._id);
   const groupRoleLabel = isGroupCreator ? 'Creator' : (isGroupAdmin ? 'Admin' : 'Member');
@@ -429,7 +429,7 @@ const Header = ({
           </div>
         </div>
 
-        {/* --- RIGHT SIDE --- */}
+        {}
         <div className="flex items-center gap-2 md:gap-4">
 
           <div className="hidden sm:flex items-center gap-1 border-r border-gray-200 dark:border-[#333] pr-2 mr-1">
@@ -464,7 +464,7 @@ const Header = ({
             </button>
           </div>
 
-          {/* 🚀 FIXED: ELEGANT GROUP AVATAR WITH SUBTLE ROLE INDICATOR */}
+          {}
           {activeGroup && (
             <button
               onClick={onOpenGroupInfo}
@@ -548,7 +548,7 @@ const Header = ({
         </div>
       </div>
 
-      {/* Notifications Modal */}
+      {}
       {isInboxOpen && (
         <>
           <div

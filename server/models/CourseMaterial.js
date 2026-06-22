@@ -1,46 +1,46 @@
 const mongoose = require('mongoose');
 
 const CourseMaterialSchema = new mongoose.Schema({
-    // Attribution — which user's scrape seeded this file
+    
     userId:             { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     courseId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Course' },
 
-    // Classification
-    courseCode:         { type: String, required: true },   // full code e.g. CSAL-3253-B1
+    
+    courseCode:         { type: String, required: true },   
     courseName:         { type: String, default: '' },
-    sectionCode:        { type: String, required: true },   // e.g. B1
+    sectionCode:        { type: String, required: true },   
     teacherName:        { type: String, default: '' },
 
-    // File identity
-    fileName:           { type: String, required: true },   // original name shown on portal
-    normalizedFileName: { type: String, required: true },   // lowercased, stripped special chars
+    
+    fileName:           { type: String, required: true },   
+    normalizedFileName: { type: String, required: true },   
 
-    // Storage — BackBlaze B2
-    b2Key:              { type: String, default: '' },      // full B2 object key
-    fileType:           { type: String, default: '' },      // pdf, docx, pptx, zip, rar, etc.
-    fileSize:           { type: Number, default: 0 },       // bytes
+    
+    b2Key:              { type: String, default: '' },      
+    fileType:           { type: String, default: '' },      
+    fileSize:           { type: Number, default: 0 },       
 
-    // Portal origin
-    originalPortalUrl:  { type: String, default: '' },      // portal download URL at scrape time
+    
+    originalPortalUrl:  { type: String, default: '' },      
 
-    // Archive handling
-    isArchiveExtracted: { type: Boolean, default: false },  // true = extracted from zip/rar
-    parentArchive:      { type: String, default: '' },      // parent zip/rar filename
+    
+    isArchiveExtracted: { type: Boolean, default: false },  
+    parentArchive:      { type: String, default: '' },      
 
-    semester:           { type: String, required: true },   // e.g. fall 26, spring 26
+    semester:           { type: String, required: true },   
     sequenceNumber:     { type: Number },
 
     createdAt:          { type: Date, default: Date.now }
 });
 
-// PRIMARY dedup guard: only one record per file per course per section per semester
+
 CourseMaterialSchema.index({ courseCode: 1, sectionCode: 1, normalizedFileName: 1, semester: 1 }, { unique: true });
 
-// Quick lookup indexes
+
 CourseMaterialSchema.index({ courseCode: 1, sectionCode: 1, semester: 1 });
 CourseMaterialSchema.index({ userId: 1, courseCode: 1 });
 
-// DELETION HOOKS: Automate Backblaze B2 file cleanup
+
 CourseMaterialSchema.pre('findOneAndDelete', async function() {
     try {
         const doc = await this.model.findOne(this.getQuery()).lean();

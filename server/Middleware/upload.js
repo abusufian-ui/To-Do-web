@@ -12,7 +12,7 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    // FIX for PDF access: Force "raw" type for documents
+    
     if (file.originalname.match(/\.(pdf|doc|docx)$/i)) {
       return {
         folder: 'portal_uploads',
@@ -27,7 +27,7 @@ const storage = new CloudinaryStorage({
   },
 });
 
-// THIS LINE WAS MISSING OR BROKEN
+
 const upload = multer({ storage: storage });
 
 module.exports = upload;

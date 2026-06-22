@@ -7,7 +7,7 @@ import EmptyState from './EmptyState';
 import { ToastConfig } from './CustomToast';
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// --- RIGHT SIDE COMMUNITY SHARE DRAWER ---
+
 const ShareDrawer = ({ isOpen, onClose, noteIds }) => {
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
@@ -110,12 +110,12 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
   const [noteToReject, setNoteToReject] = useState(null);
   const [selectedNotes, setSelectedNotes] = useState([]);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
-  const [isSelectionMode, setIsSelectionMode] = useState(false); // 🚀 NEW: Controls the selection mode overlay
+  const [isSelectionMode, setIsSelectionMode] = useState(false); 
 
   const [showShareDrawer, setShowShareDrawer] = useState(false);
   const [notesToShare, setNotesToShare] = useState([]);
 
-  // TABS: private | shared | inbox
+  
   const [viewMode, setViewMode] = useState('private');
   const [isReadOnlyMode, setIsReadOnlyMode] = useState(false);
 
@@ -136,7 +136,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
       if (res.ok) {
         const savedNote = await res.json();
         
-        // INSTANT UI UPDATE
+        
         setNotes(prev => {
           const exists = prev.find(p => (p._id || p.id) === savedNote._id);
           if (exists) return prev.map(p => (p._id || p.id) === savedNote._id ? savedNote : p);
@@ -166,7 +166,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     } catch (error) { console.error(error); }
   };
 
-  // 🚀 BULK ACTION: Delete All Selected
+  
   const executeBulkDelete = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -179,7 +179,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     } catch (error) { console.error(error); }
   };
 
-  // 🚀 BULK ACTION: Accept All Inbox Snaps
+  
   const acceptBulkInbox = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -190,12 +190,12 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     } catch (error) { console.error(error); }
   };
 
-  // 🚀 BULK ACTION: Toggle Privacy (Make Public / Make Private)
+  
   const toggleBulkPrivacy = async (targetPrivacy) => {
     try {
       const token = localStorage.getItem('token');
       
-      // Optimistic update for instant layout switch
+      
       setNotes(prev => prev.map(n => selectedNotes.includes(n._id) ? { ...n, isPrivate: targetPrivacy, groupId: targetPrivacy ? null : 'optimistic_group' } : n));
       
       await Promise.all(selectedNotes.map(id =>
@@ -213,7 +213,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
 
   const acceptInboxNote = async (e, noteId) => {
     e.stopPropagation();
-    // Optimistic UI update
+    
     setNotes(prev => prev.map(n => n._id === noteId ? { ...n, isInbox: false } : n));
     ToastConfig.show({ title: 'Accepted', message: 'Note has been added to your workspace.', type: 'success' });
     try {
@@ -232,7 +232,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
     if (!noteToReject) return;
     const noteId = noteToReject;
     setNoteToReject(null);
-    // Optimistic UI update
+    
     setNotes(prev => prev.filter(n => n._id !== noteId));
     ToastConfig.show({ title: 'Rejected', message: 'Note has been discarded.', type: 'success' });
     try {
@@ -291,7 +291,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
       ) : (
         <div className="p-4 md:p-8 animate-fadeIn h-full overflow-y-auto custom-scrollbar relative">
           
-          {/* TAB BAR NAVIGATION */}
+          {}
           <div className="flex overflow-x-auto custom-scrollbar bg-gray-100 dark:bg-[#2C2C2C] p-1 rounded-xl mb-6 w-full md:w-max shrink-0 border border-gray-200 dark:border-[#333]">
             <button onClick={() => { setViewMode('private'); setIsSelectionMode(false); setSelectedNotes([]); }} className={`whitespace-nowrap px-5 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'private' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>My Workspace</button>
             <button onClick={() => { setViewMode('shared'); setIsSelectionMode(false); setSelectedNotes([]); }} className={`whitespace-nowrap px-5 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === 'shared' ? 'bg-white shadow-sm dark:bg-[#1E1E1E] text-brand-blue' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Group Shared</button>
@@ -300,7 +300,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
             </button>
           </div>
 
-          {/* 🚀 DYNAMIC TITLE & ACTION BAR */}
+          {}
           {isSelectionMode ? (
             <div className="w-full flex flex-col xl:flex-row xl:items-center justify-between bg-blue-50/80 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 p-4 rounded-2xl shadow-sm animate-fadeIn gap-4 mb-6">
               <span className="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-2 text-sm sm:text-base whitespace-nowrap">
@@ -312,7 +312,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                   Cancel
                 </button>
 
-                {/* Contextual Action Button 1 */}
+                {}
                 {viewMode === 'private' && (
                   <button onClick={() => toggleBulkPrivacy(false)} className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm">
                     <Globe size={16} /> Make Public
@@ -329,12 +329,12 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                   </button>
                 )}
 
-                {/* Universal Action Button 2 */}
+                {}
                 <button onClick={() => setShowBulkDelete(true)} className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold rounded-xl transition-all shadow-sm">
                   <Trash2 size={16} /> Delete All
                 </button>
 
-                {/* Exclusive Action Button 3 */}
+                {}
                 {viewMode === 'private' && (
                   <button onClick={(e) => openShareDrawer(e, selectedNotes)} disabled={selectedNotes.length === 0} className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-5 py-2.5 text-white text-sm font-bold rounded-xl transition-all shadow-sm ${selectedNotes.length > 0 ? 'bg-brand-blue hover:bg-blue-600' : 'bg-blue-400 cursor-not-allowed opacity-70'}`}>
                     <Send size={16} /> Share All
@@ -361,7 +361,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
               <EmptyState icon={viewMode === 'inbox' ? InboxIcon : FileText} title={viewMode === 'inbox' ? "Inbox Zero" : "No notes in here, sorry!"} message={viewMode === 'inbox' ? "You have no pending notes from the community." : "Your notebook is empty. Tap 'New Note' to start writing your first idea or lecture!"} />
             </div>
           ) : (
-            // 🚀 SMART GRID: Makes Inbox tiles wider (grid-cols-2) and Notes standard (grid-cols-3)
+            
             <div className={`grid gap-6 ${viewMode === 'inbox' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
               {displayNotes.map(note => {
                 const isSelected = selectedNotes.includes(note._id);
@@ -391,13 +391,13 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                     }}
                   >
 
-                    {/* 🚀 PREMIUM CARD HEADER: Fixed geometry, no squishing */}
+                    {}
                     <div className="flex justify-between items-start gap-4 mb-3">
                       <h3 className="font-black text-xl text-gray-900 dark:text-white line-clamp-2 flex-1 min-h-[56px] leading-tight">
                         {note.title || 'Untitled Note'}
                       </h3>
 
-                      {/* Explicit Fixed Size Box for Actions to prevent alignment breaking */}
+                      {}
                       <div className="flex items-center shrink-0 h-8">
                         {isSelectionMode ? (
                           <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-brand-blue border-brand-blue text-white' : 'border-gray-300 dark:border-gray-600'}`}>
@@ -418,19 +418,19 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                       </div>
                     </div>
 
-                    {/* Sender Identity Ribbon */}
+                    {}
                     {note.isInbox && note.sender ? (
                       <div className="text-[11px] text-emerald-600 font-bold mb-2 flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 w-max px-2.5 py-1 rounded-md"><Send size={10} /> Sent by {note.sender.name}</div>
                     ) : (
                       viewMode === 'shared' && note.user && <div className="text-[10px] text-brand-blue font-bold mb-3 uppercase tracking-wider">By {note.user.name}</div>
                     )}
 
-                    {/* Content Excerpt */}
+                    {}
                     <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 line-clamp-3 flex-1 whitespace-pre-wrap leading-relaxed">
                       {getPlainText(note.content) || 'Empty note...'}
                     </p>
 
-                    {/* 🚀 PREMIUM CARD FOOTER: Strictly aligned flexbox rules */}
+                    {}
                     <div className="mt-auto pt-4 border-t border-gray-100 dark:border-[#2C2C2C] flex items-center justify-between gap-3 h-12">
                       
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-brand-blue/10 text-brand-blue rounded-lg min-w-0 max-w-[60%]">

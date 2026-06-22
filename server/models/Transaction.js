@@ -22,10 +22,10 @@ const BudgetSchema = new mongoose.Schema({
 
 BudgetSchema.index({ userId: 1 });
 
-// NEW: Debt Schema
+
 const DebtSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['borrowed', 'lent'], required: true }, // 'borrowed' = I owe them, 'lent' = They owe me
+  type: { type: String, enum: ['borrowed', 'lent'], required: true }, 
   person: { type: String, required: true },
   amount: { type: Number, required: true },
   description: { type: String },

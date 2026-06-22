@@ -2,22 +2,16 @@ const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-/**
- * Converts a document to PDF.
- * Supports .docx, .pptx, .doc, .ppt, .xls, .xlsx, etc.
- * @param {string} inputPath - Absolute path to the input document
- * @param {string} outputDir - Absolute path to the directory where the PDF should be saved
- * @returns {Promise<string>} - The path to the converted PDF file
- */
+
 const convertToPdf = (inputPath, outputDir) => {
   return new Promise(async (resolve, reject) => {
     const ext = path.extname(inputPath).toLowerCase();
     if (ext === '.pdf') {
-      return resolve(inputPath); // Already a PDF, no conversion needed
+      return resolve(inputPath); 
     }
 
-    // Try Local LibreOffice conversion first
-    let sofficePath = 'soffice'; // Default for Linux/Mac (assumes in PATH)
+    
+    let sofficePath = 'soffice'; 
     
     if (process.platform === 'win32') {
       const winPaths = [
@@ -32,12 +26,12 @@ const convertToPdf = (inputPath, outputDir) => {
       }
     }
 
-    // If LIBREOFFICE_PATH is configured in environment, use it
+    
     if (process.env.LIBREOFFICE_PATH) {
       sofficePath = `"${process.env.LIBREOFFICE_PATH}"`;
     }
 
-    // Ensure output directory exists
+    
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
@@ -57,16 +51,16 @@ const convertToPdf = (inputPath, outputDir) => {
       
       console.warn(`[DOC_CONVERTER] Local LibreOffice conversion failed or not found. Output:`, stdout, stderr);
       
-      // Fallback: ConvertAPI
+      
       const convertApiSecret = process.env.CONVERT_API_SECRET;
       if (convertApiSecret) {
         console.log(`[DOC_CONVERTER] Attempting ConvertAPI fallback for: ${inputPath}`);
         try {
-          const fileFormat = ext.substring(1); // 'docx', 'pptx', etc.
+          const fileFormat = ext.substring(1); 
           const url = `https://api.convertapi.com/v1/convert/${fileFormat}/to/pdf?Secret=${convertApiSecret}`;
           
           const fileData = fs.readFileSync(inputPath);
-          // In Node.js 18+, we can construct Blob and FormData
+          
           const blob = new Blob([fileData]);
           const formData = new FormData();
           formData.append('File', blob, path.basename(inputPath));

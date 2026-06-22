@@ -8,7 +8,7 @@ const studentStatsSchema = new mongoose.Schema({
   lastUpdated: { type: Date, default: Date.now }
 });
 
-// Ensures each user has exactly one stats record
+
 studentStatsSchema.index({ userId: 1 }, { unique: true });
 
 module.exports = mongoose.model('StudentStats', studentStatsSchema);

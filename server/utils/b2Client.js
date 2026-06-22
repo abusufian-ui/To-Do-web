@@ -3,14 +3,14 @@ const { Upload } = require('@aws-sdk/lib-storage');
 const { GetObjectCommand, PutObjectCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
-// BackBlaze B2 is S3-compatible — we use the AWS SDK v3
+
 const B2_KEY_ID = process.env.B2_KEY_ID;
 const B2_APP_KEY = process.env.B2_APP_KEY;
 const B2_ENDPOINT = process.env.B2_ENDPOINT || 'https://s3.eu-central-003.backblazeb2.com';
 const B2_REGION = process.env.B2_REGION || 'eu-central-003';
 const B2_BUCKET = process.env.B2_BUCKET_NAME || 'myportal-large-data';
 
-// Guard: Fail fast if credentials are missing — never silently fall back to hardcoded keys
+
 if (!B2_KEY_ID || !B2_APP_KEY) {
   throw new Error('FATAL: B2_KEY_ID and B2_APP_KEY must be set in .env — hardcoded fallbacks removed for security.');
 }
@@ -22,19 +22,11 @@ const b2 = new S3Client({
         accessKeyId: B2_KEY_ID,
         secretAccessKey: B2_APP_KEY
     },
-    // Force path-style since B2 doesn't support virtual-hosted-style URLs
+    
     forcePathStyle: true
 });
 
-/**
- * Upload a Buffer to BackBlaze B2.
- * Uses multipart upload for large files automatically.
- * @param {string} key - The B2 object key (path inside bucket)
- * @param {Buffer} buffer - File content
- * @param {string} contentType - MIME type
- * @param {Object} metadata - Optional metadata key-value pairs
- * @returns {{ url: string, key: string }}
- */
+
 async function uploadToB2(key, buffer, contentType = 'application/octet-stream', metadata = {}) {
     const upload = new Upload({
         client: b2,
@@ -45,14 +37,14 @@ async function uploadToB2(key, buffer, contentType = 'application/octet-stream',
             ContentType: contentType,
             Metadata: metadata
         },
-        // Multipart threshold: 5MB
+        
         partSize: 5 * 1024 * 1024,
         queueSize: 2
     });
 
     await upload.done();
 
-    // Return a reference — use getSignedDownloadUrl() for actual access
+    
     return {
         key,
         bucket: B2_BUCKET
@@ -102,9 +94,7 @@ async function configureBucketCors() {
     }
 }
 
-/**
- * Get MIME type from file extension.
- */
+
 function getMimeType(filename) {
     const ext = (filename.split('.').pop() || '').toLowerCase();
     const types = {
@@ -128,18 +118,13 @@ function getMimeType(filename) {
     return types[ext] || 'application/octet-stream';
 }
 
-/**
- * Normalize a filename for deduplication checks.
- * Removes special chars, lowercases, preserves extension.
- */
+
 function normalizeFileName(filename) {
     if (!filename) return '';
     return filename.toLowerCase().replace(/[^a-z0-9._-]/g, '').replace(/\s+/g, '');
 }
 
-/**
- * Download a file from BackBlaze B2 and return a Buffer.
- */
+
 async function downloadFileFromB2(key) {
     const command = new GetObjectCommand({
         Bucket: B2_BUCKET,

@@ -47,7 +47,7 @@ const ResultHistory = () => {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // --- HELPER: Determine Color for Grades ---
+  
   const getGradeColor = (grade) => {
     const dangerGrades = ['C-', 'D+', 'D', 'F', 'W'];
     if (dangerGrades.includes(grade)) return 'text-red-500';
@@ -87,7 +87,7 @@ const ResultHistory = () => {
   return (
     <div className="p-8 w-full h-full overflow-y-auto animate-fadeIn pb-24 custom-scrollbar bg-gray-50/50 dark:bg-[#0c0c0c]">
 
-      {/* HEADER SECTION */}
+      {}
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Academic Performance</h1>
@@ -95,11 +95,11 @@ const ResultHistory = () => {
         </div>
       </div>
 
-      {/* STATS GRID */}
+      {}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
 
-          {/* CURRENT CGPA CARD */}
+          {}
           <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden group">
             <div className="absolute -right-4 -bottom-4 opacity-10 transition-transform group-hover:scale-110 duration-500">
               <Award size={120} />
@@ -111,7 +111,7 @@ const ResultHistory = () => {
             </div>
           </div>
 
-          {/* BEST PERFORMANCE CARD */}
+          {}
           <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 border border-gray-100 dark:border-[#2C2C2C] shadow-sm flex flex-col justify-between relative overflow-hidden group">
             <div className="flex items-start justify-between">
               <div>
@@ -125,7 +125,7 @@ const ResultHistory = () => {
             <p className="text-xs text-gray-500 font-medium mt-3">Achieved in <span className="text-gray-800 dark:text-white font-bold">{stats.best.term}</span></p>
           </div>
 
-          {/* CREDITS EARNED CARD */}
+          {}
           <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 border border-gray-100 dark:border-[#2C2C2C] shadow-sm flex flex-col justify-between relative overflow-hidden">
             <div className="flex items-start justify-between">
               <div>
@@ -151,7 +151,7 @@ const ResultHistory = () => {
             </div>
           </div>
 
-          {/* SEMESTERS CARD */}
+          {}
           <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl p-6 border border-gray-100 dark:border-[#2C2C2C] shadow-sm flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
@@ -167,7 +167,7 @@ const ResultHistory = () => {
         </div>
       )}
 
-      {/* SEMESTER LIST */}
+      {}
       <div className="space-y-4">
         {semesters.map((sem, idx) => {
           const sgpa = parseFloat(sem.sgpa) || 0;

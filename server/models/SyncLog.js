@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const syncLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   portalId: { type: String, required: true },
-  mode: { type: String, required: true }, // e.g. FULL, BACKGROUND, CRON_ATTENDANCE
+  mode: { type: String, required: true }, 
   status: { type: String, required: true, enum: ['PENDING', 'SUCCESS', 'FAILED'] },
   startTime: { type: Date, default: Date.now },
   endTime: { type: Date },
@@ -13,7 +13,7 @@ const syncLogSchema = new mongoose.Schema({
   syncSource: { type: String, default: 'unknown' }
 });
 
-// Auto-prune logic: Keep only the 20 most recent sync logs per user
+
 syncLogSchema.post('save', async function(doc) {
   try {
     const SyncLog = mongoose.model('SyncLog');

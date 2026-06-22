@@ -1,33 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import AnimatedLogo from './Animation'; // 🚀 Premium SVG Animation Splash
-import { StaticLogo } from './StaticLogo'; // 🚀 Premium SVG Static Logo
-import FloatingBackground from './FloatingBackground'; // 🚀 SVG Educational Background
-import { Eye, EyeOff, ArrowLeft, Check } from 'lucide-react'; // 🚀 NEW ICONS
+import AnimatedLogo from './Animation'; 
+import { StaticLogo } from './StaticLogo'; 
+import FloatingBackground from './FloatingBackground'; 
+import { Eye, EyeOff, ArrowLeft, Check } from 'lucide-react'; 
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export default function Login() {
     const navigate = useNavigate();
     
-    // UI State
-    const [step, setStep] = useState('EMAIL'); // EMAIL, PASSWORD, OTP, NEW_PASSWORD, NOT_FOUND
+    
+    const [step, setStep] = useState('EMAIL'); 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
     
-    // Data State
+    
     const [rollNumber, setRollNumber] = useState('');
     const [firstName, setFirstName] = useState('');
     const [password, setPassword] = useState('');
     const [otpValues, setOtpValues] = useState(Array(6).fill(''));
     const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState(''); // 🚀 NEW CONFIRM PASSWORD STATE
+    const [confirmPassword, setConfirmPassword] = useState(''); 
     const [flowType, setFlowType] = useState(''); 
-    const [activeEmail, setActiveEmail] = useState(''); // 🚀 Locked verified email to prevent middle-execution modifications
+    const [activeEmail, setActiveEmail] = useState(''); 
 
-    // Visibility States
+    
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [termsLink, setTermsLink] = useState('https://myportalucp.vercel.app/terms');
@@ -36,7 +36,7 @@ export default function Login() {
     const otp = otpValues.join('');
     const otpRefs = useRef([]);
 
-    // 🚀 NEW: Password Strength Calculator
+    
     const getPasswordStrength = (pass) => {
         let score = 0;
         if (pass.length >= 8) score++;
@@ -47,7 +47,7 @@ export default function Login() {
     };
     const passwordStrength = getPasswordStrength(newPassword);
 
-    // Helper to reset and go back sequentially
+    
     const handleGoBack = () => {
         setError('');
         setSuccessMsg('');
@@ -60,7 +60,7 @@ export default function Login() {
         }
     };
 
-    // 1. Check Email
+    
     const handleCheckEmail = async (e) => {
         e.preventDefault();
         if (!rollNumber) return setError("Please enter your Roll Number.");
@@ -91,7 +91,7 @@ export default function Login() {
         }
     };
 
-    // 2. Send OTP
+    
     const sendOtp = async (type, emailOverride = null) => {
         const targetEmail = emailOverride || email;
         setIsLoading(true);
@@ -114,7 +114,7 @@ export default function Login() {
         setStep('OTP');
     };
 
-    // 3. Login
+    
     const handleLogin = async (e) => {
         e.preventDefault();
         setIsLoading(true);
@@ -131,7 +131,7 @@ export default function Login() {
         }
     };
 
-    // 3.5 Verify OTP against Backend
+    
     const handleVerifyOtp = async (e) => {
         e.preventDefault();
         if (otp.length !== 6) return setError("Please enter a 6-digit code.");
@@ -150,7 +150,7 @@ export default function Login() {
         }
     };
 
-    // 4. Set Password & Finalize
+    
     const handleSetPassword = async (e) => {
         e.preventDefault();
         if (passwordStrength < 4) return setError("Please meet all password requirements.");
@@ -171,7 +171,7 @@ export default function Login() {
         }
     };
 
-    // --- OTP Input Handlers ---
+    
     const handleOtpChange = (index, value) => {
         if (!/^\d*$/.test(value)) return; 
         
@@ -221,7 +221,7 @@ export default function Login() {
     return (
         <div className="relative min-h-screen bg-black flex items-center justify-center p-4 selection:bg-white/30 transition-colors duration-1000">
             
-            {/* 🚀 Premium Header with Clickable Logo & Text */}
+            {}
             <header className="absolute top-0 left-0 w-full p-6 sm:px-12 flex justify-between items-center z-20">
                 <button onClick={handleGoBack} className="flex items-center gap-3 group outline-none">
                     <StaticLogo className="w-10 h-10 rounded-full shadow-[0_0_15px_rgba(255,255,255,0.2)] group-hover:shadow-[0_0_25px_rgba(255,255,255,0.4)] transition-all duration-300" />
@@ -229,18 +229,18 @@ export default function Login() {
                 </button>
             </header>
 
-            {/* Educational SVG Animations */}
+            {}
             <FloatingBackground />
 
-            {/* Main Card */}
+            {}
             <div className="relative z-30 w-full max-w-[420px] bg-[#050505] rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.03)] border border-[#222] overflow-hidden transition-all duration-700 animate-fade-in-up">
                 
-                {/* Progress Bar (Loading State) */}
+                {}
                 <div className="absolute top-0 left-0 w-full h-[2px] bg-transparent z-20">
                     <div className={`h-full bg-white transition-all duration-300 ease-out ${isLoading ? 'w-full animate-pulse' : 'w-0'}`} />
                 </div>
 
-                {/* 🚀 Card Back Button */}
+                {}
                 {step !== 'EMAIL' && (
                     <button onClick={handleGoBack} className="absolute top-6 left-6 text-gray-500 hover:text-white transition-colors flex items-center gap-2 text-sm font-semibold z-20">
                         <ArrowLeft size={16} /> Back
@@ -268,7 +268,7 @@ export default function Login() {
                 </div>
 
                     <div className="px-10 pb-10">
-                        {/* Error Toast */}
+                        {}
                         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${error ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
                             <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-red-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -276,7 +276,7 @@ export default function Login() {
                             </div>
                         </div>
 
-                        {/* Success Toast */}
+                        {}
                         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${successMsg ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
                             <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-green-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
@@ -285,7 +285,7 @@ export default function Login() {
                         </div>
 
                     <div className="relative">
-                        {/* STEP 1: EMAIL */}
+                        {}
                         {step === 'EMAIL' && (
                             <form onSubmit={handleCheckEmail} className="space-y-6 animate-step-enter">
                                 <div className="flex items-center bg-[#111] rounded-2xl border border-[#333] focus-within:border-white focus-within:ring-4 focus-within:ring-white/10 transition-all duration-300 overflow-hidden group">
@@ -315,7 +315,7 @@ export default function Login() {
                             </form>
                         )}
 
-                        {/* STEP 2: PASSWORD */}
+                        {}
                         {step === 'PASSWORD' && (
                             <form onSubmit={handleLogin} className="space-y-6 animate-step-enter">
                                 <div className="space-y-3 relative">
@@ -351,7 +351,7 @@ export default function Login() {
                             </form>
                         )}
 
-                        {/* STEP 3: OTP */}
+                        {}
                         {step === 'OTP' && (
                             <form onSubmit={handleVerifyOtp} className="space-y-8 animate-step-enter">
                                 <div className="flex justify-between gap-2" onPaste={handleOtpPaste}>
@@ -381,11 +381,11 @@ export default function Login() {
                             </form>
                         )}
 
-                        {/* 🚀 STEP 4: SET NEW PASSWORD (UPGRADED UI) */}
+                        {}
                         {step === 'NEW_PASSWORD' && (
                             <form onSubmit={handleSetPassword} className="space-y-4 animate-step-enter">
                                 
-                                {/* New Password */}
+                                {}
                                 <div className="relative">
                                     <input
                                         type={showNewPassword ? "text" : "password"}
@@ -400,7 +400,7 @@ export default function Login() {
                                     </button>
                                 </div>
 
-                                {/* Confirm Password */}
+                                {}
                                 <div className="relative">
                                     <input
                                         type={showConfirmPassword ? "text" : "password"}
@@ -414,7 +414,7 @@ export default function Login() {
                                     </button>
                                 </div>
 
-                                {/* Live Strength Bar */}
+                                {}
                                 <div className="space-y-2 pt-1">
                                     <div className="flex gap-2 h-1.5">
                                         {[1, 2, 3, 4].map(level => (
@@ -429,7 +429,7 @@ export default function Login() {
                                     </div>
                                 </div>
 
-                                {/* Requirements Checklist */}
+                                {}
                                 <ul className="text-xs space-y-2.5 mt-2 text-gray-400 bg-[#111] p-4 rounded-xl border border-[#222]">
                                     <li className={`flex items-center gap-2 transition-colors duration-300 ${newPassword.length >= 8 ? 'text-green-500 font-medium' : ''}`}>
                                         <Check size={14} className={newPassword.length >= 8 ? 'opacity-100' : 'opacity-30'} /> At least 8 characters

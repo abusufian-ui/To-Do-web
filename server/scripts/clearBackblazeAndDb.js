@@ -7,7 +7,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const MONGO_URI = process.env.REACT_APP_MONGODB_URI;
 
 async function run() {
-  // 1. Clear database
+  
   if (!MONGO_URI) {
     console.error("REACT_APP_MONGODB_URI not found in env!");
     process.exit(1);
@@ -36,7 +36,7 @@ async function run() {
 
   await mongoose.connection.close();
 
-  // 2. Clear BackBlaze B2
+  
   console.log("\n☁️ Connecting to Backblaze B2...");
   const { b2, B2_BUCKET } = require('../utils/b2Client');
 

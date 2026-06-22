@@ -3,7 +3,7 @@ import { Folder, FileText, CheckCircle, Trash2, Upload, RefreshCw, FolderPlus, I
 import axios from 'axios';
 
 const CourseVaultManagerApp = ({ token }) => {
-  const [activeTab, setActiveTab] = useState('inbox'); // 'inbox' | 'explorer'
+  const [activeTab, setActiveTab] = useState('inbox'); 
   const [pendingFiles, setPendingFiles] = useState([]);
   const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState('');
@@ -15,7 +15,7 @@ const CourseVaultManagerApp = ({ token }) => {
 
   const axiosConfig = { headers: { Authorization: `Bearer ${token}` } };
 
-  // Fetch pending files
+  
   const fetchPendingFiles = async () => {
     setLoading(true);
     try {
@@ -27,7 +27,7 @@ const CourseVaultManagerApp = ({ token }) => {
     setLoading(false);
   };
 
-  // Fetch courses list for explorer
+  
   const fetchCourses = async () => {
     try {
       const res = await axios.get('/api/courses', axiosConfig);
@@ -43,7 +43,7 @@ const CourseVaultManagerApp = ({ token }) => {
     fetchCourses();
   }, []);
 
-  // Fetch buckets and files when course changes
+  
   const fetchExplorerData = async (courseCode) => {
     setLoading(true);
     try {
@@ -52,7 +52,7 @@ const CourseVaultManagerApp = ({ token }) => {
         axios.get(`/api/course-vault/${courseCode}`, axiosConfig)
       ]);
       setBuckets(bucketRes.data);
-      setVaultFiles(vaultRes.data); // the new response groups by bucketId
+      setVaultFiles(vaultRes.data); 
     } catch (err) {
       console.error(err);
     }
@@ -134,7 +134,7 @@ const CourseVaultManagerApp = ({ token }) => {
       <div className="p-4">
         {loading && <div className="text-center p-4 text-slate-400">Loading...</div>}
 
-        {/* ===================== PENDING INBOX ===================== */}
+        {}
         {activeTab === 'inbox' && !loading && (
           <div>
             <div className="flex justify-between items-center mb-4">
@@ -183,7 +183,7 @@ const CourseVaultManagerApp = ({ token }) => {
           </div>
         )}
 
-        {/* ===================== VAULT EXPLORER ===================== */}
+        {}
         {activeTab === 'explorer' && (
           <div className="flex flex-col h-[600px]">
             <div className="mb-4">
@@ -199,7 +199,7 @@ const CourseVaultManagerApp = ({ token }) => {
             </div>
 
             <div className="flex gap-4 h-full overflow-hidden">
-              {/* Sidebar: Buckets */}
+              {}
               <div className="w-1/3 bg-slate-900 rounded-lg border border-slate-700 p-3 flex flex-col">
                 <div className="flex gap-2 mb-4">
                   <input 
@@ -242,7 +242,7 @@ const CourseVaultManagerApp = ({ token }) => {
                 </div>
               </div>
 
-              {/* Main Area: Files */}
+              {}
               <div className="w-2/3 bg-slate-900 rounded-lg border border-slate-700 p-4 flex flex-col">
                 {selectedBucket ? (
                   <>

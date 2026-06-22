@@ -92,7 +92,7 @@ const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
 
     await onSave(formData);
 
-    // Reset
+    
     setTitle('');
     setContent('');
     setCourseName('');
@@ -235,7 +235,7 @@ const AddKeynoteModal = ({ isOpen, onClose, onSave, courses = [] }) => {
   );
 };
 
-// Reusable local icon component for the dropdowns
+
 const ChevronDown = ({ size, className }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <polyline points="6 9 12 15 18 9"></polyline>

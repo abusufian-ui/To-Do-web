@@ -1,11 +1,11 @@
-// server/utils/encryption.js
+
 const crypto = require('crypto');
 
-// usage: const { encrypt, decrypt } = require('./utils/encryption');
+
 
 const ALGORITHM = 'aes-256-ctr';
-// IMPORTANT: In production, put this in a .env file (e.g. ENCRYPTION_KEY=...)
-// It must be exactly 32 characters long.
+
+
 const SECRET_KEY = process.env.ENCRYPTION_KEY;
 if (!SECRET_KEY || Buffer.from(SECRET_KEY).length < 32) {
   throw new Error('FATAL: ENCRYPTION_KEY must be set in .env and be at least 32 characters long.');

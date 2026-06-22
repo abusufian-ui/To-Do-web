@@ -4,15 +4,15 @@
 
 @layer utilities {
   :root:not(.dark) .text-gray-400 {
-    color: #4b5563 !important; /* Maps to Tailwind gray-600 */
+    color: #4b5563 !important; 
   }
   
   :root:not(.dark) .text-gray-500 {
-    color: #374151 !important; /* Maps to Tailwind gray-700 */
+    color: #374151 !important; 
   }
   
   :root:not(.dark) .text-gray-600 {
-    color: #1f2937 !important; /* Maps to Tailwind gray-800 */
+    color: #1f2937 !important; 
   }
   
   :root:not(.dark) .bg-gray-50 {
@@ -24,7 +24,7 @@
   }
 }
 
-/* Custom Scrollbar Styles */
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
