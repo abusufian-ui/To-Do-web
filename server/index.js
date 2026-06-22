@@ -5633,13 +5633,16 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
         const uniqueSections = [...new Set(materials.map(m => m.sectionCode).filter(Boolean))];
         const useSectionDirs = uniqueSections.length > 1;
 
-        for (const m of materials) {
+        let index = 0;
+        const downloadNext = async () => {
           const job = zipJobs.get(jobId);
-          if (!job) break; 
+          if (!job || index >= materials.length) return;
+          
+          const currentIdx = index++;
+          const m = materials[currentIdx];
           
           if (m.b2Key) {
             try {
-              
               const signedUrl = await getSignedDownloadUrl(m.b2Key, 300, m.fileName || m.normalizedFileName);
               const response = await fetch(signedUrl, { signal: AbortSignal.timeout(15000) });
               if (response.ok) {
@@ -5651,9 +5654,22 @@ app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
               console.error(`[ZIP_JOB] Failed for ${m.fileName}:`, err.message);
             }
           }
-          job.processed++;
-          zipJobs.set(jobId, { ...job });
+          
+          const updatedJob = zipJobs.get(jobId);
+          if (updatedJob) {
+            updatedJob.processed++;
+            zipJobs.set(jobId, { ...updatedJob });
+          }
+          
+          await downloadNext();
+        };
+
+        const concurrencyLimit = Math.min(10, materials.length);
+        const workers = [];
+        for (let i = 0; i < concurrencyLimit; i++) {
+          workers.push(downloadNext());
         }
+        await Promise.all(workers);
 
         const job = zipJobs.get(jobId);
         if (job) {

@@ -709,9 +709,49 @@ const AdminCourseMaterialsApp = ({ token }) => {
         </div>
       </div>
 
-      {}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-        {!selectedSection ? (
+      {/* RIGHT CONTENT AREA */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden">
+        {/* NON-BLOCKING DOWNLOAD PROGRESS BANNER */}
+        {downloading && (
+          <div className="mx-6 mt-6 p-4 bg-blue-500/10 border border-blue-500/20 dark:border-blue-500/30 rounded-2xl text-blue-600 dark:text-blue-400 text-sm space-y-2.5 shadow-sm animate-fadeIn shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-500 shrink-0" />
+                <div>
+                  <p className="font-black text-gray-900 dark:text-white leading-tight">Creating Zip Archive</p>
+                  <p className="text-[10px] text-gray-400 font-medium">Fetching and packing materials from cloud...</p>
+                </div>
+              </div>
+              {zipProgress && (
+                <span className="text-xs font-mono font-bold bg-blue-500/10 dark:bg-blue-500/20 px-2.5 py-0.5 rounded-full">
+                  {zipProgress.processed} / {zipProgress.total} Files Packed
+                </span>
+              )}
+            </div>
+            
+            {zipProgress ? (
+              <div className="space-y-1.5">
+                <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden p-[2px] border border-slate-200/20">
+                  <div 
+                    className="bg-blue-600 h-full rounded-full transition-all duration-300 ease-out" 
+                    style={{ width: `${zipProgress.total > 0 ? (zipProgress.processed / zipProgress.total) * 100 : 0}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-gray-450 dark:text-gray-400 font-semibold">
+                  <span>Progress</span>
+                  <span>{Math.round((zipProgress.total > 0 ? (zipProgress.processed / zipProgress.total) * 100 : 0))}%</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-450 dark:text-gray-400 font-medium italic">
+                Initializing job queue...
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+          {!selectedSection ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 py-24 bg-white dark:bg-[#111113]/30 rounded-3xl border border-dashed border-gray-200 dark:border-[#27272a]">
             <Folder size={64} className="opacity-30 mb-4 text-blue-500" />
             <h4 className="font-bold text-gray-700 dark:text-gray-300">No Section Selected</h4>
@@ -1038,53 +1078,8 @@ const AdminCourseMaterialsApp = ({ token }) => {
           </div>
         </div>
       )}
-
-      {/* GLOBAL DOWNLOAD PROGRESS MODAL/OVERLAY */}
-      {downloading && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center animate-fadeIn p-4">
-          <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#27272a] rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6 text-center animate-scaleIn relative">
-            <div className="mx-auto w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500 animate-pulse">
-              <Download size={32} />
-            </div>
-            
-            <div className="space-y-1">
-              <h3 className="text-lg font-black text-gray-900 dark:text-white">Creating Zip Archive</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Fetching and packing your course materials from the cloud.
-              </p>
-            </div>
-
-            {zipProgress ? (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-xs font-bold">
-                  <span className="text-gray-450 dark:text-gray-400 uppercase tracking-wider">Progress</span>
-                  <span className="text-blue-500 font-mono">
-                    {zipProgress.processed} / {zipProgress.total} Files
-                  </span>
-                </div>
-                
-                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden p-[2px] border border-slate-200/20">
-                  <div 
-                    className="bg-blue-600 h-full rounded-full transition-all duration-300 ease-out" 
-                    style={{ width: `${zipProgress.total > 0 ? (zipProgress.processed / zipProgress.total) * 100 : 0}%` }}
-                  />
-                </div>
-                
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
-                  {Math.round((zipProgress.total > 0 ? (zipProgress.processed / zipProgress.total) * 100 : 0))}% Completed
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-3">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Initializing download job...</p>
-              </div>
-            )}
-          </div>
         </div>
-      )}
-
-    </div>
+      </div>
   );
 };
 
