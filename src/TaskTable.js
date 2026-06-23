@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   CheckCircle2, Calendar as CalendarIcon, Clock, Mail, AlertTriangle,
   ChevronDown, ChevronRight, ChevronLeft, ChevronsUp, ChevronUp,
   Minus, ArrowDown, Book, Trash2, CheckSquare, Square,
-  X, AlignLeft, Info, Flag, Plus as PlusIcon, Edit2, Save,
-  CalendarDays, Lock, Globe, Shield
+  X, Plus as PlusIcon, CalendarDays, Lock, Globe
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
+import TaskSummaryModal from './TaskSummaryModal';
 
 
 const getAbbreviation = (name) => {
@@ -66,15 +66,6 @@ const formatDate = (dateString) => {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
-const formatModalTime = (timeString) => {
-  if (!timeString) return '';
-  const [hours, minutes] = timeString.split(':');
-  const h = parseInt(hours, 10);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${h12}:${minutes} ${ampm}`;
-};
-
 const getPriorityConfig = (p) => {
   switch (p) {
     case 'Critical': return { icon: ChevronsUp, color: 'text-red-600 dark:text-red-500', label: p };
@@ -102,431 +93,6 @@ const CourseIcon = ({ type, name }) => {
   return <Book size={18} className="text-gray-400" />;
 };
 
-const EditDropdown = ({ value, options, onChange, getConfig, placeholder, disabled }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const currentConfig = getConfig ? getConfig(value) : { color: 'text-gray-700 dark:text-gray-200' };
-  const CurrentIcon = currentConfig?.icon;
-
-  return (
-    <div className="relative w-full flex-1" ref={dropdownRef}>
-      <button
-        disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1.5 text-xs text-left transition-all outline-none ${disabled ? 'cursor-default opacity-90' : 'focus:border-brand-blue'}`}
-      >
-        <span className={`flex items-center gap-2 truncate font-medium ${currentConfig?.color}`}>
-          {CurrentIcon && <CurrentIcon size={14} />}
-          {value || placeholder}
-        </span>
-        {!disabled && <ChevronDown size={12} className="text-gray-400" />}
-      </button>
-
-      {isOpen && !disabled && (
-        <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 overflow-hidden max-h-40 overflow-y-auto custom-scrollbar">
-          {options.map(opt => {
-            const config = getConfig ? getConfig(opt) : { color: 'text-gray-700 dark:text-gray-200' };
-            const Icon = config?.icon;
-            return (
-              <div
-                key={opt}
-                onClick={() => { onChange(opt); setIsOpen(false); }}
-                className={`flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs ${config?.color}`}
-              >
-                {Icon && <Icon size={14} />}
-                <span>{opt}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const ModalCourseDropdown = ({ value, courses, onChange, disabled }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const uniCourses = courses?.filter(c => c.type === 'uni') || [];
-  const genCourses = courses?.filter(c => c.type !== 'uni') || [];
-
-  return (
-    <div className="relative w-full flex-1" ref={dropdownRef}>
-      <button
-        disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1.5 text-xs text-left transition-all outline-none ${disabled ? 'cursor-default opacity-90' : 'focus:border-brand-blue'}`}
-      >
-        <span className="flex items-center gap-2 truncate font-medium text-gray-700 dark:text-gray-200">
-          {value === 'Event' ? <CalendarDays size={14} className="text-rose-500" /> : (value ? <Book size={14} className="text-brand-blue" /> : <Book size={14} className="text-gray-400" />)}
-          {value || "Select Course"}
-        </span>
-        {!disabled && <ChevronDown size={12} className="text-gray-400" />}
-      </button>
-
-      {isOpen && !disabled && (
-        <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-[#1E1E1E] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-[150] overflow-hidden max-h-56 overflow-y-auto custom-scrollbar flex flex-col">
-          <div onClick={() => { onChange('Event'); setIsOpen(false); }} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs flex items-center gap-2 text-rose-600 dark:text-rose-500 font-medium shrink-0">
-            <CalendarDays size={14} /> Event
-          </div>
-
-          {uniCourses.length > 0 && (
-            <div className="shrink-0">
-              <div className="px-3 py-1.5 bg-gray-100 dark:bg-[#222] text-[10px] font-bold text-gray-500 uppercase tracking-wider border-y border-gray-200 dark:border-[#333] sticky top-0 z-10">University</div>
-              {uniCourses.map(c => (
-                <div key={c.id || c.name} onClick={() => { onChange(c.name); setIsOpen(false); }} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                  <UCPLogo className="w-3.5 h-3.5 text-blue-600 fill-current" /> <span className="truncate">{c.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {genCourses.length > 0 && (
-            <div className="shrink-0">
-              <div className="px-3 py-1.5 bg-gray-100 dark:bg-[#222] text-[10px] font-bold text-gray-500 uppercase tracking-wider border-y border-gray-200 dark:border-[#333] sticky top-0 z-10">General</div>
-              {genCourses.map(c => (
-                <div key={c.id || c.name} onClick={() => { onChange(c.name); setIsOpen(false); }} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#333] cursor-pointer text-xs flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                  <Book size={14} className="text-gray-400" /> <span className="truncate">{c.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const TaskSummaryModal = ({ isOpen, onClose, task, courses, onUpdate, user, activeGroup }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [includeTime, setIncludeTime] = useState(false);
-  const [newSubText, setNewSubText] = useState('');
-
-  const currentStatus = task?.status || 'New task';
-  const taskId = task?.id || task?._id;
-
-  const [form, setForm] = useState({
-    name: '', description: '', date: '', time: '', priority: '', status: '', course: '', isPrivate: false, subTasks: []
-  });
-
-  useEffect(() => {
-    if (task) {
-      setForm({
-        name: task.name || '', description: task.description || '', date: task.date || '',
-        time: task.time || '', priority: task.priority || 'Medium', status: currentStatus,
-        course: task.course || '', isPrivate: task.isPrivate || false,
-        subTasks: task.subTasks ? [...task.subTasks] : []
-      });
-      setIncludeTime(!!task.time);
-      setIsEditing(false);
-      setNewSubText('');
-    }
-  }, [task, isOpen, currentStatus]);
-
-  if (!isOpen || !task) return null;
-
-  const handleToggleFormSubTask = (idx) => {
-    setForm(prev => {
-      const nextSub = [...prev.subTasks];
-      nextSub[idx] = { ...nextSub[idx], completed: !nextSub[idx].completed };
-      return { ...prev, subTasks: nextSub };
-    });
-  };
-
-  const handleRemoveFormSubTask = (idx) => {
-    setForm(prev => ({
-      ...prev,
-      subTasks: prev.subTasks.filter((_, i) => i !== idx)
-    }));
-  };
-
-  const handleAddFormSubTask = () => {
-    if (!newSubText.trim()) return;
-    setForm(prev => ({
-      ...prev,
-      subTasks: [...prev.subTasks, { text: newSubText.trim(), completed: false }]
-    }));
-    setNewSubText('');
-  };
-
-  const handleSave = () => {
-    if (form.name.trim() !== task.name) onUpdate(taskId, 'name', form.name);
-    if (form.description.trim() !== task.description) onUpdate(taskId, 'description', form.description);
-    if (form.date !== task.date) onUpdate(taskId, 'date', form.date);
-
-    const timeToSave = includeTime ? form.time : null;
-    if (timeToSave !== task.time) onUpdate(taskId, 'time', timeToSave);
-
-    if (form.priority !== task.priority) onUpdate(taskId, 'priority', form.priority);
-    if (form.status !== currentStatus) onUpdate(taskId, 'status', form.status);
-    if (form.course !== task.course) onUpdate(taskId, 'course', form.course);
-    if (form.isPrivate !== task.isPrivate) onUpdate(taskId, 'isPrivate', form.isPrivate);
-
-    onUpdate(taskId, 'subTasks', form.subTasks);
-
-    setIsEditing(false);
-  };
-
-  const currentUserId = String(user?.id || user?._id || '');
-  const taskCreatorId = String(task?.userId?._id || task?.userId?.id || task?.userId || '');
-  
-  
-  const isOwner = currentUserId && taskCreatorId && (currentUserId === taskCreatorId);
-  const canEditFully = !task.groupId ? true : isOwner;
-
-  const showTimeCell = isEditing ? includeTime : !!task.time;
-  const pConfig = getPriorityConfig(task.priority);
-  const PriorityIcon = pConfig.icon;
-  const currentCourse = courses.find(c => c.name === task.course);
-  const courseType = currentCourse ? currentCourse.type : (task.course === 'Event' ? 'event' : 'general');
-  const statusConfig = getStatusConfig(currentStatus);
-  const StatusIcon = statusConfig.icon;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex justify-end bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-xl md:max-w-2xl h-full shadow-2xl overflow-hidden border-l border-gray-200 dark:border-[#2C2C2C] animate-slideInRight flex flex-col">
-
-        <style>{`
-          .custom-scrollbar-modal::-webkit-scrollbar { width: 6px; height: 6px; }
-          .custom-scrollbar-modal::-webkit-scrollbar-track { background: transparent; }
-          .custom-scrollbar-modal::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-          .custom-scrollbar-modal::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
-          .dark .custom-scrollbar-modal::-webkit-scrollbar-thumb { background: #3f3f46; }
-          .dark .custom-scrollbar-modal::-webkit-scrollbar-thumb:hover { background: #52525b; }
-        `}</style>
-
-        {}
-        <div className="p-6 border-b border-gray-100 dark:border-[#2C2C2C] flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-brand-blue/10 rounded-xl">
-              <Info className="text-brand-blue" size={20} />
-            </div>
-            <h2 className="text-xl font-bold dark:text-white text-gray-800">
-              {isEditing ? 'Edit Task Info' : 'Task Workspace Summary'}
-            </h2>
-          </div>
-          <div className="flex gap-2">
-            {canEditFully && (
-              <button
-                onClick={isEditing ? handleSave : () => setIsEditing(true)}
-                className={`p-2 rounded-full transition-colors flex items-center justify-center ${isEditing ? 'bg-brand-blue text-white hover:bg-blue-600' : 'hover:bg-gray-100 dark:hover:bg-[#2C2C2C] text-gray-500 dark:text-gray-400'}`}
-                title={isEditing ? "Save Changes" : "Edit Task"}
-              >
-                {isEditing ? <Save size={18} /> : <Edit2 size={18} />}
-              </button>
-            )}
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#2C2C2C] rounded-full transition-colors text-gray-500 dark:text-gray-400">
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-
-        {}
-        <div className="p-8 overflow-y-auto custom-scrollbar-modal">
-
-          {}
-          <div className="mb-8">
-            {isEditing && canEditFully ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Task Title</label>
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full text-2xl font-extrabold bg-transparent border-b border-gray-300 dark:border-[#333] focus:border-brand-blue text-gray-900 dark:text-white outline-none py-1"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Description</label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    rows={5}
-                    className="w-full text-sm leading-relaxed bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#2C2C2C] rounded-xl p-3 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-brand-blue outline-none resize-none custom-scrollbar-modal"
-                  />
-                </div>
-              </div>
-            ) : (
-              <>
-                <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-4 leading-tight">{task.name}</h1>
-                <div className="flex items-start gap-2 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-[#151515] p-4 rounded-xl">
-                  <AlignLeft size={18} className="mt-1 flex-shrink-0 opacity-50" />
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{task.description || "No additional notes configured."}</p>
-                </div>
-              </>
-            )}
-          </div>
-
-          {}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 pt-6 border-t border-gray-100 dark:border-[#2C2C2C]">
-
-            {}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <CalendarIcon size={16} className="text-gray-400 shrink-0" />
-                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Created</span>
-                <span className="dark:text-gray-200 font-medium">{new Date(task.createdAt || Date.now()).toLocaleDateString()}</span>
-              </div>
-
-              <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <CalendarIcon className="text-brand-pink shrink-0" size={16} />
-                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Due Date</span>
-                {isEditing && canEditFully ? (
-                  <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="flex-1 bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue dark:text-white dark:[color-scheme:dark]" />
-                ) : (
-                  <span className="dark:text-gray-200 font-medium">{task.date || "No date set"}</span>
-                )}
-              </div>
-
-              {(showTimeCell || isEditing) && (
-                <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                  <Clock className="text-purple-500 shrink-0" size={16} />
-                  <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Time</span>
-                  {isEditing && canEditFully ? (
-                    includeTime ? (
-                      <div className="flex items-center gap-2 flex-1">
-                        <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} className="flex-1 bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue dark:text-white dark:[color-scheme:dark]" />
-                        <button onClick={() => { setIncludeTime(false); setForm({ ...form, time: '' }); }} className="text-[10px] text-red-500 hover:underline font-bold">Remove</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setIncludeTime(true)} className="text-xs text-brand-blue font-bold hover:underline py-1 px-2 bg-blue-50 dark:bg-blue-900/20 rounded">+ Add Time</button>
-                    )
-                  ) : (
-                    <span className="dark:text-gray-200 font-medium bg-gray-100 dark:bg-[#333] px-2 py-0.5 rounded">{task.time ? formatModalTime(task.time) : "All Day"}</span>
-                  )}
-                </div>
-              )}
-
-              {}
-              {canEditFully && (
-                <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                  <Shield className="text-indigo-500 shrink-0" size={16} />
-                  <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Privacy</span>
-                  {isEditing ? (
-                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setForm({ ...form, isPrivate: !form.isPrivate })}>
-                      <input type="checkbox" checked={form.isPrivate || false} onChange={e => setForm({ ...form, isPrivate: e.target.checked })} className="w-4 h-4 cursor-pointer" />
-                      <span className="text-xs text-gray-700 dark:text-gray-300">Make Private</span>
-                    </div>
-                  ) : (
-                    <span className="dark:text-gray-200 font-medium">{task.groupId ? "Shared Workspace" : "Private"}</span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <Flag size={16} className="text-orange-500 shrink-0" />
-                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Priority</span>
-                {isEditing && canEditFully ? (
-                  <EditDropdown value={form.priority} options={['Low', 'Medium', 'High', 'Critical']} onChange={(val) => setForm({ ...form, priority: val })} getConfig={getPriorityConfig} />
-                ) : (
-                  <span className={`font-medium flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs bg-gray-50 dark:bg-[#2C2C2C] ${pConfig.color}`}><PriorityIcon size={14} /> {task.priority}</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <Book size={16} className="text-brand-blue shrink-0" />
-                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Course</span>
-                {isEditing && canEditFully ? (
-                  <ModalCourseDropdown value={form.course} courses={courses} onChange={(val) => setForm({ ...form, course: val })} />
-                ) : (
-                  <span className="dark:text-gray-200 font-medium flex items-center gap-1.5 truncate" title={task.course}><CourseIcon type={courseType} name={task.course} /> {task.course}</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 text-sm min-h-[32px]">
-                <CheckCircle2 className="text-green-500 shrink-0" size={16} />
-                <span className="text-gray-500 w-16 shrink-0 font-bold text-[10px] uppercase tracking-wider">Status</span>
-                {isEditing && canEditFully ? (
-                  <EditDropdown value={form.status} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => setForm({ ...form, status: val })} getConfig={getStatusConfig} />
-                ) : (
-                  task.groupId ? (
-                    <EditDropdown value={currentStatus} options={['New task', 'Scheduled', 'In Progress', 'Completed']} onChange={(val) => onUpdate(taskId, 'status', val)} getConfig={getStatusConfig} />
-                  ) : (
-                    <span className={`font-medium flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs bg-gray-50 dark:bg-[#2C2C2C] ${statusConfig.color}`}><StatusIcon size={14} /> {currentStatus}</span>
-                  )
-                )}
-              </div>
-            </div>
-          </div>
-
-          {}
-          <div className="bg-gray-50 dark:bg-[#181818] p-6 rounded-2xl border border-gray-100 dark:border-[#2C2C2C]">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <CheckSquare size={16} /> Sub Tasks Management
-            </h3>
-            <div className="space-y-2.5">
-              {isEditing && canEditFully ? (
-                <>
-                  {form.subTasks?.map((sub, i) => (
-                    <div key={i} className="flex items-center justify-between gap-3 text-sm bg-white dark:bg-[#222] p-2.5 rounded-xl border border-gray-100 dark:border-[#2C2C2C] shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <button type="button" onClick={() => handleToggleFormSubTask(i)} className={sub.completed ? 'text-green-500' : 'text-gray-400'}>
-                          {sub.completed ? <CheckSquare size={16} /> : <Square size={16} />}
-                        </button>
-                        <span className={sub.completed ? 'line-through text-gray-400 italic' : 'text-gray-700 dark:text-gray-200'}>{sub.text}</span>
-                      </div>
-                      <button type="button" onClick={() => handleRemoveFormSubTask(i)} className="text-gray-400 hover:text-red-500 p-1 rounded-md transition-colors">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-2 pt-2 mt-2 border-t border-gray-100 dark:border-[#2A2A2A]">
-                    <input
-                      type="text"
-                      value={newSubText}
-                      onChange={(e) => setNewSubText(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddFormSubTask()}
-                      placeholder="Add an entry item..."
-                      className="flex-1 text-xs bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 outline-none dark:text-white"
-                    />
-                    <button type="button" onClick={handleAddFormSubTask} className="p-2 bg-brand-blue text-white rounded-lg hover:bg-blue-600 transition-colors">
-                      <PlusIcon size={14} />
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {task.subTasks?.map((sub, i) => (
-                    <div key={i} className="flex items-center gap-3 text-sm bg-white/40 dark:bg-white/5 p-2 rounded-lg">
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${sub.completed ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
-                      <span className={sub.completed ? 'line-through text-gray-400 italic' : 'text-gray-700 dark:text-gray-300'}>{sub.text}</span>
-                    </div>
-                  ))}
-                  {(!task.subTasks || task.subTasks.length === 0) && <p className="text-xs text-gray-500 italic">No sub-tasks configured.</p>}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, pendingInvitations, fetchActiveGroup, fetchPendingInvitations, fetchTasks, toast, setToast }) => {
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -536,7 +102,11 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
   const [expandedTasks, setExpandedTasks] = useState({});
   const [newSubTask, setNewSubTask] = useState({});
   const [viewMode, setViewMode] = useState('private');
+  const [showCelebration, setShowCelebration] = useState(false);
   
+  const handleCloseCelebration = useCallback(() => {
+    setShowCelebration(false);
+  }, []);
   
   const [optimisticPrivacy, setOptimisticPrivacy] = useState({});
 
@@ -548,8 +118,14 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
   }, [viewMode, fetchActiveGroup, fetchPendingInvitations]);
 
   const handleUpdateTask = (id, field, value) => {
+    const task = tasks.find(t => (t.id === id || t._id === id));
+    const previousStatus = task ? (task.status || 'New task') : '';
+
     updateTask(id, field, value);
-    
+
+    if (field === 'status' && value === 'Completed' && previousStatus !== 'Completed') {
+      setShowCelebration(true);
+    }
     if (field === 'isPrivate') {
       setOptimisticPrivacy(prev => ({ ...prev, [id]: value }));
     }
@@ -574,6 +150,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
       const updated = optimizedTasks.find(t => (t.id || t._id) === selectedId);
       if (updated) setSelectedTask(updated);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, optimisticPrivacy]);
 
   useEffect(() => {
@@ -908,6 +485,7 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
         user={user} 
         activeGroup={activeGroup} 
       />
+      <ConfettiCannon active={showCelebration} onClose={handleCloseCelebration} />
     </div>
   );
 };
@@ -946,6 +524,141 @@ const DateCell = ({ date, time, onChange, disabled }) => {
       </span>
       {!disabled && <input ref={inputRef} type="date" value={date} onChange={(e) => onChange(e.target.value)} className="absolute opacity-0 w-0 h-0 dark:[color-scheme:dark]" />}
     </div>
+  );
+};
+
+const ConfettiCannon = ({ active, onClose }) => {
+  const canvasRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    let animationFrameId;
+
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    const particles = [];
+    const colors = [
+      '#6366f1', // Indigo
+      '#ec4899', // Pink
+      '#3b82f6', // Blue
+      '#10b981', // Emerald
+      '#f59e0b', // Amber
+      '#8b5cf6', // Purple
+      '#ef4444', // Red
+    ];
+
+    const createBurst = () => {
+      const count = 80;
+      // Bottom-left corner shooting upwards and right
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: 0,
+          y: canvas.height,
+          vx: Math.random() * 16 + 6,
+          vy: -(Math.random() * 22 + 16),
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: Math.random() * 9 + 4,
+          shape: Math.random() > 0.5 ? 'circle' : 'rect',
+          rotation: Math.random() * Math.PI * 2,
+          rotationSpeed: (Math.random() - 0.5) * 0.25,
+          gravity: 0.48,
+          drag: 0.975,
+          opacity: 1,
+          fadeSpeed: Math.random() * 0.012 + 0.006,
+        });
+      }
+      // Bottom-right corner shooting upwards and left
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: canvas.width,
+          y: canvas.height,
+          vx: -(Math.random() * 16 + 6),
+          vy: -(Math.random() * 22 + 16),
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: Math.random() * 9 + 4,
+          shape: Math.random() > 0.5 ? 'circle' : 'rect',
+          rotation: Math.random() * Math.PI * 2,
+          rotationSpeed: (Math.random() - 0.5) * 0.25,
+          gravity: 0.48,
+          drag: 0.975,
+          opacity: 1,
+          fadeSpeed: Math.random() * 0.012 + 0.006,
+        });
+      }
+    };
+
+    createBurst();
+
+    const updateAndDraw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
+
+      particles.forEach((p) => {
+        p.vx *= p.drag;
+        p.vy = p.vy * p.drag + p.gravity;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rotation += p.rotationSpeed;
+        p.opacity -= p.fadeSpeed;
+
+        if (p.opacity > 0 && p.y < canvas.height + 50 && p.x > -50 && p.x < canvas.width + 50) {
+          alive = true;
+
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rotation);
+          ctx.globalAlpha = p.opacity;
+          ctx.fillStyle = p.color;
+
+          if (p.shape === 'circle') {
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+          }
+          ctx.restore();
+        }
+      });
+
+      if (alive) {
+        animationFrameId = requestAnimationFrame(updateAndDraw);
+      } else {
+        if (onCloseRef.current) onCloseRef.current();
+      }
+    };
+
+    updateAndDraw();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', resizeCanvas);
+    };
+  }, [active]);
+
+  if (!active) return null;
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-[9999]"
+      style={{ width: '100vw', height: '100vh' }}
+    />
   );
 };
 

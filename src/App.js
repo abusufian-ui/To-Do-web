@@ -105,6 +105,7 @@ const PATH_TAB_MAP = Object.fromEntries(
 function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const pendingUpdatesRef = useRef({});
 
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [user, setUser] = useState(() => {
@@ -455,7 +456,19 @@ function AppLayout() {
       if (res.status === 401) return handleLogout();
       const data = await res.json();
       if (Array.isArray(data)) {
-        setTasks(data.map(t => ({ ...t, id: t._id })));
+        let mapped = data.map(t => ({ ...t, id: t._id }));
+        if (pendingUpdatesRef.current) {
+          mapped = mapped.map(task => {
+            const taskId = task._id || task.id;
+            const pending = pendingUpdatesRef.current[taskId];
+            if (pending && (Date.now() - pending.timestamp < 4000)) {
+              const { timestamp, ...fields } = pending;
+              return { ...task, ...fields };
+            }
+            return task;
+          });
+        }
+        setTasks(mapped);
       } else { setTasks([]); }
     } catch (error) { console.error("Error fetching tasks:", error); }
   }, [authHeaders, handleLogout]);
@@ -574,7 +587,19 @@ function AppLayout() {
 
       
       if (Array.isArray(data.tasks)) {
-        setTasks(data.tasks.map(t => ({ ...t, id: t._id })));
+        let mapped = data.tasks.map(t => ({ ...t, id: t._id }));
+        if (pendingUpdatesRef.current) {
+          mapped = mapped.map(task => {
+            const taskId = task._id || task.id;
+            const pending = pendingUpdatesRef.current[taskId];
+            if (pending && (Date.now() - pending.timestamp < 4000)) {
+              const { timestamp, ...fields } = pending;
+              return { ...task, ...fields };
+            }
+            return task;
+          });
+        }
+        setTasks(mapped);
       } else {
         setTasks([]);
       }
@@ -773,21 +798,41 @@ function AppLayout() {
 
   const updateTask = async (id, field, value) => {
     setTasks(prevTasks => prevTasks.map(task => (task.id === id || task._id === id) ? { ...task, [field]: value } : task));
+    if (!pendingUpdatesRef.current) {
+      pendingUpdatesRef.current = {};
+    }
+    pendingUpdatesRef.current[id] = {
+      ...(pendingUpdatesRef.current[id] || {}),
+      [field]: value,
+      timestamp: Date.now()
+    };
     try { 
       const res = await fetch(`${API_BASE}/api/tasks/${id}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ [field]: value }) }); 
       if (res.ok) {
         const updatedTask = await res.json();
-        setTasks(prevTasks => prevTasks.map(task => (task.id === id || task._id === id) ? updatedTask : task));
+        const formattedTask = { ...updatedTask, id: updatedTask._id };
+        if (pendingUpdatesRef.current && pendingUpdatesRef.current[id]) {
+          delete pendingUpdatesRef.current[id];
+        }
+        setTasks(prevTasks => prevTasks.map(task => (task.id === id || task._id === id) ? formattedTask : task));
         if (field === 'status' && value === 'Completed') {
           ToastConfig.show({ title: "Task Completed", message: "Great job finishing this task!", type: "success" });
         } else {
           ToastConfig.show({ title: "Updated", message: "Task updated successfully.", type: "success" });
         }
       } else {
+        if (pendingUpdatesRef.current && pendingUpdatesRef.current[id]) {
+          delete pendingUpdatesRef.current[id];
+        }
         ToastConfig.show({ title: "Error", message: "Failed to update task.", type: "error" });
+        fetchTasks();
       }
     } catch (error) { 
+      if (pendingUpdatesRef.current && pendingUpdatesRef.current[id]) {
+        delete pendingUpdatesRef.current[id];
+      }
       ToastConfig.show({ title: "Error", message: "Network error updating task.", type: "error" }); 
+      fetchTasks();
     }
   };
 
