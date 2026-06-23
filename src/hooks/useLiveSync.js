@@ -15,9 +15,21 @@ const useLiveSync = (onUpdateCallback, onAccountDeletedCallback, userId) => {
     socket.on('connect', () => {
       console.log('🟢 Connected to Live Data Sync WebSockets');
       socket.emit('join_room', userId); 
+      
+      const token = localStorage.getItem('token');
+      if (token) {
+        const signature = token.split('.')[2];
+        if (signature) {
+          socket.emit('join_session', signature);
+        }
+      }
     });
 
-    
+    socket.on('session_revoked', (data) => {
+      console.warn("🛡️ Session revoked remotely:", data?.message);
+      window.dispatchEvent(new CustomEvent('security_logout', { detail: data?.message || 'Session revoked remotely.' }));
+    });
+
     socket.on('live_db_update', () => {
       console.log('🔄 Live Update Detected! Refreshing data silently...');
       if (onUpdateCallback) {

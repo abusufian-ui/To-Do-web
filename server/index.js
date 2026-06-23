@@ -84,6 +84,8 @@ const CourseMaterial = require('./models/CourseMaterial');
 const CourseVaultFile = require('./models/CourseVaultFile');
 const CourseVaultBucket = require('./models/CourseVaultBucket');
 const MaterialLink   = require('./models/MaterialLink');
+const DeviceSession = require('./models/DeviceSession');
+const { registerDeviceSession } = require('./utils/sessionHelper');
 const { convertToPdf } = require('./utils/documentConverter');
 
 
@@ -372,6 +374,12 @@ io.on('connection', (socket) => {
     if (userId) {
       socket.join(userId.toString());
       console.log(`👤 User ${userId} joined their personal data room.`);
+    }
+  });
+  socket.on('join_session', (signature) => {
+    if (signature) {
+      socket.join(signature);
+      console.log(`🔑 Socket joined session room: ${signature.substring(0, 10)}...`);
     }
   });
 });
@@ -1180,6 +1188,7 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+    await registerDeviceSession(user.id, token, req, resend);
     res.json({
       token,
       user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic }
@@ -3578,7 +3587,9 @@ app.post('/api/register', async (req, res) => {
     if (await User.findOne({ email })) return res.status(400).json({ message: 'Exists' });
     const user = new User({ name, email, password: await bcrypt.hash(password, await bcrypt.genSalt(10)), isAdmin: email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() });
     await user.save(); await OTP.deleteOne({ email });
-    res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
+    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+    await registerDeviceSession(user.id, token, req, resend);
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -3591,7 +3602,9 @@ app.post('/api/login', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ message: 'Invalid credentials' });
     if (user.isBlocked) return res.status(503).json({ message: 'Network Error: Timeout communicating with identity provider.' });
-    res.json({ token: jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' }), user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
+    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+    await registerDeviceSession(user.id, token, req, resend);
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -3633,6 +3646,89 @@ app.get('/api/auth/user', auth, async (req, res) => {
   } catch (error) {
     console.error('[AUTH_USER] Error:', error);
     res.status(500).json({ message: "Error" });
+  }
+});
+
+app.get('/api/security/sessions', auth, async (req, res) => {
+  try {
+    const token = req.header('x-auth-token');
+    const currentSignature = token ? (token.split('.')[2] || '') : '';
+
+    const sessions = await DeviceSession.find({ userId: req.user.id, isActive: true })
+      .sort({ lastActiveAt: -1 })
+      .lean();
+
+    const formatted = sessions.map(s => ({
+      id: s._id,
+      deviceType: s.deviceType,
+      browser: s.browser,
+      os: s.os,
+      ipAddress: s.ipAddress,
+      location: s.location,
+      lastActiveAt: s.lastActiveAt,
+      isCurrent: s.tokenSignature === currentSignature
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/security/sessions/:id', auth, async (req, res) => {
+  try {
+    const session = await DeviceSession.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!session) return res.status(404).json({ message: 'Session not found.' });
+
+    session.isActive = false;
+    await session.save();
+
+    // Terminate socket connection remotely
+    io.to(session.tokenSignature).emit('session_revoked', { message: 'This device has been logged out remotely.' });
+
+    res.json({ success: true, message: 'Device logged out successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/admin/security/sessions', auth, async (req, res) => {
+  try {
+    const adminUser = await User.findById(req.user.id);
+    if (!adminUser || !adminUser.isAdmin) {
+      return res.status(403).json({ message: 'Access Denied: Admins only.' });
+    }
+
+    const sessions = await DeviceSession.find({ isActive: true })
+      .populate('userId', 'name email profilePic')
+      .sort({ lastActiveAt: -1 })
+      .lean();
+
+    res.json(sessions);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/admin/security/sessions/:id', auth, async (req, res) => {
+  try {
+    const adminUser = await User.findById(req.user.id);
+    if (!adminUser || !adminUser.isAdmin) {
+      return res.status(403).json({ message: 'Access Denied: Admins only.' });
+    }
+
+    const session = await DeviceSession.findById(req.params.id);
+    if (!session) return res.status(404).json({ message: 'Session not found.' });
+
+    session.isActive = false;
+    await session.save();
+
+    // Terminate socket connection remotely
+    io.to(session.tokenSignature).emit('session_revoked', { message: 'Your session has been terminated by an administrator.' });
+
+    res.json({ success: true, message: 'Device session terminated.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -3935,8 +4031,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 
     const payload = { id: user.id };
 
-    jwt.sign(payload, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' }, (err, token) => {
+    jwt.sign(payload, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' }, async (err, token) => {
       if (err) throw err;
+      await registerDeviceSession(user.id, token, req, resend);
       res.json({
         token,
         isNewUser,

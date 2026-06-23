@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
   Users, Activity, Search, Trash2,
@@ -6,7 +6,8 @@ import {
   ShieldAlert, Lock, ShieldCheck, Mail, KeyRound, Server,
   Eye, Cookie, RefreshCw, Bell, BanIcon, CheckCircle2,
   ChevronLeft, Send, Clock, Wifi, WifiOff, FlaskConical,
-  UserCheck, AlertTriangle, Folder, FileText
+  UserCheck, AlertTriangle, Folder, FileText,
+  Monitor, Smartphone, MapPin, LogOut, Puzzle
 } from 'lucide-react';
 import { ToastConfig } from './CustomToast';
 import ConfirmationModal from './ConfirmationModal';
@@ -508,6 +509,171 @@ const SessionInspectorApp = ({ users, token, loading, onRefresh }) => {
           );
         })}
       </div>
+    </div>
+  );
+};
+
+// ────────────────────────────────────────────────────────────────────────────────
+// APP 3.5: ACTIVE SESSIONS MANAGER (PORTAL SESSIONS)
+// ────────────────────────────────────────────────────────────────────────────────
+const ActiveSessionsManagerApp = ({ token }) => {
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  const fetchSessions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/security/sessions`, {
+        headers: { 'x-auth-token': token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSessions(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch sessions:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const handleRevokeSession = async (sessionId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/security/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: { 'x-auth-token': token }
+      });
+      if (res.ok) {
+        ToastConfig.show({ title: "Success", message: "User session revoked successfully.", type: "success" });
+        setSessions(prev => prev.filter(s => s._id !== sessionId));
+      } else {
+        ToastConfig.show({ title: "Error", message: "Failed to revoke session.", type: "error" });
+      }
+    } catch (err) {
+      ToastConfig.show({ title: "Error", message: "Server error.", type: "error" });
+    }
+  };
+
+  const filteredSessions = sessions.filter(s => {
+    const user = s.userId || {};
+    const query = search.toLowerCase();
+    return (
+      (user.name || '').toLowerCase().includes(query) ||
+      (user.email || '').toLowerCase().includes(query) ||
+      (s.os || '').toLowerCase().includes(query) ||
+      (s.browser || '').toLowerCase().includes(query) ||
+      (s.ipAddress || '').toLowerCase().includes(query) ||
+      (s.location || '').toLowerCase().includes(query)
+    );
+  });
+
+  const getDeviceIcon = (type) => {
+    switch (type) {
+      case 'Mobile':
+      case 'Mobile App':
+        return <Smartphone className="text-blue-500" size={20} />;
+      case 'Chrome Extension':
+      case 'Extension':
+        return <Puzzle className="text-purple-500" size={20} />;
+      default:
+        return <Monitor className="text-emerald-500" size={20} />;
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+          Monitor and manage active student sessions across all platforms. Terminating a session will instantly force-logout that user's device.
+        </p>
+        <button
+          onClick={fetchSessions}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50 border border-gray-200 dark:border-transparent shrink-0"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh Sessions</span>
+        </button>
+      </div>
+
+      <div className="mb-6 flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+          <input 
+            type="text" 
+            placeholder="Search by student name, email, IP, OS, or location…" 
+            value={search} 
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 transition-colors" 
+          />
+        </div>
+        <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">
+          {filteredSessions.length} active sessions
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <RefreshCw className="animate-spin text-brand-blue" size={32} />
+        </div>
+      ) : filteredSessions.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          No active web portal sessions found.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredSessions.map((session) => {
+            const user = session.userId || { name: 'Unknown User', email: 'N/A' };
+            return (
+              <div key={session._id} className="flex flex-col p-5 rounded-2xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#18181b] hover:shadow-md transition-all gap-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-500 font-bold flex items-center justify-center text-sm shrink-0 border border-blue-500/10">
+                      {user.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-gray-900 dark:text-white text-sm truncate">{user.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleRevokeSession(session._id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-lg text-[11px] font-bold transition-all border border-red-500/10"
+                    title="Terminate Session"
+                  >
+                    <LogOut size={12} />
+                    <span>Terminate</span>
+                  </button>
+                </div>
+
+                <div className="pt-3 border-t border-gray-200/50 dark:border-[#27272a]/50 flex items-center gap-3">
+                  <div className="p-2 bg-white dark:bg-[#121212] border border-gray-100 dark:border-[#2c2c2c] rounded-lg shrink-0">
+                    {getDeviceIcon(session.deviceType)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                      {session.os} ({session.browser})
+                    </p>
+                    <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-1 flex-wrap font-medium">
+                      <span className="flex items-center gap-0.5"><MapPin size={10} /> {session.location}</span>
+                      <span>•</span>
+                      <span>IP: {session.ipAddress}</span>
+                      <span>•</span>
+                      <span>Active: {new Date(session.lastActiveAt).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -2264,6 +2430,7 @@ const AdminDashboard = ({ currentUser }) => {
     { id: 'users',         label: 'User Directory',        icon: Users,        color: 'bg-blue-100 dark:bg-blue-900/30',    textColor: 'text-blue-600 dark:text-blue-400',    badge: users.length },
     { id: 'tickets',       label: 'Support Tickets',       icon: Mail,         color: 'bg-yellow-100 dark:bg-yellow-900/30', textColor: 'text-yellow-600 dark:text-yellow-500', badge: tickets.filter(t => t.status === 'open').length },
     { id: 'sessions',      label: 'Session Inspector',      icon: Cookie,       color: 'bg-emerald-100 dark:bg-emerald-900/30', textColor: 'text-emerald-600 dark:text-emerald-400' },
+    { id: 'portalSessions', label: 'Active Devices Manager',icon: Monitor,      color: 'bg-indigo-100 dark:bg-indigo-900/30', textColor: 'text-indigo-600 dark:text-indigo-400' },
     { id: 'diagnostics',   label: 'Scraping Diagnostics',   icon: FlaskConical, color: 'bg-purple-100 dark:bg-purple-900/30', textColor: 'text-purple-600 dark:text-purple-400' },
     { id: 'notifications', label: 'Notifications Manager',  icon: Bell,         color: 'bg-orange-100 dark:bg-orange-900/30', textColor: 'text-orange-600 dark:text-orange-400' },
     { id: 'b2',            label: 'BackBlaze B2 Manager',  icon: HardDrive,    color: 'bg-rose-100 dark:bg-rose-900/30',     textColor: 'text-rose-600 dark:text-rose-400' },
@@ -2301,6 +2468,7 @@ const AdminDashboard = ({ currentUser }) => {
           {activeApp === 'users'         && <UserDirectoryApp users={users} loading={loadingUsers} isSuperAdmin={isSuperAdmin} token={token} onUsersChange={setUsers} onRefresh={fetchUsers} />}
           {activeApp === 'tickets'       && <SupportTicketsApp tickets={tickets} loading={loadingTickets} token={token} onTicketsChange={setTickets} onRefresh={fetchTickets} />}
           {activeApp === 'sessions'      && <SessionInspectorApp users={users} token={token} loading={loadingUsers} onRefresh={fetchUsers} />}
+          {activeApp === 'portalSessions' && <ActiveSessionsManagerApp token={token} />}
           {activeApp === 'diagnostics'   && <SyncDiagnostics />}
           {activeApp === 'notifications' && <NotificationsManagerApp users={users} isSuperAdmin={isSuperAdmin} token={token} />}
           {activeApp === 'security'      && <SecurityApp token={token} />}

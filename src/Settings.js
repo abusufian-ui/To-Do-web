@@ -6,7 +6,8 @@ import {
     Book, Puzzle, School, ExternalLink, Download,
     ChevronDown, FileText, Activity, Camera,
     Smartphone, Monitor, Eye, EyeOff,
-    Send, UploadCloud, LifeBuoy, MessageSquare
+    Send, UploadCloud, LifeBuoy, MessageSquare,
+    MapPin, LogOut
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 import { StaticLogo } from './StaticLogo';
@@ -213,11 +214,49 @@ const ProfileSection = ({ user, showToast, onUpdateProfilePic, onUpdatePrivacy }
 const SecuritySection = ({ user, showToast }) => {
     const [autoLock, setAutoLock] = useState(user?.securitySettings?.autoLockEnabled || false);
     const [lockTimer, setLockTimer] = useState(user?.securitySettings?.autoLockTimer || 900000);
-    
-    const [loading, setLoading] = useState(false);
+    const [sessions, setSessions] = useState([]);
+    const [sessionsLoading, setSessionsLoading] = useState(true);
+
+    const fetchSessions = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_BASE}/api/security/sessions`, {
+                headers: { 'x-auth-token': token }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSessions(data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch sessions:", err);
+        } finally {
+            setSessionsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchSessions();
+    }, []);
+
+    const handleRevokeSession = async (sessionId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_BASE}/api/security/sessions/${sessionId}`, {
+                method: 'DELETE',
+                headers: { 'x-auth-token': token }
+            });
+            if (res.ok) {
+                showToast("Device logged out successfully", "success");
+                setSessions(prev => prev.filter(s => s.id !== sessionId));
+            } else {
+                showToast("Failed to revoke session", "error");
+            }
+        } catch (err) {
+            showToast("Server error", "error");
+        }
+    };
 
     const handleSaveSecurity = async (enabled, timer) => {
-        setLoading(true);
         try {
             const token = localStorage.getItem('token');
             const res = await fetch(`${API_BASE}/api/user/security-settings`, {
@@ -231,7 +270,19 @@ const SecuritySection = ({ user, showToast }) => {
                 showToast("Failed to update security", "error");
             }
         } catch (e) { showToast("Server error", "error"); }
-        setLoading(false);
+    };
+
+    const getDeviceIcon = (type) => {
+        switch (type) {
+            case 'Mobile':
+            case 'Mobile App':
+                return <Smartphone className="text-blue-500" size={24} />;
+            case 'Chrome Extension':
+            case 'Extension':
+                return <Puzzle className="text-purple-500" size={24} />;
+            default:
+                return <Monitor className="text-emerald-500" size={24} />;
+        }
     };
 
     return (
@@ -290,6 +341,66 @@ const SecuritySection = ({ user, showToast }) => {
                         ))}
                     </div>
                 </div>
+            </div>
+
+            {/* Active Devices Container */}
+            <div className="bg-white dark:bg-[#1E1E1E] p-8 rounded-2xl border border-gray-200 dark:border-[#2C2C2C] shadow-sm space-y-6">
+                <div>
+                    <h4 className="font-bold text-gray-800 dark:text-white text-lg">Active Logins & Devices</h4>
+                    <p className="text-sm text-gray-500 mt-1">Manage and track your active portal sessions across web, mobile, and extension interfaces. Revoke access to log out unrecognized devices immediately.</p>
+                </div>
+
+                {sessionsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                        <RefreshCw className="animate-spin text-brand-blue" size={24} />
+                    </div>
+                ) : (
+                    <div className="divide-y divide-gray-100 dark:divide-[#2C2C2C]">
+                        {sessions.map((session) => (
+                            <div key={session.id} className="flex items-center justify-between py-5 first:pt-0 last:pb-0 gap-4">
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="p-3 bg-gray-50 dark:bg-[#121212] border border-gray-100 dark:border-[#2C2C2C] rounded-xl shrink-0">
+                                        {getDeviceIcon(session.deviceType)}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-gray-800 dark:text-white text-sm">
+                                                {session.os} ({session.browser})
+                                            </span>
+                                            {session.isCurrent && (
+                                                <span className="text-[10px] px-2 py-0.5 font-extrabold bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20 rounded-full border border-emerald-500/20">
+                                                    Current Device
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-1 flex-wrap font-medium">
+                                            <span className="flex items-center gap-1">
+                                                <MapPin size={12} /> {session.location}
+                                            </span>
+                                            <span>•</span>
+                                            <span>IP: {session.ipAddress}</span>
+                                            <span>•</span>
+                                            <span>Last active: {new Date(session.lastActiveAt).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {!session.isCurrent && (
+                                    <button
+                                        onClick={() => handleRevokeSession(session.id)}
+                                        className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-500/5 dark:hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/10 shrink-0"
+                                        title="Log Out Device"
+                                    >
+                                        <LogOut size={18} />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                        {sessions.length === 0 && (
+                            <p className="text-sm text-gray-400 italic py-4 text-center">No active sessions detected.</p>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

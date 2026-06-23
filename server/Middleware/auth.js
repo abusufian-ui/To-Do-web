@@ -1,6 +1,8 @@
 
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const DeviceSession = require('../models/DeviceSession');
+const { parseUserAgent, getIpLocation } = require('../utils/sessionHelper');
 
 const auth = async (req, res, next) => {
   const token = req.header('x-auth-token');
@@ -13,7 +15,46 @@ const auth = async (req, res, next) => {
     const userId = decoded.id; 
     if (!userId) return res.status(401).json({ message: 'Token is not valid' });
 
-    
+    // Validate active login session
+    const tokenSignature = token.split('.')[2] || '';
+    if (!tokenSignature) return res.status(401).json({ message: 'Token is not valid' });
+
+    let session = await DeviceSession.findOne({ userId, tokenSignature });
+    if (!session) {
+      // Auto-register session for existing valid tokens (backward compatibility)
+      const ua = req.headers['user-agent'] || '';
+      const { os, browser, deviceType } = parseUserAgent(ua);
+      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+      const location = await getIpLocation(ip);
+
+      session = new DeviceSession({
+        userId,
+        tokenSignature,
+        deviceType,
+        browser,
+        os,
+        ipAddress: ip,
+        location,
+        userAgent: ua,
+        lastActiveAt: new Date(),
+        isActive: true
+      });
+      await session.save();
+    } else {
+      // Update last active time and IP if changed
+      session.lastActiveAt = new Date();
+      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+      if (ip && ip !== session.ipAddress) {
+        session.ipAddress = ip;
+        session.location = await getIpLocation(ip);
+      }
+      await session.save();
+    }
+
+    if (!session.isActive) {
+      return res.status(401).json({ logout: true, message: 'Session has been revoked.' });
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(401).json({ logout: true, message: 'Account does not exist. Access denied.' });
