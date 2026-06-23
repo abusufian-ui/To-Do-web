@@ -1,6 +1,19 @@
 const DeviceSession = require('../models/DeviceSession');
 const axios = require('axios');
 
+function getClientIp(req) {
+  let ip = req.headers['cf-connecting-ip'] || 
+           req.headers['x-forwarded-for'] || 
+           req.headers['x-real-ip'] || 
+           req.ip || 
+           req.socket.remoteAddress || 
+           '';
+  if (ip.includes(',')) {
+    ip = ip.split(',')[0].trim();
+  }
+  return ip;
+}
+
 function parseUserAgent(uaString) {
   const ua = uaString || '';
   let os = 'Unknown OS';
@@ -58,10 +71,7 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
 
     const ua = req.headers['user-agent'] || '';
     const { os, browser, deviceType } = parseUserAgent(ua);
-    let ip = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || '';
-    if (ip.includes(',')) {
-      ip = ip.split(',')[0].trim();
-    }
+    const ip = getClientIp(req);
     
     // Check if user has logged in from this IP before
     const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || !ip;
@@ -172,13 +182,19 @@ async function sendLoginAlertEmail(user, session, resend) {
       </div>
     `;
 
-    await resend.emails.send({
+    const response = await resend.emails.send({
       from: 'MyPortal Security <security@myportalucp.online>',
       to: user.email,
       subject: 'Security Alert: New Login to MyPortal UCP',
       html: emailHtml
     });
-    console.log(`✉️ Login alert email sent successfully to ${user.email} for IP ${session.ipAddress}`);
+    
+    if (response && response.error) {
+      console.error(`❌ Resend API Error for ${user.email}:`, response.error);
+    } else {
+      const id = response && response.data ? response.data.id : 'unknown';
+      console.log(`✉️ Login alert email sent successfully to ${user.email} for IP ${session.ipAddress}. Resend ID: ${id}`);
+    }
   } catch (err) {
     console.error('Failed to send login alert email:', err.message);
   }
@@ -187,5 +203,6 @@ async function sendLoginAlertEmail(user, session, resend) {
 module.exports = {
   parseUserAgent,
   getIpLocation,
-  registerDeviceSession
+  registerDeviceSession,
+  getClientIp
 };

@@ -2,7 +2,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const DeviceSession = require('../models/DeviceSession');
-const { parseUserAgent, getIpLocation } = require('../utils/sessionHelper');
+const { parseUserAgent, getIpLocation, getClientIp } = require('../utils/sessionHelper');
 
 const auth = async (req, res, next) => {
   const token = req.header('x-auth-token');
@@ -24,10 +24,7 @@ const auth = async (req, res, next) => {
       // Auto-register session for existing valid tokens (backward compatibility)
       const ua = req.headers['user-agent'] || '';
       const { os, browser, deviceType } = parseUserAgent(ua);
-      let ip = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || '';
-      if (ip.includes(',')) {
-        ip = ip.split(',')[0].trim();
-      }
+      const ip = getClientIp(req);
       const location = await getIpLocation(ip);
 
       session = new DeviceSession({
@@ -46,10 +43,7 @@ const auth = async (req, res, next) => {
     } else {
       // Update last active time and IP if changed
       session.lastActiveAt = new Date();
-      let ip = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || '';
-      if (ip.includes(',')) {
-        ip = ip.split(',')[0].trim();
-      }
+      const ip = getClientIp(req);
       if (ip && ip !== session.ipAddress) {
         session.ipAddress = ip;
         session.location = await getIpLocation(ip);
