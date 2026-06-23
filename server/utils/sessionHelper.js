@@ -58,10 +58,14 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
 
     const ua = req.headers['user-agent'] || '';
     const { os, browser, deviceType } = parseUserAgent(ua);
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    let ip = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || '';
+    if (ip.includes(',')) {
+      ip = ip.split(',')[0].trim();
+    }
     
     // Check if user has logged in from this IP before
-    const ipExists = await DeviceSession.exists({ userId, ipAddress: ip });
+    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || !ip;
+    const ipExists = isLocal ? false : await DeviceSession.exists({ userId, ipAddress: ip });
 
     const location = await getIpLocation(ip);
 
