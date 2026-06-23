@@ -313,7 +313,34 @@ const otpSchema = new mongoose.Schema({
 });
 const OTP = mongoose.model('OTP', otpSchema);
 
+const parseSemesterAndSectionFromCode = (fullCode) => {
+  if (!fullCode) return { semester: '', section: '' };
+  const parts = fullCode.trim().split('-');
+  
+  let section = '';
+  if (parts.length > 1) {
+    const candidate = parts[parts.length - 1].trim();
+    const isValidSection = candidate && 
+      !candidate.includes(' ') && 
+      !candidate.toLowerCase().includes('credit') && 
+      !candidate.toLowerCase().includes('hour') && 
+      candidate.length <= 15 &&
+      /^[a-zA-Z0-9-]+$/.test(candidate);
+    if (isValidSection) {
+      section = candidate;
+    }
+  }
 
+  let semester = '';
+  try {
+    const { parseSemesterFromCourseCode } = require('./services/scraperEngine');
+    semester = parseSemesterFromCourseCode(fullCode) || '';
+  } catch (err) {
+    console.error("Error parsing semester from code:", err.message);
+  }
+
+  return { semester, section };
+};
 
 const app = express();
 app.set('trust proxy', 1);
@@ -1475,11 +1502,15 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           }
 
           
-          const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
-          const activeSemester = parseSemesterFromCourseCode(fullCode) || req.body.semester || getCurrentSemesterCode();
-          const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: activeSemester };
+          const parsed = parseSemesterAndSectionFromCode(fullCode);
+          const finalSection = sectionCode || parsed.section || '';
+
+          const { getCurrentSemesterCode } = require('./services/scraperEngine');
+          const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
+
+          const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: finalSemester };
           if (fullCode) updatePayload.code = fullCode;
-          if (sectionCode) updatePayload.section = sectionCode;
+          if (finalSection) updatePayload.section = finalSection;
           if (url) updatePayload.portalUrl = url; 
 
           coursePromises.push(Course.findOneAndUpdate(
@@ -1739,6 +1770,12 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         const sectionCode = sectionLookup[courseName] || '';
         const fullCode = baseCodeLookup[courseName] || data.code || '';
 
+        const parsed = parseSemesterAndSectionFromCode(fullCode);
+        const finalSection = sectionCode || parsed.section || '';
+        
+        const { getCurrentSemesterCode } = require('./services/scraperEngine');
+        const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
+
         const courseUpdatePayload = {
           userId, 
           name: courseName, 
@@ -1747,7 +1784,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         };
 
         if (fullCode) courseUpdatePayload.code = fullCode;
-        if (sectionCode) courseUpdatePayload.section = sectionCode;
+        if (finalSection) courseUpdatePayload.section = finalSection;
+        if (finalSemester) courseUpdatePayload.semester = finalSemester;
 
         
         if (data.instructors && data.instructors.size > 0) {
