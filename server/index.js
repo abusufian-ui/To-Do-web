@@ -316,6 +316,7 @@ const OTP = mongoose.model('OTP', otpSchema);
 
 
 const app = express();
+app.set('trust proxy', 1);
 
 const getBaseUrl = (req) => {
   const host = req.get('host') || '';
@@ -389,7 +390,7 @@ app.use((req, res, next) => {
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
-  max: 30, 
+  max: 300, 
   message: { message: "Too many authentication attempts, please try again later." }
 });
 
