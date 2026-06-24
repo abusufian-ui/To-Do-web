@@ -1,22 +1,8 @@
 const DeviceSession = require('../models/DeviceSession');
 const axios = require('axios');
 const { Resend } = require('resend');
-const nodemailer = require('nodemailer');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-
-// Brevo SMTP transporter setup
-const brevoTransporter = process.env.BREVO_SMTP_USER && process.env.BREVO_SMTP_KEY
-  ? nodemailer.createTransport({
-      host: process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com',
-      port: parseInt(process.env.BREVO_SMTP_PORT || '587', 10),
-      secure: false, // true for port 465, false for other ports (587)
-      auth: {
-        user: process.env.BREVO_SMTP_USER,
-        pass: process.env.BREVO_SMTP_KEY
-      }
-    })
-  : null;
 
 function getClientIp(req) {
   let ip = req.headers['cf-connecting-ip'] || 
@@ -200,19 +186,7 @@ async function sendLoginAlertEmail(user, session, resend) {
       </div>
     `;
 
-    if (brevoTransporter) {
-      // Send via Brevo SMTP
-      const mailOptions = {
-        from: 'MyPortal Security <security@myportalucp.online>',
-        to: user.email,
-        subject: 'Security Alert: New Login to MyPortal UCP',
-        html: emailHtml
-      };
-      
-      const info = await brevoTransporter.sendMail(mailOptions);
-      console.log(`✉️ [Brevo] Login alert email sent successfully to ${user.email}. Message ID: ${info.messageId}`);
-    } else if (resend) {
-      // Fallback to Resend
+    if (resend) {
       const response = await resend.emails.send({
         from: 'MyPortal Security <security@myportalucp.online>',
         to: user.email,
@@ -227,7 +201,7 @@ async function sendLoginAlertEmail(user, session, resend) {
         console.log(`✉️ [Resend] Login alert email sent successfully to ${user.email} for IP ${session.ipAddress}. Resend ID: ${id}`);
       }
     } else {
-      console.warn(`⚠️ Neither Brevo SMTP nor Resend client is configured. Skipping login alert email for ${user.email}`);
+      console.warn(`⚠️ Resend client is not configured. Skipping login alert email for ${user.email}`);
     }
   } catch (err) {
     console.error('Failed to send login alert email:', err.message);
