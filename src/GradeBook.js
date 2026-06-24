@@ -333,7 +333,19 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
       setLeaderboardLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_BASE}/api/course-leaderboard/${matchingCourseInfo.id}`, {
+        
+        // Serialize bestOfConfigs for the current course
+        const courseBestOf = [];
+        Object.entries(bestOfConfigs).forEach(([key, val]) => {
+          if (key.startsWith(`${selectedCourse._id}_`)) {
+            const categoryName = key.substring(selectedCourse._id.length + 1);
+            courseBestOf.push(`${encodeURIComponent(categoryName)}:${val}`);
+          }
+        });
+        const bestOfQuery = courseBestOf.join(',');
+        const queryParams = bestOfQuery ? `?bestOf=${encodeURIComponent(bestOfQuery)}` : '';
+
+        const res = await fetch(`${API_BASE}/api/course-leaderboard/${matchingCourseInfo.id}${queryParams}`, {
           headers: { 'Content-Type': 'application/json', 'x-auth-token': token }
         });
         if (res.status === 403) {
@@ -354,7 +366,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     };
     
     fetchLeaderboard();
-  }, [selectedCourse, matchingCourseInfo]);
+  }, [selectedCourse, matchingCourseInfo, bestOfConfigs]);
 
   const handleBestOfChange = (categoryName, newBestOf) => {
     setBestOfConfigs(prev => ({ ...prev, [`${selectedCourse._id}_${categoryName}`]: newBestOf }));

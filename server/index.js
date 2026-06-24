@@ -5033,16 +5033,66 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Error deleting note" }); }
 });
 
+const parseBestOfQuery = (bestOfStr) => {
+  const configs = {};
+  if (!bestOfStr) return configs;
+  bestOfStr.split(',').forEach(item => {
+    const parts = item.split(':');
+    if (parts.length === 2) {
+      const name = decodeURIComponent(parts[0]);
+      const limit = parseInt(parts[1]);
+      if (!isNaN(limit)) {
+        configs[name.toLowerCase()] = limit;
+      }
+    }
+  });
+  return configs;
+};
 
-
+const calculateStudentScore = (userGrade, bestOfConfigs = {}) => {
+  let score = 0;
+  if (userGrade && Array.isArray(userGrade.assessments)) {
+    let totalMarkedWeight = 0;
+    let totalEarnedWeight = 0;
+    
+    userGrade.assessments.forEach(cat => {
+      const wNum = parseFloat(cat.weight) || 0;
+      let finalPct = parseFloat(cat.percentage) || 0;
+      
+      const catNameLower = (cat.name || '').toLowerCase();
+      const bestOfLimit = bestOfConfigs[catNameLower];
+      
+      const isConfigurable = /assignment|quiz|participation/i.test(cat.name || "");
+      const validDetails = cat.details?.filter(d => !isNaN(parseFloat(d.obtainedMarks)) && !isNaN(parseFloat(d.maxMarks))) || [];
+      
+      if (isConfigurable && typeof bestOfLimit === 'number' && bestOfLimit < validDetails.length && bestOfLimit > 0) {
+        const sorted = [...validDetails].sort((a, b) => {
+          return (parseFloat(b.obtainedMarks) / parseFloat(b.maxMarks)) - (parseFloat(a.obtainedMarks) / parseFloat(a.maxMarks));
+        });
+        const selected = sorted.slice(0, bestOfLimit);
+        const sumObt = selected.reduce((sum, d) => sum + parseFloat(d.obtainedMarks), 0);
+        const sumMax = selected.reduce((sum, d) => sum + parseFloat(d.maxMarks), 0);
+        finalPct = sumMax > 0 ? (sumObt / sumMax) * 100 : 0;
+      }
+      
+      totalMarkedWeight += wNum;
+      totalEarnedWeight += (finalPct / 100) * wNum;
+    });
+    
+    score = totalMarkedWeight > 0 ? (totalEarnedWeight / totalMarkedWeight) * 100 : 0;
+  }
+  return score;
+};
 
 app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   try {
     const courseCode = req.params.courseCode;
     const section = req.query.section;
     const courseName = req.query.courseName;
-
     const email = req.query.email;
+
+    const bestOfQuery = req.query.bestOf || '';
+    const bestOfConfigs = parseBestOfQuery(bestOfQuery);
     if (email) {
       const requestingUser = await User.findOne({ email: { $regex: '^' + escapeRegex(email.trim()) + '$', $options: 'i' } });
       if (requestingUser) {
@@ -5098,18 +5148,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
         )
       );
 
-      let score = 0;
-      if (userGrade && Array.isArray(userGrade.assessments)) {
-        let totalMarkedWeight = 0;
-        let totalEarnedWeight = 0;
-        userGrade.assessments.forEach(cat => {
-          const wNum = parseFloat(cat.weight) || 0;
-          const pNum = parseFloat(cat.percentage) || 0;
-          totalMarkedWeight += wNum;
-          totalEarnedWeight += (pNum / 100) * wNum;
-        });
-        score = totalMarkedWeight > 0 ? (totalEarnedWeight / totalMarkedWeight) * 100 : 0;
-      }
+      const score = calculateStudentScore(userGrade, bestOfConfigs);
 
       return {
         id: course.userId?.portalId || 'Unknown ID',
@@ -5162,6 +5201,8 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     }
 
     const gradeName = req.query.gradeName; 
+    const bestOfQuery = req.query.bestOf || '';
+    const bestOfConfigs = parseBestOfQuery(bestOfQuery); 
 
     const myCourse = await Course.findById(req.params.courseId);
     if (!myCourse) return res.status(404).json({ message: "Course not found" });
@@ -5209,18 +5250,7 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
         );
       });
 
-      let score = 0;
-      if (userGrade && Array.isArray(userGrade.assessments)) {
-        let totalMarkedWeight = 0;
-        let totalEarnedWeight = 0;
-        userGrade.assessments.forEach(cat => {
-          const wNum = parseFloat(cat.weight) || 0;
-          const pNum = parseFloat(cat.percentage) || 0;
-          totalMarkedWeight += wNum;
-          totalEarnedWeight += (pNum / 100) * wNum;
-        });
-        score = totalMarkedWeight > 0 ? (totalEarnedWeight / totalMarkedWeight) * 100 : 0;
-      }
+      const score = calculateStudentScore(userGrade, bestOfConfigs);
 
       return {
         id: course.userId?.portalId || 'Unknown ID',
