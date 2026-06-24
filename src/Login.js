@@ -331,11 +331,11 @@ export default function Login() {
                                         {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                                     </button>
                                 </div>
-                                <div className="flex justify-between items-center px-1">
-                                    <button type="button" onClick={handleGoBack} className="text-sm font-semibold text-[#666] hover:text-white transition-colors duration-300">
+                                <div className="flex justify-between items-baseline px-1">
+                                    <button type="button" onClick={handleGoBack} className="text-sm font-semibold text-[#666] hover:text-white transition-colors duration-300 p-0 bg-transparent border-none outline-none cursor-pointer">
                                         Wrong account?
                                     </button>
-                                    <button type="button" onClick={handleForgotPassword} className="text-sm font-bold text-white hover:text-gray-300 transition-colors duration-300">
+                                    <button type="button" onClick={handleForgotPassword} className="text-sm font-bold text-white hover:text-gray-300 transition-colors duration-300 p-0 bg-transparent border-none outline-none cursor-pointer">
                                         Forgot Password?
                                     </button>
                                 </div>
