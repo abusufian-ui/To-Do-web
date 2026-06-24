@@ -203,8 +203,7 @@ async function sendLoginAlertEmail(user, session, resend) {
     if (brevoTransporter) {
       // Send via Brevo SMTP
       const mailOptions = {
-        from: 'No-Reply MyPortal Alerts <security@myportalucp.online>',
-        replyTo: 'noreply@myportalucp.online',
+        from: 'MyPortal Security <security@myportalucp.online>',
         to: user.email,
         subject: 'Security Alert: New Login to MyPortal UCP',
         html: emailHtml
@@ -215,7 +214,7 @@ async function sendLoginAlertEmail(user, session, resend) {
     } else if (resend) {
       // Fallback to Resend
       const response = await resend.emails.send({
-        from: 'MyPortal Security <otp@myportalucp.online>',
+        from: 'MyPortal Security <security@myportalucp.online>',
         to: user.email,
         subject: 'Security Alert: New Login to MyPortal UCP',
         html: emailHtml
