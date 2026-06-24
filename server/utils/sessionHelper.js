@@ -188,9 +188,9 @@ async function sendLoginAlertEmail(user, session, resend) {
 
     if (resend) {
       const response = await resend.emails.send({
-        from: 'MyPortal Security <security@myportalucp.online>',
+        from: 'MyPortal <otp@myportalucp.online>',
         to: user.email,
-        subject: 'Security Alert: New Login to MyPortal UCP',
+        subject: 'New Login Detected - MyPortal',
         html: emailHtml
       });
       
