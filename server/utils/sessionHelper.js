@@ -126,7 +126,7 @@ async function sendLoginAlertEmail(user, session, resend) {
       hour: '2-digit', minute: '2-digit'
     });
 
-    const settingsUrl = 'https://myportalucp.online/settings';
+    const settingsUrl = 'https://web.myportalucp.online/settings';
 
     const emailHtml = `
       <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; padding: 40px 20px; color: #1f2937;">
