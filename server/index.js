@@ -91,6 +91,7 @@ const { convertToPdf } = require('./utils/documentConverter');
 
 const { getSignedDownloadUrl, b2, B2_BUCKET, uploadToB2, getPresignedUploadUrl, configureBucketCors, downloadFileFromB2, getMimeType } = require('./utils/b2Client');
 const { processUserMaterials, runNightlyMaterialSync } = require('./services/materialProcessor');
+const { processUserSubmissions } = require('./services/submissionProcessor');
 
 
 
@@ -1719,6 +1720,10 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         }
       }
       await Promise.all(subPromises);
+      const liveCookie = ucpCookie || user.ucpCookie;
+      if (liveCookie) {
+        setTimeout(() => processUserSubmissions(userId.toString(), liveCookie), 1000);
+      }
     }
 
     
@@ -5662,6 +5667,32 @@ app.get('/api/course-material/download/:fileId', async (req, res) => {
     res.redirect(signedUrl);
   } catch (err) {
     console.error('[API] download redirect error:', err.message);
+    res.status(401).json({ message: 'Token is not valid' });
+  }
+});
+
+
+app.get('/api/submission/download/:submissionId/:taskId', async (req, res) => {
+  try {
+    const token = req.header('x-auth-token') || req.query.token;
+    if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
+
+    jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
+
+    const submission = await Submission.findById(req.params.submissionId);
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found.' });
+    }
+
+    const task = submission.tasks.id(req.params.taskId);
+    if (!task || !task.b2Key) {
+      return res.status(404).json({ message: 'Attachment file not found.' });
+    }
+
+    const signedUrl = await getSignedDownloadUrl(task.b2Key, 300, task.title); 
+    res.redirect(signedUrl);
+  } catch (err) {
+    console.error('[API] submission download redirect error:', err.message);
     res.status(401).json({ message: 'Token is not valid' });
   }
 });

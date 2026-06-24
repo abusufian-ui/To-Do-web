@@ -11,7 +11,10 @@ const submissionSchema = new mongoose.Schema({
         dueDate: String,
         status: { type: String, default: 'Pending' },
         attachmentUrl: String,
-        submissionUrl: String
+        submissionUrl: String,
+        b2Key: { type: String, default: '' },
+        fileType: { type: String, default: '' },
+        fileSize: { type: Number, default: 0 }
     }],
     lastSyncHash: String,
     lastUpdated: { type: Date, default: Date.now }

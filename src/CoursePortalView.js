@@ -143,7 +143,11 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
   const courseData = {
     announcements: allAnnouncements.find(a => normalize(a.courseName) === normalize(selectedCourse))?.news || [],
     attendance: allAttendance.find(a => normalize(a.courseName) === normalize(selectedCourse)) || { summary: { conducted: 0, attended: 0 }, records: [] },
-    submissions: allSubmissions.find(s => normalize(s.courseName) === normalize(selectedCourse))?.tasks || []
+    submissions: (() => {
+      const subDoc = allSubmissions.find(s => normalize(s.courseName) === normalize(selectedCourse));
+      if (!subDoc) return [];
+      return (subDoc.tasks || []).map(t => ({ ...t, submissionId: subDoc._id }));
+    })()
   };
 
   
@@ -329,7 +333,7 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
           <div className="animate-fadeIn">
             {activeTab === 'Announcements' && <CourseAnnouncements announcements={courseData.announcements} />}
             {activeTab === 'Attendance' && <CourseAttendance attendance={courseData.attendance} />}
-            {activeTab === 'Submissions' && <CourseSubmissions submissions={courseData.submissions} />}
+            {activeTab === 'Submissions' && <CourseSubmissions submissions={courseData.submissions} apiBase={API_BASE} />}
             {activeTab === 'Course Material' && currentCourseCode && (
               showSyncDashboard ? (
                 <ParallelSyncDashboard 

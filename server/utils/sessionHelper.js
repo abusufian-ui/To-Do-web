@@ -1,5 +1,8 @@
 const DeviceSession = require('../models/DeviceSession');
 const axios = require('axios');
+const { Resend } = require('resend');
+
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 function getClientIp(req) {
   let ip = req.headers['cf-connecting-ip'] || 
@@ -75,7 +78,7 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
     
     // Check if user has logged in from this IP before
     const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || !ip;
-    const ipExists = isLocal ? false : await DeviceSession.exists({ userId, ipAddress: ip });
+    const ipExists = isLocal ? true : await DeviceSession.exists({ userId, ipAddress: ip });
 
     const location = await getIpLocation(ip);
 
@@ -96,12 +99,13 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
     console.log(`🔐 Registered session for user ${userId} on ${os} (${browser})`);
 
     // Smart email login alert trigger if it's a new IP address
+    const activeResend = resendInstance || resend;
     if (!ipExists) {
-      if (resendInstance) {
+      if (activeResend) {
         const User = require('../models/User');
         const user = await User.findById(userId);
         if (user && user.email && user.email.endsWith('@ucp.edu.pk')) {
-          await sendLoginAlertEmail(user, session, resendInstance);
+          await sendLoginAlertEmail(user, session, activeResend);
         }
       }
     }
@@ -183,7 +187,7 @@ async function sendLoginAlertEmail(user, session, resend) {
     `;
 
     const response = await resend.emails.send({
-      from: 'MyPortal Security <security@myportalucp.online>',
+      from: 'MyPortal Security <otp@myportalucp.online>',
       to: user.email,
       subject: 'Security Alert: New Login to MyPortal UCP',
       html: emailHtml

@@ -2,7 +2,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const DeviceSession = require('../models/DeviceSession');
-const { parseUserAgent, getIpLocation, getClientIp } = require('../utils/sessionHelper');
+const { parseUserAgent, getIpLocation, getClientIp, registerDeviceSession } = require('../utils/sessionHelper');
 
 const auth = async (req, res, next) => {
   const token = req.header('x-auth-token');
@@ -21,25 +21,9 @@ const auth = async (req, res, next) => {
 
     let session = await DeviceSession.findOne({ userId, tokenSignature });
     if (!session) {
-      // Auto-register session for existing valid tokens (backward compatibility)
-      const ua = req.headers['user-agent'] || '';
-      const { os, browser, deviceType } = parseUserAgent(ua);
-      const ip = getClientIp(req);
-      const location = await getIpLocation(ip);
-
-      session = new DeviceSession({
-        userId,
-        tokenSignature,
-        deviceType,
-        browser,
-        os,
-        ipAddress: ip,
-        location,
-        userAgent: ua,
-        lastActiveAt: new Date(),
-        isActive: true
-      });
-      await session.save();
+      // Auto-register session for existing valid tokens (backward compatibility / new devices using cached token)
+      session = await registerDeviceSession(userId, token, req);
+      if (!session) return res.status(401).json({ message: 'Token is not valid' });
     } else {
       // Update last active time and IP if changed
       session.lastActiveAt = new Date();

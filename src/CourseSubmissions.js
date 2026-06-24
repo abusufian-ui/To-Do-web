@@ -1,7 +1,7 @@
 import React from 'react';
 import { FileText, Download, ExternalLink, Clock, CheckCircle, AlertCircle, Calendar, Hourglass } from 'lucide-react';
 
-const CourseSubmissions = ({ submissions }) => {
+const CourseSubmissions = ({ submissions, apiBase }) => {
   if (!submissions || submissions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-gray-500 dark:text-gray-400 bg-white dark:bg-[#1E1E1E] border border-gray-100 dark:border-[#333] rounded-3xl shadow-sm">
@@ -87,6 +87,10 @@ const CourseSubmissions = ({ submissions }) => {
 
         const submitLink = task.submissionUrl || "https://horizon.ucp.edu.pk/";
         const attachmentLink = task.attachmentUrl || null;
+        const token = localStorage.getItem('myportal_token');
+        const downloadUrl = task.b2Key && token
+          ? `${apiBase || 'http://localhost:5000'}/api/submission/download/${task.submissionId}/${task._id}?token=${encodeURIComponent(token)}`
+          : attachmentLink;
 
         return (
           <div key={idx} className={`relative overflow-hidden bg-white dark:bg-[#1E1E1E] border rounded-3xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 ${isExpired && !isSubmitted ? 'opacity-75 border-red-100 dark:border-red-900/30' : 'border-gray-100 dark:border-[#333]'}`}>
@@ -144,7 +148,16 @@ const CourseSubmissions = ({ submissions }) => {
               
               {}
               <div className="flex items-center gap-3 w-full lg:w-auto justify-end">
-                {}
+                {attachmentLink && (
+                  <a 
+                    href={downloadUrl} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-800 transition-all shadow-sm"
+                  >
+                    <Download size={16} /> Teacher File
+                  </a>
+                )}
                 {isSubmitted ? (
                   <span className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 cursor-default">
                     <CheckCircle size={16} /> Submitted Successfully
