@@ -257,7 +257,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   const [loading, setLoading] = useState(true);
   
   const [selectedCourseId, setSelectedCourseId] = useState(null);
-  const [gradingMode, setGradingMode] = useState('relative');
+  const [gradingMode, setGradingMode] = useState(() => localStorage.getItem('gradingPolicyPref') || 'relative');
   const [expandedRows, setExpandedRows] = useState({});
 
   
@@ -641,13 +641,13 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
 
                 <div className="flex bg-gray-100 dark:bg-gray-800/50 p-1 rounded-xl">
                   <button
-                    onClick={() => setGradingMode('absolute')}
+                    onClick={() => { setGradingMode('absolute'); localStorage.setItem('gradingPolicyPref', 'absolute'); }}
                     className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${gradingMode === 'absolute' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
                   >
                     Absolute
                   </button>
                   <button
-                    onClick={() => setGradingMode('relative')}
+                    onClick={() => { setGradingMode('relative'); localStorage.setItem('gradingPolicyPref', 'relative'); }}
                     className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${gradingMode === 'relative' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
                   >
                     Relative

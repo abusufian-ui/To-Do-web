@@ -55,7 +55,8 @@ const userSchema = new mongoose.Schema({
   coursePreferences: { type: Map, of: Boolean, default: {} }, 
   accessedWeb: { type: Boolean, default: false },
   accessedMobile: { type: Boolean, default: false },
-  accessedExtension: { type: Boolean, default: false }
+  accessedExtension: { type: Boolean, default: false },
+  tempSyncId: { type: String, default: null, index: true }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

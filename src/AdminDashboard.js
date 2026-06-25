@@ -1786,6 +1786,11 @@ const WebsiteConfigApp = ({ token }) => {
   const [isEditingWhatsapp, setIsEditingWhatsapp] = useState(false);
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
 
+  const [chromeExtensionLink, setChromeExtensionLink] = useState('');
+  const [savedChromeExtensionLink, setSavedChromeExtensionLink] = useState('');
+  const [isEditingChromeExtensionLink, setIsEditingChromeExtensionLink] = useState(false);
+  const [savingChromeExtensionLink, setSavingChromeExtensionLink] = useState(false);
+
   const [apkInfo, setApkInfo] = useState({ uploaded: false });
   const [loadingInfo, setLoadingInfo] = useState(true);
   const [uploadingApk, setUploadingApk] = useState(false);
@@ -1805,6 +1810,8 @@ const WebsiteConfigApp = ({ token }) => {
         setSavedTermsLink(data.termsLink || '');
         setWhatsappLink(data.whatsappGroupLink || '');
         setSavedWhatsappLink(data.whatsappGroupLink || '');
+        setChromeExtensionLink(data.chromeExtensionLink || '');
+        setSavedChromeExtensionLink(data.chromeExtensionLink || '');
         setApkInfo(data.apkInfo || { uploaded: false });
       }
     } catch (err) {
@@ -1849,6 +1856,40 @@ const WebsiteConfigApp = ({ token }) => {
   const handleCancelLink = () => {
     setWebPortalLink(savedLink);
     setIsEditingLink(false);
+  };
+
+  const handleSaveChromeExtensionLink = async () => {
+    if (!chromeExtensionLink.trim()) {
+      ToastConfig.show({ title: 'Error', message: 'Chrome Extension Link cannot be empty.', type: 'error' });
+      return;
+    }
+    setSavingChromeExtensionLink(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings/chrome-extension-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ link: chromeExtensionLink.trim() })
+      });
+      if (res.ok) {
+        setSavedChromeExtensionLink(chromeExtensionLink.trim());
+        setIsEditingChromeExtensionLink(false);
+        ToastConfig.show({ title: 'Success', message: 'Chrome Extension link updated.', type: 'success' });
+      } else {
+        const errData = await res.json();
+        ToastConfig.show({ title: 'Error', message: errData.message || 'Failed to update link.', type: 'error' });
+      }
+    } catch {
+      ToastConfig.show({ title: 'Error', message: 'Network error saving link.', type: 'error' });
+    }
+    setSavingChromeExtensionLink(false);
+  };
+
+  const handleCancelChromeExtensionLink = () => {
+    setChromeExtensionLink(savedChromeExtensionLink);
+    setIsEditingChromeExtensionLink(false);
   };
 
   const handleSaveTerms = async () => {
@@ -2075,6 +2116,55 @@ const WebsiteConfigApp = ({ token }) => {
             </div>
             <button
               onClick={() => setIsEditingLink(true)}
+              className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-blue-600/10"
+            >
+              Edit Link
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Chrome Extension Link configuration */}
+      <div className="bg-gray-50 dark:bg-[#18181b] rounded-2xl border border-gray-200 dark:border-[#27272a] p-5">
+        <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+          <Server size={16} className="text-blue-500" /> Chrome Extension Link
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          This is the download URL for the Chrome Web Store extension shown during onboarding flows.
+        </p>
+
+        {isEditingChromeExtensionLink ? (
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder="e.g. https://chromewebstore.google.com/..."
+              value={chromeExtensionLink}
+              onChange={e => setChromeExtensionLink(e.target.value)}
+              className="flex-1 px-4 py-2.5 bg-white dark:bg-[#111113] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
+            />
+            <button
+              onClick={handleSaveChromeExtensionLink}
+              disabled={savingChromeExtensionLink || !chromeExtensionLink.trim()}
+              className="px-5 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {savingChromeExtensionLink ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={handleCancelChromeExtensionLink}
+              disabled={savingChromeExtensionLink}
+              className="px-5 py-2.5 rounded-xl font-bold bg-gray-200 hover:bg-gray-300 dark:bg-[#27272a] dark:hover:bg-[#323237] text-gray-800 dark:text-gray-200 text-sm transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50/50 dark:bg-blue-900/5 border border-blue-200/50 dark:border-blue-900/10">
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-blue-500 dark:text-blue-400">Currently Saved</span>
+              <p className="text-sm font-bold text-gray-800 dark:text-gray-200 truncate mt-0.5">{savedChromeExtensionLink || 'None (Using default)'}</p>
+            </div>
+            <button
+              onClick={() => setIsEditingChromeExtensionLink(true)}
               className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-blue-600/10"
             >
               Edit Link

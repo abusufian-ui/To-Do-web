@@ -718,6 +718,12 @@ app.get('/api/public/settings', async (req, res) => {
         whatsappGroupLink = whatsappSetting.value;
       }
 
+      let chromeExtensionLink = "https://chromewebstore.google.com/";
+      const chromeSetting = await SystemSettings.findOne({ key: "chrome_extension_link" });
+      if (chromeSetting) {
+        chromeExtensionLink = chromeSetting.value;
+      }
+
       let rawApkInfo = null;
       const dbSetting = await SystemSettings.findOne({ key: "apk_info" });
       if (dbSetting && dbSetting.value && dbSetting.value.uploaded) {
@@ -735,7 +741,7 @@ app.get('/api/public/settings', async (req, res) => {
         }
       }
 
-      cachedSettingsData = { webPortalLink, termsLink, whatsappGroupLink, rawApkInfo };
+      cachedSettingsData = { webPortalLink, termsLink, whatsappGroupLink, chromeExtensionLink, rawApkInfo };
       settingsCacheExpiry = now + 60000; 
     }
 
@@ -753,6 +759,7 @@ app.get('/api/public/settings', async (req, res) => {
       webPortalLink: cachedSettingsData.webPortalLink,
       termsLink: cachedSettingsData.termsLink,
       whatsappGroupLink: cachedSettingsData.whatsappGroupLink,
+      chromeExtensionLink: cachedSettingsData.chromeExtensionLink,
       apkInfo
     });
   } catch (error) {
@@ -844,6 +851,24 @@ app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res
   } catch (error) {
     console.error("Save Web Portal Link Error:", error);
     res.status(500).json({ message: "Server Error saving portal link" });
+  }
+});
+
+app.post('/api/admin/settings/chrome-extension-link', auth, adminAuth, async (req, res) => {
+  try {
+    const { link } = req.body;
+    if (!link) return res.status(400).json({ message: "Link is required." });
+
+    const setting = await SystemSettings.findOneAndUpdate(
+      { key: "chrome_extension_link" },
+      { value: link },
+      { upsert: true, new: true }
+    );
+    invalidateSettingsCache();
+    res.json({ success: true, link: setting.value });
+  } catch (error) {
+    console.error("Save Chrome Extension Link Error:", error);
+    res.status(500).json({ message: "Server Error saving extension link" });
   }
 });
 
@@ -1163,6 +1188,85 @@ app.post('/api/web/set-password', authLimiter, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: "Error securing your new password." });
+  }
+});
+
+app.get('/api/web/check-sync-status', async (req, res) => {
+  try {
+    const { tempSyncId } = req.query;
+    if (!tempSyncId) {
+      return res.status(400).json({ message: "tempSyncId is required" });
+    }
+    const user = await User.findOne({ tempSyncId });
+    if (!user) {
+      return res.json({ synced: false });
+    }
+
+    // Generate a temporary JWT token for password setup (expires in 10 mins)
+    const token = jwt.sign(
+      { id: user.id, isTempSyncAuth: true },
+      process.env.REACT_APP_JWT_SECRET || 'secret_key_123',
+      { expiresIn: '10m' }
+    );
+
+    // Clear tempSyncId to prevent reuse
+    user.tempSyncId = null;
+    await user.save();
+
+    res.json({
+      synced: true,
+      tempToken: token,
+      name: user.name
+    });
+  } catch (err) {
+    console.error("Check sync status error:", err.message);
+    res.status(500).json({ message: "Server error checking sync status" });
+  }
+});
+
+app.post('/api/web/set-password-via-sync', authLimiter, async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    const authHeader = req.headers['x-sync-token'];
+    if (!authHeader) {
+      return res.status(401).json({ message: "Unauthorized. Sync token missing." });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(authHeader, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
+    } catch (jwtErr) {
+      return res.status(401).json({ message: "Sync session expired or invalid." });
+    }
+
+    if (!decoded.isTempSyncAuth || !decoded.id) {
+      return res.status(403).json({ message: "Invalid token permissions." });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    user.webPassword = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
+    await user.save();
+
+    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' });
+    await registerDeviceSession(user.id, token, req, resend);
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        profilePic: user.profilePic
+      }
+    });
+  } catch (err) {
+    console.error("Set password via sync error:", err.message);
+    res.status(500).json({ message: "Server error setting password." });
   }
 });
 
@@ -3947,7 +4051,7 @@ const updateProfileFields = (user, body) => {
 
 app.post('/api/auth/microsoft-login', async (req, res) => {
   try {
-    const { rollNumber, name, profilePic, ucpCookie } = req.body;
+    const { rollNumber, name, profilePic, ucpCookie, tempSyncId } = req.body;
 
     if (typeof rollNumber !== 'string') {
       return res.status(400).json({ error: 'Roll number must be a string.' });
@@ -3960,6 +4064,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     }
     if (ucpCookie !== undefined && typeof ucpCookie !== 'string') {
       return res.status(400).json({ error: 'UCP cookie must be a string.' });
+    }
+    if (tempSyncId !== undefined && typeof tempSyncId !== 'string') {
+      return res.status(400).json({ error: 'Temp sync ID must be a string.' });
     }
 
     if (!rollNumber) {
@@ -4000,6 +4107,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
       user.name = name && name !== 'UCP Student' ? name : user.name;
+      if (tempSyncId) {
+        user.tempSyncId = tempSyncId;
+      }
       if (finalProfilePicUrl) {
         user.portalProfilePic = finalProfilePicUrl;
         if (!user.originalPortalProfilePic) {
@@ -4020,8 +4130,8 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         isPortalConnected: true,
         ucpCookie: ucpCookie,
         portalProfilePic: finalProfilePicUrl,
-        originalPortalProfilePic: finalProfilePicUrl
-        
+        originalPortalProfilePic: finalProfilePicUrl,
+        tempSyncId: tempSyncId || null
       });
       updateProfileFields(user, req.body);
       await user.save();

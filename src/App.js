@@ -381,6 +381,25 @@ function AppLayout() {
     return () => window.removeEventListener('security_logout', onSecurityLogout);
   }, [handleLogout]);
 
+  // Immediately sync token when Login.js dispatches portalTokenUpdate after new-user onboarding
+  useEffect(() => {
+    const onPortalTokenUpdate = (e) => {
+      if (e.detail?.token) {
+        setToken(e.detail.token);
+        if (e.detail.user) {
+          setUser(e.detail.user);
+        } else {
+          try {
+            const u = localStorage.getItem('user');
+            if (u) setUser(JSON.parse(u));
+          } catch {}
+        }
+      }
+    };
+    window.addEventListener('portalTokenUpdate', onPortalTokenUpdate);
+    return () => window.removeEventListener('portalTokenUpdate', onPortalTokenUpdate);
+  }, []);
+
   
   const handleLogin = (authToken, userData) => {
     localStorage.setItem('token', authToken);
