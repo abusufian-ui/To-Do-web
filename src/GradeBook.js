@@ -467,8 +467,6 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
 
       return { ...s, rank: idx + 1, grade };
     });
-  }, [leaderboard, user, stats, courseGradingStats.currentStandingPct]);
-
   useEffect(() => {
     if (allGrades.length > 0) {
       fetchProjection(gradingMode, bestOfConfigs);

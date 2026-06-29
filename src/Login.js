@@ -227,6 +227,36 @@ export default function Login() {
         }
     };
 
+    // "Different user detected" — user accepts the Horizon account that actually logged in.
+    // We adopt the detected identity (name, email, rollNumber) and resume with the stashed token.
+    const handleAdoptMismatch = () => {
+        if (!mismatchInfo) return;
+        const info = mismatchInfo; // capture before clearing
+        mismatchAcceptedRef.current = true; // suppress future mismatch checks in still-running poll
+        setFirstName(info.name ? info.name.split(' ')[0] : 'Student');
+        setActiveEmail(info.email || `${info.rollNumber.toLowerCase()}@ucp.edu.pk`);
+        setSyncPhase('scraping');
+        setMismatchInfo(null);
+        // If the server already returned 'done' state before the mismatch check, finalize now.
+        // Otherwise let the still-running poll interval advance naturally on next tick.
+        if (info.tempToken) {
+            setSyncToken(info.tempToken);
+        }
+    };
+
+
+    // "Different user detected" — user rejects and goes back to retype their roll number.
+    const handleRejectMismatch = () => {
+        if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
+        if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
+        mismatchAcceptedRef.current = false;
+        setMismatchInfo(null);
+        setSyncPhase('waiting');
+        setSyncProgress(0);
+        setSyncToken('');
+        setStep('EMAIL');
+    };
+
 
     const handleCheckEmail = async (e) => {
         e.preventDefault();
