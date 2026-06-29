@@ -124,8 +124,9 @@ function AppLayout() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) return savedTheme === 'dark';
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return true;
-    return false;
+    // Default to the portal's existing dark theme. The user can switch any time
+    // via the header toggle (which persists their choice to localStorage).
+    return true;
   });
 
   useEffect(() => {

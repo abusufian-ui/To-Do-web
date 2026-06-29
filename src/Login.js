@@ -3,11 +3,11 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { StaticLogo } from './StaticLogo'; 
 import FloatingBackground from './FloatingBackground'; 
-import { 
-    Eye, EyeOff, ArrowLeft, Check, Camera, 
-    Shield, Sparkles, Award, ExternalLink, RefreshCw, 
-    Chrome, HelpCircle, Bell, ArrowRight 
-} from 'lucide-react'; 
+import {
+    Eye, EyeOff, ArrowLeft, Check, Camera,
+    Shield, Sparkles, Award, ExternalLink, RefreshCw,
+    Chrome, HelpCircle, Bell, ArrowRight, AlertTriangle
+} from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -40,7 +40,6 @@ export default function Login() {
 
     // User Preferences States
     const [gradingPolicy, setGradingPolicy] = useState('relative');
-    const [themeMode, setThemeMode] = useState('system');
     const [isPublicPic, setIsPublicPic] = useState(false);
     const [profilePicUrl, setProfilePicUrl] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -56,7 +55,12 @@ export default function Login() {
     const otpRefs = useRef([]);
     const pollingIntervalRef = useRef(null);
     const syncProgressIntervalRef = useRef(null);
+    // Set to true once the user clicks "Continue as this user" to suppress repeated mismatch checks.
+    const mismatchAcceptedRef = useRef(false);
     const [syncProgress, setSyncProgress] = useState(0);
+    // Onboarding sync phase: 'waiting' (ping) | 'scraping' (bar) | 'mismatch' (warn) | 'done'
+    const [syncPhase, setSyncPhase] = useState('waiting');
+    const [mismatchInfo, setMismatchInfo] = useState(null);
 
     // Password strength check
     const getPasswordStrength = (pass) => {
@@ -69,52 +73,128 @@ export default function Login() {
     };
     const passwordStrength = getPasswordStrength(newPassword);
 
-    // Polling engine for Extension sync detection
-    useEffect(() => {
-        if (step === 'EXTENSION_ONBOARDING') {
-            const newSyncId = 'sync_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
-            setTempSyncId(newSyncId);
-            setSyncProgress(0);
+    // Advance to the password step once the extension has finished its first scrape.
+    const finalizeSync = (data) => {
+        if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
+        if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
+        setSyncProgress(100);
+        setSyncToken(data.tempToken);
+        setFirstName(data.name ? data.name.split(' ')[0] : 'Student');
+        setFlowType('setup');
+        setTimeout(() => setStep('NEW_PASSWORD'), 600);
+    };
 
-            // Animate a fake progress bar from 0 → 75% while waiting
-            syncProgressIntervalRef.current = setInterval(() => {
-                setSyncProgress(prev => {
-                    if (prev >= 75) return prev;
-                    return prev + (Math.random() * 2 + 0.5);
-                });
-            }, 1500);
-            
-            pollingIntervalRef.current = setInterval(async () => {
-                try {
-                    const res = await axios.get(`${API_BASE}/api/web/check-sync-status?tempSyncId=${newSyncId}`);
-                    if (res.data && res.data.synced) {
-                        clearInterval(pollingIntervalRef.current);
-                        pollingIntervalRef.current = null;
-                        clearInterval(syncProgressIntervalRef.current);
-                        syncProgressIntervalRef.current = null;
-                        // Jump to 100% then transition
-                        setSyncProgress(100);
-                        setSyncToken(res.data.tempToken);
-                        setFirstName(res.data.name ? res.data.name.split(' ')[0] : 'Student');
-                        setFlowType('setup');
-                        setTimeout(() => setStep('NEW_PASSWORD'), 700);
-                    }
-                } catch (err) {
-                    console.error("Polling sync status failed:", err);
-                }
-            }, 3000);
+    // "Different user detected" → accept the Horizon account that actually logged in and continue.
+    const handleAdoptMismatch = () => {
+        if (!mismatchInfo) return;
+        setActiveEmail(mismatchInfo.email || `${mismatchInfo.rollNumber.toLowerCase()}@ucp.edu.pk`);
+        setRollNumber(mismatchInfo.rollNumber.toLowerCase());
+        const info = mismatchInfo;
+        setMismatchInfo(null);
+        finalizeSync({ tempToken: info.tempToken, name: info.name });
+    };
+
+    // "Different user detected" → reject and return to the login screen.
+    const handleRejectMismatch = () => {
+        if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
+        if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
+        setMismatchInfo(null);
+        setSyncPhase('waiting');
+        setTempSyncId('');
+        setActiveEmail('');
+        setStep('EMAIL');
+    };
+
+    // Polling engine for Extension sync detection.
+    // Real 3-phase signal from the server: waiting → scraping → done (see /api/web/check-sync-status).
+    useEffect(() => {
+        if (step !== 'EXTENSION_ONBOARDING') {
+            if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
+            if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
+            return;
         }
-        
-        return () => {
-            if (pollingIntervalRef.current) {
-                clearInterval(pollingIntervalRef.current);
-                pollingIntervalRef.current = null;
-            }
-            if (syncProgressIntervalRef.current) {
-                clearInterval(syncProgressIntervalRef.current);
-                syncProgressIntervalRef.current = null;
-            }
+
+        const newSyncId = 'sync_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+        setTempSyncId(newSyncId);
+        setSyncProgress(0);
+        setSyncPhase('waiting');
+        setMismatchInfo(null);
+        mismatchAcceptedRef.current = false;
+        const startedAt = Date.now();
+        const SCRAPE_MAX_WAIT_MS = 60 * 1000; // proceed anyway if 'complete' never arrives
+
+        // Register the pending sync so the extension can be linked even if the URL fragment is lost
+        // during the Horizon/Microsoft-SSO redirect (server brokers by the typed email).
+        axios.post(`${API_BASE}/api/web/register-sync`, { email, tempSyncId: newSyncId })
+            .catch(err => console.warn("register-sync failed (will still try hash channel):", err?.message));
+
+        // Drives the progress bar ONLY while actually scraping — eases toward 90% (never fakes 100%).
+        const ensureScrapeAnimation = () => {
+            if (syncProgressIntervalRef.current) return;
+            syncProgressIntervalRef.current = setInterval(() => {
+                setSyncProgress(prev => (prev >= 90 ? prev : prev + (Math.random() * 1.5 + 0.4)));
+            }, 600);
         };
+
+        const handleLinked = (data) => {
+            // A Horizon account has linked to this session. Guard against a different account.
+            // Skip if user already accepted a mismatch (mismatchAcceptedRef prevents re-triggering on stale rollNumber closure).
+            if (mismatchAcceptedRef.current) return false;
+            const typedRoll = (rollNumber || (email ? email.split('@')[0] : '')).toUpperCase().trim();
+            const detectedRoll = (data.rollNumber || '').toUpperCase().trim();
+            if (detectedRoll && typedRoll && detectedRoll !== typedRoll) {
+                // Different user detected — pause and ask the user to confirm.
+                if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
+                setSyncPhase('mismatch');
+                setMismatchInfo({
+                    name: data.name,
+                    rollNumber: detectedRoll,
+                    email: data.email,
+                    tempToken: data.tempToken,
+                    typedRoll
+                });
+                return true; // handled (stop normal progression)
+            }
+            return false;
+        };
+
+        pollingIntervalRef.current = setInterval(async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/api/web/check-sync-status?tempSyncId=${newSyncId}`);
+                const data = res.data || {};
+                const state = data.state || (data.synced ? 'done' : 'waiting');
+
+                if (state === 'waiting') {
+                    setSyncPhase('waiting');
+                    return;
+                }
+
+                // state is 'scraping' or 'done' → a user is linked.
+                if (handleLinked(data)) return; // mismatch path took over
+
+                if (state === 'done') {
+                    setSyncPhase('done');
+                    finalizeSync(data);
+                    return;
+                }
+
+                // state === 'scraping'
+                setSyncPhase('scraping');
+                ensureScrapeAnimation();
+                // Safety net: if the extension's final push never lands, proceed with the token we have.
+                if (Date.now() - startedAt > SCRAPE_MAX_WAIT_MS && data.tempToken) {
+                    finalizeSync(data);
+                }
+            } catch (err) {
+                console.error("Polling sync status failed:", err);
+            }
+        }, 3000);
+
+        return () => {
+            if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
+            if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [step]);
 
     // Go back step handler
@@ -147,7 +227,37 @@ export default function Login() {
         }
     };
 
-    // Roll number verify and routing logic
+    // "Different user detected" — user accepts the Horizon account that actually logged in.
+    // We adopt the detected identity (name, email, rollNumber) and resume with the stashed token.
+    const handleAdoptMismatch = () => {
+        if (!mismatchInfo) return;
+        const info = mismatchInfo; // capture before clearing
+        mismatchAcceptedRef.current = true; // suppress future mismatch checks in still-running poll
+        setFirstName(info.name ? info.name.split(' ')[0] : 'Student');
+        setActiveEmail(info.email || `${info.rollNumber.toLowerCase()}@ucp.edu.pk`);
+        setSyncPhase('scraping');
+        setMismatchInfo(null);
+        // If the server already returned 'done' state before the mismatch check, finalize now.
+        // Otherwise let the still-running poll interval advance naturally on next tick.
+        if (info.tempToken) {
+            setSyncToken(info.tempToken);
+        }
+    };
+
+
+    // "Different user detected" — user rejects and goes back to retype their roll number.
+    const handleRejectMismatch = () => {
+        if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
+        if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
+        mismatchAcceptedRef.current = false;
+        setMismatchInfo(null);
+        setSyncPhase('waiting');
+        setSyncProgress(0);
+        setSyncToken('');
+        setStep('EMAIL');
+    };
+
+
     const handleCheckEmail = async (e) => {
         e.preventDefault();
         if (!rollNumber) return setError("Please enter your Roll Number.");
@@ -466,8 +576,8 @@ export default function Login() {
                     <div className={`h-full bg-white transition-all duration-300 ease-out ${isLoading ? 'w-full animate-pulse' : 'w-0'}`} />
                 </div>
 
-                {/* Back button */}
-                {step !== 'EMAIL' && (
+                {/* Back button (hidden on PREFERENCE_SETUP — the wizard footer has its own Back) */}
+                {step !== 'EMAIL' && step !== 'PREFERENCE_SETUP' && (
                     <button onClick={handleGoBack} className="absolute top-6 left-6 text-gray-500 hover:text-white transition-colors flex items-center gap-2 text-sm font-semibold z-20">
                         <ArrowLeft size={16} /> Back
                     </button>
@@ -499,7 +609,7 @@ export default function Login() {
                     </div>
                 )}
 
-                <div className={`px-10 pb-10${step === 'PREFERENCE_SETUP' ? ' pt-14' : ''}`}>
+                <div className={`px-10 pb-10${step === 'PREFERENCE_SETUP' ? ' pt-10' : ''}`}>
                     {/* Error Box */}
                     <div className={`overflow-hidden transition-all duration-300 ease-in-out ${error ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
                         <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-red-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
@@ -709,41 +819,84 @@ export default function Login() {
                                     </ol>
                                 </div>
 
-                                <div className="space-y-4">
-                                    <a 
-                                        href={`https://horizon.ucp.edu.pk/#myportal_sync_id=${tempSyncId}`} 
-                                        target="_blank" 
-                                        rel="noreferrer" 
-                                        className="flex items-center justify-center gap-2 w-full bg-white hover:scale-[1.01] active:scale-[0.99] text-black py-4 rounded-2xl font-bold transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.15)] text-sm"
-                                    >
-                                        Open Horizon Portal <ExternalLink size={16} />
-                                    </a>
-
-                                    {/* Scraping Progress Bar */}
-                                    <div className="space-y-2.5 pt-1">
-                                        <div className="w-full bg-[#1a1a1a] rounded-full h-1.5 overflow-hidden border border-[#2a2a2a]">
-                                            <div 
-                                                className="h-full rounded-full transition-all duration-1000 ease-out"
-                                                style={{ 
-                                                    width: `${Math.min(syncProgress, 100)}%`,
-                                                    background: syncProgress >= 100 
-                                                        ? 'linear-gradient(90deg, #10b981, #34d399)'
-                                                        : 'linear-gradient(90deg, #3b82f6, #60a5fa)'
-                                                }}
-                                            />
+                                {syncPhase === 'mismatch' && mismatchInfo ? (
+                                    /* Different Horizon account is logged in — confirm before continuing */
+                                    <div className="space-y-4 text-left bg-[#140d0d] border border-amber-500/30 rounded-2xl p-5">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0">
+                                                <AlertTriangle size={18} />
+                                            </div>
+                                            <h3 className="font-bold text-white text-sm">Different user detected</h3>
                                         </div>
-                                        <div className="flex items-center justify-center gap-2 text-xs font-bold" style={{ color: syncProgress >= 100 ? '#10b981' : '#555' }}>
-                                            <RefreshCw size={11} className={syncProgress >= 100 ? '' : 'animate-spin'} />
-                                            <span>
-                                                {syncProgress >= 100 
-                                                    ? 'Sync complete! Setting up account...' 
-                                                    : syncProgress >= 50 
-                                                        ? 'Extension detected — loading your data...'
-                                                        : 'Waiting for extension sync...'}
-                                            </span>
+                                        <p className="text-xs text-[#aaa] leading-relaxed">
+                                            Horizon is logged in as a different account. You'll be set up as{' '}
+                                            <span className="font-bold text-white">{mismatchInfo.name}</span>{' '}
+                                            (<span className="font-bold text-amber-400">{mismatchInfo.rollNumber}</span>) instead of{' '}
+                                            <span className="font-semibold text-[#888]">{mismatchInfo.typedRoll}</span>.
+                                        </p>
+                                        <div className="flex flex-col gap-2.5 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={handleAdoptMismatch}
+                                                className="w-full bg-white text-black py-3.5 rounded-xl font-bold text-sm hover:scale-[1.01] active:scale-[0.98] transition-all"
+                                            >
+                                                Continue as {mismatchInfo.name ? mismatchInfo.name.split(' ')[0] : 'this user'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleRejectMismatch}
+                                                className="w-full bg-transparent border border-[#333] text-gray-400 hover:text-white hover:border-[#555] py-3 rounded-xl font-bold text-xs transition-colors"
+                                            >
+                                                Back to login
+                                            </button>
                                         </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <a
+                                            href={`https://horizon.ucp.edu.pk/student/dashboard#myportal_sync_id=${tempSyncId}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="flex items-center justify-center gap-2 w-full bg-white hover:scale-[1.01] active:scale-[0.99] text-black py-4 rounded-2xl font-bold transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.15)] text-sm"
+                                        >
+                                            Open Horizon Portal <ExternalLink size={16} />
+                                        </a>
+
+                                        {syncPhase === 'waiting' ? (
+                                            /* Sonar ping — indeterminate "waiting for the extension" */
+                                            <div className="flex items-center justify-center gap-3 pt-2">
+                                                <span className="relative flex h-3 w-3">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+                                                </span>
+                                                <span className="text-xs font-bold text-[#888]">Waiting for extension…</span>
+                                            </div>
+                                        ) : (
+                                            /* Real scraping progress bar — only appears once the extension actually starts */
+                                            <div className="space-y-2.5 pt-1">
+                                                <div className="w-full bg-[#1a1a1a] rounded-full h-1.5 overflow-hidden border border-[#2a2a2a]">
+                                                    <div
+                                                        className="h-full rounded-full transition-all duration-700 ease-out"
+                                                        style={{
+                                                            width: `${Math.min(syncProgress, 100)}%`,
+                                                            background: (syncPhase === 'done' || syncProgress >= 100)
+                                                                ? 'linear-gradient(90deg, #10b981, #34d399)'
+                                                                : 'linear-gradient(90deg, #3b82f6, #60a5fa)'
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="flex items-center justify-center gap-2 text-xs font-bold" style={{ color: syncPhase === 'done' ? '#10b981' : '#555' }}>
+                                                    <RefreshCw size={11} className={syncPhase === 'done' ? '' : 'animate-spin'} />
+                                                    <span>
+                                                        {syncPhase === 'done'
+                                                            ? 'Sync complete! Setting up account…'
+                                                            : `Importing your data… (${Math.floor(Math.min(syncProgress, 100))}%)`}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
 

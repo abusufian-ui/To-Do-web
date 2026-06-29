@@ -56,7 +56,10 @@ const userSchema = new mongoose.Schema({
   accessedWeb: { type: Boolean, default: false },
   accessedMobile: { type: Boolean, default: false },
   accessedExtension: { type: Boolean, default: false },
-  tempSyncId: { type: String, default: null, index: true }
+  tempSyncId: { type: String, default: null, index: true },
+  // Onboarding sync lifecycle: null (none) | 'scraping' (extension connected, importing) |
+  // 'complete' (first full scrape pushed). Drives the web onboarding progress UI.
+  syncStatus: { type: String, default: null }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

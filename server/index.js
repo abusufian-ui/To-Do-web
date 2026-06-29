@@ -76,7 +76,8 @@ const Assessment = require('./models/Assessment');
 const Exam = require('./models/Exam'); 
 const Group = require('./models/Group');
 const GroupInvitation = require('./models/GroupInvitation');
-const SyncLog = require('./models/SyncLog'); 
+const SyncLog = require('./models/SyncLog');
+const PendingSync = require('./models/PendingSync');
 const { spawn } = require('child_process');
 
 
@@ -85,6 +86,7 @@ const CourseVaultFile = require('./models/CourseVaultFile');
 const CourseVaultBucket = require('./models/CourseVaultBucket');
 const MaterialLink   = require('./models/MaterialLink');
 const DeviceSession = require('./models/DeviceSession');
+const { getAbsoluteGrade, getSmartCurveGrade, calculateTrueScore, calculateClassAverageScore, getProjectedGradeForCourse, computeProjection } = require('./services/grading');
 const { registerDeviceSession } = require('./utils/sessionHelper');
 const { convertToPdf } = require('./utils/documentConverter');
 
@@ -406,7 +408,7 @@ const corsOptions = {
     callback(null, true);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-chunk-index', 'x-total-chunks'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-sync-token', 'x-chunk-index', 'x-total-chunks'],
   credentials: true,
   optionsSuccessStatus: 200
 };
@@ -1191,6 +1193,27 @@ app.post('/api/web/set-password', authLimiter, async (req, res) => {
   }
 });
 
+// Register a pending onboarding sync so the extension's first scrape can be linked back to this
+// web session even if the URL fragment carrying the sync id is lost during the SSO redirect.
+app.post('/api/web/register-sync', async (req, res) => {
+  try {
+    const { email, tempSyncId } = req.body;
+    if (!email || !tempSyncId || typeof email !== 'string' || typeof tempSyncId !== 'string') {
+      return res.status(400).json({ message: "email and tempSyncId are required" });
+    }
+    const normalizedEmail = email.toLowerCase().trim();
+    await PendingSync.findOneAndUpdate(
+      { email: normalizedEmail },
+      { email: normalizedEmail, tempSyncId, createdAt: new Date() },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Register sync error:", err.message);
+    res.status(500).json({ message: "Server error registering sync" });
+  }
+});
+
 app.get('/api/web/check-sync-status', async (req, res) => {
   try {
     const { tempSyncId } = req.query;
@@ -1199,25 +1222,30 @@ app.get('/api/web/check-sync-status', async (req, res) => {
     }
     const user = await User.findOne({ tempSyncId });
     if (!user) {
-      return res.json({ synced: false });
+      // Extension hasn't linked this session yet.
+      return res.json({ state: 'waiting', synced: false });
     }
 
-    // Generate a temporary JWT token for password setup (expires in 10 mins)
+    // The extension has connected. Always hand back a short-lived password-setup token plus the
+    // DETECTED identity so the web can (a) show real progress and (b) warn if the Horizon account
+    // that actually logged in differs from the roll number the user typed.
     const token = jwt.sign(
       { id: user.id, isTempSyncAuth: true },
       process.env.REACT_APP_JWT_SECRET || 'secret_key_123',
       { expiresIn: '10m' }
     );
+    const detectedRoll = (user.portalId || (user.email ? user.email.split('@')[0] : '')).toUpperCase();
+    const identity = { name: user.name, rollNumber: detectedRoll, email: user.email };
 
-    // Clear tempSyncId to prevent reuse
-    user.tempSyncId = null;
-    await user.save();
+    if (user.syncStatus === 'complete') {
+      // Full first scrape finished — clear tempSyncId so it can't be reused.
+      user.tempSyncId = null;
+      await user.save();
+      return res.json({ state: 'done', synced: true, tempToken: token, ...identity });
+    }
 
-    res.json({
-      synced: true,
-      tempToken: token,
-      name: user.name
-    });
+    // Connected and importing data; keep tempSyncId so subsequent polls still resolve.
+    return res.json({ state: 'scraping', synced: false, tempToken: token, ...identity });
   } catch (err) {
     console.error("Check sync status error:", err.message);
     res.status(500).json({ message: "Server error checking sync status" });
@@ -1923,7 +1951,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     }
 
     
-    if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC') {
+    if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC' || mode === 'AUTO_SYNC') {
       if (datesheetData && datesheetData.length > 0) {
         const datesheetPromises = [];
         for (const exam of datesheetData) {
@@ -2031,6 +2059,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       lastScrapedAt: new Date(),
       portalId: user.portalId,
       ucpCookie: ucpCookie || user.ucpCookie,
+      // First full scrape pushed — mark onboarding sync complete so the web can advance.
+      ...(user.syncStatus === 'scraping' ? { syncStatus: 'complete' } : {}),
       ...(enrolledSections.length > 0 ? { enrolledSections } : {})
     };
     if (studentName && studentName !== 'UCP Student') updateFields.name = studentName;
@@ -4076,6 +4106,21 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     const formattedRoll = rollNumber.toLowerCase().trim();
     const email = `${formattedRoll}@ucp.edu.pk`;
 
+    // Resolve the onboarding sync id: prefer the one the extension read from the URL; otherwise fall
+    // back to a pending registration brokered by the web session for this email (covers the case
+    // where the Horizon/SSO redirect stripped the URL fragment). Single-use.
+    let effectiveSyncId = tempSyncId || null;
+    if (!effectiveSyncId) {
+      try {
+        const pending = await PendingSync.findOneAndDelete({ email });
+        if (pending && pending.tempSyncId) {
+          effectiveSyncId = pending.tempSyncId;
+        }
+      } catch (brokerErr) {
+        console.warn('[MS-LOGIN] Pending sync lookup failed:', brokerErr.message);
+      }
+    }
+
     let user = await User.findOne({ email });
 
     if (user && user.isBlocked) {
@@ -4107,8 +4152,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       user.ucpCookie = ucpCookie;
       user.isPortalConnected = true;
       user.name = name && name !== 'UCP Student' ? name : user.name;
-      if (tempSyncId) {
-        user.tempSyncId = tempSyncId;
+      if (effectiveSyncId) {
+        user.tempSyncId = effectiveSyncId;
+        user.syncStatus = 'scraping'; // extension connected; importing data
       }
       if (finalProfilePicUrl) {
         user.portalProfilePic = finalProfilePicUrl;
@@ -4131,7 +4177,8 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         ucpCookie: ucpCookie,
         portalProfilePic: finalProfilePicUrl,
         originalPortalProfilePic: finalProfilePicUrl,
-        tempSyncId: tempSyncId || null
+        tempSyncId: effectiveSyncId || null,
+        syncStatus: effectiveSyncId ? 'scraping' : null
       });
       updateProfileFields(user, req.body);
       await user.save();
@@ -5165,39 +5212,89 @@ const parseBestOfQuery = (bestOfStr) => {
 };
 
 const calculateStudentScore = (userGrade, bestOfConfigs = {}) => {
-  let score = 0;
-  if (userGrade && Array.isArray(userGrade.assessments)) {
-    let totalMarkedWeight = 0;
-    let totalEarnedWeight = 0;
-    
-    userGrade.assessments.forEach(cat => {
-      const wNum = parseFloat(cat.weight) || 0;
-      let finalPct = parseFloat(cat.percentage) || 0;
-      
-      const catNameLower = (cat.name || '').toLowerCase();
-      const bestOfLimit = bestOfConfigs[catNameLower];
-      
-      const isConfigurable = /assignment|quiz|participation/i.test(cat.name || "");
-      const validDetails = cat.details?.filter(d => !isNaN(parseFloat(d.obtainedMarks)) && !isNaN(parseFloat(d.maxMarks))) || [];
-      
-      if (isConfigurable && typeof bestOfLimit === 'number' && bestOfLimit < validDetails.length && bestOfLimit > 0) {
-        const sorted = [...validDetails].sort((a, b) => {
-          return (parseFloat(b.obtainedMarks) / parseFloat(b.maxMarks)) - (parseFloat(a.obtainedMarks) / parseFloat(a.maxMarks));
-        });
-        const selected = sorted.slice(0, bestOfLimit);
-        const sumObt = selected.reduce((sum, d) => sum + parseFloat(d.obtainedMarks), 0);
-        const sumMax = selected.reduce((sum, d) => sum + parseFloat(d.maxMarks), 0);
-        finalPct = sumMax > 0 ? (sumObt / sumMax) * 100 : 0;
-      }
-      
-      totalMarkedWeight += wNum;
-      totalEarnedWeight += (finalPct / 100) * wNum;
-    });
-    
-    score = totalMarkedWeight > 0 ? (totalEarnedWeight / totalMarkedWeight) * 100 : 0;
-  }
-  return score;
+  if (!userGrade) return 0;
+  return calculateTrueScore(userGrade.assessments, bestOfConfigs).percentage;
 };
+
+const buildCourseLeaderboard = (matchingCourses, grades, bestOfConfigs = {}, gradeName = null) => {
+  let leaderboard = matchingCourses.map(course => {
+    const userGrade = grades.find(g => {
+      if (!g.userId || !course.userId?._id) return false;
+      if (g.userId.toString() !== course.userId._id.toString()) return false;
+      
+      if (gradeName) {
+        return g.courseName === gradeName;
+      }
+
+      return (
+        (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
+        (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
+        g.courseName === course.name || 
+        (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase()))
+      );
+    });
+
+    const score = calculateStudentScore(userGrade, bestOfConfigs);
+
+    return {
+      id: course.userId?.portalId || 'Unknown ID',
+      name: course.userId?.name || 'Unknown Student',
+      score: score || 0,
+      pic: course.userId?.customProfilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}&backgroundColor=4f46e5`,
+      userGrade
+    };
+  });
+
+  leaderboard = leaderboard.filter(s => s.id !== 'Unknown ID');
+  leaderboard.sort((a, b) => b.score - a.score);
+
+  // Compute the course class average from all students' scores
+  let courseClassAvg = 0;
+  const firstGradeWithAssessments = grades.find(g => {
+    if (gradeName) return g.courseName === gradeName && g.assessments && g.assessments.length > 0;
+    return g.assessments && g.assessments.length > 0;
+  });
+  if (firstGradeWithAssessments) {
+    courseClassAvg = calculateClassAverageScore(firstGradeWithAssessments.assessments, bestOfConfigs).percentage;
+  }
+
+  const total = leaderboard.length;
+  return leaderboard.map((s, idx) => {
+    const curveGrade = getSmartCurveGrade(s.score, courseClassAvg);
+    const { userGrade, ...cleanStudent } = s;
+    return {
+      ...cleanStudent,
+      rank: idx + 1,
+      grade: curveGrade.grade
+    };
+  });
+};
+
+app.get('/api/projection', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const mode = req.query.mode || 'relative';
+    const bestOfQuery = req.query.bestOf || '';
+    const bestOfConfigs = parseBestOfQuery(bestOfQuery);
+
+    const stats = await StudentStats.findOne({ userId });
+    const courses = await Course.find({ userId });
+    const grades = await Grade.find({ userId });
+
+    const projection = computeProjection({
+      grades,
+      courses,
+      stats,
+      mode,
+      bestOfConfigs
+    });
+
+    res.json(projection);
+  } catch (err) {
+    console.error("Error computing projection:", err);
+    res.status(500).json({ error: "Failed to compute CGPA projection" });
+  }
+});
 
 app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   try {
@@ -5230,10 +5327,8 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       };
     } else {
       if (courseCode.includes('-')) {
-        
         query = { code: { $regex: '^' + escapeRegex(courseCode.trim()) + '$', $options: 'i' } };
       } else {
-        
         query = { code: { $regex: '^' + escapeRegex(courseCode.trim()), $options: 'i' } };
         if (section) {
           query.section = { $regex: '^' + escapeRegex(section.trim()) + '$', $options: 'i' };
@@ -5241,7 +5336,6 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       }
     }
 
-    
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic');
     
     if (!matchingCourses || matchingCourses.length === 0) {
@@ -5251,46 +5345,7 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     const userIds = matchingCourses.map(c => c.userId?._id).filter(Boolean);
     const grades = await Grade.find({ userId: { $in: userIds } });
 
-    let leaderboard = matchingCourses.map(course => {
-      
-      const userGrade = grades.find(g =>
-        g.userId.toString() === course.userId?._id.toString() &&
-        (
-          (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
-          (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
-          g.courseName === course.name || 
-          (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase()))
-        )
-      );
-
-      const score = calculateStudentScore(userGrade, bestOfConfigs);
-
-      return {
-        id: course.userId?.portalId || 'Unknown ID',
-        name: course.userId?.name || 'Unknown Student',
-        score: score || 0,
-        pic: course.userId?.customProfilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}&backgroundColor=4f46e5`
-      };
-    });
-
-    leaderboard = leaderboard.filter(s => s.id !== 'Unknown ID');
-    leaderboard.sort((a, b) => b.score - a.score);
-
-    
-    const total = leaderboard.length;
-    leaderboard = leaderboard.map((s, idx) => {
-      const pctile = (idx / total) * 100;
-      let grade = 'F';
-      if (pctile < 10) grade = 'A';
-      else if (pctile < 20) grade = 'A-';
-      else if (pctile < 35) grade = 'B+';
-      else if (pctile < 50) grade = 'B';
-      else if (pctile < 65) grade = 'B-';
-      else if (pctile < 80) grade = 'C';
-      else if (pctile < 95) grade = 'D';
-
-      return { ...s, rank: idx + 1, grade };
-    });
+    const leaderboard = buildCourseLeaderboard(matchingCourses, grades, bestOfConfigs);
 
     res.status(200).json(leaderboard);
   } catch (error) {
@@ -5299,18 +5354,13 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   }
 });
 
-
-
-
 app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
   try {
-    
     const requestingUser = await User.findById(req.user.id);
     if (!requestingUser) return res.status(404).json({ message: "User not found" });
 
     const isSuperAdmin = requestingUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 
-    
     if (!requestingUser.isAdmin && !isSuperAdmin && requestingUser.isLeaderboardEnabled === false) {
       return res.status(403).json({ message: "Leaderboard has been disabled for your account by an administrator." });
     }
@@ -5336,7 +5386,6 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
       if (myCourse.section) query.section = myCourse.section;
     }
 
-    
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic'); 
     
     if (!matchingCourses || matchingCourses.length === 0) {
@@ -5346,53 +5395,7 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     const userIds = matchingCourses.map(c => c.userId?._id).filter(Boolean);
     const grades = await Grade.find({ userId: { $in: userIds } });
 
-    let leaderboard = matchingCourses.map(course => {
-      const userGrade = grades.find(g => {
-        if (!g.userId || !course.userId?._id) return false;
-        if (g.userId.toString() !== course.userId._id.toString()) return false;
-        
-        
-        if (gradeName) {
-          return g.courseName === gradeName;
-        }
-
-        
-        return (
-          (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
-          (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
-          g.courseName === course.name || 
-          (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase()))
-        );
-      });
-
-      const score = calculateStudentScore(userGrade, bestOfConfigs);
-
-      return {
-        id: course.userId?.portalId || 'Unknown ID',
-        name: course.userId?.name || 'Unknown Student',
-        score: score || 0,
-        pic: course.userId?.customProfilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(course.userId?.name || 'Student')}&backgroundColor=4f46e5`
-      };
-    });
-
-    leaderboard = leaderboard.filter(s => s.id !== 'Unknown ID');
-    leaderboard.sort((a, b) => b.score - a.score);
-
-    const total = leaderboard.length;
-    leaderboard = leaderboard.map((s, idx) => {
-      const pctile = (idx / total) * 100;
-      let grade = 'F';
-
-      if (pctile < 10) grade = 'A';
-      else if (pctile < 20) grade = 'A-';
-      else if (pctile < 35) grade = 'B+';
-      else if (pctile < 50) grade = 'B';
-      else if (pctile < 65) grade = 'B-';
-      else if (pctile < 80) grade = 'C';
-      else if (pctile < 95) grade = 'D';
-
-      return { ...s, rank: idx + 1, grade };
-    });
+    const leaderboard = buildCourseLeaderboard(matchingCourses, grades, bestOfConfigs, gradeName);
 
     res.status(200).json(leaderboard);
   } catch (error) {

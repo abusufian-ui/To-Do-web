@@ -94,38 +94,11 @@ const getSmartCurveGrade = (myScore, classAverage) => {
   return { grade: 'F', points: 0.0, color: 'text-red-600' };
 };
 
-const getProjectedGradeForCourse = (courseGrade, gradingMode = "relative", leaderboards = {}, userPortalId = "") => {
-  const cScore = calculateTrueScore(courseGrade.assessments);
+const getProjectedGradeForCourse = (courseGrade, gradingMode = "relative", bestOfConfigs = {}) => {
+  const cScore = calculateTrueScore(courseGrade.assessments, bestOfConfigs);
   if (gradingMode === "relative") {
-    const board = leaderboards[courseGrade._id] || [];
-    const myScore = cScore.percentage;
-    let list = [...board];
-
-    let myRankData = userPortalId ? list.find(s => s.id && s.id.toLowerCase() === userPortalId.toLowerCase()) : null;
-    if (myRankData) {
-      myRankData.score = myScore;
-    } else {
-      list.push({ id: userPortalId || 'Me', score: myScore, isMe: true });
-    }
-    
-    list.sort((a, b) => b.score - a.score);
-    const total = list.length;
-    
-    if (board.length === 0 || total < 20) {
-      const avgScore = calculateClassAverageScore(courseGrade.assessments);
-      return getSmartCurveGrade(myScore, avgScore.percentage);
-    }
-
-    const idx = list.findIndex(s => s.id && (s.id.toLowerCase() === (userPortalId || 'Me').toLowerCase()) || s.isMe);
-    const pctile = (idx / total) * 100;
-    if (pctile < 10) return { grade: 'A', points: 4.0, color: 'text-emerald-400' };
-    if (pctile < 20) return { grade: 'A-', points: 3.67, color: 'text-emerald-500' };
-    if (pctile < 35) return { grade: 'B+', points: 3.33, color: 'text-blue-400' };
-    if (pctile < 50) return { grade: 'B', points: 3.0, color: 'text-blue-500' };
-    if (pctile < 65) return { grade: 'B-', points: 2.67, color: 'text-indigo-400' };
-    if (pctile < 80) return { grade: 'C', points: 2.0, color: 'text-amber-500' };
-    if (pctile < 95) return { grade: 'D', points: 1.0, color: 'text-rose-500' };
-    return { grade: 'F', points: 0.0, color: 'text-red-600' };
+    const avgScore = calculateClassAverageScore(courseGrade.assessments, bestOfConfigs);
+    return getSmartCurveGrade(cScore.percentage, avgScore.percentage);
   }
   return getAbsoluteGrade(cScore.percentage);
 };
@@ -266,6 +239,38 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   const [isLeaderboardExpanded, setIsLeaderboardExpanded] = useState(false);
   const [isLeaderboardDisabled, setIsLeaderboardDisabled] = useState(false);
   const [bestOfConfigs, setBestOfConfigs] = useState({});
+  
+  const [projection, setProjection] = useState(null);
+  const [projectionLoading, setProjectionLoading] = useState(false);
+
+  const fetchProjection = async (mode = gradingMode, configs = bestOfConfigs) => {
+    try {
+      setProjectionLoading(true);
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json', 'x-auth-token': token };
+      
+      const flatConfigs = {};
+      Object.entries(configs).forEach(([key, val]) => {
+        const parts = key.split('_');
+        const categoryName = parts.length > 1 ? parts[1] : parts[0];
+        flatConfigs[categoryName.toLowerCase()] = val;
+      });
+
+      const bestOfQuery = Object.entries(flatConfigs)
+        .map(([cat, n]) => `${encodeURIComponent(cat)}:${n}`)
+        .join(',');
+        
+      const res = await fetch(`${API_BASE}/api/projection?mode=${mode}&bestOf=${bestOfQuery}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setProjection(data);
+      }
+      setProjectionLoading(false);
+    } catch (e) {
+      console.error(e);
+      setProjectionLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -343,7 +348,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
           }
         });
         const bestOfQuery = courseBestOf.join(',');
-        const queryParams = bestOfQuery ? `?bestOf=${encodeURIComponent(bestOfQuery)}` : '';
+        const queryParams = bestOfQuery ? `?bestOf=${bestOfQuery}` : '';
 
         const res = await fetch(`${API_BASE}/api/course-leaderboard/${matchingCourseInfo.id}${queryParams}`, {
           headers: { 'Content-Type': 'application/json', 'x-auth-token': token }
@@ -462,55 +467,45 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
 
       return { ...s, rank: idx + 1, grade };
     });
-  }, [leaderboard, courseGradingStats, user, stats]);
+  useEffect(() => {
+    if (allGrades.length > 0) {
+      fetchProjection(gradingMode, bestOfConfigs);
+    }
+  }, [gradingMode, bestOfConfigs, allGrades]);
 
   const myRankData = useMemo(() => combinedLeaderboard.find(s => s.isMe), [combinedLeaderboard]);
 
-  
   const activeProjectedGrade = leaderboardLoading
     ? '-' 
     : (myRankData ? myRankData.grade : getAbsoluteGrade(courseGradingStats.currentStandingPct).grade);
 
   const projectedGrade = useMemo(() => {
     if (!selectedCourse) return { grade: '-', points: 0, color: 'text-gray-500' };
+    
+    if (projection && Array.isArray(projection.perCourse)) {
+      const courseProj = projection.perCourse.find(p => p.courseName === selectedCourse.courseName);
+      if (courseProj) {
+        return {
+          grade: courseProj.grade,
+          points: courseProj.points,
+          color: courseProj.color || 'text-gray-500'
+        };
+      }
+    }
+
     return getProjectedGradeForCourse(
       selectedCourse,
       gradingMode,
-      { [selectedCourse._id]: leaderboard },
-      user?.portalId || user?.rollNo || stats?.rollNo
+      bestOfConfigs
     );
-  }, [selectedCourse, gradingMode, leaderboard, user, stats]);
+  }, [selectedCourse, gradingMode, projection, bestOfConfigs]);
 
-  
   const projectedCgpa = useMemo(() => {
-    if (!grades.length || !stats) return parseFloat(stats.cgpa || "0");
-
-    let totalPredictedQualityPoints = 0;
-    let totalInProgressCredits = 0;
-
-    grades.forEach(courseGrade => {
-        
-        const cInfo = courses.find(c => c.name === courseGrade.courseName);
-        const credits = cInfo?.creditHours || 0; 
-
-        const proj = getProjectedGradeForCourse(courseGrade, "relative", {}, stats?.rollNo);
-        const gradePoints = proj.points; 
-        
-        totalPredictedQualityPoints += (gradePoints * credits);
-        totalInProgressCredits += credits;
-    });
-
-    const predictedTermGPA = totalInProgressCredits > 0 ? (totalPredictedQualityPoints / totalInProgressCredits) : 0;
-    
-    const currentCGPA = parseFloat(stats.cgpa || "0");
-    const completedCr = parseFloat(stats.credits || "0");
-    const inProgressCr = totalInProgressCredits > 0 ? totalInProgressCredits : parseFloat(stats.inprogressCr || "0"); 
-
-    if (completedCr + inProgressCr === 0) return predictedTermGPA;
-
-    const projected = ((currentCGPA * completedCr) + (predictedTermGPA * inProgressCr)) / (completedCr + inProgressCr);
-    return projected || 0.0;
-  }, [grades, stats, courses]);
+    if (projection && projection.projectedCgpa) {
+      return parseFloat(projection.projectedCgpa);
+    }
+    return parseFloat(stats.cgpa || "0.00");
+  }, [projection, stats]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-full w-full">

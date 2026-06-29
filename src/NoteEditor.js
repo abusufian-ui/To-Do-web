@@ -222,31 +222,31 @@ const StaticCodeBlockNode = ({ node, deleteNode, editor }) => {
   };
 
   return (
-    <NodeViewWrapper className="relative group my-6 rounded-lg bg-[#1E1E1E] border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden flex flex-col">
-      <div className="flex justify-between items-center px-4 py-2 bg-[#2D2D2D] border-b border-[#3D3D3D]">
+    <NodeViewWrapper className="relative group my-6 rounded-lg bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
+      <div className="flex justify-between items-center px-4 py-2 bg-slate-100 dark:bg-[#1e293b] border-b border-slate-200 dark:border-slate-800 select-none" contentEditable={false}>
         <div className="flex items-center gap-2">
-          <FileCode size={14} className="text-gray-400" />
-          <span className="text-xs font-bold text-gray-300 tracking-wider uppercase">Code Snippet</span>
+          <FileCode size={14} className="text-slate-500 dark:text-slate-400" />
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 tracking-wider uppercase">Code Snippet</span>
           {node.attrs.language && (
-            <span className="text-[10px] font-extrabold bg-[#3b82f6]/20 text-[#60a5fa] px-2 py-0.5 rounded uppercase tracking-wider border border-[#3b82f6]/30 select-none">
+            <span className="text-[10px] font-extrabold bg-[#3b82f6]/10 text-[#2563eb] dark:bg-[#3b82f6]/20 dark:text-[#60a5fa] px-2 py-0.5 rounded uppercase tracking-wider border border-[#3b82f6]/20 dark:border-[#3b82f6]/30 select-none">
               {node.attrs.language}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button contentEditable={false} onClick={handleCopy} className="text-gray-400 hover:text-white transition-colors text-xs font-bold flex items-center gap-1.5 bg-[#3D3D3D] hover:bg-[#4D4D4D] px-2 py-1 rounded">
-            {copied ? <CheckCircle2 size={12} className="text-green-400"/> : <Copy size={12}/>}
+          <button onClick={handleCopy} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors text-xs font-bold flex items-center gap-1.5 bg-slate-200/60 dark:bg-[#334155] hover:bg-slate-200 dark:hover:bg-[#475569] px-2.5 py-1 rounded-md">
+            {copied ? <CheckCircle2 size={12} className="text-emerald-500"/> : <Copy size={12}/>}
             {copied ? 'Copied' : 'Copy'}
           </button>
           {isEditable && (
-            <button contentEditable={false} onClick={deleteNode} className="text-gray-400 hover:text-red-500 transition-colors bg-[#3D3D3D] hover:bg-red-900/40 px-2 py-1 rounded" title="Delete Snippet">
+            <button onClick={deleteNode} className="text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 transition-colors bg-slate-200/60 dark:bg-[#334155] hover:bg-red-50 dark:hover:bg-red-900/20 px-2.5 py-1 rounded-md" title="Delete Snippet">
               <Trash2 size={12}/>
             </button>
           )}
         </div>
       </div>
-      <pre className="p-4 overflow-x-auto text-sm font-mono text-gray-200 m-0 bg-[#1E1E1E]">
-        <NodeViewContent as="code" />
+      <pre className="p-4 overflow-x-auto text-sm font-mono text-slate-800 dark:text-slate-100 m-0 bg-transparent leading-relaxed border-0 outline-none">
+        <NodeViewContent as="code" className="hljs p-0 m-0 bg-transparent block" />
       </pre>
     </NodeViewWrapper>
   );
@@ -474,6 +474,173 @@ const CustomImageExtension = Image.extend({
 
 
 
+const markdownToHtml = (text) => {
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Inline Math
+  html = html.replace(/\$([\s\S]+?)\$/g, (match, math) => {
+    try {
+      return katex.renderToString(math.trim(), {
+        throwOnError: false,
+        displayMode: false
+      });
+    } catch (e) {
+      return `<span class="text-red-500 font-mono text-xs">${match}</span>`;
+    }
+  });
+
+  html = html.replace(/\\\(([\s\S]+?)\\\)/g, (match, math) => {
+    try {
+      return katex.renderToString(math.trim(), {
+        throwOnError: false,
+        displayMode: false
+      });
+    } catch (e) {
+      return `<span class="text-red-500 font-mono text-xs">${match}</span>`;
+    }
+  });
+
+  const lines = html.split('\n');
+  const processedLines = lines.map(line => {
+    if (/^###\s+(.*)/.test(line)) {
+      return `<h3>${line.replace(/^###\s+/, '')}</h3>`;
+    }
+    if (/^##\s+(.*)/.test(line)) {
+      return `<h2>${line.replace(/^##\s+/, '')}</h2>`;
+    }
+    if (/^#\s+(.*)/.test(line)) {
+      return `<h1>${line.replace(/^#\s+/, '')}</h1>`;
+    }
+    if (/^\s*[-*+]\s+(.*)/.test(line)) {
+      return `<li>${line.replace(/^\s*[-*+]\s+/, '')}</li>`;
+    }
+    if (/^\s*\d+\.\s+(.*)/.test(line)) {
+      return `<li>${line.replace(/^\s*\d+\.\s+/, '')}</li>`;
+    }
+    if (line.trim() === '') {
+      return '<p></p>';
+    }
+    return `<p>${line}</p>`;
+  });
+
+  let finalHtml = '';
+  let inList = false;
+  let listType = '';
+
+  for (let i = 0; i < processedLines.length; i++) {
+    const line = processedLines[i];
+    const isLi = line.startsWith('<li>');
+    const originalLine = lines[i];
+    const isOl = /^\s*\d+\.\s+/.test(originalLine);
+
+    if (isLi) {
+      const targetType = isOl ? 'ol' : 'ul';
+      if (!inList) {
+        inList = true;
+        listType = targetType;
+        finalHtml += `<${listType}>`;
+      } else if (listType !== targetType) {
+        finalHtml += `</${listType}><${targetType}>`;
+        listType = targetType;
+      }
+      finalHtml += line;
+    } else {
+      if (inList) {
+        finalHtml += `</${listType}>`;
+        inList = false;
+      }
+      finalHtml += line;
+    }
+  }
+  if (inList) {
+    finalHtml += `</${listType}>`;
+  }
+
+  finalHtml = finalHtml
+    .replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([\s\S]+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  return finalHtml;
+};
+
+const processSmartPaste = (text, editor) => {
+  if (!text) return false;
+
+  const blockRegex = /(?:```(\w*)\n([\s\S]*?)```)|(?:\$\$([\s\S]*?)\$\$)|(?:\\\[([\s\S]*?)\\\])/g;
+  const tokens = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = blockRegex.exec(text)) !== null) {
+    const matchIndex = match.index;
+    if (matchIndex > lastIndex) {
+      tokens.push({
+        type: 'text',
+        content: text.substring(lastIndex, matchIndex)
+      });
+    }
+    if (match[2] !== undefined) {
+      tokens.push({
+        type: 'code',
+        language: match[1] || 'javascript',
+        content: match[2]
+      });
+    } else if (match[3] !== undefined) {
+      tokens.push({
+        type: 'math',
+        content: match[3].trim()
+      });
+    } else if (match[4] !== undefined) {
+      tokens.push({
+        type: 'math',
+        content: match[4].trim()
+      });
+    }
+    lastIndex = blockRegex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    tokens.push({
+      type: 'text',
+      content: text.substring(lastIndex)
+    });
+  }
+
+  if (tokens.length === 1 && tokens[0].type === 'text') {
+    const hasInlineMath = /\$[\s\S]+?\$|\\\(.*?\\\)/.test(text);
+    const hasMarkdown = /^\s*[-*+]\s|^\s*\d+\.\s|^\s*#{1,6}\s|\*\*.*?\*\*|\*.*?\*/m.test(text);
+    if (!hasInlineMath && !hasMarkdown) {
+      return false;
+    }
+  }
+
+  const chain = editor.chain().focus();
+  tokens.forEach(token => {
+    if (token.type === 'math') {
+      chain.insertContent({
+        type: 'equationBlock',
+        attrs: { latex: token.content }
+      });
+    } else if (token.type === 'code') {
+      chain.insertContent({
+        type: 'codeBlock',
+        attrs: { language: token.language },
+        content: [{ type: 'text', text: token.content }]
+      });
+    } else {
+      const html = markdownToHtml(token.content);
+      chain.insertContent(html);
+    }
+  });
+
+  chain.run();
+  return true;
+};
+
 const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete, onShare, readOnly = false, defaultIsPrivate = true }) => {
   const [, setCurrentNoteId] = useState(initialNote?._id || null);
   const [title, setTitle] = useState(initialNote?.title || '');
@@ -540,16 +707,27 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
       },
       handlePaste: (view, event, slice) => {
         if (readOnly) return false;
+        
         const items = event.clipboardData?.items;
-        if (!items) return false;
-        for (const item of items) {
-          if (item.type.indexOf('image') === 0) {
-            const file = item.getAsFile();
-            if (file) {
-              event.preventDefault();
-              uploadImageToBackend(file);
-              return true; 
+        if (items) {
+          for (const item of items) {
+            if (item.type.indexOf('image') === 0) {
+              const file = item.getAsFile();
+              if (file) {
+                event.preventDefault();
+                uploadImageToBackend(file);
+                return true; 
+              }
             }
+          }
+        }
+
+        const text = event.clipboardData?.getData('text/plain');
+        if (text) {
+          const processed = processSmartPaste(text, editor);
+          if (processed) {
+            event.preventDefault();
+            return true;
           }
         }
         return false;
@@ -581,7 +759,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
   const toggleHighlight = () => {
     if (editor.isActive('highlight')) {
-      editor.chain().focus().unsetHighlight().run();
+      editor.chain().focus().extendMarkRange('highlight').unsetHighlight().run();
     } else {
       editor.chain().focus().setHighlight({ color: '#fef08a' }).run();
     }
@@ -857,60 +1035,123 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
         .ProseMirror ul[data-type="taskList"] li > div { flex: 1; transition: all 0.2s ease; margin-top: 0; }
         .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { text-decoration: line-through; color: #9ca3af; }
         .dark .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div { color: #6b7280; }
+        
+        /* Reset and customize pre & code formatting inside NodeViewWrapper to avoid border bleeding */
+        .ProseMirror pre {
+          background: transparent !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: 0 !important;
+        }
+        .ProseMirror pre code {
+          background: transparent !important;
+          color: inherit !important;
+          padding: 0 !important;
+          border: 0 !important;
+        }
         .ProseMirror code { background-color: #f3f4f6; color: #ef4444; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.875em; }
         .dark .ProseMirror code { background-color: #2d3748; color: #fca5a5; }
 
-        /* Syntax Highlighting (Highlight.js / One Dark theme) */
-        .ProseMirror pre code .hljs-comment,
-        .ProseMirror pre code .hljs-quote {
-          color: #727b87;
+        /* Light Mode Syntax Highlighting (Slate theme) */
+        .hljs-comment,
+        .hljs-quote {
+          color: #64748b;
           font-style: italic;
         }
-        .ProseMirror pre code .hljs-keyword,
-        .ProseMirror pre code .hljs-selector-tag,
-        .ProseMirror pre code .hljs-addition {
-          color: #c678dd;
-          font-weight: bold;
+        .hljs-keyword,
+        .hljs-selector-tag,
+        .hljs-addition {
+          color: #0f766e;
+          font-weight: 600;
         }
-        .ProseMirror pre code .hljs-number,
-        .ProseMirror pre code .hljs-string,
-        .ProseMirror pre code .hljs-meta .hljs-string,
-        .ProseMirror pre code .hljs-literal,
-        .ProseMirror pre code .hljs-doctag,
-        .ProseMirror pre code .hljs-regexp {
-          color: #98c379;
+        .hljs-number,
+        .hljs-string,
+        .hljs-meta .hljs-string,
+        .hljs-literal,
+        .hljs-doctag,
+        .hljs-regexp {
+          color: #0d9488;
         }
-        .ProseMirror pre code .hljs-title,
-        .ProseMirror pre code .hljs-section,
-        .ProseMirror pre code .hljs-name,
-        .ProseMirror pre code .hljs-selector-id,
-        .ProseMirror pre code .hljs-selector-class {
-          color: #61afef;
+        .hljs-title,
+        .hljs-section,
+        .hljs-name,
+        .hljs-selector-id,
+        .hljs-selector-class {
+          color: #2563eb;
+          font-weight: 600;
         }
-        .ProseMirror pre code .hljs-attribute,
-        .ProseMirror pre code .hljs-attr,
-        .ProseMirror pre code .hljs-variable,
-        .ProseMirror pre code .hljs-template-variable,
-        .ProseMirror pre code .hljs-class .hljs-title,
-        .ProseMirror pre code .hljs-type {
-          color: #d19a66;
+        .hljs-attribute,
+        .hljs-attr,
+        .hljs-variable,
+        .hljs-template-variable,
+        .hljs-class .hljs-title,
+        .hljs-type {
+          color: #7c3aed;
         }
-        .ProseMirror pre code .hljs-symbol,
-        .ProseMirror pre code .hljs-bullet,
-        .ProseMirror pre code .hljs-subst,
-        .ProseMirror pre code .hljs-meta,
-        .ProseMirror pre code .hljs-link {
-          color: #56b6c2;
+        .hljs-symbol,
+        .hljs-bullet,
+        .hljs-subst,
+        .hljs-meta,
+        .hljs-link {
+          color: #0891b2;
         }
-        .ProseMirror pre code .hljs-built_in,
-        .ProseMirror pre code .hljs-title.class_ {
-          color: #e6c07b;
+        .hljs-built_in,
+        .hljs-title.class_ {
+          color: #ea580c;
         }
-        .ProseMirror pre code .hljs-emphasis {
+        .hljs-emphasis {
           font-style: italic;
         }
-        .ProseMirror pre code .hljs-strong {
+        .hljs-strong {
           font-weight: bold;
+        }
+
+        /* Dark Mode Syntax Highlighting (Aesthetic Ocean Dark) */
+        .dark .hljs-comment,
+        .dark .hljs-quote {
+          color: #6b7280;
+          font-style: italic;
+        }
+        .dark .hljs-keyword,
+        .dark .hljs-selector-tag,
+        .dark .hljs-addition {
+          color: #2dd4bf;
+          font-weight: 600;
+        }
+        .dark .hljs-number,
+        .dark .hljs-string,
+        .dark .hljs-meta .hljs-string,
+        .dark .hljs-literal,
+        .dark .hljs-doctag,
+        .dark .hljs-regexp {
+          color: #38bdf8;
+        }
+        .dark .hljs-title,
+        .dark .hljs-section,
+        .dark .hljs-name,
+        .dark .hljs-selector-id,
+        .dark .hljs-selector-class {
+          color: #60a5fa;
+          font-weight: 600;
+        }
+        .dark .hljs-attribute,
+        .dark .hljs-attr,
+        .dark .hljs-variable,
+        .dark .hljs-template-variable,
+        .dark .hljs-class .hljs-title,
+        .dark .hljs-type {
+          color: #c084fc;
+        }
+        .dark .hljs-symbol,
+        .dark .hljs-bullet,
+        .dark .hljs-subst,
+        .dark .hljs-meta,
+        .dark .hljs-link {
+          color: #22d3ee;
+        }
+        .dark .hljs-built_in,
+        .dark .hljs-title.class_ {
+          color: #fb923c;
         }
 
         #custom-toolbar { border-bottom: 1px solid #e5e7eb !important; padding: 8px 24px !important; background-color: #f9fafb; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; position: sticky; top: 0; z-index: 40; }
@@ -1039,15 +1280,22 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
 
               <button
                 onClick={() => { setIsPrivate(!isPrivate); setIsDirty(true); setSaveStatus('Unsaved changes'); }}
-                className={`flex items-center gap-1.5 px-3 h-10 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${
+                className={`relative flex items-center justify-between pl-3.5 pr-2.5 h-10 w-28 rounded-full border transition-all duration-300 ${
                   isPrivate 
                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
-                    : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#2C2C2C]'
+                    : 'bg-slate-100 dark:bg-[#1E1E1E] border-slate-200 dark:border-[#333] text-slate-600 dark:text-slate-400'
                 }`}
-                title={isPrivate ? "Make Shared with Workspace Group" : "Make Private"}
+                title={isPrivate ? "Make Public" : "Make Private"}
               >
-                {isPrivate ? <Lock size={14} /> : <Globe size={14} />} 
-                <span className="hidden sm:inline">{isPrivate ? 'Private' : 'Shared Group'}</span>
+                <span className="flex items-center gap-1.5 text-xs font-bold transition-colors duration-300">
+                  {isPrivate ? <Lock size={13} className="text-white" /> : <Globe size={13} className="text-slate-500 dark:text-slate-400" />}
+                  <span>{isPrivate ? 'Private' : 'Public'}</span>
+                </span>
+                <div className={`w-6 h-4 rounded-full transition-all duration-300 flex items-center p-0.5 ${
+                  isPrivate ? 'bg-indigo-800 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                }`}>
+                  <div className="w-3 h-3 rounded-full bg-white shadow-sm" />
+                </div>
               </button>
             </div>
           )}
