@@ -464,9 +464,10 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
       else if (pctile < 65) grade = 'B-';
       else if (pctile < 80) grade = 'C';
       else if (pctile < 95) grade = 'D';
-
       return { ...s, rank: idx + 1, grade };
     });
+  }, [leaderboard, courseGradingStats.currentStandingPct, user, stats]);
+
   useEffect(() => {
     if (allGrades.length > 0) {
       fetchProjection(gradingMode, bestOfConfigs);

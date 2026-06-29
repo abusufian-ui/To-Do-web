@@ -84,26 +84,6 @@ export default function Login() {
         setTimeout(() => setStep('NEW_PASSWORD'), 600);
     };
 
-    // "Different user detected" → accept the Horizon account that actually logged in and continue.
-    const handleAdoptMismatch = () => {
-        if (!mismatchInfo) return;
-        setActiveEmail(mismatchInfo.email || `${mismatchInfo.rollNumber.toLowerCase()}@ucp.edu.pk`);
-        setRollNumber(mismatchInfo.rollNumber.toLowerCase());
-        const info = mismatchInfo;
-        setMismatchInfo(null);
-        finalizeSync({ tempToken: info.tempToken, name: info.name });
-    };
-
-    // "Different user detected" → reject and return to the login screen.
-    const handleRejectMismatch = () => {
-        if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
-        if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
-        setMismatchInfo(null);
-        setSyncPhase('waiting');
-        setTempSyncId('');
-        setActiveEmail('');
-        setStep('EMAIL');
-    };
 
     // Polling engine for Extension sync detection.
     // Real 3-phase signal from the server: waiting → scraping → done (see /api/web/check-sync-status).
@@ -227,14 +207,13 @@ export default function Login() {
         }
     };
 
-    // "Different user detected" — user accepts the Horizon account that actually logged in.
-    // We adopt the detected identity (name, email, rollNumber) and resume with the stashed token.
     const handleAdoptMismatch = () => {
         if (!mismatchInfo) return;
         const info = mismatchInfo; // capture before clearing
         mismatchAcceptedRef.current = true; // suppress future mismatch checks in still-running poll
         setFirstName(info.name ? info.name.split(' ')[0] : 'Student');
         setActiveEmail(info.email || `${info.rollNumber.toLowerCase()}@ucp.edu.pk`);
+        setRollNumber(info.rollNumber.toLowerCase());
         setSyncPhase('scraping');
         setMismatchInfo(null);
         // If the server already returned 'done' state before the mismatch check, finalize now.
@@ -254,6 +233,8 @@ export default function Login() {
         setSyncPhase('waiting');
         setSyncProgress(0);
         setSyncToken('');
+        setTempSyncId('');
+        setActiveEmail('');
         setStep('EMAIL');
     };
 
