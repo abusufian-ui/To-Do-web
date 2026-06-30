@@ -394,7 +394,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
   const processedGradebook = useMemo(() => {
     if (!selectedCourse || !selectedCourse.assessments) return [];
     return selectedCourse.assessments.map((cat) => {
-      const isConfigurable = /assignment|quiz|participation/i.test(cat.name || "");
+      const isConfigurable = /assignment|quiz|participation|lab/i.test(cat.name || "");
       const validDetails = cat.details?.filter(d => !isNaN(parseFloat(d.obtainedMarks)) && !isNaN(parseFloat(d.maxMarks))) || [];
 
       let finalPct = parseFloat(cat.percentage) || 0;

@@ -55,7 +55,7 @@ function calculateTrueScore(assessments, bestOfConfigs = {}) {
     const catNameLower = (cat.name || '').toLowerCase();
     const bestOfLimit = bestOfConfigs[catNameLower];
     
-    const isConfigurable = /assignment|quiz|participation/i.test(cat.name || "");
+    const isConfigurable = /assignment|quiz|participation|lab/i.test(cat.name || "");
     const validDetails = cat.details?.filter(d => !isNaN(parseFloat(d.obtainedMarks)) && !isNaN(parseFloat(d.maxMarks))) || [];
     
     if (isConfigurable && typeof bestOfLimit === 'number' && bestOfLimit < validDetails.length && bestOfLimit > 0) {
@@ -91,7 +91,7 @@ function calculateClassAverageScore(assessments, bestOfConfigs = {}) {
     const catNameLower = (cat.name || '').toLowerCase();
     const bestOfLimit = bestOfConfigs[catNameLower];
     
-    const isConfigurable = /assignment|quiz|participation/i.test(cat.name || "");
+    const isConfigurable = /assignment|quiz|participation|lab/i.test(cat.name || "");
     const validDetails = cat.details?.filter(d => !isNaN(parseFloat(d.maxMarks)) && d.classAverage && d.classAverage !== '-' && d.classAverage !== '') || [];
     
     let selected = validDetails;
