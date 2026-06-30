@@ -5348,24 +5348,29 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       return res.status(403).json({ error: "Leaderboard has been disabled for your account by an administrator." });
     }
 
-    let courseCode = courseCodeParam.trim();
-    let section = (req.query.section || '').trim();
+    let query = {};
+    const courseCodeTrimmed = courseCodeParam.trim();
+    
+    // If it is a full course code containing multiple hyphens (e.g. CSSE3163-S26-BS-CS-F23-F18)
+    if (courseCodeTrimmed.includes('-') && courseCodeTrimmed.split('-').length > 2) {
+      query.code = { $regex: '^' + escapeRegex(courseCodeTrimmed) + '$', $options: 'i' };
+    } else {
+      let courseCode = courseCodeTrimmed;
+      let section = (req.query.section || '').trim();
 
-    // If section is not explicitly passed, try to parse it from the courseCode (e.g., CS101-A)
-    if (!section && courseCode.includes('-')) {
-      const parts = courseCode.split('-');
-      courseCode = parts[0].trim();
-      section = parts[parts.length - 1].trim();
+      if (!section && courseCode.includes('-')) {
+        const parts = courseCode.split('-');
+        courseCode = parts[0].trim();
+        section = parts[parts.length - 1].trim();
+      }
+
+      if (section) {
+        // Match code starting with courseCode and containing the section
+        query.code = { $regex: '^' + escapeRegex(courseCode) + '.*' + escapeRegex(section) + '$', $options: 'i' };
+      } else {
+        query.code = { $regex: '^' + escapeRegex(courseCode) + '$', $options: 'i' };
+      }
     }
-
-    if (!section) {
-      return res.status(400).json({ error: "Section is required to generate the relative grading leaderboard." });
-    }
-
-    let query = {
-      code: { $regex: '^' + escapeRegex(courseCode) + '$', $options: 'i' },
-      section: { $regex: '^' + escapeRegex(section) + '$', $options: 'i' }
-    };
 
     if (courseName) {
       query.name = { $regex: '^' + escapeRegex(courseName.trim()) + '$', $options: 'i' };
@@ -5412,19 +5417,17 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    // Require strict section matching
-    const targetSection = (myCourse.section || '').trim();
-    if (!targetSection) {
-      return res.status(400).json({ message: "Your course section is not set. Leaderboards are restricted to section classmates." });
-    }
-
-    let query = {
-      section: { $regex: '^' + escapeRegex(targetSection) + '$', $options: 'i' }
-    };
-
+    let query = {};
     if (myCourse.code) {
+      // If a course code exists, it contains the full identifier including section/semester, match it directly
       query.code = { $regex: '^' + escapeRegex(myCourse.code.trim()) + '$', $options: 'i' };
     } else {
+      // Fallback to name and section matching if no code is available
+      const targetSection = (myCourse.section || '').trim();
+      if (!targetSection) {
+        return res.status(400).json({ message: "Your course section is not set. Leaderboards are restricted to section classmates." });
+      }
+      query.section = { $regex: '^' + escapeRegex(targetSection) + '$', $options: 'i' };
       query.name = { $regex: '^' + escapeRegex(myCourse.name.trim()) + '$', $options: 'i' };
     }
 
