@@ -367,8 +367,53 @@ async function processUserMaterials(userId, cookieString) {
                             buffer = await downloadPortalFile(link.downloadUrl, cookieString);
                         } catch (err) {
                             if (err.message === 'SESSION_EXPIRED') {
-                                console.warn(`[MATERIAL_PROC] ⚠️ Session expired. Stopping processing.`);
+                                console.warn(`[MATERIAL_PROC] ⚠️ Session expired for user ${userIdStr}. Marking MaterialLink.`);
                                 sessionExpired = true;
+                                
+                                // F-004: Mark the MaterialLink with sessionExpiredAt
+                                await MaterialLink.updateOne(
+                                    { _id: linkSet._id },
+                                    { $set: { sessionExpiredAt: new Date() } }
+                                );
+
+                                // Notify client via WebSockets immediately
+                                if (typeof io !== 'undefined') {
+                                    io.to(userIdStr).emit('session_expired', {
+                                        message: "Your university portal session has expired. Please re-authenticate."
+                                    });
+                                }
+
+                                // Send Expo Push Notification
+                                try {
+                                    const User = require('../models/User');
+                                    const user = await User.findById(userIdStr);
+                                    if (user) {
+                                        const { Expo } = require('expo-server-sdk');
+                                        const expoInstance = new Expo();
+                                        let tokens = [];
+                                        if (user.pushTokens && user.pushTokens.length > 0) {
+                                            tokens = user.pushTokens.filter(t => Expo.isExpoPushToken(t));
+                                        } else if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
+                                            tokens = [user.pushToken];
+                                        }
+
+                                        if (tokens.length > 0) {
+                                            const messages = tokens.map(t => ({
+                                                to: t,
+                                                sound: 'default',
+                                                title: "UCP Session Expired ⚠️",
+                                                body: "Your university portal session has expired. Tap here to log in.",
+                                                data: { type: "session_expired" }
+                                            }));
+                                            const chunks = expoInstance.chunkPushNotifications(messages);
+                                            for (const chunk of chunks) {
+                                                await expoInstance.sendPushNotificationsAsync(chunk);
+                                            }
+                                        }
+                                    }
+                                } catch (pushErr) {
+                                    console.error("[MATERIAL_PROC] Failed to send session expired push:", pushErr.message);
+                                }
                                 return;
                             }
                             console.warn(`[MATERIAL_PROC] Download failed for ${link.fileName}: ${err.message}`);

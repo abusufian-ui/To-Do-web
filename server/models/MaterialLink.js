@@ -25,6 +25,7 @@ const MaterialLinkSchema = new mongoose.Schema({
     
     processed:    { type: Boolean, default: false },
     processedAt:  { type: Date },
+    sessionExpiredAt: { type: Date },
     lastScrapedAt:{ type: Date, default: Date.now }
 });
 

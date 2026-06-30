@@ -86,6 +86,7 @@ const CourseVaultFile = require('./models/CourseVaultFile');
 const CourseVaultBucket = require('./models/CourseVaultBucket');
 const MaterialLink   = require('./models/MaterialLink');
 const DeviceSession = require('./models/DeviceSession');
+const ScraperHealth = require('./models/ScraperHealth');
 const { getAbsoluteGrade, getSmartCurveGrade, calculateTrueScore, calculateClassAverageScore, getProjectedGradeForCourse, computeProjection } = require('./services/grading');
 const { registerDeviceSession } = require('./utils/sessionHelper');
 const { convertToPdf } = require('./utils/documentConverter');
@@ -1339,15 +1340,43 @@ app.post('/api/session/keep-alive', auth, async (req, res) => {
   const { ucpCookie } = req.body;
   if (!ucpCookie) return res.status(400).json({ error: "No cookie provided" });
   try {
+    // F-001: Validate Keep-alive Cookie by sending a probe GET request to UCP Horizon Dashboard
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    const probeRes = await fetch('https://horizon.ucp.edu.pk/student/dashboard', {
+      method: 'GET',
+      headers: {
+        'Cookie': ucpCookie,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      signal: controller.signal,
+      redirect: 'manual'
+    });
+    clearTimeout(timeoutId);
+
+    const location = probeRes.headers.get('location') || '';
+    if (probeRes.status === 302 && (location.includes('/login') || location.includes('/web/login'))) {
+      console.warn(`[KEEP_ALIVE] ⚠️ Cookie validation failed: Redirected to login.`);
+      return res.status(401).json({ error: "SESSION_EXPIRED", message: "Your university portal session has expired. Please re-authenticate." });
+    }
+    if (!probeRes.ok && probeRes.status !== 302) {
+      console.warn(`[KEEP_ALIVE] ⚠️ Cookie validation failed with HTTP status ${probeRes.status}`);
+      return res.status(401).json({ error: "INVALID_COOKIE", message: "Failed to validate session cookie." });
+    }
+
     await User.findByIdAndUpdate(req.user.id, { $set: { ucpCookie: ucpCookie, isPortalConnected: true, lastSyncAt: new Date() } }, { strict: false });
     
-    setTimeout(() => {
-      processUserMaterials(req.user.id.toString(), ucpCookie)
-        .catch(err => console.error(`[SESSION_KEEP_ALIVE_PROC] Async processing failed:`, err.message));
-    }, 500);
+    // F-005: Trigger B2 processing immediately on the spot (asynchronously to avoid blocking client)
+    processUserMaterials(req.user.id.toString(), ucpCookie)
+      .catch(err => console.error(`[SESSION_KEEP_ALIVE_PROC] Async processing failed:`, err.message));
 
     res.status(200).json({ message: "Cookies saved to vault." });
   } catch (err) {
+    if (err.name === 'AbortError') {
+      return res.status(408).json({ error: "TIMEOUT", message: "Validation request timed out." });
+    }
+    console.error("[KEEP_ALIVE] Error securing cookie:", err.message);
     res.status(500).json({ error: "Failed to secure cookie in vault" });
   }
 });
@@ -2171,7 +2200,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         if (stagedCount > 0) {
           console.log(`[SYNC] 📥 Staged ${stagedCount} material link sets. Firing processor immediately.`);
           
-          setTimeout(() => processUserMaterials(userId.toString(), liveCookie), 200);
+          processUserMaterials(userId.toString(), liveCookie)
+            .catch(err => console.error(`[SYNC_B2_PROC] Async processing failed:`, err.message));
         }
       }
     }
@@ -5298,8 +5328,7 @@ app.get('/api/projection', auth, async (req, res) => {
 
 app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   try {
-    const courseCode = req.params.courseCode;
-    const section = req.query.section;
+    const courseCodeParam = req.params.courseCode;
     const courseName = req.query.courseName;
     const email = req.query.email;
 
@@ -5319,21 +5348,27 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       return res.status(403).json({ error: "Leaderboard has been disabled for your account by an administrator." });
     }
 
-    let query = {};
-    if (courseName && section) {
-      query = {
-        name: { $regex: '^' + escapeRegex(courseName.trim()) + '$', $options: 'i' },
-        section: { $regex: '^' + escapeRegex(section.trim()) + '$', $options: 'i' }
-      };
-    } else {
-      if (courseCode.includes('-')) {
-        query = { code: { $regex: '^' + escapeRegex(courseCode.trim()) + '$', $options: 'i' } };
-      } else {
-        query = { code: { $regex: '^' + escapeRegex(courseCode.trim()), $options: 'i' } };
-        if (section) {
-          query.section = { $regex: '^' + escapeRegex(section.trim()) + '$', $options: 'i' };
-        }
-      }
+    let courseCode = courseCodeParam.trim();
+    let section = (req.query.section || '').trim();
+
+    // If section is not explicitly passed, try to parse it from the courseCode (e.g., CS101-A)
+    if (!section && courseCode.includes('-')) {
+      const parts = courseCode.split('-');
+      courseCode = parts[0].trim();
+      section = parts[parts.length - 1].trim();
+    }
+
+    if (!section) {
+      return res.status(400).json({ error: "Section is required to generate the relative grading leaderboard." });
+    }
+
+    let query = {
+      code: { $regex: '^' + escapeRegex(courseCode) + '$', $options: 'i' },
+      section: { $regex: '^' + escapeRegex(section) + '$', $options: 'i' }
+    };
+
+    if (courseName) {
+      query.name = { $regex: '^' + escapeRegex(courseName.trim()) + '$', $options: 'i' };
     }
 
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic');
@@ -5372,18 +5407,25 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     const myCourse = await Course.findById(req.params.courseId);
     if (!myCourse) return res.status(404).json({ message: "Course not found" });
 
-    let query = {};
-    if (myCourse.name && myCourse.section) {
-      query = {
-        name: { $regex: '^' + escapeRegex(myCourse.name.trim()) + '$', $options: 'i' },
-        section: { $regex: '^' + escapeRegex(myCourse.section.trim()) + '$', $options: 'i' }
-      };
-    } else if (myCourse.code) {
-      query.code = myCourse.code;
-      if (myCourse.section) query.section = myCourse.section;
+    // Strict ownership validation
+    if (myCourse.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    // Require strict section matching
+    const targetSection = (myCourse.section || '').trim();
+    if (!targetSection) {
+      return res.status(400).json({ message: "Your course section is not set. Leaderboards are restricted to section classmates." });
+    }
+
+    let query = {
+      section: { $regex: '^' + escapeRegex(targetSection) + '$', $options: 'i' }
+    };
+
+    if (myCourse.code) {
+      query.code = { $regex: '^' + escapeRegex(myCourse.code.trim()) + '$', $options: 'i' };
     } else {
-      query.name = myCourse.name;
-      if (myCourse.section) query.section = myCourse.section;
+      query.name = { $regex: '^' + escapeRegex(myCourse.name.trim()) + '$', $options: 'i' };
     }
 
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic'); 
@@ -5400,6 +5442,49 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     res.status(200).json(leaderboard);
   } catch (error) {
     res.status(500).json({ error: "Failed to generate relative grading leaderboard" });
+  }
+});
+
+// F-004: Endpoint to poll material processing status
+app.get('/api/user/material-sync-status', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const pendingLinks = await MaterialLink.find({ userId, processed: false }).lean();
+    
+    const isProcessing = pendingLinks.length > 0;
+    const hasExpired = pendingLinks.some(l => l.sessionExpiredAt);
+    
+    res.json({
+      isProcessing,
+      hasExpired,
+      pendingCount: pendingLinks.length,
+      details: pendingLinks.map(l => ({
+        courseName: l.courseName,
+        courseCode: l.courseCode,
+        sectionCode: l.sectionCode,
+        sessionExpiredAt: l.sessionExpiredAt || null
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// F-007: Scraper Health endpoint to receive client-side scraping errors
+app.post('/api/scraper-health', auth, async (req, res) => {
+  try {
+    const { scraperName, error } = req.body;
+    if (!scraperName || !error) return res.status(400).json({ error: "Missing scraperName or error" });
+
+    const health = new ScraperHealth({
+      userId: req.user.id,
+      scraperName,
+      error
+    });
+    await health.save();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const syncLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   portalId: { type: String, required: true },
-  mode: { type: String, required: true }, 
+  mode: { type: String, required: true, enum: ['AUTO_SYNC', 'LOGIN_SYNC', 'FORCE_SYNC', 'SUBMISSIONS_SYNC', 'MANUAL_FULL', 'BACKGROUND_SYNC'] }, 
   status: { type: String, required: true, enum: ['PENDING', 'SUCCESS', 'FAILED'] },
   startTime: { type: Date, default: Date.now },
   endTime: { type: Date },
