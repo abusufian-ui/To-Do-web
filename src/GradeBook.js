@@ -297,7 +297,20 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Live-sync: refresh grades immediately when a live socket event fires
+  useEffect(() => {
+    const handleLiveUpdate = (e) => {
+      if (e.detail?.type === 'grade_update' || e.detail?.type === 'live_db_update') {
+        fetchData();
+      }
+    };
+    window.addEventListener('myportal_live_update', handleLiveUpdate);
+    return () => window.removeEventListener('myportal_live_update', handleLiveUpdate);
+  }, []);
 
   
   const grades = useMemo(() => {

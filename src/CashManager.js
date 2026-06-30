@@ -180,33 +180,44 @@ const CashManager = ({ activeTab, filters, isAddingNew, setIsAddingNew }) => {
   const [editingBudget, setEditingBudget] = useState(null);
   const [budgetInput, setBudgetInput] = useState('');
 
+  const fetchFinancialData = async () => {
+    if (!token) return;
+    try {
+      const [transRes, budgetRes, debtsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/transactions`, { headers: { 'x-auth-token': token } }),
+        fetch(`${API_BASE}/api/budgets`, { headers: { 'x-auth-token': token } }),
+        fetch(`${API_BASE}/api/debts`, { headers: { 'x-auth-token': token } }) 
+      ]);
+
+      if (transRes.ok && budgetRes.ok) {
+        const transData = await transRes.json();
+        const budgetData = await budgetRes.json();
+        setTransactions(transData.map(t => ({ ...t, id: t._id })));
+        const bObj = {};
+        budgetData.forEach(b => bObj[b.category] = b.limit);
+        setBudgets(bObj);
+      }
+
+      if (debtsRes.ok) {
+        const debtsData = await debtsRes.json();
+        setDebts(debtsData.map(d => ({ ...d, id: d._id })));
+      }
+    } catch (err) { console.error("Failed to fetch data", err); }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      if (!token) return;
-      try {
-        const [transRes, budgetRes, debtsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/transactions`, { headers: { 'x-auth-token': token } }),
-          fetch(`${API_BASE}/api/budgets`, { headers: { 'x-auth-token': token } }),
-          fetch(`${API_BASE}/api/debts`, { headers: { 'x-auth-token': token } }) 
-        ]);
+    fetchFinancialData();
+  }, [token]);
 
-        if (transRes.ok && budgetRes.ok) {
-          const transData = await transRes.json();
-          const budgetData = await budgetRes.json();
-          setTransactions(transData.map(t => ({ ...t, id: t._id })));
-
-          const bObj = {};
-          budgetData.forEach(b => bObj[b.category] = b.limit);
-          setBudgets(bObj);
-        }
-
-        if (debtsRes.ok) {
-          const debtsData = await debtsRes.json();
-          setDebts(debtsData.map(d => ({ ...d, id: d._id })));
-        }
-      } catch (err) { console.error("Failed to fetch data", err); }
+  // Live-sync: refresh transactions/debts/budgets when a live socket event fires
+  useEffect(() => {
+    const handleLiveUpdate = (e) => {
+      if (e.detail?.type === 'live_db_update') {
+        fetchFinancialData();
+      }
     };
-    fetchData();
+    window.addEventListener('myportal_live_update', handleLiveUpdate);
+    return () => window.removeEventListener('myportal_live_update', handleLiveUpdate);
   }, [token]);
 
   

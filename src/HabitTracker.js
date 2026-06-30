@@ -67,7 +67,17 @@ export default function HabitTracker({ activeTab }) {
 
   useEffect(() => {
     fetchHabits();
-    
+  }, []);
+
+  // Live-sync: refresh habits immediately when a live socket event fires
+  useEffect(() => {
+    const handleLiveUpdate = (e) => {
+      if (e.detail?.type === 'live_db_update') {
+        fetchHabits();
+      }
+    };
+    window.addEventListener('myportal_live_update', handleLiveUpdate);
+    return () => window.removeEventListener('myportal_live_update', handleLiveUpdate);
   }, []);
 
   const fetchHabits = async () => {

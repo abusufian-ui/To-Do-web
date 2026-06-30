@@ -698,13 +698,17 @@ function AppLayout() {
     }
   }, [isAuthenticated, token, fetchDashboardData]);
 
-  const handleLiveUpdate = useCallback(() => {
-    if (token && isAuthenticated) {
-      if (window.liveSyncTimeout) clearTimeout(window.liveSyncTimeout);
-      window.liveSyncTimeout = setTimeout(() => {
-        fetchDashboardData();
-      }, 500);
-    }
+  const handleLiveUpdate = useCallback((eventType) => {
+    if (!token || !isAuthenticated) return;
+    // Portal-specific events (grades, attendance, submissions, announcements) are handled
+    // by individual components via window 'myportal_live_update' CustomEvent — no full reload needed.
+    const portalOnlyEvents = ['grade_update', 'attendance_update', 'submission_update', 'announcement_update'];
+    if (portalOnlyEvents.includes(eventType)) return;
+    // For all other live data changes (tasks, notes, groups, etc.) do a full silent refresh
+    if (window.liveSyncTimeout) clearTimeout(window.liveSyncTimeout);
+    window.liveSyncTimeout = setTimeout(() => {
+      fetchDashboardData();
+    }, 0);
   }, [token, isAuthenticated, fetchDashboardData]);
 
   useLiveSync(handleLiveUpdate, handleLogout, user?._id || user?.id);

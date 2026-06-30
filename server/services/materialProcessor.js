@@ -424,6 +424,9 @@ async function processUserMaterials(userId, cookieString) {
         }
 
         console.log(`[MATERIAL_PROC] 🏁 Completed for user ${userIdStr}`);
+        if (typeof io !== 'undefined') {
+            io.to(userIdStr).emit('live_db_update');
+        }
         return { success: !sessionExpired, sessionExpired };
     } catch (err) {
         console.error(`[MATERIAL_PROC] ❌ Unexpected error for user ${userIdStr}:`, err.message);
