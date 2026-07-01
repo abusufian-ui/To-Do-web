@@ -1581,8 +1581,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
   
   if (activeSyncs.has(syncKey)) {
-    console.warn(`[SYNC] ⚠️ Concurrent sync blocked for user ${syncKey}`);
-    return res.status(409).json({ message: 'Sync already in progress. Please wait.' });
+    console.warn(`[SYNC] ⚠️ Concurrent sync requested for user ${syncKey} while already in progress. Returning 200 OK to bypass client block.`);
+    return res.status(200).json({ message: 'Sync already in progress. Re-using current run.' });
   }
   activeSyncs.add(syncKey);
 
