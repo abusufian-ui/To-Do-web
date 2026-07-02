@@ -6013,6 +6013,51 @@ setInterval(() => {
 }, 5 * 60 * 1000); 
 
 
+app.post('/api/course-material/download-urls', auth, async (req, res) => {
+  try {
+    const { fileIds, courseCode, sectionCode, semester } = req.body;
+    let resolvedFileIds = fileIds || [];
+
+    if (resolvedFileIds.length === 0 && courseCode) {
+      const globalCode = courseCode.split('-')[0].trim();
+      const query = { courseCode: globalCode };
+      if (sectionCode) query.sectionCode = sectionCode;
+      
+      let activeSemester = semester;
+      if (!activeSemester) {
+        const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
+        if (course) {
+          activeSemester = course.semester;
+        }
+      }
+      if (activeSemester) {
+        query.semester = activeSemester;
+      }
+      
+      const materials = await CourseMaterial.find(query).lean();
+      resolvedFileIds = materials.map(m => m._id);
+    }
+
+    const materials = await CourseMaterial.find({ _id: { $in: resolvedFileIds } }).lean();
+    const filesWithUrls = await Promise.all(materials.map(async (m) => {
+      const url = m.b2Key ? await getSignedDownloadUrl(m.b2Key, 3600, m.fileName || m.normalizedFileName) : null;
+      return {
+        id: m._id,
+        fileName: m.fileName || m.normalizedFileName,
+        fileType: m.fileType,
+        sectionCode: m.sectionCode,
+        url
+      };
+    }));
+
+    res.json({ files: filesWithUrls.filter(f => f.url !== null) });
+  } catch (err) {
+    console.error('[API] download-urls error:', err.message);
+    res.status(500).json({ message: 'Failed to generate download URLs.' });
+  }
+});
+
+
 app.post('/api/course-material/download-zip/start', auth, async (req, res) => {
   try {
     const { fileIds, courseName, courseCode, sectionCode, semester } = req.body;

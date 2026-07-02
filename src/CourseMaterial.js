@@ -3,6 +3,7 @@ import { FileText, Download, Eye, AlertCircle, Loader2, Folder, ChevronDown, Che
 import UCPLogo from './UCPLogo';
 import ParallelSyncDashboard from './ParallelSyncDashboard';
 import axios from 'axios';
+import JSZip from 'jszip';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -168,50 +169,38 @@ const CourseMaterial = ({
           window.open(file.downloadUrl, '_blank');
         }
       } else {
-        
         setZipProgress({ processed: 0, total: selected.size });
 
-        const startRes = await axios.post(
-          `${API_BASE}/api/course-material/download-zip/start`,
-          { fileIds: Array.from(selected), courseName: courseCode },
+        const urlRes = await axios.post(
+          `${API_BASE}/api/course-material/download-urls`,
+          { fileIds: Array.from(selected) },
           { headers: { 'x-auth-token': token } }
         );
+        const { files } = urlRes.data;
+        if (!files || files.length === 0) {
+          throw new Error("No download URLs received from server.");
+        }
 
-        const { jobId } = startRes.data;
+        const zip = new JSZip();
+        let processed = 0;
 
-        
-        await new Promise((resolve, reject) => {
-          const pollInterval = setInterval(async () => {
-            try {
-              const statusRes = await axios.get(
-                `${API_BASE}/api/course-material/download-zip/status/${jobId}`,
-                { headers: { 'x-auth-token': token } }
-              );
-              const { status: jobStatus, processed, total, error: jobError } = statusRes.data;
+        await Promise.all(files.map(async (file) => {
+          try {
+            const fileRes = await fetch(file.url);
+            if (!fileRes.ok) throw new Error(`HTTP ${fileRes.status}`);
+            const blob = await fileRes.blob();
+            const folderName = files.length > 1 && file.sectionCode ? `Section_${file.sectionCode}/` : '';
+            zip.file(`${folderName}${file.fileName}`, blob);
+          } catch (fileErr) {
+            console.error(`Failed to download ${file.fileName}:`, fileErr);
+          } finally {
+            processed++;
+            setZipProgress({ processed, total: files.length });
+          }
+        }));
 
-              setZipProgress({ processed, total });
-
-              if (jobStatus === 'completed') {
-                clearInterval(pollInterval);
-                resolve(jobId);
-              } else if (jobStatus === 'failed') {
-                clearInterval(pollInterval);
-                reject(new Error(jobError || "Failed to create zip file on backend."));
-              }
-            } catch (err) {
-              clearInterval(pollInterval);
-              reject(err);
-            }
-          }, 500);
-        });
-
-        
-        const fileRes = await axios.get(
-          `${API_BASE}/api/course-material/download-zip/file/${jobId}`,
-          { headers: { 'x-auth-token': token }, responseType: 'blob' }
-        );
-
-        const url = window.URL.createObjectURL(new Blob([fileRes.data]));
+        const content = await zip.generateAsync({ type: 'blob' });
+        const url = window.URL.createObjectURL(content);
         const link = document.createElement('a');
         link.href = url;
         link.setAttribute('download', `${courseCode.replace(/\s+/g, '_')}_files.zip`);
@@ -236,8 +225,8 @@ const CourseMaterial = ({
       setZipProgress({ processed: 0, total: 1 });
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
 
-      const startRes = await axios.post(
-        `${API_BASE}/api/course-material/download-zip/start`,
+      const urlRes = await axios.post(
+        `${API_BASE}/api/course-material/download-urls`,
         { 
           fileIds: [], 
           courseCode: course.code, 
@@ -246,41 +235,33 @@ const CourseMaterial = ({
         },
         { headers: { 'x-auth-token': token } }
       );
+      const { files } = urlRes.data;
+      if (!files || files.length === 0) {
+        throw new Error("No materials found in this course folder.");
+      }
 
-      const { jobId } = startRes.data;
+      setZipProgress({ processed: 0, total: files.length });
 
-      await new Promise((resolve, reject) => {
-        const pollInterval = setInterval(async () => {
-          try {
-            const statusRes = await axios.get(
-              `${API_BASE}/api/course-material/download-zip/status/${jobId}`,
-              { headers: { 'x-auth-token': token } }
-            );
-            const { status: jobStatus, processed, total, error: jobError } = statusRes.data;
+      const zip = new JSZip();
+      let processed = 0;
 
-            setZipProgress({ processed, total });
+      await Promise.all(files.map(async (file) => {
+        try {
+          const fileRes = await fetch(file.url);
+          if (!fileRes.ok) throw new Error(`HTTP ${fileRes.status}`);
+          const blob = await fileRes.blob();
+          const folderName = files.length > 1 && file.sectionCode ? `Section_${file.sectionCode}/` : '';
+          zip.file(`${folderName}${file.fileName}`, blob);
+        } catch (fileErr) {
+          console.error(`Failed to download ${file.fileName}:`, fileErr);
+        } finally {
+          processed++;
+          setZipProgress({ processed, total: files.length });
+        }
+      }));
 
-            if (jobStatus === 'completed') {
-              clearInterval(pollInterval);
-              resolve(jobId);
-            } else if (jobStatus === 'failed') {
-              clearInterval(pollInterval);
-              reject(new Error(jobError || "Failed to create zip file on backend."));
-            }
-          } catch (err) {
-            clearInterval(pollInterval);
-            reject(err);
-          }
-        }, 500);
-      });
-
-      
-      const fileRes = await axios.get(
-        `${API_BASE}/api/course-material/download-zip/file/${jobId}`,
-        { headers: { 'x-auth-token': token }, responseType: 'blob' }
-      );
-
-      const url = window.URL.createObjectURL(new Blob([fileRes.data]));
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = window.URL.createObjectURL(content);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `${course.name.replace(/\s+/g, '_')}_files.zip`);
