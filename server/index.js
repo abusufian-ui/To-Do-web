@@ -1299,14 +1299,44 @@ app.get('/api/web/check-sync-status', async (req, res) => {
       // Full first scrape finished — clear tempSyncId so it can't be reused.
       user.tempSyncId = null;
       await user.save();
-      return res.json({ state: 'done', synced: true, tempToken: token, ...identity });
+      return res.json({ 
+        state: 'done', 
+        synced: true, 
+        tempToken: token, 
+        syncProgress: 100, 
+        syncActivity: 'Sync complete! Setting up account…',
+        ...identity 
+      });
     }
 
     // Connected and importing data; keep tempSyncId so subsequent polls still resolve.
-    return res.json({ state: 'scraping', synced: false, tempToken: token, ...identity });
+    return res.json({ 
+      state: 'scraping', 
+      synced: false, 
+      tempToken: token, 
+      syncProgress: user.syncProgress || 0,
+      syncActivity: user.syncActivity || 'Importing your data...',
+      ...identity 
+    });
   } catch (err) {
     console.error("Check sync status error:", err.message);
     res.status(500).json({ message: "Server error checking sync status" });
+  }
+});
+
+app.post('/api/extension-sync-progress', auth, async (req, res) => {
+  try {
+    const { progress, activity } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.syncProgress = progress;
+    user.syncActivity = activity;
+    await user.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -4120,9 +4150,7 @@ app.post('/api/auth/check-block-status', async (req, res) => {
 
 const updateProfileFields = (user, body) => {
   const fields = [
-    'secondaryEmail', 'phone', 'emergencyContact', 'presentAddress', 'permanentAddress',
-    'dob', 'gender', 'cnic', 'domicile', 'nationality', 'religion', 'bloodGroup',
-    'fatherName', 'fatherCnic', 'guardianName', 'guardianCnic', 'maritalStatus',
+    'secondaryEmail', 'dob', 'gender',
     'faculty', 'careerType', 'program', 'currentSemester'
   ];
 

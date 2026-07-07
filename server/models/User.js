@@ -24,22 +24,8 @@ const userSchema = new mongoose.Schema({
   },
   
   secondaryEmail: { type: String, default: null },
-  phone: { type: String, default: null },
-  emergencyContact: { type: String, default: null },
-  presentAddress: { type: String, default: null },
-  permanentAddress: { type: String, default: null },
   dob: { type: String, default: null },
   gender: { type: String, default: null },
-  cnic: { type: String, default: null },
-  domicile: { type: String, default: null },
-  nationality: { type: String, default: null },
-  religion: { type: String, default: null },
-  bloodGroup: { type: String, default: null },
-  fatherName: { type: String, default: null },
-  fatherCnic: { type: String, default: null },
-  guardianName: { type: String, default: null },
-  guardianCnic: { type: String, default: null },
-  maritalStatus: { type: String, default: null },
   faculty: { type: String, default: null },
   careerType: { type: String, default: null },
   program: { type: String, default: null },
@@ -59,7 +45,9 @@ const userSchema = new mongoose.Schema({
   tempSyncId: { type: String, default: null, index: true },
   // Onboarding sync lifecycle: null (none) | 'scraping' (extension connected, importing) |
   // 'complete' (first full scrape pushed). Drives the web onboarding progress UI.
-  syncStatus: { type: String, default: null }
+  syncStatus: { type: String, default: null },
+  syncProgress: { type: Number, default: 0 },
+  syncActivity: { type: String, default: 'Importing your data...' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

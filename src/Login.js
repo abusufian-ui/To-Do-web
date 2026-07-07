@@ -74,6 +74,7 @@ export default function Login() {
     // Onboarding sync phase: 'waiting' (ping) | 'scraping' (bar) | 'mismatch' (warn) | 'done'
     const [syncPhase, setSyncPhase] = useState('waiting');
     const [mismatchInfo, setMismatchInfo] = useState(null);
+    const [syncActivity, setSyncActivity] = useState('Importing your data...');
 
     // Password strength check
     const getPasswordStrength = (pass) => {
@@ -165,15 +166,28 @@ export default function Login() {
                 // state is 'scraping' or 'done' → a user is linked.
                 if (handleLinked(data)) return; // mismatch path took over
 
+                if (data.syncActivity) {
+                    setSyncActivity(data.syncActivity);
+                }
+
                 if (state === 'done') {
                     setSyncPhase('done');
+                    setSyncActivity('Sync complete! Setting up account…');
                     finalizeSync(data);
                     return;
                 }
 
                 // state === 'scraping'
                 setSyncPhase('scraping');
-                ensureScrapeAnimation();
+                if (data.syncProgress !== undefined && data.syncProgress > 0) {
+                    if (syncProgressIntervalRef.current) {
+                        clearInterval(syncProgressIntervalRef.current);
+                        syncProgressIntervalRef.current = null;
+                    }
+                    setSyncProgress(data.syncProgress);
+                } else {
+                    ensureScrapeAnimation();
+                }
                 // Safety net: if the extension's final push never lands, proceed with the token we have.
                 if (Date.now() - startedAt > SCRAPE_MAX_WAIT_MS && data.tempToken) {
                     finalizeSync(data);
@@ -794,37 +808,9 @@ export default function Login() {
                         {/* STEP: EXTENSION ONBOARDING (For accounts not found in DB) */}
                         {step === 'EXTENSION_ONBOARDING' && (
                             <div className="text-center space-y-6 animate-step-enter">
-                                <div className={`p-5 bg-gradient-to-br ${isDarkMode ? 'from-[#111] to-[#0a0a0a] border-[#333]' : 'from-gray-50 to-gray-100 border-gray-200'} rounded-2xl border shadow-inner space-y-4`}>
-                                    <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-center mx-auto text-blue-500">
-                                        <Chrome size={24} className="animate-spin-slow" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'} text-sm`}>Chrome Web Extension Required</h3>
-                                        <p className={`text-xs ${isDarkMode ? 'text-[#888]' : 'text-gray-500'}`}>Setup your student account automatically via Chrome</p>
-                                    </div>
-                                    <a 
-                                        href={chromeExtensionLink} 
-                                        target="_blank" 
-                                        rel="noreferrer" 
-                                        className={`inline-flex items-center justify-center gap-2 w-full ${isDarkMode ? 'bg-[#1e293b] hover:bg-[#334155] border-[#475569] text-white' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'} border py-3 rounded-xl font-bold text-xs transition-colors`}
-                                    >
-                                        <Chrome size={14} /> Add MyPortal to Chrome
-                                    </a>
-                                </div>
-
-                                <div className={`text-left ${isDarkMode ? 'bg-[#0e0e0f] border-[#222]' : 'bg-gray-50 border-gray-150'} rounded-2xl border p-5 space-y-3.5`}>
-                                    <h4 className={`text-xs uppercase font-extrabold tracking-widest ${isDarkMode ? 'text-[#666]' : 'text-gray-400'}`}>Instructions</h4>
-                                    <ol className={`text-xs ${isDarkMode ? 'text-[#aaa]' : 'text-gray-655'} space-y-3 list-decimal list-inside pl-1 font-medium leading-relaxed`}>
-                                        <li>Download and install the extension from the Web Store.</li>
-                                        <li>Open the Horizon Portal and log in to your account.</li>
-                                        <li>The extension will automatically import and sync your data.</li>
-                                        <li>Keep this page open. We will proceed automatically once synced.</li>
-                                    </ol>
-                                </div>
-
                                 {syncPhase === 'mismatch' && mismatchInfo ? (
                                     /* Different Horizon account is logged in — confirm before continuing */
-                                    <div className={`space-y-4 text-left ${isDarkMode ? 'bg-[#140d0d] border-amber-500/30' : 'bg-amber-50/50 border-amber-200'} rounded-2xl p-5`}>
+                                    <div className={`space-y-4 text-left ${isDarkMode ? 'bg-[#140d0d] border-amber-500/30' : 'bg-amber-50/50 border-amber-200'} rounded-2xl p-5 animate-step-enter`}>
                                         <div className="flex items-center gap-2.5">
                                             <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0">
                                                 <AlertTriangle size={18} />
@@ -854,19 +840,123 @@ export default function Login() {
                                             </button>
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        <a
-                                            href={`https://horizon.ucp.edu.pk/student/dashboard#myportal_sync_id=${tempSyncId}`}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className={`flex items-center justify-center gap-2 w-full ${isDarkMode ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.15)] hover:scale-[1.01]' : 'bg-black text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] hover:bg-neutral-900 hover:scale-[1.01]'} active:scale-[0.99] py-4 rounded-2xl font-bold transition-all duration-300 text-sm`}
-                                        >
-                                            Open Horizon Portal <ExternalLink size={16} />
-                                        </a>
+                                ) : (syncPhase === 'scraping' || syncPhase === 'done') ? (
+                                    /* NEW BEAUTIFUL ON-DEMAND PROCESSING VIEW (Replaces all details during active scrape) */
+                                    <div className={`p-8 bg-gradient-to-br ${isDarkMode ? 'from-[#0b0c10] to-[#050608] border-[#222]' : 'from-blue-50/30 to-white border-blue-100'} rounded-3xl border shadow-2xl space-y-8 animate-fade-in transition-all duration-700`}>
+                                        
+                                        {/* Glowing Progress Spinner */}
+                                        <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
+                                            {/* Pulse rings */}
+                                            <div className="absolute inset-0 rounded-full bg-blue-500/5 animate-ping" style={{ animationDuration: '3s' }} />
+                                            <div className="absolute inset-2 rounded-full bg-blue-500/10 animate-pulse" />
+                                            
+                                            {/* Circular Progress Path */}
+                                            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                                <circle 
+                                                    cx="50" 
+                                                    cy="50" 
+                                                    r="42" 
+                                                    stroke={isDarkMode ? '#1a1a1c' : '#f1f5f9'} 
+                                                    strokeWidth="6" 
+                                                    fill="transparent" 
+                                                />
+                                                <circle 
+                                                    cx="50" 
+                                                    cy="50" 
+                                                    r="42" 
+                                                    stroke={syncPhase === 'done' ? '#10b981' : '#3b82f6'} 
+                                                    strokeWidth="6" 
+                                                    fill="transparent" 
+                                                    strokeDasharray={2 * Math.PI * 42}
+                                                    strokeDashoffset={2 * Math.PI * 42 * (1 - Math.min(syncProgress, 100) / 100)}
+                                                    strokeLinecap="round"
+                                                    className="transition-all duration-500 ease-out"
+                                                />
+                                            </svg>
+                                            
+                                            {/* Center Percentage Text */}
+                                            <div className="absolute flex flex-col items-center justify-center">
+                                                <span className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                    {Math.floor(Math.min(syncProgress, 100))}%
+                                                </span>
+                                                <span className={`text-[9px] font-extrabold uppercase tracking-widest ${syncPhase === 'done' ? 'text-green-500' : 'text-blue-500'}`}>
+                                                    {syncPhase === 'done' ? 'Ready' : 'Syncing'}
+                                                </span>
+                                            </div>
+                                        </div>
 
-                                        {syncPhase === 'waiting' ? (
-                                            /* Sonar ping — indeterminate "waiting for the extension" */
+                                        {/* Progress Text / Activity */}
+                                        <div className="space-y-2">
+                                            <h3 className={`text-base font-extrabold ${isDarkMode ? 'text-white' : 'text-gray-900'} tracking-tight`}>
+                                                Connected & Processing Data
+                                            </h3>
+                                            <p className={`text-xs ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} font-medium`}>
+                                                Please keep this page open. We are importing your student record from Horizon.
+                                            </p>
+                                        </div>
+
+                                        {/* Horizontal Progress bar and current activity comments */}
+                                        <div className={`p-4 ${isDarkMode ? 'bg-[#111216] border-[#1e1e24]' : 'bg-slate-50 border-slate-100'} rounded-2xl border text-left space-y-3`}>
+                                            <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider">
+                                                <span className={isDarkMode ? 'text-[#666]' : 'text-gray-400'}>Current Action</span>
+                                                <span className={syncPhase === 'done' ? 'text-green-500' : 'text-blue-500'}>{syncActivity}</span>
+                                            </div>
+                                            
+                                            <div className={`w-full ${isDarkMode ? 'bg-[#1e1e24]' : 'bg-gray-200'} h-1.5 rounded-full overflow-hidden`}>
+                                                <div 
+                                                    className="h-full rounded-full transition-all duration-500 ease-out"
+                                                    style={{ 
+                                                        width: `${Math.min(syncProgress, 100)}%`,
+                                                        background: syncPhase === 'done' 
+                                                            ? 'linear-gradient(90deg, #10b981, #34d399)'
+                                                            : 'linear-gradient(90deg, #3b82f6, #60a5fa)'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* STANDARD INITIAL SCREEN (Waiting for connection) */
+                                    <div className="space-y-6">
+                                        <div className={`p-5 bg-gradient-to-br ${isDarkMode ? 'from-[#111] to-[#0a0a0a] border-[#333]' : 'from-gray-50 to-gray-100 border-gray-200'} rounded-2xl border shadow-inner space-y-4`}>
+                                            <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-center mx-auto text-blue-500">
+                                                <Chrome size={24} className="animate-spin-slow" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'} text-sm`}>Chrome Web Extension Required</h3>
+                                                <p className={`text-xs ${isDarkMode ? 'text-[#888]' : 'text-gray-500'}`}>Setup your student account automatically via Chrome</p>
+                                            </div>
+                                            <a 
+                                                href={chromeExtensionLink} 
+                                                target="_blank" 
+                                                rel="noreferrer" 
+                                                className={`inline-flex items-center justify-center gap-2 w-full ${isDarkMode ? 'bg-[#1e293b] hover:bg-[#334155] border-[#475569] text-white' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'} border py-3 rounded-xl font-bold text-xs transition-colors`}
+                                            >
+                                                <Chrome size={14} /> Add MyPortal to Chrome
+                                            </a>
+                                        </div>
+
+                                        <div className={`text-left ${isDarkMode ? 'bg-[#0e0e0f] border-[#222]' : 'bg-gray-50 border-gray-150'} rounded-2xl border p-5 space-y-3.5`}>
+                                            <h4 className={`text-xs uppercase font-extrabold tracking-widest ${isDarkMode ? 'text-[#666]' : 'text-gray-400'}`}>Instructions</h4>
+                                            <ol className={`text-xs ${isDarkMode ? 'text-[#aaa]' : 'text-gray-655'} space-y-3 list-decimal list-inside pl-1 font-medium leading-relaxed`}>
+                                                <li>Download and install the extension from the Web Store.</li>
+                                                <li>Open the Horizon Portal and log in to your account.</li>
+                                                <li>The extension will automatically import and sync your data.</li>
+                                                <li>Keep this page open. We will proceed automatically once synced.</li>
+                                            </ol>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <a
+                                                href={`https://horizon.ucp.edu.pk/student/dashboard#myportal_sync_id=${tempSyncId}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className={`flex items-center justify-center gap-2 w-full ${isDarkMode ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.15)] hover:scale-[1.01]' : 'bg-black text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] hover:bg-neutral-900 hover:scale-[1.01]'} active:scale-[0.99] py-4 rounded-2xl font-bold transition-all duration-300 text-sm`}
+                                            >
+                                                Open Horizon Portal <ExternalLink size={16} />
+                                            </a>
+
+                                            {/* Sonar ping — indeterminate "waiting for the extension" */}
                                             <div className="flex items-center justify-center gap-3 pt-2">
                                                 <span className="relative flex h-3 w-3">
                                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
@@ -874,30 +964,7 @@ export default function Login() {
                                                 </span>
                                                 <span className={`text-xs font-bold ${isDarkMode ? 'text-[#888]' : 'text-gray-400'}`}>Waiting for extension…</span>
                                             </div>
-                                        ) : (
-                                            /* Real scraping progress bar — only appears once the extension actually starts */
-                                            <div className="space-y-2.5 pt-1">
-                                                <div className={`w-full ${isDarkMode ? 'bg-[#1a1a1a] border-[#2a2a2a]' : 'bg-gray-100 border-gray-200'} rounded-full h-1.5 overflow-hidden border`}>
-                                                    <div
-                                                        className="h-full rounded-full transition-all duration-700 ease-out"
-                                                        style={{
-                                                            width: `${Math.min(syncProgress, 100)}%`,
-                                                            background: (syncPhase === 'done' || syncProgress >= 100)
-                                                                ? 'linear-gradient(90deg, #10b981, #34d399)'
-                                                                : 'linear-gradient(90deg, #3b82f6, #60a5fa)'
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div className="flex items-center justify-center gap-2 text-xs font-bold" style={{ color: syncPhase === 'done' ? '#10b981' : (isDarkMode ? '#555' : '#777') }}>
-                                                    <RefreshCw size={11} className={syncPhase === 'done' ? '' : 'animate-spin'} />
-                                                    <span>
-                                                        {syncPhase === 'done'
-                                                            ? 'Sync complete! Setting up account…'
-                                                            : `Importing your data… (${Math.floor(Math.min(syncProgress, 100))}%)`}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
+                                        </div>
                                     </div>
                                 )}
                             </div>

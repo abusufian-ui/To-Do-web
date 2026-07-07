@@ -123,3 +123,20 @@ label, .control-label, .form-label, span.label-text {
 :root:not(.dark) .ucp-logo-svg:not([class*="text-"]):not([fill*="#"]):not([color*="#"]) {
   color: #1e293b !important; /* Force high contrast dark slate in bright mode if no text-color/color is passed */
 }
+
+/* Premium Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spinSlow 12s linear infinite;
+}

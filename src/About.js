@@ -287,6 +287,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
           {}
+          {/* Personal Details */}
           <div className="bg-white dark:bg-[#1E1E1E] rounded-xl p-6 border border-gray-200 dark:border-white/10 shadow-sm">
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <User size={16} className="text-indigo-500" /> Personal Details
@@ -294,48 +295,18 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
             <div className="divide-y divide-gray-100 dark:divide-white/5">
               {renderField("Date of Birth", formatDOB(user.dob))}
               {renderField("Gender", user.gender)}
-              {renderField("Blood Group", user.bloodGroup, user.bloodGroup?.includes('+') || user.bloodGroup?.includes('-'), 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-200/30')}
-              {renderField("Father Name", user.fatherName)}
-              {renderField("Nationality", user.nationality)}
-              {renderField("Religion", user.religion)}
-              {renderField("Marital Status", user.maritalStatus)}
-              {renderField("CNIC", user.cnic)}
-              {renderField("Domicile", user.domicile)}
-              {renderField("Father CNIC", user.fatherCnic)}
-              {renderField("Guardian Name", user.guardianName)}
-              {renderField("Guardian CNIC", user.guardianCnic)}
             </div>
           </div>
 
           <div className="space-y-6">
             
-            {}
+            {/* Contact Information */}
             <div className="bg-white dark:bg-[#1E1E1E] rounded-xl p-6 border border-gray-200 dark:border-white/10 shadow-sm">
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Phone size={16} className="text-indigo-500" /> Contact Information
               </h3>
               <div className="divide-y divide-gray-100 dark:divide-white/5">
-                {renderField("Phone Number", user.phone)}
-                {renderField("Emergency Contact", user.emergencyContact)}
                 {renderField("Secondary Email", user.secondaryEmail)}
-                
-                {user.presentAddress && user.presentAddress.trim().toLowerCase() !== 'not scraped' && (
-                  <div className="py-2.5 flex flex-col gap-1 border-b border-gray-100 dark:border-white/5 last:border-0">
-                    <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">Present Address</span>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 break-words">
-                      {user.presentAddress}
-                    </span>
-                  </div>
-                )}
-
-                {user.permanentAddress && user.permanentAddress.trim().toLowerCase() !== 'not scraped' && (
-                  <div className="py-2.5 flex flex-col gap-1 border-b border-gray-100 dark:border-white/5 last:border-0">
-                    <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">Permanent Address</span>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 break-words">
-                      {user.permanentAddress}
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
 
