@@ -1,4 +1,4 @@
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -7,12 +7,13 @@ const convertToPdf = (inputPath, outputDir) => {
   return new Promise(async (resolve, reject) => {
     const ext = path.extname(inputPath).toLowerCase();
     if (ext === '.pdf') {
-      return resolve(inputPath); 
+      return resolve(inputPath);
     }
 
-    
-    let sofficePath = 'soffice'; 
-    
+    // Resolve the LibreOffice binary WITHOUT surrounding quotes: execFile passes
+    // it as a single argv[0], so quoting would become part of the path.
+    let sofficePath = 'soffice';
+
     if (process.platform === 'win32') {
       const winPaths = [
         'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
@@ -20,27 +21,29 @@ const convertToPdf = (inputPath, outputDir) => {
       ];
       for (const p of winPaths) {
         if (fs.existsSync(p)) {
-          sofficePath = `"${p}"`;
+          sofficePath = p;
           break;
         }
       }
     }
 
-    
+
     if (process.env.LIBREOFFICE_PATH) {
-      sofficePath = `"${process.env.LIBREOFFICE_PATH}"`;
+      sofficePath = process.env.LIBREOFFICE_PATH;
     }
 
-    
+
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    const command = `${sofficePath} --headless --convert-to pdf --outdir "${outputDir}" "${inputPath}"`;
-    
-    console.log(`[DOC_CONVERTER] Attempting local LibreOffice conversion: ${command}`);
-    
-    exec(command, async (error, stdout, stderr) => {
+    // execFile with an argument array: no shell is spawned, so shell
+    // metacharacters in inputPath/outputDir (filenames) cannot inject commands.
+    const args = ['--headless', '--convert-to', 'pdf', '--outdir', outputDir, inputPath];
+
+    console.log(`[DOC_CONVERTER] Attempting local LibreOffice conversion: ${sofficePath} ${args.join(' ')}`);
+
+    execFile(sofficePath, args, { timeout: 120000 }, async (error, stdout, stderr) => {
       const inputBasename = path.basename(inputPath, ext);
       const expectedPdfPath = path.join(outputDir, `${inputBasename}.pdf`);
 

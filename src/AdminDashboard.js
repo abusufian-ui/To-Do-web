@@ -2487,27 +2487,33 @@ const AdminDashboard = ({ currentUser }) => {
   // ── PIN Lock ──────────────────────────────────────────────────────────────
   if (!isUnlocked) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-[#0A0A0A] relative overflow-hidden animate-fadeIn">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-900/20 rounded-full blur-[100px] animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-900/10 rounded-full blur-[100px] animate-pulse delay-1000"></div>
-        <div className={`relative z-10 w-full max-w-sm p-8 rounded-3xl bg-black/40 backdrop-blur-xl border border-[#222] shadow-2xl flex flex-col items-center ${pinError ? 'animate-shake border-red-500/50' : ''}`}>
+      <div className="h-full w-full flex items-center justify-center bg-gray-50 dark:bg-[#0A0A0A] relative overflow-hidden animate-fadeIn">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-200/40 dark:bg-red-900/20 rounded-full blur-[100px] animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-200/30 dark:bg-blue-900/10 rounded-full blur-[100px] animate-pulse delay-1000"></div>
+        <div className={`relative z-10 w-full max-w-sm p-8 rounded-3xl bg-white dark:bg-black/40 backdrop-blur-xl border border-gray-200 dark:border-[#222] shadow-2xl flex flex-col items-center ${pinError ? 'animate-shake border-red-500/50' : ''}`}>
           <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mb-6 border border-red-500/20">
             <ShieldAlert size={36} className="text-red-500" />
           </div>
-          <h2 className="text-2xl font-black text-white mb-2">Restricted Access</h2>
-          <p className="text-gray-400 text-sm text-center mb-8">Enter your 4-digit security PIN to access the Admin Control Panel.</p>
+          <h2 className="text-2xl font-black text-gray-900 dark:text-white mb-2">Restricted Access</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm text-center mb-8">Enter your 4-digit security PIN to access the Admin Control Panel.</p>
           <div className="flex gap-4 mb-8">
             {pinInput.map((d, i) => (
               <input key={i} ref={lockRefs[i]} type="password" maxLength={1} value={d} autoComplete="new-password" name={`admin-pin-${i}`}
                 onChange={e => handleLockPinChange(i, e.target.value)}
                 onKeyDown={e => handleLockKeyDown(i, e)}
-                className={`w-14 h-16 text-center text-2xl font-black bg-[#121212] border-2 rounded-xl outline-none text-white ${d ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-[#333] focus:border-red-500/50'} ${pinError ? 'border-red-600 bg-red-950/20 text-red-500' : ''}`}
+                className={`w-14 h-16 text-center text-2xl font-black bg-gray-50 dark:bg-[#121212] border-2 rounded-xl outline-none text-gray-900 dark:text-white ${d ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-gray-200 dark:border-[#333] focus:border-red-500/50'} ${pinError ? 'border-red-600 bg-red-50 dark:bg-red-950/20 text-red-500' : ''}`}
                 autoFocus={i === 0} />
             ))}
           </div>
           <button onClick={() => verifyPin(pinInput.join(''))} disabled={pinInput.some(v => v === '') || isPinLoading}
-            className="w-full py-4 rounded-xl font-bold bg-white hover:bg-gray-100 text-black transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-            {isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-black border-t-transparent rounded-full"></span> : <><Lock size={18} /> Authorize Access</>}
+            className="w-full py-4 rounded-xl font-bold bg-gray-900 hover:bg-gray-800 text-white dark:bg-white dark:hover:bg-gray-100 dark:text-black transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+            {isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full"></span> : <><Lock size={18} /> Authorize Access</>}
+          </button>
+          <button
+            onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.href = '/login'; }}
+            className="mt-4 text-xs font-semibold text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+          >
+            Forgot PIN? Log out
           </button>
         </div>
         <style>{`@keyframes shake{0%,100%{transform:translateX(0)}10%,30%,50%,70%,90%{transform:translateX(-5px)}20%,40%,60%,80%{transform:translateX(5px)}}.animate-shake{animation:shake .4s ease-in-out}`}</style>

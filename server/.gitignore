@@ -1,0 +1,22 @@
+# Secrets & environment
+.env
+.env.*
+
+# Runtime browser profiles (contain cookies/session data — never commit)
+session_data/
+
+# User-uploaded media (PII)
+media/
+
+# Local one-off / debugging scripts (may embed real user data or credentials)
+scratch/
+
+# Route dumps / misc local artifacts
+routes_list.txt
+routes_list_utf8.txt
+
+# Logs
+*.log
+npm-debug.log*
+
+node_modules/

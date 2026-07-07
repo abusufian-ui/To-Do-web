@@ -37,6 +37,7 @@ const ToastComponent = forwardRef((props, ref) => {
           initial={{ opacity: 0, y: -50, scale: 0.9, x: '-50%' }}
           animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
           exit={{ opacity: 0, y: -20, scale: 0.9, x: '-50%' }}
+          className="custom-toast"
           style={{
             position: 'fixed',
             top: 24,
@@ -44,12 +45,8 @@ const ToastComponent = forwardRef((props, ref) => {
             zIndex: 99999,
             display: 'flex',
             alignItems: 'center',
-            background: '#111',
-            border: '1px solid #333',
             padding: '16px 24px',
             borderRadius: '16px',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-            color: '#fff',
             minWidth: '300px',
             maxWidth: '90vw',
             fontFamily: 'Inter, sans-serif'
@@ -61,7 +58,7 @@ const ToastComponent = forwardRef((props, ref) => {
           
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <span style={{ fontWeight: 800, fontSize: 15 }}>{toast.title}</span>
-            {toast.message && <span style={{ color: '#aaa', fontSize: 13, marginTop: 4 }}>{toast.message}</span>}
+            {toast.message && <span className="custom-toast-message" style={{ fontSize: 13, marginTop: 4 }}>{toast.message}</span>}
           </div>
         </motion.div>
       )}

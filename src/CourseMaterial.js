@@ -337,7 +337,8 @@ const CourseMaterial = ({
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); downloadCourseFolderZip(course); }}
-                  className={`absolute right-3 p-2 rounded-xl transition-all opacity-0 group-hover:opacity-100 ${
+                  disabled={downloading}
+                  className={`absolute right-3 p-2 rounded-xl transition-all opacity-0 group-hover:opacity-100 disabled:opacity-40 disabled:cursor-not-allowed ${
                     isActive 
                       ? 'text-white/80 hover:text-white hover:bg-white/10' 
                       : 'text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-[#1A1A1E]'
@@ -407,22 +408,43 @@ const CourseMaterial = ({
             })()}
 
             {}
-            {zipProgress && (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600 dark:text-emerald-400 text-sm space-y-2">
-                <div className="flex items-center space-x-3">
-                  <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
-                  <span className="font-bold">
-                    Preparing download zip: {zipProgress.processed} / {zipProgress.total} files processed
-                  </span>
+            {zipProgress && (() => {
+              const pct = zipProgress.total > 0 ? Math.min(100, Math.round((zipProgress.processed / zipProgress.total) * 100)) : 0;
+              return (
+                <div className="relative overflow-hidden p-5 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 dark:from-blue-500/10 dark:to-indigo-500/10 border border-blue-500/25 dark:border-blue-500/30 rounded-3xl shadow-lg space-y-4 animate-fadeIn shrink-0">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0 border border-blue-500/25">
+                        <Loader2 className="w-6 h-6 animate-spin text-brand-blue" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-gray-900 dark:text-white leading-tight">
+                          Downloading & Packing files...
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">
+                          Fetching files directly from secure storage
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-lg font-black text-brand-blue font-mono">{pct}%</span>
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 font-bold">
+                        {zipProgress.processed} of {zipProgress.total} done
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="w-full bg-gray-100 dark:bg-slate-800/80 rounded-full h-3 overflow-hidden p-[2px] border border-gray-200/20 shadow-inner">
+                      <div
+                        className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-300 ease-out shadow-sm"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                  <div 
-                    className="bg-emerald-50 h-full rounded-full transition-all duration-300 ease-out" 
-                    style={{ width: `${(zipProgress.processed / zipProgress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {}
             {filteredMaterials.length > 0 && (
@@ -474,9 +496,9 @@ const CourseMaterial = ({
                   <h4 className="font-bold text-gray-850 dark:text-slate-200 text-base">Course Materials</h4>
                   <p className="text-xs text-gray-400 font-mono">Section {sectionCode || 'N/A'} • Automated Sync</p>
                 </div>
-                {status?.lastProcessedAt && (
+                {status?.lastSyncedAt && (
                   <span className="text-xs text-gray-400 font-mono">
-                    Last Synced: {new Date(status.lastProcessedAt).toLocaleTimeString()}
+                    Last Synced: {new Date(status.lastSyncedAt).toLocaleTimeString()}
                   </span>
                 )}
               </div>

@@ -3,14 +3,14 @@ import { Loader2, CheckCircle2, AlertCircle, ArrowRight, RefreshCw, BookOpen } f
 
 const ParallelSyncDashboard = ({ courses, statuses, onClose, onRefresh }) => {
   return (
-    <div className="bg-slate-900/40 p-6 rounded-3xl border border-slate-800/80 space-y-6 max-w-4xl mx-auto shadow-2xl backdrop-blur-xl">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/60 pb-5">
+    <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-gray-200 dark:border-[#2C2C2C] space-y-6 max-w-4xl mx-auto shadow-2xl backdrop-blur-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 dark:border-slate-850 pb-5">
         <div className="space-y-1">
-          <h3 className="text-xl font-extrabold text-white flex items-center gap-2">
-            <BookOpen className="text-purple-400 w-6 h-6 animate-pulse" />
+          <h3 className="text-xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+            <BookOpen className="text-brand-blue dark:text-blue-400 w-6 h-6 animate-pulse" />
             Parallel Course Materials Sync
           </h3>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             Syncing materials for all your courses concurrently. You can view files as they become ready.
           </p>
         </div>
@@ -18,7 +18,7 @@ const ParallelSyncDashboard = ({ courses, statuses, onClose, onRefresh }) => {
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="p-2.5 rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-450 hover:text-white transition border border-slate-800"
+              className="p-2.5 rounded-xl bg-gray-50 dark:bg-slate-850 hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-400 dark:text-slate-450 hover:text-gray-900 dark:hover:text-white transition border border-gray-200 dark:border-slate-800"
               title="Refresh Sync Status"
             >
               <RefreshCw className="w-4 h-4" />
@@ -26,7 +26,7 @@ const ParallelSyncDashboard = ({ courses, statuses, onClose, onRefresh }) => {
           )}
           <button
             onClick={onClose}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold transition shadow-lg shadow-purple-650/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-600 text-white text-sm font-bold transition shadow-lg shadow-blue-500/20"
           >
             <span>Skip to Viewer</span>
             <ArrowRight className="w-4 h-4" />
@@ -48,36 +48,35 @@ const ParallelSyncDashboard = ({ courses, statuses, onClose, onRefresh }) => {
               key={course.code || course._id} 
               className={`p-5 rounded-2xl border transition-all duration-300 ${
                 isProcessing 
-                  ? 'bg-purple-950/10 border-purple-500/20 shadow-lg shadow-purple-950/5' 
+                  ? 'bg-blue-50/50 dark:bg-blue-950/10 border-blue-500/20 shadow-lg shadow-blue-950/5' 
                   : count > 0 
-                    ? 'bg-emerald-950/5 border-emerald-500/10 shadow-lg shadow-emerald-950/5' 
-                    : 'bg-slate-900/20 border-slate-800/80'
+                    ? 'bg-gray-50/50 dark:bg-slate-800/30 border-gray-200 dark:border-blue-500/15' 
+                    : 'bg-gray-50/30 dark:bg-slate-905/20 border-gray-150 dark:border-slate-800/80'
               }`}
             >
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="space-y-1 min-w-0">
-                  <h4 className="font-bold text-slate-100 text-sm truncate" title={course.name}>
+                  <h4 className="font-bold text-gray-800 dark:text-slate-100 text-sm truncate" title={course.name}>
                     {course.name}
                   </h4>
-                  <p className="text-xs font-mono text-slate-505">
+                  <p className="text-xs font-mono text-gray-450 dark:text-slate-500">
                     {course.code} • Section {course.section || 'N/A'}
                   </p>
                 </div>
                 
-                {}
                 <div className="shrink-0">
                   {isProcessing ? (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-400 text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-500 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider animate-pulse">
                       <Loader2 className="w-3 h-3 animate-spin" />
                       Syncing
                     </div>
                   ) : count > 0 ? (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 text-brand-blue dark:text-blue-400 border border-blue-100 dark:border-blue-500/20 text-[10px] font-bold uppercase tracking-wider">
                       <CheckCircle2 className="w-3 h-3" />
                       Ready
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-500 text-[10px] font-bold uppercase tracking-wider">
                       <AlertCircle className="w-3 h-3" />
                       No Files
                     </div>
@@ -85,9 +84,8 @@ const ParallelSyncDashboard = ({ courses, statuses, onClose, onRefresh }) => {
                 </div>
               </div>
 
-              {}
               <div className="space-y-2">
-                <div className="flex justify-between items-center text-xs font-mono text-slate-400">
+                <div className="flex justify-between items-center text-xs font-mono text-gray-550 dark:text-slate-400">
                   <span>
                     {isProcessing 
                       ? `Downloaded: ${completed}/${total} files` 
@@ -97,18 +95,18 @@ const ParallelSyncDashboard = ({ courses, statuses, onClose, onRefresh }) => {
                     }
                   </span>
                   {isProcessing && total > 0 && (
-                    <span className="text-purple-400 font-bold">{pct}%</span>
+                    <span className="text-brand-blue dark:text-blue-400 font-bold">{pct}%</span>
                   )}
                 </div>
 
-                <div className="w-full bg-slate-950/60 rounded-full h-2 overflow-hidden border border-slate-900">
+                <div className="w-full bg-gray-100 dark:bg-slate-950/60 rounded-full h-2 overflow-hidden border border-gray-200/50 dark:border-slate-900">
                   <div 
                     className={`h-full rounded-full transition-all duration-500 ease-out ${
                       isProcessing 
-                        ? 'bg-gradient-to-r from-purple-500 to-indigo-500 animate-pulse' 
+                        ? 'bg-gradient-to-r from-blue-500 to-indigo-500 animate-pulse' 
                         : count > 0 
-                          ? 'bg-emerald-500' 
-                          : 'bg-slate-800'
+                          ? 'bg-brand-blue' 
+                          : 'bg-gray-200 dark:bg-slate-800'
                     }`}
                     style={{ width: `${isProcessing ? (total > 0 ? pct : 5) : (count > 0 ? 100 : 0)}%` }}
                   />

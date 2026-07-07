@@ -31,7 +31,7 @@ const parseSemesterFromCourseCode = (courseCode) => {
 
 
 async function fetchWithTimeout(resource, options = {}) {
-    const { timeout = 15000 } = options; 
+    const { timeout = 25000 } = options; 
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     try {

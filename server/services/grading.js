@@ -43,8 +43,9 @@ function getSmartCurveGrade(myScore, classAverage) {
  * Calculate the true score of a student including Best-N configs
  * @param {Array} assessments 
  * @param {Object} bestOfConfigs 
+ * @param {string|null} courseId
  */
-function calculateTrueScore(assessments, bestOfConfigs = {}) {
+function calculateTrueScore(assessments, bestOfConfigs = {}, courseId = null) {
   let totalMarkedWeight = 0;
   let totalEarnedWeight = 0;
   
@@ -53,7 +54,10 @@ function calculateTrueScore(assessments, bestOfConfigs = {}) {
     let finalPct = parseFloat(cat.percentage) || 0;
     
     const catNameLower = (cat.name || '').toLowerCase();
-    const bestOfLimit = bestOfConfigs[catNameLower];
+    const configKey = courseId ? `${courseId.toString()}_${catNameLower}` : null;
+    const bestOfLimit = (configKey && bestOfConfigs[configKey] !== undefined)
+      ? bestOfConfigs[configKey]
+      : bestOfConfigs[catNameLower];
     
     const isConfigurable = /assignment|quiz|participation|lab/i.test(cat.name || "");
     const validDetails = cat.details?.filter(d => !isNaN(parseFloat(d.obtainedMarks)) && !isNaN(parseFloat(d.maxMarks))) || [];
@@ -80,8 +84,9 @@ function calculateTrueScore(assessments, bestOfConfigs = {}) {
  * Calculate the class average score for a course including Best-N configs
  * @param {Array} assessments 
  * @param {Object} bestOfConfigs 
+ * @param {string|null} courseId
  */
-function calculateClassAverageScore(assessments, bestOfConfigs = {}) {
+function calculateClassAverageScore(assessments, bestOfConfigs = {}, courseId = null) {
   let marked = 0;
   let earnedAvg = 0;
   
@@ -89,7 +94,10 @@ function calculateClassAverageScore(assessments, bestOfConfigs = {}) {
     const w = parseFloat(cat.weight) || 0;
     
     const catNameLower = (cat.name || '').toLowerCase();
-    const bestOfLimit = bestOfConfigs[catNameLower];
+    const configKey = courseId ? `${courseId.toString()}_${catNameLower}` : null;
+    const bestOfLimit = (configKey && bestOfConfigs[configKey] !== undefined)
+      ? bestOfConfigs[configKey]
+      : bestOfConfigs[catNameLower];
     
     const isConfigurable = /assignment|quiz|participation|lab/i.test(cat.name || "");
     const validDetails = cat.details?.filter(d => !isNaN(parseFloat(d.maxMarks)) && d.classAverage && d.classAverage !== '-' && d.classAverage !== '') || [];
@@ -126,11 +134,11 @@ function calculateClassAverageScore(assessments, bestOfConfigs = {}) {
  * @param {Object} bestOfConfigs 
  */
 function getProjectedGradeForCourse(grade, mode = 'relative', bestOfConfigs = {}) {
-  const myScore = calculateTrueScore(grade.assessments, bestOfConfigs).percentage;
+  const myScore = calculateTrueScore(grade.assessments, bestOfConfigs, grade._id).percentage;
   if (mode === 'absolute') {
     return getAbsoluteGrade(myScore);
   } else {
-    const classAvg = calculateClassAverageScore(grade.assessments, bestOfConfigs).percentage;
+    const classAvg = calculateClassAverageScore(grade.assessments, bestOfConfigs, grade._id).percentage;
     return getSmartCurveGrade(myScore, classAvg);
   }
 }
@@ -151,8 +159,8 @@ function computeProjection({ grades, courses, stats, mode = 'relative', bestOfCo
     const cInfo = (courses || []).find(c => c.name === courseName);
     const creditHours = cInfo ? (cInfo.creditHours || 3) : 3; // default 3
     
-    const trueScore = calculateTrueScore(courseGrade.assessments, bestOfConfigs).percentage;
-    const classAverage = calculateClassAverageScore(courseGrade.assessments, bestOfConfigs).percentage;
+    const trueScore = calculateTrueScore(courseGrade.assessments, bestOfConfigs, courseGrade._id).percentage;
+    const classAverage = calculateClassAverageScore(courseGrade.assessments, bestOfConfigs, courseGrade._id).percentage;
     
     const proj = getProjectedGradeForCourse(courseGrade, mode, bestOfConfigs);
     

@@ -20,6 +20,8 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
+const { JWT_SECRET, JWT_ALG } = require('./config/secrets');
+const auth = require('./Middleware/auth');
 
 
 const { 
@@ -314,10 +316,47 @@ async function sendPush(user, title, body, data = {}, categoryId = "smart-alert"
 
 const otpSchema = new mongoose.Schema({
   email: { type: String, required: true },
-  code: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now, expires: 300 }
+  codeHash: { type: String, required: true }, // bcrypt hash of the 6-digit code — never store plaintext
+  attempts: { type: Number, default: 0 },     // failed verification attempts (brute-force lockout)
+  createdAt: { type: Date, default: Date.now, expires: 300 } // 5-min TTL
 });
 const OTP = mongoose.model('OTP', otpSchema);
+
+const OTP_MAX_ATTEMPTS = 5;
+
+// Generate a cryptographically-random 6-digit code, store only its hash, and
+// return the plaintext so the caller can email it. Resetting createdAt renews
+// the TTL on resend.
+async function createOtp(email) {
+  const code = crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+  const codeHash = await bcrypt.hash(code, 10);
+  await OTP.findOneAndUpdate(
+    { email },
+    { codeHash, attempts: 0, createdAt: new Date() },
+    { upsert: true, new: true }
+  );
+  return code;
+}
+
+// Verify a submitted code. Increments the attempt counter on failure and locks
+// out after OTP_MAX_ATTEMPTS. Does NOT consume the code (callers that complete a
+// flow should call consumeOtp on success).
+async function verifyOtp(email, submitted) {
+  const rec = await OTP.findOne({ email });
+  if (!rec) return false;
+  if (rec.attempts >= OTP_MAX_ATTEMPTS) return false;
+  const ok = await bcrypt.compare(String(submitted).trim(), rec.codeHash || '');
+  if (!ok) {
+    rec.attempts = (rec.attempts || 0) + 1;
+    await rec.save();
+    return false;
+  }
+  return true;
+}
+
+async function consumeOtp(email) {
+  await OTP.deleteOne({ email });
+}
 
 const parseSemesterAndSectionFromCode = (fullCode) => {
   if (!fullCode) return { semester: '', section: '' };
@@ -364,7 +403,13 @@ const getBaseUrl = (req) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    // isOriginAllowed is defined later in this module but only invoked at
+    // connection time, so the reference resolves correctly at runtime.
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   }
 });
@@ -404,9 +449,30 @@ const allowedOrigins = [
   'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof'
 ];
 
+// Allow additional origins at deploy time without a code change (comma-separated).
+const extraOrigins = (process.env.EXTRA_CORS_ORIGINS || '')
+  .split(',').map(o => o.trim()).filter(Boolean);
+const corsAllowList = new Set([
+  ...allowedOrigins,
+  'https://web.myportalucp.online',
+  'https://api.myportalucp.online',
+  ...extraOrigins,
+]);
+
+const isOriginAllowed = (origin) => {
+  // No Origin header => native mobile app / server-to-server / curl. These are
+  // not browser cross-site requests, so they are not a CORS threat.
+  if (!origin) return true;
+  if (corsAllowList.has(origin)) return true;
+  // Any browser extension packaged for this project.
+  if (origin.startsWith('chrome-extension://')) return true;
+  return false;
+};
+
 const corsOptions = {
   origin: function (origin, callback) {
-    callback(null, true);
+    if (isOriginAllowed(origin)) return callback(null, true);
+    return callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-sync-token', 'x-chunk-index', 'x-total-chunks'],
@@ -462,17 +528,10 @@ app.use((req, res, next) => {
   next();
 });
 
-const auth = (req, res, next) => {
-  const token = req.header('x-auth-token');
-  if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
-  try {
-    const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
-    req.user = decoded;
-    next();
-  } catch (e) {
-    res.status(401).json({ message: 'Token is not valid' });
-  }
-};
+// NOTE: `auth` is now the hardened middleware imported from ./Middleware/auth
+// at the top of this file. It enforces active-session (revocation) and
+// isBlocked checks in addition to verifying the JWT. The previous lightweight
+// inline definition was removed because it silently bypassed those controls.
 
 const adminAuth = async (req, res, next) => {
   try {
@@ -1125,8 +1184,7 @@ app.post('/api/web/send-otp', authLimiter, async (req, res) => {
 
     if (!user) return res.status(404).json({ message: "Account not found." });
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email: formattedEmail }, { code }, { upsert: true, new: true });
+    const code = await createOtp(formattedEmail);
 
     const subject = type === 'setup' ? 'Set up your Web Portal Password' : 'Reset your Web Portal Password';
     const msg = type === 'setup'
@@ -1154,10 +1212,9 @@ app.post('/api/web/verify-otp', authLimiter, async (req, res) => {
     }
     if (!email) return res.status(400).json({ message: "Email is required." });
     const formattedEmail = email.toLowerCase().trim();
-    const otpCode = String(otp).trim();
 
-    const validOtp = await OTP.findOne({ email: formattedEmail, code: otpCode });
-    if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
+    const isValid = await verifyOtp(formattedEmail, otp);
+    if (!isValid) return res.status(400).json({ message: "Invalid or expired OTP." });
 
     res.json({ success: true, message: "OTP verified." });
   } catch (err) {
@@ -1174,16 +1231,16 @@ app.post('/api/web/set-password', authLimiter, async (req, res) => {
     if (!email) return res.status(400).json({ message: "Email is required." });
     const formattedEmail = email.toLowerCase().trim();
 
-    const validOtp = await OTP.findOne({ email: formattedEmail, code: otp });
-    if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP." });
+    const isValid = await verifyOtp(formattedEmail, otp);
+    if (!isValid) return res.status(400).json({ message: "Invalid or expired OTP." });
 
     const user = await User.findOne({ email: formattedEmail });
     if (!user) return res.status(404).json({ message: "Account not found." });
     user.webPassword = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
     await user.save();
-    await OTP.deleteOne({ email: formattedEmail });
+    await consumeOtp(formattedEmail);
 
-    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
 
     res.json({
       token,
@@ -1232,7 +1289,7 @@ app.get('/api/web/check-sync-status', async (req, res) => {
     // that actually logged in differs from the roll number the user typed.
     const token = jwt.sign(
       { id: user.id, isTempSyncAuth: true },
-      process.env.REACT_APP_JWT_SECRET || 'secret_key_123',
+      JWT_SECRET,
       { expiresIn: '10m' }
     );
     const detectedRoll = (user.portalId || (user.email ? user.email.split('@')[0] : '')).toUpperCase();
@@ -1263,7 +1320,7 @@ app.post('/api/web/set-password-via-sync', authLimiter, async (req, res) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(authHeader, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
+      decoded = jwt.verify(authHeader, JWT_SECRET);
     } catch (jwtErr) {
       return res.status(401).json({ message: "Sync session expired or invalid." });
     }
@@ -1280,7 +1337,7 @@ app.post('/api/web/set-password-via-sync', authLimiter, async (req, res) => {
     user.webPassword = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
     await user.save();
 
-    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d' });
     await registerDeviceSession(user.id, token, req, resend);
 
     res.json({
@@ -1321,7 +1378,7 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
       return res.status(400).json({ message: "Incorrect password." });
     }
 
-    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
     await registerDeviceSession(user.id, token, req, resend);
     res.json({
       token,
@@ -2259,7 +2316,7 @@ app.post('/api/force-server-sync', auth, async (req, res) => {
 
         const jwt = require('jsonwebtoken');
         const axios = require('axios');
-        const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
+        const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '1h' });
         const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
         
         await axios.post(syncUrl, scrapedPayload, {
@@ -3369,8 +3426,7 @@ app.post('/api/admin/verify-pin', auth, adminAuth, async (req, res) => {
 app.post('/api/admin/request-pin-otp', auth, adminAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email: user.email }, { code }, { upsert: true, new: true });
+    const code = await createOtp(user.email);
     await resend.emails.send({
       from: 'MyPortal <otp@myportalucp.online>',
       to: user.email,
@@ -3383,8 +3439,8 @@ app.post('/api/admin/request-pin-otp', auth, adminAuth, async (req, res) => {
 app.put('/api/admin/change-pin', auth, adminAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!(await OTP.findOne({ email: user.email, code: req.body.otp }))) return res.status(400).json({ message: "Invalid OTP" });
-    user.adminPin = req.body.newPin; await user.save(); await OTP.deleteOne({ email: user.email });
+    if (!(await verifyOtp(user.email, req.body.otp))) return res.status(400).json({ message: "Invalid OTP" });
+    user.adminPin = req.body.newPin; await user.save(); await consumeOtp(user.email);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ message: "Error" }); }
 });
@@ -3733,8 +3789,7 @@ app.post('/api/send-otp', async (req, res) => {
       return res.status(400).json({ message: "Email must be a string." });
     }
     if (await User.findOne({ email })) return res.status(400).json({ message: "Registered" });
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
+    const code = await createOtp(email);
     await resend.emails.send({
       from: 'MyPortal <otp@myportalucp.online>',
       to: email,
@@ -3751,12 +3806,11 @@ app.post('/api/register', async (req, res) => {
     if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || (typeof otp !== 'string' && typeof otp !== 'number')) {
       return res.status(400).json({ message: "Invalid input types." });
     }
-    const otpCode = String(otp).trim();
-    if (!(await OTP.findOne({ email, code: otpCode }))) return res.status(400).json({ message: "Invalid OTP" });
+    if (!(await verifyOtp(email, otp))) return res.status(400).json({ message: "Invalid OTP" });
     if (await User.findOne({ email })) return res.status(400).json({ message: 'Exists' });
     const user = new User({ name, email, password: await bcrypt.hash(password, await bcrypt.genSalt(10)), isAdmin: email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() });
-    await user.save(); await OTP.deleteOne({ email });
-    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+    await user.save(); await consumeOtp(email);
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
     await registerDeviceSession(user.id, token, req, resend);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin } });
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -3771,7 +3825,7 @@ app.post('/api/login', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ message: 'Invalid credentials' });
     if (user.isBlocked) return res.status(503).json({ message: 'Network Error: Timeout communicating with identity provider.' });
-    const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
     await registerDeviceSession(user.id, token, req, resend);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
   } catch (err) { res.status(500).json({ message: err.message }); }
@@ -4157,23 +4211,18 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       return res.status(503).json({ error: 'Network Error: Timeout communicating with identity provider.' });
     }
 
+    // Strict validation: new registrations must have profile picture fetched from Horizon portal
+    if (!user && (!profilePic || !profilePic.includes('base64'))) {
+      return res.status(400).json({ error: 'Profile picture must be fetched from the horizon portal to register.' });
+    }
+
     let finalProfilePicUrl = user ? user.profilePic : null;
+    let shouldUploadPic = false;
+    let base64Data = null;
 
     if (profilePic && profilePic.includes('base64')) {
-      try {
-        const base64Data = profilePic; 
-
-        
-        const uploadResponse = await cloudinary.uploader.upload(base64Data, {
-          folder: 'myportal/avatars',
-          public_id: `portal_profile_${formattedRoll}_${Date.now()}`,
-          transformation: [{ width: 500, height: 500, crop: 'limit' }]
-        });
-
-        finalProfilePicUrl = uploadResponse.secure_url;
-      } catch (imgErr) {
-        console.error('[CLOUDINARY SAVE ERROR]:', imgErr.message);
-      }
+      shouldUploadPic = true;
+      base64Data = profilePic;
     }
 
     let isNewUser = false;
@@ -4214,6 +4263,39 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       await user.save();
     }
 
+    if (shouldUploadPic && base64Data) {
+      const userId = user._id;
+      try {
+        if (!process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_SECRET) {
+          console.warn(`[CLOUDINARY] Warning: Cloudinary is not configured. Skipping profile pic upload for user ${userId}.`);
+        } else {
+          cloudinary.uploader.upload(base64Data, {
+            folder: 'myportal/avatars',
+            public_id: `portal_profile_${formattedRoll}_${Date.now()}`,
+            transformation: [{ width: 500, height: 500, crop: 'limit' }]
+          }).then(async (uploadResponse) => {
+            const url = uploadResponse.secure_url;
+            const userToUpdate = await User.findById(userId);
+            if (userToUpdate) {
+              userToUpdate.portalProfilePic = url;
+              if (!userToUpdate.originalPortalProfilePic) {
+                userToUpdate.originalPortalProfilePic = url;
+              }
+              if (userToUpdate.showProfilePicToCommunity === true && !userToUpdate.customProfilePic) {
+                userToUpdate.profilePic = url;
+              }
+              await userToUpdate.save();
+              console.log(`[CLOUDINARY] Background upload success for ${userToUpdate.email}`);
+            }
+          }).catch(err => {
+            console.error('[CLOUDINARY SAVE ERROR] (Background):', err.message || err);
+          });
+        }
+      } catch (uploadErr) {
+        console.error('[CLOUDINARY UPLOAD INITIATION ERROR]:', uploadErr.message || uploadErr);
+      }
+    }
+
     if (ucpCookie) {
       setTimeout(() => {
         processUserMaterials(user._id.toString(), ucpCookie)
@@ -4223,7 +4305,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 
     const payload = { id: user.id };
 
-    jwt.sign(payload, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '30d' }, async (err, token) => {
+    jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' }, async (err, token) => {
       if (err) throw err;
       await registerDeviceSession(user.id, token, req, resend);
       res.json({
@@ -4240,7 +4322,7 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('[MICROSOFT LOGIN ERROR]:', err.message);
+    console.error('[MICROSOFT LOGIN ERROR]:', err.stack || err.message || err);
     res.status(500).send('Server Error');
   }
 });
@@ -4251,8 +4333,7 @@ app.post('/api/forgot-password', async (req, res) => {
       return res.status(400).json({ message: "Email must be a string." });
     }
     if (!(await User.findOne({ email }))) return res.status(400).json({ message: "No account found" });
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await OTP.findOneAndUpdate({ email }, { code }, { upsert: true, new: true });
+    const code = await createOtp(email);
     await resend.emails.send({
       from: 'MyPortal <otp@myportalucp.online>',
       to: email,
@@ -4269,11 +4350,10 @@ app.post('/api/reset-password', async (req, res) => {
     if (typeof email !== 'string' || (typeof otp !== 'string' && typeof otp !== 'number') || typeof newPassword !== 'string') {
       return res.status(400).json({ message: "Invalid input types." });
     }
-    const otpCode = String(otp).trim();
-    if (!(await OTP.findOne({ email, code: otpCode }))) return res.status(400).json({ message: "Invalid OTP" });
+    if (!(await verifyOtp(email, otp))) return res.status(400).json({ message: "Invalid OTP" });
     const user = await User.findOne({ email });
     user.password = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
-    await user.save(); await OTP.deleteOne({ email });
+    await user.save(); await consumeOtp(email);
     res.json({ message: "Password updated" });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -5675,7 +5755,7 @@ const runTieredSync = async (mode, logName) => {
         scrapedPayload.syncLogId = syncLog._id.toString();
 
         
-        const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
+        const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '1h' });
         const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
         
         await axios.post(syncUrl, scrapedPayload, {
@@ -5815,7 +5895,7 @@ app.post('/api/sync-grades', auth, async (req, res) => {
       const scrapedPayload = await scrapeServerSide(user.ucpCookie, 'FULL', user.portalId);
       scrapedPayload.syncLogId = syncLog._id.toString();
 
-      const token = jwt.sign({ id: user.id }, process.env.REACT_APP_JWT_SECRET || 'secret_key_123', { expiresIn: '1h' });
+      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '1h' });
       const syncUrl = `http://127.0.0.1:${process.env.PORT || 5000}/api/extension-sync`;
       
       await axios.post(syncUrl, scrapedPayload, {
@@ -5853,18 +5933,39 @@ app.post('/api/sync-grades', auth, async (req, res) => {
 
 
 
+// Normalize a course code for tolerant comparison (strip spaces/dashes, upper).
+const normCode = (s) => (s || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// A user may access shared course material if they are admin, they own this
+// document, or they are enrolled in the same course (have a matching Course).
+async function canAccessCourseMaterial(userId, file) {
+  if (file.userId && file.userId.toString() === userId) return true;
+  const user = await User.findById(userId).select('isAdmin').lean();
+  if (user && user.isAdmin) return true;
+  const target = normCode(file.courseCode);
+  if (!target) return false;
+  const courses = await Course.find({ userId }).select('code name').lean();
+  return courses.some(c => normCode(c.code) === target || normCode(c.name).includes(target));
+}
+
 app.get('/api/course-material/download/:fileId', async (req, res) => {
   try {
     const token = req.header('x-auth-token') || req.query.token;
     if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
 
-    jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALG] });
 
     const file = await CourseMaterial.findById(req.params.fileId).lean();
     if (!file || !file.b2Key) {
       return res.status(404).json({ message: 'File not found.' });
     }
-    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300, file.fileName || file.normalizedFileName); 
+
+    // Authorization (BOLA/IDOR prevention): the caller must be entitled to this file.
+    if (!(await canAccessCourseMaterial(decoded.id, file))) {
+      return res.status(403).json({ message: 'You are not authorized to access this file.' });
+    }
+
+    const signedUrl = await getSignedDownloadUrl(file.b2Key, 300, file.fileName || file.normalizedFileName);
     res.redirect(signedUrl);
   } catch (err) {
     console.error('[API] download redirect error:', err.message);
@@ -5878,11 +5979,19 @@ app.get('/api/submission/download/:submissionId/:taskId', async (req, res) => {
     const token = req.header('x-auth-token') || req.query.token;
     if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
 
-    jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123');
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALG] });
 
     const submission = await Submission.findById(req.params.submissionId);
     if (!submission) {
       return res.status(404).json({ message: 'Submission not found.' });
+    }
+
+    // Authorization: submissions are personal — only the owner (or an admin) may download.
+    if (submission.userId.toString() !== decoded.id) {
+      const requester = await User.findById(decoded.id).select('isAdmin').lean();
+      if (!requester || !requester.isAdmin) {
+        return res.status(403).json({ message: 'You are not authorized to access this file.' });
+      }
     }
 
     const task = submission.tasks.id(req.params.taskId);

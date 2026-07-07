@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const DeviceSession = require('../models/DeviceSession');
+const { JWT_SECRET, JWT_ALG } = require('../config/secrets');
 const { parseUserAgent, getIpLocation, getClientIp, registerDeviceSession } = require('../utils/sessionHelper');
 
 const auth = async (req, res, next) => {
@@ -9,7 +10,7 @@ const auth = async (req, res, next) => {
   if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
 
   try {
-    const decoded = jwt.verify(token, process.env.REACT_APP_JWT_SECRET || 'secret_key_123'); 
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALG] });
     req.user = decoded; 
 
     const userId = decoded.id; 

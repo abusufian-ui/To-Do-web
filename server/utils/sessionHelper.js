@@ -82,7 +82,26 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
 
     const location = await getIpLocation(ip);
 
-    const session = new DeviceSession({
+    // Dedup: a re-login from the same device/browser/IP replaces its existing
+    // active session (new token, refreshed activity) instead of stacking a
+    // duplicate entry in the "Active Devices" list.
+    let session = await DeviceSession.findOne({
+      userId,
+      userAgent: ua,
+      ipAddress: ip,
+      isActive: true
+    });
+
+    if (session) {
+      session.tokenSignature = tokenSignature;
+      session.location = location;
+      session.lastActiveAt = new Date();
+      await session.save();
+      console.log(`🔐 Refreshed existing session for user ${userId} on ${os} (${browser})`);
+      return session;
+    }
+
+    session = new DeviceSession({
       userId,
       tokenSignature,
       deviceType,
@@ -94,7 +113,7 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
       lastActiveAt: new Date(),
       isActive: true
     });
-    
+
     await session.save();
     console.log(`🔐 Registered session for user ${userId} on ${os} (${browser})`);
 

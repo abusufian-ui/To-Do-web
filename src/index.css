@@ -50,3 +50,76 @@
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(107, 114, 128, 0.6);
 }
+
+/* Caret color fix for inputs and editors (Bright / Dark modes) */
+:root:not(.dark) input, 
+:root:not(.dark) textarea, 
+:root:not(.dark) select, 
+:root:not(.dark) [contenteditable="true"], 
+:root:not(.dark) .ProseMirror,
+:root:not(.dark) .monaco-editor textarea {
+  caret-color: #0f172a !important; /* Dark caret for bright mode */
+}
+
+.dark input, 
+.dark textarea, 
+.dark select, 
+.dark [contenteditable="true"], 
+.dark .ProseMirror,
+.dark .monaco-editor textarea {
+  caret-color: #ffffff !important; /* White caret for dark mode */
+}
+
+/* Better high-contrast hover effects for bright mode (does not affect dark mode) */
+:root:not(.dark) .hover\:bg-gray-50:hover {
+  background-color: #f1f5f9 !important; /* Slate-100 instead of white */
+}
+
+:root:not(.dark) .hover\:bg-gray-100:hover {
+  background-color: #e2e8f0 !important; /* Slate-200 instead of light grey */
+}
+
+:root:not(.dark) .hover\:bg-gray-200:hover {
+  background-color: #cbd5e1 !important; /* Slate-300 */
+}
+
+/* Premium Adaptive Toast Styles */
+.custom-toast {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark .custom-toast {
+  background-color: #1E1E1E !important; /* Native dark surface color */
+  color: #ffffff !important;
+  border: 1px solid #2C2C2C !important; /* Native dark border color */
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Enforce pointer cursor on labels to prevent white/invisible text cursor */
+label, .control-label, .form-label, span.label-text {
+  cursor: pointer !important;
+}
+
+.custom-toast-message {
+  color: #64748b !important;
+}
+
+.dark .custom-toast-message {
+  color: #94a3b8 !important;
+}
+
+/* Line Clamp Fallback */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* UCP Logo Visibility in Bright Mode */
+:root:not(.dark) .ucp-logo-svg:not([class*="text-"]):not([fill*="#"]):not([color*="#"]) {
+  color: #1e293b !important; /* Force high contrast dark slate in bright mode if no text-color/color is passed */
+}

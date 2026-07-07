@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const FloatingBackground = () => {
+const FloatingBackground = ({ isDarkMode = true }) => {
   
   const icons = [
     
@@ -52,8 +52,8 @@ const FloatingBackground = () => {
       {floatingElements.map((el, index) => (
         <motion.div
           key={index}
-          className="absolute text-white"
-          style={{ left: el.x, top: el.y, opacity: el.opacity }}
+          className={`absolute ${isDarkMode ? 'text-white' : 'text-slate-800'}`}
+          style={{ left: el.x, top: el.y, opacity: isDarkMode ? el.opacity : el.opacity * 1.8 }}
           animate={{
             y: [0, -40, 0], 
             x: [0, 20, 0],  

@@ -393,7 +393,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
 
                     {}
                     <div className="flex justify-between items-start gap-4 mb-3">
-                      <h3 className="font-black text-xl text-gray-900 dark:text-white line-clamp-2 flex-1 min-h-[56px] leading-tight">
+                      <h3 className="font-black text-xl text-gray-900 dark:text-white line-clamp-2 flex-1 min-h-[56px] leading-tight break-all">
                         {note.title || 'Untitled Note'}
                       </h3>
 
@@ -409,7 +409,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
                               <button onClick={(e) => openShareDrawer(e, [note._id])} className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-brand-blue dark:bg-[#252525] dark:hover:bg-brand-blue/20 rounded-lg transition-colors" title="Share">
                                 <Send size={15} />
                               </button>
-                              <button onClick={(e) => togglePrivacy(e, note)} className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-indigo-50 text-gray-400 hover:text-indigo-500 dark:bg-[#252525] dark:hover:bg-indigo-500/20 rounded-lg transition-colors" title={note.isPrivate ? "Make Public" : "Make Private"}>
+                              <button onClick={(e) => togglePrivacy(e, note)} className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-brand-blue dark:bg-[#252525] dark:hover:bg-brand-blue/20 rounded-lg transition-colors" title={note.isPrivate ? "Make Public" : "Make Private"}>
                                 {note.isPrivate ? <Lock size={15} /> : <Globe size={15} />}
                               </button>
                             </div>

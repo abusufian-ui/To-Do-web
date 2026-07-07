@@ -693,38 +693,47 @@ const AdminCourseMaterialsApp = ({ token }) => {
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* NON-BLOCKING DOWNLOAD PROGRESS BANNER */}
         {downloading && (
-          <div className="mx-6 mt-6 p-4 bg-blue-500/10 border border-blue-500/20 dark:border-blue-500/30 rounded-2xl text-blue-600 dark:text-blue-400 text-sm space-y-2.5 shadow-sm animate-fadeIn shrink-0">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <Loader2 className="w-5 h-5 animate-spin text-blue-500 shrink-0" />
-                <div>
-                  <p className="font-black text-gray-900 dark:text-white leading-tight">Creating Zip Archive</p>
-                  <p className="text-[10px] text-gray-400 font-medium">Fetching and packing materials from cloud...</p>
+          <div className="mx-6 mt-6 relative overflow-hidden p-5 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 dark:from-blue-500/10 dark:to-indigo-500/10 border border-blue-500/25 dark:border-blue-500/30 rounded-3xl shadow-lg space-y-4 animate-fadeIn shrink-0">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-11 h-11 rounded-2xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0 border border-blue-500/25">
+                  <Loader2 className="w-6 h-6 animate-spin text-brand-blue" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-gray-900 dark:text-white leading-tight">
+                    Downloading & Packing files...
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">
+                    Fetching files directly from secure storage
+                  </p>
                 </div>
               </div>
               {zipProgress && (
-                <span className="text-xs font-mono font-bold bg-blue-500/10 dark:bg-blue-500/20 px-2.5 py-0.5 rounded-full">
-                  {zipProgress.processed} / {zipProgress.total} Files Packed
-                </span>
+                <div className="text-right shrink-0">
+                  <span className="text-lg font-black text-brand-blue font-mono">
+                    {zipProgress.total > 0 ? Math.min(100, Math.round((zipProgress.processed / zipProgress.total) * 100)) : 0}%
+                  </span>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 font-bold">
+                    {zipProgress.processed} of {zipProgress.total} done
+                  </p>
+                </div>
               )}
             </div>
-            
+
             {zipProgress ? (
-              <div className="space-y-1.5">
-                <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden p-[2px] border border-slate-200/20">
+              <div className="space-y-2">
+                <div className="w-full bg-gray-100 dark:bg-slate-800/80 rounded-full h-3 overflow-hidden p-[2px] border border-gray-200/20 shadow-inner">
                   <div 
-                    className="bg-blue-600 h-full rounded-full transition-all duration-300 ease-out" 
+                    className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-300 ease-out shadow-sm" 
                     style={{ width: `${zipProgress.total > 0 ? (zipProgress.processed / zipProgress.total) * 100 : 0}%` }}
                   />
-                </div>
-                <div className="flex justify-between items-center text-[10px] text-gray-450 dark:text-gray-400 font-semibold">
-                  <span>Progress</span>
-                  <span>{Math.round((zipProgress.total > 0 ? (zipProgress.processed / zipProgress.total) * 100 : 0))}%</span>
                 </div>
               </div>
             ) : (
               <div className="text-xs text-gray-450 dark:text-gray-400 font-medium italic">
-                Initializing job queue...
+                Preparing download urls...
               </div>
             )}
           </div>

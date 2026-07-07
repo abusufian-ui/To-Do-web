@@ -1,16 +1,16 @@
 import React from 'react';
 
-const UCPLogo = ({ className }) => {
+const UCPLogo = ({ className, color, style }) => {
   return (
     <svg 
       id="Layer_1" 
       data-name="Layer 1" 
       xmlns="http://www.w3.org/2000/svg" 
       viewBox="200 200 600 600" 
-      className={className} 
-      fill="currentColor"
-      
-      shapeRendering="geometricPrecision"
+      className={`ucp-logo-svg ${className || ''}`}
+      fill={color || "currentColor"}
+      style={{ color: color || undefined, ...style }}
+      shapeRendering="auto"
       preserveAspectRatio="xMidYMid meet"
     >
       <title>UCP Logo</title>

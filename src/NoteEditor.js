@@ -311,6 +311,11 @@ const EquationBlockNode = ({ node, updateAttributes, deleteNode, editor }) => {
   
   let renderedHtml = '';
   const latexVal = node.attrs.latex || '';
+  // err.message echoes back user-typed LaTeX — it must be HTML-escaped before
+  // being injected via dangerouslySetInnerHTML.
+  const escapeHtml = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   if (!latexVal.trim()) {
     renderedHtml = `<span class="text-gray-400 dark:text-gray-600 italic text-sm select-none">Empty equation. Click to edit.</span>`;
   } else {
@@ -318,9 +323,11 @@ const EquationBlockNode = ({ node, updateAttributes, deleteNode, editor }) => {
       renderedHtml = katex.renderToString(latexVal, {
         throwOnError: false,
         displayMode: true,
+        trust: false,      // never allow \href/\htmlClass etc. to emit raw HTML/URLs
+        maxExpand: 1000,   // bound macro expansion (DoS guard)
       });
     } catch (err) {
-      renderedHtml = `<span class="text-red-500 text-xs font-mono break-all select-none">Error: ${err.message}</span>`;
+      renderedHtml = `<span class="text-red-500 text-xs font-mono break-all select-none">Error: ${escapeHtml(err.message)}</span>`;
     }
   }
 
@@ -1041,7 +1048,7 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
                 onClick={() => { setIsPrivate(!isPrivate); setIsDirty(true); setSaveStatus('Unsaved changes'); }}
                 className={`flex items-center gap-1.5 px-3 h-10 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${
                   isPrivate 
-                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
+                    ? 'bg-brand-blue border-brand-blue text-white shadow-md' 
                     : 'bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333] text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#2C2C2C]'
                 }`}
                 title={isPrivate ? "Make Shared with Workspace Group" : "Make Private"}

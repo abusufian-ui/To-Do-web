@@ -6,13 +6,26 @@ import FloatingBackground from './FloatingBackground';
 import {
     Eye, EyeOff, ArrowLeft, Check, Camera,
     Shield, Sparkles, Award, ExternalLink, RefreshCw,
-    Chrome, HelpCircle, Bell, ArrowRight, AlertTriangle
+    Chrome, HelpCircle, Bell, ArrowRight, AlertTriangle,
+    Sun, Moon
 } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export default function Login() {
     const navigate = useNavigate();
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) return savedTheme === 'dark';
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    });
+
+    const toggleTheme = () => {
+        const newMode = !isDarkMode;
+        setIsDarkMode(newMode);
+        localStorage.setItem('theme', newMode ? 'dark' : 'light');
+        window.dispatchEvent(new Event('storage'));
+    };
     
     // Login & Onboarding steps: EMAIL, PASSWORD, OTP, NEW_PASSWORD, EXTENSION_ONBOARDING, EXTENSION_PROMPT, PREFERENCE_SETUP
     const [step, setStep] = useState('EMAIL'); 
@@ -536,30 +549,40 @@ export default function Login() {
     }, []);
 
     return (
-        <div className="relative min-h-screen bg-black flex items-center justify-center p-4 selection:bg-white/30 transition-colors duration-1000">
+        <div className={`relative min-h-screen ${isDarkMode ? 'bg-black selection:bg-white/30' : 'bg-gray-50 selection:bg-blue-500/20'} flex items-center justify-center p-4 transition-colors duration-1000`}>
             
             {/* Header logo/title */}
             <header className="absolute top-0 left-0 w-full p-6 sm:px-12 flex justify-between items-center z-20">
                 <button onClick={handleGoBack} className="flex items-center gap-3 group outline-none">
-                    <StaticLogo className="w-10 h-10 rounded-full shadow-[0_0_15px_rgba(255,255,255,0.2)] group-hover:shadow-[0_0_25px_rgba(255,255,255,0.4)] transition-all duration-300" />
-                    <span className="text-white font-bold text-xl tracking-tight group-hover:text-gray-300 transition-colors">My Portal</span>
+                    <StaticLogo isDarkMode={isDarkMode} className={`w-10 h-10 rounded-full ${isDarkMode ? 'shadow-[0_0_15px_rgba(255,255,255,0.2)] group-hover:shadow-[0_0_25px_rgba(255,255,255,0.4)]' : 'shadow-[0_4px_12px_rgba(0,0,0,0.05)] border border-gray-150'} transition-all duration-300`} />
+                    <span className={`font-bold text-xl tracking-tight ${isDarkMode ? 'text-white group-hover:text-gray-300' : 'text-gray-900 group-hover:text-gray-600'} transition-colors`}>My Portal</span>
+                </button>
+
+                {/* Theme Mode Toggle Button */}
+                <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className={`p-3 rounded-full border ${isDarkMode ? 'bg-[#111] border-[#333] hover:border-[#444] text-gray-400 hover:text-white' : 'bg-white border-gray-200 text-gray-500 hover:text-gray-900 hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)]'} transition-all duration-300 active:scale-95`}
+                    title="Toggle theme"
+                >
+                    {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
                 </button>
             </header>
 
             {/* Glowing background */}
-            <FloatingBackground />
+            <FloatingBackground isDarkMode={isDarkMode} />
 
             {/* Main Content Modal */}
-            <div className="relative z-30 w-full max-w-[440px] bg-[#050505] rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.03)] border border-[#222] overflow-hidden transition-all duration-700 animate-fade-in-up">
+            <div className={`relative z-30 w-full max-w-[440px] ${isDarkMode ? 'bg-[#050505] border-[#222] shadow-[0_0_40px_rgba(255,255,255,0.03)]' : 'bg-white border-black ring-1 ring-black ring-offset-2 ring-offset-white shadow-[0_20px_50px_rgba(0,0,0,0.05)]'} rounded-3xl border overflow-hidden transition-all duration-700 animate-fade-in-up`}>
                 
                 {/* Loader bar */}
                 <div className="absolute top-0 left-0 w-full h-[2px] bg-transparent z-20">
-                    <div className={`h-full bg-white transition-all duration-300 ease-out ${isLoading ? 'w-full animate-pulse' : 'w-0'}`} />
+                    <div className={`h-full ${isDarkMode ? 'bg-white' : 'bg-black'} transition-all duration-300 ease-out ${isLoading ? 'w-full animate-pulse' : 'w-0'}`} />
                 </div>
 
                 {/* Back button (hidden on PREFERENCE_SETUP — the wizard footer has its own Back) */}
                 {step !== 'EMAIL' && step !== 'PREFERENCE_SETUP' && (
-                    <button onClick={handleGoBack} className="absolute top-6 left-6 text-gray-500 hover:text-white transition-colors flex items-center gap-2 text-sm font-semibold z-20">
+                    <button onClick={handleGoBack} className={`absolute top-6 left-6 ${isDarkMode ? 'text-white hover:text-gray-300' : 'text-black hover:text-gray-600'} transition-colors flex items-center gap-2 text-sm font-bold z-20`}>
                         <ArrowLeft size={16} /> Back
                     </button>
                 )}
@@ -567,10 +590,10 @@ export default function Login() {
                 {/* Step Header */}
                 {step !== 'PREFERENCE_SETUP' && (
                     <div className="p-10 pb-6 text-center">
-                        <StaticLogo className="h-20 w-auto mx-auto mb-8 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.1)]" />
+                        <StaticLogo isDarkMode={isDarkMode} className={`h-20 w-auto mx-auto mb-8 rounded-full ${isDarkMode ? 'shadow-[0_0_20px_rgba(255,255,255,0.1)]' : 'shadow-[0_4px_16px_rgba(0,0,0,0.06)] border border-gray-150'}`} />
 
                         <div className="h-[72px] flex flex-col justify-end mb-2">
-                            <h2 className="text-3xl font-extrabold text-white tracking-tight animate-slide-up-fade">
+                            <h2 className={`text-3xl font-extrabold ${isDarkMode ? 'text-white' : 'text-gray-900'} tracking-tight animate-slide-up-fade`}>
                                 {step === 'EMAIL' && "Sign In"}
                                 {step === 'PASSWORD' && `Hey, ${firstName ? firstName.split(' ')[0] : ''}`}
                                 {step === 'OTP' && "Verification"}
@@ -578,7 +601,7 @@ export default function Login() {
                                 {step === 'EXTENSION_ONBOARDING' && "Sync Account"}
                                 {step === 'EXTENSION_PROMPT' && "Install Extension"}
                             </h2>
-                            <p className="text-sm text-[#888] mt-2.5 font-medium animate-slide-up-fade delay-75 leading-relaxed">
+                            <p className={`text-sm ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} mt-2.5 font-medium animate-slide-up-fade delay-75 leading-relaxed`}>
                                 {step === 'EMAIL' && "Enter your university ID to continue"}
                                 {step === 'PASSWORD' && "Enter your web portal password"}
                                 {step === 'OTP' && `We sent a 6-digit code to ${email}`}
@@ -593,7 +616,7 @@ export default function Login() {
                 <div className={`px-10 pb-10${step === 'PREFERENCE_SETUP' ? ' pt-10' : ''}`}>
                     {/* Error Box */}
                     <div className={`overflow-hidden transition-all duration-300 ease-in-out ${error ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-red-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
+                        <div className={`p-3.5 ${isDarkMode ? 'bg-[#111] border-[#333]' : 'bg-red-50 border-red-200'} border rounded-xl text-red-500 text-sm font-semibold text-center flex items-center justify-center gap-2`}>
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             {error}
                         </div>
@@ -601,37 +624,36 @@ export default function Login() {
 
                     {/* Success Box */}
                     <div className={`overflow-hidden transition-all duration-300 ease-in-out ${successMsg ? 'max-h-24 mb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="p-3.5 bg-[#111] border border-[#333] rounded-xl text-green-500 text-sm font-semibold text-center flex items-center justify-center gap-2">
+                        <div className={`p-3.5 ${isDarkMode ? 'bg-[#111] border-[#333]' : 'bg-green-50 border-green-200'} border rounded-xl text-green-500 text-sm font-semibold text-center flex items-center justify-center gap-2`}>
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                             {successMsg}
                         </div>
                     </div>
 
                     <div className="relative">
-                        {/* EMAIL STEP */}
                         {step === 'EMAIL' && (
                             <form onSubmit={handleCheckEmail} className="space-y-6 animate-step-enter">
-                                <div className="flex items-center bg-[#111] rounded-2xl border border-[#333] focus-within:border-white focus-within:ring-4 focus-within:ring-white/10 transition-all duration-300 overflow-hidden group">
+                                <div className={`flex items-center ${isDarkMode ? 'bg-[#111] border-[#333] focus-within:border-white focus-within:ring-white/10' : 'bg-gray-50 border-black focus-within:border-black focus-within:ring-black/10'} rounded-2xl border focus-within:ring-4 transition-all duration-300 overflow-hidden group`}>
                                     <input
                                         type="text"
                                         placeholder="L1F23BSCS0000"
                                         value={rollNumber}
                                         onChange={(e) => setRollNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                                         disabled={isLoading}
-                                        className="w-full px-5 py-4 bg-transparent outline-none font-bold text-white uppercase placeholder-[#555] transition-colors disabled:opacity-50"
+                                        className={`w-full px-5 py-4 bg-transparent outline-none font-bold ${isDarkMode ? 'text-white placeholder-[#555]' : 'text-gray-900 placeholder-gray-400'} uppercase transition-colors disabled:opacity-50`}
                                         autoFocus
                                         name="portal-roll-number-input"
                                     />
-                                    <div className="px-5 py-4 border-l border-[#333] text-[#666] font-semibold select-none group-focus-within:text-[#999] transition-colors">
+                                    <div className={`px-5 py-4 border-l ${isDarkMode ? 'border-[#333] text-[#666] group-focus-within:text-[#999]' : 'border-black text-gray-400 group-focus-within:text-gray-600'} font-semibold select-none transition-colors`}>
                                         @ucp.edu.pk
                                     </div>
                                 </div>
-                                <button disabled={isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
+                                <button disabled={isLoading} className={`w-full ${isDarkMode ? 'bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] text-black' : 'bg-black hover:shadow-[0_4px_15px_rgba(0,0,0,0.15)] text-white hover:bg-neutral-900'} py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none`}>
                                     {isLoading ? 'Checking...' : 'Continue'}
                                 </button>
                                 <p className="text-[11px] text-gray-500 text-center font-medium mt-4 select-none">
                                     By logging in you agree to our{' '}
-                                    <a href={termsLink} target="_blank" rel="noreferrer" className="text-gray-300 hover:text-white underline font-bold transition-colors">
+                                    <a href={termsLink} target="_blank" rel="noreferrer" className={`${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'} underline font-bold transition-colors`}>
                                         Terms & conditions
                                     </a>.
                                 </p>
@@ -641,33 +663,33 @@ export default function Login() {
                         {/* PASSWORD STEP */}
                         {step === 'PASSWORD' && (
                             <form onSubmit={handleLogin} className="space-y-6 animate-step-enter">
-                                <div className="space-y-3 relative">
+                                <div className="relative">
                                     <input
                                         type={showNewPassword ? "text" : "password"}
                                         placeholder="Enter your password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full px-5 py-4 bg-[#111] rounded-2xl border border-[#333] outline-none focus:border-white focus:ring-4 focus:ring-white/10 text-white font-medium transition-all duration-300 pr-12"
+                                        className={`w-full px-5 py-4 ${isDarkMode ? 'bg-[#111] border-[#333] focus:border-white focus:ring-white/10 text-white' : 'bg-gray-50 border-black focus:border-black focus:ring-black/10 text-gray-900'} rounded-2xl border outline-none focus:ring-4 font-medium transition-all duration-300 pr-12`}
                                         autoFocus
                                     />
-                                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
+                                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className={`absolute right-4 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} transition-colors`}>
                                         {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                                     </button>
                                 </div>
                                 <div className="flex justify-between items-baseline px-1">
-                                    <button type="button" onClick={handleGoBack} className="text-sm font-semibold text-[#666] hover:text-white transition-colors duration-300 p-0 bg-transparent border-none outline-none cursor-pointer">
+                                    <button type="button" onClick={handleGoBack} className={`text-sm font-semibold ${isDarkMode ? 'text-[#666] hover:text-white' : 'text-gray-450 hover:text-black'} transition-colors duration-300 p-0 bg-transparent border-none outline-none cursor-pointer`}>
                                         Wrong account?
                                     </button>
-                                    <button type="button" onClick={handleForgotPassword} className="text-sm font-bold text-white hover:text-gray-300 transition-colors duration-300 p-0 bg-transparent border-none outline-none cursor-pointer">
+                                    <button type="button" onClick={handleForgotPassword} className={`text-sm font-bold ${isDarkMode ? 'text-white hover:text-gray-300' : 'text-black hover:underline'} transition-colors duration-300 p-0 bg-transparent border-none outline-none cursor-pointer`}>
                                         Forgot Password?
                                     </button>
                                 </div>
-                                <button disabled={isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
+                                <button disabled={isLoading} className={`w-full ${isDarkMode ? 'bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] text-black' : 'bg-black hover:shadow-[0_4px_15px_rgba(0,0,0,0.15)] text-white hover:bg-neutral-900'} py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none`}>
                                     {isLoading ? 'Authenticating...' : 'Sign In'}
                                 </button>
                                 <p className="text-[11px] text-gray-500 text-center font-medium mt-4 select-none">
                                     By logging in you agree to our{' '}
-                                    <a href={termsLink} target="_blank" rel="noreferrer" className="text-gray-300 hover:text-white underline font-bold transition-colors">
+                                    <a href={termsLink} target="_blank" rel="noreferrer" className={`${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'} underline font-bold transition-colors`}>
                                         Terms & conditions
                                     </a>.
                                 </p>
@@ -688,16 +710,16 @@ export default function Login() {
                                             value={digit}
                                             onChange={(e) => handleOtpChange(index, e.target.value)}
                                             onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                                            className="w-[14%] aspect-square bg-[#111] rounded-xl border border-[#333] outline-none focus:border-white focus:ring-2 focus:ring-white/20 text-center text-2xl text-white font-bold transition-all duration-300"
+                                            className={`w-[14%] aspect-square ${isDarkMode ? 'bg-[#111] border-[#333] focus:border-white focus:ring-white/20 text-white' : 'bg-gray-50 border-black focus:border-black focus:ring-black/20 text-gray-900'} rounded-xl border outline-none focus:ring-2 text-center text-2xl font-bold transition-all duration-300`}
                                             autoFocus={index === 0}
                                         />
                                     ))}
                                 </div>
-                                <button disabled={otp.length !== 6 || isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
+                                <button disabled={otp.length !== 6 || isLoading} className={`w-full ${isDarkMode ? 'bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] text-black' : 'bg-black hover:shadow-[0_4px_15px_rgba(0,0,0,0.15)] text-white hover:bg-neutral-900'} py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none`}>
                                     {isLoading ? 'Verifying...' : 'Verify Code'}
                                 </button>
                                 <div className="text-center">
-                                    <button type="button" onClick={() => sendOtp(flowType)} className="text-sm font-bold text-[#888] hover:text-white transition-colors duration-300">
+                                    <button type="button" onClick={() => sendOtp(flowType)} className={`text-sm font-bold ${isDarkMode ? 'text-[#888] hover:text-white' : 'text-gray-500 hover:text-black'} transition-colors duration-300`}>
                                         Resend Code
                                     </button>
                                 </div>
@@ -713,10 +735,10 @@ export default function Login() {
                                         placeholder="Create a new password"
                                         value={newPassword}
                                         onChange={(e) => setNewPassword(e.target.value)}
-                                        className="w-full px-5 py-3.5 bg-[#111] rounded-2xl border border-[#333] outline-none focus:border-white focus:ring-4 focus:ring-white/10 text-white font-medium transition-all duration-300 pr-12"
+                                        className={`w-full px-5 py-3.5 ${isDarkMode ? 'bg-[#111] border-[#333] focus:border-white focus:ring-white/10 text-white' : 'bg-gray-50 border-black focus:border-black focus:ring-black/10 text-gray-900'} rounded-2xl border outline-none focus:ring-4 font-medium transition-all duration-300 pr-12`}
                                         autoFocus
                                     />
-                                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
+                                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className={`absolute right-4 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} transition-colors`}>
                                         {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                                     </button>
                                 </div>
@@ -727,9 +749,9 @@ export default function Login() {
                                         placeholder="Confirm new password"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
-                                        className="w-full px-5 py-3.5 bg-[#111] rounded-2xl border border-[#333] outline-none focus:border-white focus:ring-4 focus:ring-white/10 text-white font-medium transition-all duration-300 pr-12"
+                                        className={`w-full px-5 py-3.5 ${isDarkMode ? 'bg-[#111] border-[#333] focus:border-white focus:ring-white/10 text-white' : 'bg-gray-50 border-black focus:border-black focus:ring-black/10 text-gray-900'} rounded-2xl border outline-none focus:ring-4 font-medium transition-all duration-300 pr-12`}
                                     />
-                                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
+                                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className={`absolute right-4 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} transition-colors`}>
                                         {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                                     </button>
                                 </div>
@@ -737,18 +759,18 @@ export default function Login() {
                                 <div className="space-y-2 pt-1">
                                     <div className="flex gap-2 h-1.5">
                                         {[1, 2, 3, 4].map(level => (
-                                            <div key={level} className={`flex-1 rounded-full transition-colors duration-500 ${passwordStrength >= level ? (passwordStrength < 3 ? (passwordStrength < 2 ? 'bg-red-500' : 'bg-yellow-500') : 'bg-green-500') : 'bg-[#333]'}`} />
+                                            <div key={level} className={`flex-1 rounded-full transition-colors duration-500 ${passwordStrength >= level ? (passwordStrength < 3 ? (passwordStrength < 2 ? 'bg-red-500' : 'bg-yellow-500') : 'bg-green-500') : (isDarkMode ? 'bg-[#333]' : 'bg-gray-250')}`} />
                                         ))}
                                     </div>
-                                    <div className="text-[11px] font-bold text-right uppercase tracking-wider">
-                                        {passwordStrength === 0 && <span className="text-gray-600">Enter password</span>}
+                                    <div className={`text-[11px] font-bold text-right uppercase tracking-wider ${isDarkMode ? 'text-[#888]' : 'text-gray-500'}`}>
+                                        {passwordStrength === 0 && <span className={isDarkMode ? 'text-gray-600' : 'text-gray-400'}>Enter password</span>}
                                         {passwordStrength > 0 && passwordStrength < 2 && <span className="text-red-500">Weak</span>}
                                         {passwordStrength >= 2 && passwordStrength < 4 && <span className="text-yellow-500">Normal</span>}
                                         {passwordStrength === 4 && <span className="text-green-500">Strong</span>}
                                     </div>
                                 </div>
 
-                                <ul className="text-xs space-y-2.5 mt-2 text-gray-400 bg-[#111] p-4 rounded-xl border border-[#222]">
+                                <ul className={`text-xs space-y-2.5 mt-2 ${isDarkMode ? 'text-gray-400 bg-[#111] border-[#222]' : 'text-gray-600 bg-gray-50 border-gray-150'} p-4 rounded-xl border`}>
                                     <li className={`flex items-center gap-2 transition-colors duration-300 ${newPassword.length >= 8 ? 'text-green-500 font-medium' : ''}`}>
                                         <Check size={14} className={newPassword.length >= 8 ? 'opacity-100' : 'opacity-30'} /> At least 8 characters
                                     </li>
@@ -763,7 +785,7 @@ export default function Login() {
                                     </li>
                                 </ul>
 
-                                <button disabled={isLoading} className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none mt-4">
+                                <button disabled={isLoading} className={`w-full ${isDarkMode ? 'bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] text-black' : 'bg-black hover:shadow-[0_4px_15px_rgba(0,0,0,0.15)] text-white hover:bg-neutral-900'} py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none mt-4`}>
                                     {isLoading ? 'Securing Account...' : 'Save & Log In'}
                                 </button>
                             </form>
@@ -772,27 +794,27 @@ export default function Login() {
                         {/* STEP: EXTENSION ONBOARDING (For accounts not found in DB) */}
                         {step === 'EXTENSION_ONBOARDING' && (
                             <div className="text-center space-y-6 animate-step-enter">
-                                <div className="p-5 bg-gradient-to-br from-[#111] to-[#0a0a0a] rounded-2xl border border-[#333] shadow-inner space-y-4">
+                                <div className={`p-5 bg-gradient-to-br ${isDarkMode ? 'from-[#111] to-[#0a0a0a] border-[#333]' : 'from-gray-50 to-gray-100 border-gray-200'} rounded-2xl border shadow-inner space-y-4`}>
                                     <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-center mx-auto text-blue-500">
                                         <Chrome size={24} className="animate-spin-slow" />
                                     </div>
                                     <div className="space-y-1">
-                                        <h3 className="font-bold text-white text-sm">Chrome Web Extension Required</h3>
-                                        <p className="text-xs text-[#888]">Setup your student account automatically via Chrome</p>
+                                        <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'} text-sm`}>Chrome Web Extension Required</h3>
+                                        <p className={`text-xs ${isDarkMode ? 'text-[#888]' : 'text-gray-500'}`}>Setup your student account automatically via Chrome</p>
                                     </div>
                                     <a 
                                         href={chromeExtensionLink} 
                                         target="_blank" 
                                         rel="noreferrer" 
-                                        className="inline-flex items-center justify-center gap-2 w-full bg-[#1e293b] hover:bg-[#334155] border border-[#475569] text-white py-3 rounded-xl font-bold text-xs transition-colors"
+                                        className={`inline-flex items-center justify-center gap-2 w-full ${isDarkMode ? 'bg-[#1e293b] hover:bg-[#334155] border-[#475569] text-white' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'} border py-3 rounded-xl font-bold text-xs transition-colors`}
                                     >
                                         <Chrome size={14} /> Add MyPortal to Chrome
                                     </a>
                                 </div>
 
-                                <div className="text-left bg-[#0e0e0f] rounded-2xl border border-[#222] p-5 space-y-3.5">
-                                    <h4 className="text-xs uppercase font-extrabold tracking-widest text-[#666]">Instructions</h4>
-                                    <ol className="text-xs text-[#aaa] space-y-3 list-decimal list-inside pl-1 font-medium leading-relaxed">
+                                <div className={`text-left ${isDarkMode ? 'bg-[#0e0e0f] border-[#222]' : 'bg-gray-50 border-gray-150'} rounded-2xl border p-5 space-y-3.5`}>
+                                    <h4 className={`text-xs uppercase font-extrabold tracking-widest ${isDarkMode ? 'text-[#666]' : 'text-gray-400'}`}>Instructions</h4>
+                                    <ol className={`text-xs ${isDarkMode ? 'text-[#aaa]' : 'text-gray-655'} space-y-3 list-decimal list-inside pl-1 font-medium leading-relaxed`}>
                                         <li>Download and install the extension from the Web Store.</li>
                                         <li>Open the Horizon Portal and log in to your account.</li>
                                         <li>The extension will automatically import and sync your data.</li>
@@ -802,31 +824,31 @@ export default function Login() {
 
                                 {syncPhase === 'mismatch' && mismatchInfo ? (
                                     /* Different Horizon account is logged in — confirm before continuing */
-                                    <div className="space-y-4 text-left bg-[#140d0d] border border-amber-500/30 rounded-2xl p-5">
+                                    <div className={`space-y-4 text-left ${isDarkMode ? 'bg-[#140d0d] border-amber-500/30' : 'bg-amber-50/50 border-amber-200'} rounded-2xl p-5`}>
                                         <div className="flex items-center gap-2.5">
                                             <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0">
                                                 <AlertTriangle size={18} />
                                             </div>
-                                            <h3 className="font-bold text-white text-sm">Different user detected</h3>
+                                            <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'} text-sm`}>Different user detected</h3>
                                         </div>
-                                        <p className="text-xs text-[#aaa] leading-relaxed">
+                                        <p className={`text-xs ${isDarkMode ? 'text-[#aaa]' : 'text-gray-600'} leading-relaxed`}>
                                             Horizon is logged in as a different account. You'll be set up as{' '}
-                                            <span className="font-bold text-white">{mismatchInfo.name}</span>{' '}
-                                            (<span className="font-bold text-amber-400">{mismatchInfo.rollNumber}</span>) instead of{' '}
-                                            <span className="font-semibold text-[#888]">{mismatchInfo.typedRoll}</span>.
+                                            <span className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{mismatchInfo.name}</span>{' '}
+                                            (<span className="font-bold text-amber-500">{mismatchInfo.rollNumber}</span>) instead of{' '}
+                                            <span className={`font-semibold ${isDarkMode ? 'text-[#888]' : 'text-gray-400'}`}>{mismatchInfo.typedRoll}</span>.
                                         </p>
                                         <div className="flex flex-col gap-2.5 pt-1">
                                             <button
                                                 type="button"
                                                 onClick={handleAdoptMismatch}
-                                                className="w-full bg-white text-black py-3.5 rounded-xl font-bold text-sm hover:scale-[1.01] active:scale-[0.98] transition-all"
+                                                className={`w-full ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white hover:bg-neutral-900'} py-3.5 rounded-xl font-bold text-sm hover:scale-[1.01] active:scale-[0.98] transition-all`}
                                             >
                                                 Continue as {mismatchInfo.name ? mismatchInfo.name.split(' ')[0] : 'this user'}
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={handleRejectMismatch}
-                                                className="w-full bg-transparent border border-[#333] text-gray-400 hover:text-white hover:border-[#555] py-3 rounded-xl font-bold text-xs transition-colors"
+                                                className={`w-full bg-transparent border ${isDarkMode ? 'border-[#333] text-gray-400 hover:text-white hover:border-[#555]' : 'border-gray-250 text-gray-500 hover:text-gray-900 hover:border-gray-450'} py-3 rounded-xl font-bold text-xs transition-colors`}
                                             >
                                                 Back to login
                                             </button>
@@ -838,7 +860,7 @@ export default function Login() {
                                             href={`https://horizon.ucp.edu.pk/student/dashboard#myportal_sync_id=${tempSyncId}`}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="flex items-center justify-center gap-2 w-full bg-white hover:scale-[1.01] active:scale-[0.99] text-black py-4 rounded-2xl font-bold transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.15)] text-sm"
+                                            className={`flex items-center justify-center gap-2 w-full ${isDarkMode ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.15)] hover:scale-[1.01]' : 'bg-black text-white shadow-[0_4px_12px_rgba(0,0,0,0.1)] hover:bg-neutral-900 hover:scale-[1.01]'} active:scale-[0.99] py-4 rounded-2xl font-bold transition-all duration-300 text-sm`}
                                         >
                                             Open Horizon Portal <ExternalLink size={16} />
                                         </a>
@@ -850,12 +872,12 @@ export default function Login() {
                                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                                                     <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
                                                 </span>
-                                                <span className="text-xs font-bold text-[#888]">Waiting for extension…</span>
+                                                <span className={`text-xs font-bold ${isDarkMode ? 'text-[#888]' : 'text-gray-400'}`}>Waiting for extension…</span>
                                             </div>
                                         ) : (
                                             /* Real scraping progress bar — only appears once the extension actually starts */
                                             <div className="space-y-2.5 pt-1">
-                                                <div className="w-full bg-[#1a1a1a] rounded-full h-1.5 overflow-hidden border border-[#2a2a2a]">
+                                                <div className={`w-full ${isDarkMode ? 'bg-[#1a1a1a] border-[#2a2a2a]' : 'bg-gray-100 border-gray-200'} rounded-full h-1.5 overflow-hidden border`}>
                                                     <div
                                                         className="h-full rounded-full transition-all duration-700 ease-out"
                                                         style={{
@@ -866,7 +888,7 @@ export default function Login() {
                                                         }}
                                                     />
                                                 </div>
-                                                <div className="flex items-center justify-center gap-2 text-xs font-bold" style={{ color: syncPhase === 'done' ? '#10b981' : '#555' }}>
+                                                <div className="flex items-center justify-center gap-2 text-xs font-bold" style={{ color: syncPhase === 'done' ? '#10b981' : (isDarkMode ? '#555' : '#777') }}>
                                                     <RefreshCw size={11} className={syncPhase === 'done' ? '' : 'animate-spin'} />
                                                     <span>
                                                         {syncPhase === 'done'
@@ -884,13 +906,13 @@ export default function Login() {
                         {/* STEP: EXTENSION PROMPT (Case B: 1-Time Chrome Extension Download screen after set-password) */}
                         {step === 'EXTENSION_PROMPT' && (
                             <div className="text-center space-y-6 animate-step-enter">
-                                <div className="p-6 bg-gradient-to-br from-[#111] to-[#0d0d0f] rounded-3xl border border-[#222] text-center space-y-5">
+                                <div className={`p-6 bg-gradient-to-br ${isDarkMode ? 'from-[#111] to-[#0d0d0f] border-[#222]' : 'from-gray-50 to-gray-100 border-gray-200'} rounded-3xl border text-center space-y-5`}>
                                     <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center mx-auto text-blue-500">
                                         <Chrome size={32} />
                                     </div>
                                     <div className="space-y-2">
-                                        <h3 className="font-extrabold text-white text-lg">Live Desktop Sync</h3>
-                                        <p className="text-xs text-[#888] leading-relaxed px-2">
+                                        <h3 className={`font-extrabold ${isDarkMode ? 'text-white' : 'text-gray-900'} text-lg`}>Live Desktop Sync</h3>
+                                        <p className={`text-xs ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} leading-relaxed px-2`}>
                                             Install the Chrome extension to automatically sync your grades, timetable, and attendance right from your browser.
                                         </p>
                                     </div>
@@ -899,7 +921,7 @@ export default function Login() {
                                         href={chromeExtensionLink} 
                                         target="_blank" 
                                         rel="noreferrer" 
-                                        className="flex items-center justify-center gap-3 w-full bg-[#1d1d1f] hover:bg-[#2c2c2e] border border-[#333] text-white py-3.5 rounded-2xl font-black text-xs transition-colors shadow-inner"
+                                        className={`flex items-center justify-center gap-3 w-full ${isDarkMode ? 'bg-[#1d1d1f] hover:bg-[#2c2c2e] border-[#333] text-white' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'} border py-3.5 rounded-2xl font-black text-xs transition-colors shadow-inner`}
                                     >
                                         <Chrome size={18} className="text-blue-500" />
                                         <span>Download Extension from Web Store</span>
@@ -911,7 +933,7 @@ export default function Login() {
                                         setPrefStep(1);
                                         setStep('PREFERENCE_SETUP');
                                     }} 
-                                    className="w-full bg-white text-black py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 text-sm"
+                                    className={`w-full ${isDarkMode ? 'bg-white text-black' : 'bg-black text-white hover:bg-neutral-900'} py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 text-sm`}
                                 >
                                     Proceed to Preferences <ArrowRight size={16} />
                                 </button>
@@ -923,13 +945,13 @@ export default function Login() {
                             <div className="space-y-6 animate-step-enter text-left min-w-[280px]">
                                 {/* Step Header */}
                                 <div className="text-center space-y-2 mb-6">
-                                    <span className="text-[10px] uppercase font-extrabold tracking-widest text-blue-500">Step {prefStep} of 3</span>
-                                    <h3 className="text-2xl font-black text-white">
+                                    <span className={`text-[10px] uppercase font-extrabold tracking-widest ${isDarkMode ? 'text-blue-500' : 'text-blue-600'}`}>Step {prefStep} of 3</span>
+                                    <h3 className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                         {prefStep === 1 && "Grading Preference"}
                                         {prefStep === 2 && "Profile & Privacy"}
                                         {prefStep === 3 && "Join Community"}
                                     </h3>
-                                    <p className="text-xs text-[#888] leading-relaxed max-w-sm mx-auto">
+                                    <p className={`text-xs ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} leading-relaxed max-w-sm mx-auto`}>
                                         {prefStep === 1 && "Select how your academic parameters are evaluated."}
                                         {prefStep === 2 && "Select community profile visibility settings."}
                                         {prefStep === 3 && "Join the official student community channels."}
@@ -941,33 +963,33 @@ export default function Login() {
                                     <div className="space-y-4">
                                         <div 
                                             onClick={() => setGradingPolicy('relative')}
-                                            className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center bg-[#111] hover:border-[#444] ${gradingPolicy === 'relative' ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)] bg-blue-500/5' : 'border-[#222]'}`}
+                                            className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${isDarkMode ? 'bg-[#111] hover:border-[#444]' : 'bg-gray-50 hover:border-black'} ${gradingPolicy === 'relative' ? (isDarkMode ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)] bg-blue-500/5' : 'border-black shadow-[0_4px_15px_rgba(0,0,0,0.05)] bg-black/[0.02]') : (isDarkMode ? 'border-[#222]' : 'border-gray-205')}`}
                                         >
-                                            <div className={`p-2.5 rounded-xl border ${gradingPolicy === 'relative' ? 'bg-blue-500/10 border-blue-500/20 text-blue-500' : 'bg-[#1e1e20] border-[#333] text-[#888]'}`}>
+                                            <div className={`p-2.5 rounded-xl border ${gradingPolicy === 'relative' ? (isDarkMode ? 'bg-blue-500/10 border-blue-500/20 text-blue-500' : 'bg-black/10 border-black/20 text-black') : (isDarkMode ? 'bg-[#1e1e20] border-[#333] text-[#888]' : 'bg-gray-150 border-gray-250 text-gray-400')}`}>
                                                 <Award size={18} />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <h4 className="text-sm font-bold text-white">Relative Grading</h4>
-                                                <p className="text-[11px] text-[#888] mt-1 leading-normal">Grades are curved based on cohort performance. Standard bell curve distribution.</p>
+                                                <h4 className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Relative Grading</h4>
+                                                <p className={`text-[11px] ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} mt-1 leading-normal`}>Grades are curved based on cohort performance. Standard bell curve distribution.</p>
                                             </div>
-                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${gradingPolicy === 'relative' ? 'border-blue-500' : 'border-[#444]'}`}>
-                                                {gradingPolicy === 'relative' && <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />}
+                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${gradingPolicy === 'relative' ? (isDarkMode ? 'border-blue-500' : 'border-black') : (isDarkMode ? 'border-[#444]' : 'border-gray-300')}`}>
+                                                {gradingPolicy === 'relative' && <div className="w-2.5 h-2.5 rounded-full bg-black" />}
                                             </div>
                                         </div>
 
                                         <div 
                                             onClick={() => setGradingPolicy('absolute')}
-                                            className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center bg-[#111] hover:border-[#444] ${gradingPolicy === 'absolute' ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)] bg-blue-500/5' : 'border-[#222]'}`}
+                                            className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${isDarkMode ? 'bg-[#111] hover:border-[#444]' : 'bg-gray-50 hover:border-black'} ${gradingPolicy === 'absolute' ? (isDarkMode ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)] bg-blue-500/5' : 'border-black shadow-[0_4px_15px_rgba(0,0,0,0.05)] bg-black/[0.02]') : (isDarkMode ? 'border-[#222]' : 'border-gray-205')}`}
                                         >
-                                            <div className={`p-2.5 rounded-xl border ${gradingPolicy === 'absolute' ? 'bg-blue-500/10 border-blue-500/20 text-blue-500' : 'bg-[#1e1e20] border-[#333] text-[#888]'}`}>
+                                            <div className={`p-2.5 rounded-xl border ${gradingPolicy === 'absolute' ? (isDarkMode ? 'bg-blue-500/10 border-blue-500/20 text-blue-500' : 'bg-black/10 border-black/20 text-black') : (isDarkMode ? 'bg-[#1e1e20] border-[#333] text-[#888]' : 'bg-gray-150 border-gray-250 text-gray-400')}`}>
                                                 <Award size={18} />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <h4 className="text-sm font-bold text-white">Absolute Grading</h4>
-                                                <p className="text-[11px] text-[#888] mt-1 leading-normal">Fixed grading thresholds. Scores are evaluated strictly on individual performance.</p>
+                                                <h4 className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Absolute Grading</h4>
+                                                <p className={`text-[11px] ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} mt-1 leading-normal`}>Fixed grading thresholds. Scores are evaluated strictly on individual performance.</p>
                                             </div>
-                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${gradingPolicy === 'absolute' ? 'border-blue-500' : 'border-[#444]'}`}>
-                                                {gradingPolicy === 'absolute' && <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />}
+                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${gradingPolicy === 'absolute' ? (isDarkMode ? 'border-blue-500' : 'border-black') : (isDarkMode ? 'border-[#444]' : 'border-gray-300')}`}>
+                                                {gradingPolicy === 'absolute' && <div className="w-2.5 h-2.5 rounded-full bg-black" />}
                                             </div>
                                         </div>
                                     </div>
@@ -978,13 +1000,13 @@ export default function Login() {
                                     <div className="space-y-6">
                                         <div className="flex flex-col items-center gap-4">
                                             <div className="relative group">
-                                                <div className="w-24 h-24 rounded-full border-2 border-[#333] bg-[#111] overflow-hidden flex items-center justify-center shadow-inner">
+                                                <div className={`w-24 h-24 rounded-full border-2 ${isDarkMode ? 'border-[#333] bg-[#111]' : 'border-gray-250 bg-gray-100'} overflow-hidden flex items-center justify-center shadow-inner`}>
                                                     {isUploading ? (
                                                         <RefreshCw size={24} className="animate-spin text-blue-500" />
                                                     ) : profilePicUrl ? (
                                                         <img src={profilePicUrl} alt="Avatar" className="w-full h-full object-cover" />
                                                     ) : (
-                                                        <span className="text-3xl font-black text-gray-500">{initials}</span>
+                                                        <span className={`text-3xl font-black ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{initials}</span>
                                                     )}
                                                 </div>
                                                 <label 
@@ -1002,41 +1024,41 @@ export default function Login() {
                                                     disabled={isUploading}
                                                 />
                                             </div>
-                                            <span className="text-xs text-[#888] font-bold">Upload Custom Profile Picture</span>
+                                            <span className={`text-xs ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} font-bold`}>Upload Custom Profile Picture</span>
                                         </div>
 
                                         <div className="space-y-3.5">
-                                            <span className="text-xs uppercase font-extrabold tracking-widest text-[#555] block pl-1">Visibility settings</span>
+                                            <span className={`text-xs uppercase font-extrabold tracking-widest ${isDarkMode ? 'text-[#555]' : 'text-gray-400'} block pl-1`}>Visibility settings</span>
                                             
                                             <div 
                                                 onClick={() => setIsPublicPic(false)}
-                                                className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center bg-[#111] hover:border-[#444] ${!isPublicPic ? 'border-blue-500 bg-blue-500/5' : 'border-[#222]'}`}
+                                                className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${isDarkMode ? 'bg-[#111] hover:border-[#444]' : 'bg-gray-50 hover:border-black'} ${!isPublicPic ? (isDarkMode ? 'border-blue-500 bg-blue-500/5' : 'border-black bg-black/[0.02]') : (isDarkMode ? 'border-[#222]' : 'border-gray-200')}`}
                                             >
-                                                <div className={`p-2 rounded-lg ${!isPublicPic ? 'text-blue-500' : 'text-[#888]'}`}>
+                                                <div className={`p-2 rounded-lg ${!isPublicPic ? (isDarkMode ? 'text-blue-500' : 'text-black') : 'text-[#888]'}`}>
                                                     <Shield size={18} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <h4 className="text-xs font-bold text-white">Private Profile Mode</h4>
-                                                    <p className="text-[10px] text-[#888] mt-0.5 leading-normal">Only your initials will show on public leaderboards and group chats.</p>
+                                                    <h4 className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Private Profile Mode</h4>
+                                                    <p className={`text-[10px] ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} mt-0.5 leading-normal`}>Only your initials will show on public leaderboards and group chats.</p>
                                                 </div>
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${!isPublicPic ? 'border-blue-500' : 'border-[#444]'}`}>
-                                                    {!isPublicPic && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${!isPublicPic ? 'border-black' : (isDarkMode ? 'border-[#444]' : 'border-gray-300')}`}>
+                                                    {!isPublicPic && <div className="w-2 h-2 rounded-full bg-black" />}
                                                 </div>
                                             </div>
 
                                             <div 
                                                 onClick={() => setIsPublicPic(true)}
-                                                className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center bg-[#111] hover:border-[#444] ${isPublicPic ? 'border-blue-500 bg-blue-500/5' : 'border-[#222]'}`}
+                                                className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${isDarkMode ? 'bg-[#111] hover:border-[#444]' : 'bg-gray-50 hover:border-black'} ${isPublicPic ? (isDarkMode ? 'border-blue-500 bg-blue-500/5' : 'border-black bg-black/[0.02]') : (isDarkMode ? 'border-[#222]' : 'border-gray-200')}`}
                                             >
-                                                <div className={`p-2 rounded-lg ${isPublicPic ? 'text-blue-500' : 'text-[#888]'}`}>
+                                                <div className={`p-2 rounded-lg ${isPublicPic ? (isDarkMode ? 'text-blue-500' : 'text-black') : 'text-[#888]'}`}>
                                                     <Sparkles size={18} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <h4 className="text-xs font-bold text-white">Public Profile Mode</h4>
-                                                    <p className="text-[10px] text-[#888] mt-0.5 leading-normal">Enable other students to see your profile picture across leaderboard screens.</p>
+                                                    <h4 className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Public Profile Mode</h4>
+                                                    <p className={`text-[10px] ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} mt-0.5 leading-normal`}>Enable other students to see your profile picture across leaderboard screens.</p>
                                                 </div>
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isPublicPic ? 'border-blue-500' : 'border-[#444]'}`}>
-                                                    {isPublicPic && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isPublicPic ? 'border-black' : (isDarkMode ? 'border-[#444]' : 'border-gray-300')}`}>
+                                                    {isPublicPic && <div className="w-2 h-2 rounded-full bg-black" />}
                                                 </div>
                                             </div>
                                         </div>
@@ -1047,12 +1069,12 @@ export default function Login() {
                                 {prefStep === 3 && (
                                     <div className="space-y-6 text-center py-2 animate-fade-in">
                                         <div className="space-y-4">
-                                            <div className="w-16 h-16 bg-[#128C7E]/10 border border-[#128C7E]/20 rounded-full flex items-center justify-center mx-auto text-[#128C7E] shadow-inner">
+                                            <div className={`w-16 h-16 ${isDarkMode ? 'bg-[#128C7E]/10 border-[#128C7E]/20' : 'bg-emerald-50 border-emerald-100'} border rounded-full flex items-center justify-center mx-auto text-[#128C7E] shadow-inner`}>
                                                 <svg className="w-8 h-8 fill-current" viewBox="0 0 24 24">
                                                     <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.458L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.966C16.59 1.977 14.113.953 11.487.953c-5.446 0-9.871 4.37-9.875 9.8.001 1.937.536 3.823 1.547 5.49L2.176 20l3.83-1.397c1.683.921 3.424 1.401 4.64 1.401z"/>
                                                 </svg>
                                             </div>
-                                            <p className="text-xs text-[#888] leading-relaxed max-w-xs mx-auto">
+                                            <p className={`text-xs ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} leading-relaxed max-w-xs mx-auto`}>
                                                 Gain access to official community group chats to get live announcements, notes, and direct developer support.
                                             </p>
                                         </div>
@@ -1071,28 +1093,28 @@ export default function Login() {
 
                                         {/* Perks */}
                                         <div className="grid grid-cols-3 gap-3.5 mt-8">
-                                            <div className="p-3 bg-[#111] border border-[#222] rounded-2xl text-center space-y-1">
+                                            <div className={`p-3 ${isDarkMode ? 'bg-[#111] border-[#222]' : 'bg-gray-50 border-gray-150'} border rounded-2xl text-center space-y-1`}>
                                                 <Bell size={16} className="mx-auto text-blue-500" />
-                                                <p className="text-[9px] font-bold text-[#888] uppercase tracking-wider">Alerts</p>
+                                                <p className={`text-[9px] font-bold ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} uppercase tracking-wider`}>Alerts</p>
                                             </div>
-                                            <div className="p-3 bg-[#111] border border-[#222] rounded-2xl text-center space-y-1">
+                                            <div className={`p-3 ${isDarkMode ? 'bg-[#111] border-[#222]' : 'bg-gray-50 border-gray-150'} border rounded-2xl text-center space-y-1`}>
                                                 <Sparkles size={16} className="mx-auto text-blue-500" />
-                                                <p className="text-[9px] font-bold text-[#888] uppercase tracking-wider">Updates</p>
+                                                <p className={`text-[9px] font-bold ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} uppercase tracking-wider`}>Updates</p>
                                             </div>
-                                            <div className="p-3 bg-[#111] border border-[#222] rounded-2xl text-center space-y-1">
+                                            <div className={`p-3 ${isDarkMode ? 'bg-[#111] border-[#222]' : 'bg-gray-50 border-gray-150'} border rounded-2xl text-center space-y-1`}>
                                                 <HelpCircle size={16} className="mx-auto text-blue-500" />
-                                                <p className="text-[9px] font-bold text-[#888] uppercase tracking-wider">Support</p>
+                                                <p className={`text-[9px] font-bold ${isDarkMode ? 'text-[#888]' : 'text-gray-500'} uppercase tracking-wider`}>Support</p>
                                             </div>
                                         </div>
                                     </div>
                                 )}
 
                                 {/* Onboarding Wizard Footer Navigation */}
-                                <div className="flex justify-between items-center pt-6 border-t border-[#222] mt-6">
+                                <div className={`flex justify-between items-center pt-6 border-t ${isDarkMode ? 'border-[#222]' : 'border-gray-150'} mt-6`}>
                                     <button 
                                         type="button" 
                                         onClick={handleGoBack}
-                                        className="text-xs font-bold text-gray-500 hover:text-white transition-colors duration-300"
+                                        className={`text-xs font-bold ${isDarkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'} transition-colors duration-300`}
                                     >
                                         Back
                                     </button>
@@ -1102,7 +1124,7 @@ export default function Login() {
                                         {[1, 2, 3].map(s => (
                                             <div 
                                                 key={s} 
-                                                className={`h-1.5 rounded-full transition-all duration-300 ${prefStep === s ? 'w-5 bg-blue-500' : 'w-1.5 bg-[#333]'}`} 
+                                                className={`h-1.5 rounded-full transition-all duration-300 ${prefStep === s ? (isDarkMode ? 'w-5 bg-blue-500' : 'w-5 bg-black') : `w-1.5 ${isDarkMode ? 'bg-[#333]' : 'bg-gray-200'}`}`} 
                                             />
                                         ))}
                                     </div>
@@ -1117,7 +1139,7 @@ export default function Login() {
                                                 handleSavePreferences();
                                             }
                                         }}
-                                        className="px-6 py-2.5 rounded-xl font-bold bg-white text-black text-xs hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(255,255,255,0.1)] flex items-center gap-1"
+                                        className={`px-6 py-2.5 rounded-xl font-bold ${isDarkMode ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.1)]' : 'bg-black text-white hover:bg-neutral-900 shadow-[0_4px_12px_rgba(0,0,0,0.1)]'} text-xs hover:scale-105 active:scale-95 transition-all flex items-center gap-1`}
                                     >
                                         {isLoading ? 'Saving...' : (prefStep === 3 ? 'Finish' : 'Next')}
                                     </button>

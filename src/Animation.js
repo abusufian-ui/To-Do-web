@@ -1,33 +1,33 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const AnimatedLogo = () => {
-  
-  
-  
+const AnimatedLogo = ({ isDarkMode = true }) => {
+  const fillColor = isDarkMode ? "rgba(255, 255, 255, 1)" : "rgba(18, 18, 18, 1)";
+  const fillColorHidden = isDarkMode ? "rgba(255, 255, 255, 0)" : "rgba(18, 18, 18, 0)";
+  const strokeColor = isDarkMode ? "white" : "#121212";
+  const shadowColorVisible = isDarkMode ? "drop-shadow(0px 0px 15px rgba(255,255,255,0.4))" : "drop-shadow(0px 0px 15px rgba(0,0,0,0.15))";
+  const shadowColorHidden = "drop-shadow(0px 0px 0px rgba(0,0,0,0))";
+
   const containerVariants = {
     hidden: {},
     visible: { transition: { staggerChildren: 0.01 } }, 
   };
 
-  
   const premiumPathVariants = {
     hidden: { 
       pathLength: 0, 
       opacity: 0,
-      fill: "rgba(255, 255, 255, 0)",
-      filter: "drop-shadow(0px 0px 0px rgba(255,255,255,0))"
+      fill: fillColorHidden,
+      filter: shadowColorHidden
     },
     visible: {
       pathLength: 1,
       opacity: 1,
-      fill: "rgba(255, 255, 255, 1)",
-      filter: "drop-shadow(0px 0px 15px rgba(255,255,255,0.4))",
+      fill: fillColor,
+      filter: shadowColorVisible,
       transition: {
-        
         pathLength: { type: "tween", duration: 1.2, ease: "linear" }, 
         opacity: { duration: 0.01 },
-        
         fill: { duration: 0.5, delay: 1.2, ease: "easeInOut" },
         filter: { duration: 0.5, delay: 1.2 }
       },
@@ -457,7 +457,7 @@ m-1819 -111 c-10 -31 -21 -753 -19 -1190 3 -467 3 -467 -67 -489 -38 -12 -84
   ];
 
   return (
-    <div className="flex justify-center items-center h-screen bg-black overflow-hidden">
+    <div className={`flex justify-center items-center h-screen ${isDarkMode ? 'bg-black' : 'bg-white'} overflow-hidden`}>
       <motion.svg
         width="600"
         height="600"
@@ -466,29 +466,26 @@ m-1819 -111 c-10 -31 -21 -753 -19 -1190 3 -467 3 -467 -67 -489 -38 -12 -84
         animate="visible"
         variants={containerVariants}
       >
-        {}
         <g transform="translate(0, 1967) scale(0.1, -0.1)">
           
-          {}
           <g>
             {buildingPaths.map((pathString, index) => (
               <motion.path
                 key={`bldg-${index}`}
                 d={pathString}
-                stroke="white"
+                stroke={strokeColor}
                 strokeWidth="15"
                 variants={premiumPathVariants}
               />
             ))}
           </g>
 
-          {}
           <motion.g variants={textGroupVariants}>
             {textPaths.map((pathString, index) => (
               <motion.path
                 key={`txt-${index}`}
                 d={pathString}
-                stroke="white"
+                stroke={strokeColor}
                 strokeWidth="15"
                 variants={premiumPathVariants}
               />

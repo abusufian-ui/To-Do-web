@@ -1,4 +1,4 @@
 {
   "verbose": true,
-  "ignore": ["session_data/", "session_data/**", "session_data/**/*"]
+  "ignore": ["session_data/", "session_data/**", "session_data/**/*", "scratch/**", "scratch/**/*"]
 }

@@ -124,20 +124,16 @@ function AppLayout() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) return savedTheme === 'dark';
-    // Default to the portal's existing dark theme. The user can switch any time
-    // via the header toggle (which persists their choice to localStorage).
-    return true;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
   useEffect(() => {
     const root = document.documentElement;
     if (isDarkMode) {
       root.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
       document.body.style.backgroundColor = '#121212';
     } else {
       root.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
       document.body.style.backgroundColor = '#f9fafb';
     }
   }, [isDarkMode]);
@@ -450,10 +446,10 @@ function AppLayout() {
     if (!isAutoLockEnabled || currentTimer === 0) return;
 
     const timer = setTimeout(() => {
-      setIsLocked(true);
+      handleLogout();
     }, currentTimer);
     return timer;
-  }, [isAuthenticated, user?.securitySettings, idleTimeout]);
+  }, [isAuthenticated, user?.securitySettings, idleTimeout, handleLogout]);
 
   useEffect(() => {
     let timeoutId = checkForInactivity();
@@ -861,7 +857,13 @@ function AppLayout() {
   };
 
   const openAddTaskWithDate = (dateString) => { setPrefilledDate(dateString); setIsAddTaskOpen(true); };
-  const toggleTheme = () => setIsDarkMode(prev => !prev);
+  const toggleTheme = () => {
+    setIsDarkMode(prev => {
+      const next = !prev;
+      localStorage.setItem('theme', next ? 'dark' : 'light');
+      return next;
+    });
+  };
 
   const getFilteredTasks = () => {
     return tasks.filter(task => {
@@ -1168,7 +1170,7 @@ function AppLayout() {
                   <div className={`w-full h-full ${activeTab === 'HyperFocus' ? 'block' : 'hidden'}`}><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} resetAutomation={resetAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>
                   <div className={`w-full h-full ${activeTab === 'Notes' ? 'block' : 'hidden'}`}><Notes courses={visibleCourses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} user={user} /></div>
                   <div className={`w-full h-full ${activeTab === 'Tasks' ? 'block' : 'hidden'}`}><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={visibleCourses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Calendar' ? 'block' : 'hidden'}`}><Calendar tasks={tasks} courses={visibleCourses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Calendar' ? 'block' : 'hidden'}`}><Calendar tasks={tasks} courses={visibleCourses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} user={user} activeGroup={activeGroup} /></div>
                   <div className={`w-full h-full ${activeTab === 'Timetable' ? 'block' : 'hidden'}`}><Timetable /></div>
                   <div className={`w-full h-full ${activeTab === 'Keynotes' ? 'block' : 'hidden'}`}><Keynote keynotes={getFilteredKeynotes()} courses={visibleCourses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Habits') ? 'block' : 'hidden'}`}><HabitTracker activeTab={activeTab} /></div>
@@ -1305,6 +1307,11 @@ function AppLayout() {
 // =========================================================
 export default function App() {
   const [showSplash, setShowSplash] = React.useState(true);
+  const [isDarkMode] = React.useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) return savedTheme === 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -1316,8 +1323,8 @@ export default function App() {
   return (
     <Router>
       {showSplash && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black transition-opacity duration-1000">
-          <AnimatedLogo />
+        <div className={`fixed inset-0 z-[9999] flex items-center justify-center transition-opacity duration-1000 ${isDarkMode ? 'bg-black' : 'bg-white'}`}>
+          <AnimatedLogo isDarkMode={isDarkMode} />
         </div>
       )}
       <AppLayout />

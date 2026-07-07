@@ -389,7 +389,7 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
                   }
                 }}
                 disabled={isUploading}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-all active:scale-95"
+                className="flex items-center gap-2 bg-brand-blue hover:bg-blue-600 disabled:opacity-50 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-all active:scale-95"
               >
                 {isUploading ? <Loader2 className="animate-spin" size={18} /> : <Camera size={18} />}
                 <span>Change Picture</span>
