@@ -93,7 +93,7 @@ const CourseIcon = ({ type, name }) => {
   return <Book size={18} className="text-gray-400" />;
 };
 
-const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, pendingInvitations, fetchActiveGroup, fetchPendingInvitations, fetchTasks, toast, setToast }) => {
+const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, pendingInvitations, fetchActiveGroup, fetchPendingInvitations, fetchTasks, toast, setToast, semesterStatus }) => {
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [showActive, setShowActive] = useState(true);
@@ -204,7 +204,16 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
     });
   };
 
-  const isTaskCurrent = (t) => courses.some(c => c.name === t.course) || t.course === 'Event';
+  const completedCourseNames = React.useMemo(() => {
+    if (!semesterStatus || !semesterStatus.latestResult || !semesterStatus.latestResult.courses) return [];
+    return semesterStatus.latestResult.courses.map(c => c.name);
+  }, [semesterStatus]);
+
+  const isTaskCurrent = (t) => {
+    if (t.course === 'General' || t.course === 'Event') return true;
+    if (completedCourseNames.includes(t.course)) return false;
+    return courses.some(c => c.name === t.course);
+  };
 
   
   const activeSource = viewMode === 'shared'
@@ -448,11 +457,35 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
 
           {archivedTasks.length > 0 && (
             <div className="mb-6">
-              <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-2 mb-3 group focus:outline-none">
-                {showArchived ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
-                <h2 className="text-gray-800 dark:text-white font-bold text-sm">Archived tasks</h2>
-                <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{archivedTasks.length}</span>
-              </button>
+              <div className="flex items-center justify-between mb-3 border-b border-gray-100 dark:border-[#2C2C2C] pb-2">
+                <button onClick={() => setShowArchived(!showArchived)} className="flex items-center gap-2 group focus:outline-none">
+                  {showArchived ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
+                  <h2 className="text-gray-800 dark:text-white font-bold text-sm">Archived tasks</h2>
+                  <span className="bg-gray-200 dark:bg-[#2C2C2C] text-gray-600 dark:text-gray-400 text-xs px-2 py-0.5 rounded-full">{archivedTasks.length}</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    if (window.confirm("Are you sure you want to permanently clear all archived tasks?")) {
+                      try {
+                        const token = localStorage.getItem('token');
+                        const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+                        const res = await fetch(`${API_BASE}/api/tasks/archived/clear`, {
+                          method: 'DELETE',
+                          headers: { 'x-auth-token': token }
+                        });
+                        if (res.ok) {
+                          if (fetchTasks) fetchTasks();
+                        }
+                      } catch (err) {
+                        console.error("Failed to clear archived tasks", err);
+                      }
+                    }
+                  }}
+                  className="text-xs font-bold text-red-500 hover:text-red-600 transition-colors bg-red-500/10 hover:bg-red-500/20 px-3 py-1 rounded-lg border border-red-500/20"
+                >
+                  Clear All
+                </button>
+              </div>
 
               {showArchived && (
                 <div className="w-full overflow-x-auto lg:overflow-visible pb-6">

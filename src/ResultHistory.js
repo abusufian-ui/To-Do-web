@@ -7,6 +7,20 @@ import UCPLogo from './UCPLogo';
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
+const SEASON_ORDER = { spring: 0, summer: 1, fall: 2 };
+
+const sortSemesters = (semesters, direction = 'desc') => {
+  return [...semesters].sort((a, b) => {
+    if (!a.term || !b.term) return 0;
+    const [aSeason, aYear] = a.term.toLowerCase().split(/\s+/);
+    const [bSeason, bYear] = b.term.toLowerCase().split(/\s+/);
+    const yearDiff = (parseInt(bYear) || 0) - (parseInt(aYear) || 0); // newest year first
+    if (yearDiff !== 0) return direction === 'desc' ? yearDiff : -yearDiff;
+    const seasonDiff = (SEASON_ORDER[bSeason] ?? 0) - (SEASON_ORDER[aSeason] ?? 0);
+    return direction === 'desc' ? seasonDiff : -seasonDiff;
+  });
+};
+
 const ResultHistory = () => {
   const [semesters, setSemesters] = useState([]);
   const [studentStats, setStudentStats] = useState(null);
@@ -29,7 +43,7 @@ const ResultHistory = () => {
       const historyData = await historyRes.json();
       const statsData = await statsRes.json();
 
-      if (Array.isArray(historyData)) setSemesters(historyData);
+      if (Array.isArray(historyData)) setSemesters(sortSemesters(historyData, 'desc'));
       if (statsData) setStudentStats(statsData);
 
     } catch (err) {

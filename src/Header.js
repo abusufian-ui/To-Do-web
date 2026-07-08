@@ -5,7 +5,7 @@ import {
   ChevronsUp, ChevronUp, Minus, ArrowDown, ChevronDown,
   FileText, X, Image as ImageIcon, Mic, FileArchive,
   Timer, Download, Maximize2, EyeOff, Activity, AlertCircle, Users,
-  LogOut, Bell, Trash2
+  LogOut, Bell, Trash2, Award
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -14,7 +14,8 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const Header = ({
   activeTab, isDarkMode, toggleTheme, filters, setFilters, courses, onAddClick, user, onLogout,
   tasks, onOpenTask, onNavigate, onMenuClick, notes, onOpenNote, keynotes, notifications, fetchNotifications, onToggleKeynoteRead, hfState, hfModes,
-  exams, activeGroup, onOpenGroupInfo, onToggleRightSidebar, isRightSidebarOpen, pendingInvitations
+  exams, activeGroup, onOpenGroupInfo, onToggleRightSidebar, isRightSidebarOpen, pendingInvitations,
+  semesterStatus, onOpenResultModal
 }) => {
   const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
   const isSuperAdmin = user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
@@ -423,6 +424,17 @@ const Header = ({
               >
                 <AlertCircle size={16} className="shrink-0" />
                 <span className="hidden sm:inline">Exams ({exams.length})</span>
+              </button>
+            )}
+
+            {semesterStatus?.isSemesterCompleted && semesterStatus?.latestResult && (
+              <button
+                onClick={() => onNavigate('Result')}
+                className="flex items-center gap-2 px-4 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-full text-green-600 dark:text-green-400 font-bold text-sm transition-all shadow-[0_0_15px_rgba(34,197,94,0.2)] animate-pulse hover:animate-none ml-2 whitespace-nowrap shrink-0"
+                title="Result"
+              >
+                <Award size={16} className="shrink-0" />
+                <span className="hidden sm:inline">Result</span>
               </button>
             )}
 

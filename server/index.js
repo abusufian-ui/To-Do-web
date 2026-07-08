@@ -93,6 +93,21 @@ const { getAbsoluteGrade, getSmartCurveGrade, calculateTrueScore, calculateClass
 const { registerDeviceSession } = require('./utils/sessionHelper');
 const { convertToPdf } = require('./utils/documentConverter');
 
+const SEASON_ORDER = { spring: 0, summer: 1, fall: 2 };
+
+function sortSemestersJS(semesters, direction = 'desc') {
+  return [...semesters].sort((a, b) => {
+    if (!a.term || !b.term) return 0;
+    const [aSeason, aYear] = a.term.toLowerCase().split(/\s+/);
+    const [bSeason, bYear] = b.term.toLowerCase().split(/\s+/);
+    const yearDiff = (parseInt(bYear) || 0) - (parseInt(aYear) || 0); // newest year first
+    if (yearDiff !== 0) return direction === 'desc' ? yearDiff : -yearDiff;
+    const seasonDiff = (SEASON_ORDER[bSeason] ?? 0) - (SEASON_ORDER[aSeason] ?? 0);
+    return direction === 'desc' ? seasonDiff : -seasonDiff;
+  });
+}
+
+
 
 const { getSignedDownloadUrl, b2, B2_BUCKET, uploadToB2, getPresignedUploadUrl, configureBucketCors, downloadFileFromB2, getMimeType } = require('./utils/b2Client');
 const { processUserMaterials, runNightlyMaterialSync } = require('./services/materialProcessor');
@@ -1473,23 +1488,9 @@ app.post('/api/trigger-expired-push', auth, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    console.log(`[PUSH] Triggering Session Expired push for ${user.email}`);
+    console.log(`[PUSH] Triggering Session Expired push for ${user.email} (Suppressed/Removed)`);
 
-    const title = "UCP Session Expired ⚠️";
-    const message = "Your university portal session has expired. Tap here to log in.";
-
-    await sendPush(
-      user,
-      title,
-      message,
-      { type: "session_expired" },
-      "smart-alert",
-      "default"
-    );
-
-    await createAcademicNotification(user._id, 'system', title, message);
-
-    res.json({ success: true, message: "Push notification triggered." });
+    res.json({ success: true, message: "Push notification suppressed." });
   } catch (err) {
     console.error("Error triggering expired push:", err);
     res.status(500).json({ message: "Server error triggering push." });
@@ -2000,11 +2001,17 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           }
         }
 
+        const fullCode = classItem.courseCode || '';
+        const parsed = parseSemesterAndSectionFromCode(fullCode);
+        const { getCurrentSemesterCode } = require('./services/scraperEngine');
+        const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
+
         preparedClasses.push({
           ...classData,
           isMakeup,
           expiresAt,
           userId,
+          semester: finalSemester,
           lastUpdated: new Date()
         });
 
@@ -2022,7 +2029,9 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         if (classItem.room && !classItem.room.includes('Unknown') && !classItem.room.includes('TBA')) course.rooms.add(classItem.room);
       }
 
-      await Timetable.deleteMany({ userId });
+      const { getCurrentSemesterCode } = require('./services/scraperEngine');
+      const currentSem = req.body.semester || getCurrentSemesterCode();
+      await Timetable.deleteMany({ userId, semester: currentSem });
       if (preparedClasses.length > 0) {
         await Timetable.insertMany(preparedClasses);
       }
@@ -2179,6 +2188,25 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       ...(user.syncStatus === 'scraping' ? { syncStatus: 'complete' } : {}),
       ...(enrolledSections.length > 0 ? { enrolledSections } : {})
     };
+
+    try {
+      const userCourses = await Course.find({ userId, type: 'university' });
+      const courseSemesters = [...new Set(userCourses.map(c => c.semester).filter(Boolean))];
+      if (courseSemesters.length > 0) {
+        const history = await ResultHistory.find({ userId });
+        const historyTerms = new Set(history.map(h => h.term));
+        const allMatched = courseSemesters.every(sem => historyTerms.has(sem));
+        if (allMatched) {
+          const currentCompletedSem = courseSemesters[0];
+          if (!user.isSemesterCompleted || user.lastCompletedSemester !== currentCompletedSem) {
+            updateFields.isSemesterCompleted = true;
+            updateFields.lastCompletedSemester = currentCompletedSem;
+          }
+        }
+      }
+    } catch (semErr) {
+      console.error("Error detecting semester completion:", semErr);
+    }
     if (studentName && studentName !== 'UCP Student') updateFields.name = studentName;
     if (profilePic) {
       updateFields.portalProfilePic = profilePic;
@@ -2292,6 +2320,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         }
       }
     }
+
+    await updateUserCurrentSemester(userId);
 
     res.json({ message: "Sync & Diffing complete securely!" });
 
@@ -4151,7 +4181,7 @@ app.post('/api/auth/check-block-status', async (req, res) => {
 const updateProfileFields = (user, body) => {
   const fields = [
     'secondaryEmail', 'dob', 'gender',
-    'faculty', 'careerType', 'program', 'currentSemester'
+    'faculty', 'careerType', 'program'
   ];
 
   let hasChanges = false;
@@ -4183,8 +4213,93 @@ const updateProfileFields = (user, body) => {
     }
   }
 
+  // Handle currentSemester (term code) and academicOrdinalSemester (e.g. 6th Semester) separately
+  const rawCurrentSemester = body.currentSemester || body.currentsemester;
+  if (rawCurrentSemester !== undefined && String(rawCurrentSemester).trim() !== '') {
+    const incomingOrdinal = String(rawCurrentSemester).trim();
+    const existingOrdinal = user.academicOrdinalSemester ? String(user.academicOrdinalSemester).trim() : '';
+    if (incomingOrdinal !== existingOrdinal) {
+      console.log(`[PROFILE_SYNC] 🔄 Field 'academicOrdinalSemester' changed: "${existingOrdinal}" -> "${incomingOrdinal}"`);
+      user.academicOrdinalSemester = incomingOrdinal;
+      hasChanges = true;
+      logDetails['academicOrdinalSemester'] = { status: 'REPLACED', old: existingOrdinal, new: incomingOrdinal };
+    }
+  }
+
+  // Set user.currentSemester to the parsed term code (like Spring 2026)
+  const { getCurrentSemesterCode } = require('./services/scraperEngine');
+  const incomingTerm = (body.semester || getCurrentSemesterCode() || '').trim();
+  if (incomingTerm) {
+    const existingTerm = user.currentSemester ? String(user.currentSemester).trim() : '';
+    if (incomingTerm !== existingTerm) {
+      console.log(`[PROFILE_SYNC] 🔄 Field 'currentSemester' changed: "${existingTerm}" -> "${incomingTerm}"`);
+      user.currentSemester = incomingTerm;
+      hasChanges = true;
+      logDetails['currentSemester'] = { status: 'REPLACED', old: existingTerm, new: incomingTerm };
+    }
+  }
+
   console.log(`[PROFILE_SYNC] Summary for user ${user.email || user._id}:`, JSON.stringify(logDetails, null, 2));
   return hasChanges;
+};
+
+
+const updateUserCurrentSemester = async (userId) => {
+  try {
+    const User = mongoose.model('User');
+    const Course = mongoose.model('Course');
+    const ResultHistory = mongoose.model('ResultHistory');
+
+    const user = await User.findById(userId);
+    if (!user) return;
+
+    const courses = await Course.find({ userId, type: 'university' }).lean();
+    const history = await ResultHistory.find({ userId }).lean();
+
+    const historyTerms = new Set(history.map(h => h.term.trim().toLowerCase()));
+
+    // Find semesters of courses that are NOT in results history
+    const activeSemesters = [];
+    for (const c of courses) {
+      if (c.semester) {
+        const semTrim = c.semester.trim();
+        if (!historyTerms.has(semTrim.toLowerCase())) {
+          activeSemesters.push(semTrim);
+        }
+      }
+    }
+
+    if (activeSemesters.length > 0) {
+      // Find the most frequent active semester (in case of multiple)
+      const freq = {};
+      activeSemesters.forEach(s => freq[s] = (freq[s] || 0) + 1);
+      const sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
+      const detectedCurrent = sorted[0];
+
+      if (user.currentSemester !== detectedCurrent) {
+        console.log(`[SEMESTER_DETECTOR] 🔄 Updating currentSemester to detected active term: "${user.currentSemester || ''}" -> "${detectedCurrent}"`);
+        user.currentSemester = detectedCurrent;
+        await user.save();
+      }
+    } else {
+      // If all semesters of courses exist in ResultHistory, it means all synced semesters are completed/past.
+      // In that case, let's set currentSemester to the newest semester from courses.
+      const courseSemesters = Array.from(new Set(courses.map(c => c.semester).filter(Boolean)));
+      if (courseSemesters.length > 0) {
+        const sortedHistory = sortSemestersJS(courseSemesters.map(s => ({ term: s })), 'desc');
+        if (sortedHistory.length > 0) {
+          const newestSem = sortedHistory[0].term;
+          if (user.currentSemester !== newestSem) {
+            console.log(`[SEMESTER_DETECTOR] 🔄 All semesters completed. Setting currentSemester to newest: "${user.currentSemester || ''}" -> "${newestSem}"`);
+            user.currentSemester = newestSem;
+            await user.save();
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[SEMESTER_DETECTOR] ❌ Error updating current active semester for user ${userId}:`, err.message);
+  }
 };
 
 
@@ -4528,10 +4643,22 @@ app.post('/api/user/unlink-portal', auth, async (req, res) => {
 });
 app.get('/api/user/portal-status', auth, async (req, res) => { try { const user = await User.findById(req.user.id).select('portalId isPortalConnected').lean(); res.json({ isConnected: !!user?.portalId && user?.isPortalConnected, portalId: user?.portalId }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
-app.get('/api/timetable', auth, async (req, res) => { try { const now = new Date(); res.json((await Timetable.find({ userId: req.user.id, $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }] }).lean()).map(i => ({ ...i, id: i._id }))); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/timetable', auth, async (req, res) => {
+  try {
+    const now = new Date();
+    const query = { userId: req.user.id, $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }] };
+    if (req.query.semester) {
+      query.semester = req.query.semester;
+    }
+    const items = await Timetable.find(query).lean();
+    res.json(items.map(i => ({ ...i, id: i._id })));
+  } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
 app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await StudentStats.findOne({ userId: req.user.id }).lean() || { cgpa: "0.00", credits: "0", inprogressCr: "0" }); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 }).lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.get('/api/results-history', auth, async (req, res) => { try { res.json(await ResultHistory.find({ userId: req.user.id }).sort({ lastUpdated: 1 }).lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/results-history', auth, async (req, res) => { try { const raw = await ResultHistory.find({ userId: req.user.id }).lean(); res.json(sortSemestersJS(raw, 'desc')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
 app.get('/api/sync-diagnostics/users', auth, async (req, res) => {
   try {
@@ -4547,6 +4674,131 @@ app.get('/api/sync-diagnostics/users', auth, async (req, res) => {
     res.status(500).json({ message: "Error fetching connected users" });
   }
 });
+
+app.post('/api/admin/fix-result-history', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || (!user.isAdmin && user.email?.toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase())) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const VALID_TERM_REGEX = /^(Spring|Summer|Fall)\s+\d{4}$/i;
+    const allResults = await ResultHistory.find({});
+    let deletedCount = 0;
+    let dedupCount = 0;
+
+    const resultsByUserId = {};
+    for (const rh of allResults) {
+      if (!VALID_TERM_REGEX.test(rh.term || "")) {
+        await ResultHistory.deleteOne({ _id: rh._id });
+        deletedCount++;
+        continue;
+      }
+      const uidStr = rh.userId.toString();
+      if (!resultsByUserId[uidStr]) {
+        resultsByUserId[uidStr] = [];
+      }
+      resultsByUserId[uidStr].push(rh);
+    }
+
+    for (const uidStr in resultsByUserId) {
+      const userRhs = resultsByUserId[uidStr];
+      const termsSeen = {};
+      for (const rh of userRhs) {
+        const termKey = (rh.term || "").trim().toLowerCase();
+        if (termsSeen[termKey]) {
+          const existing = termsSeen[termKey];
+          const existingCourses = existing.courses?.length || 0;
+          const currentCourses = rh.courses?.length || 0;
+          if (currentCourses >= existingCourses) {
+            await ResultHistory.deleteOne({ _id: existing._id });
+            termsSeen[termKey] = rh;
+          } else {
+            await ResultHistory.deleteOne({ _id: rh._id });
+          }
+          dedupCount++;
+        } else {
+          termsSeen[termKey] = rh;
+        }
+      }
+    }
+
+    res.json({ success: true, deletedInvalidCount: deletedCount, deduplicatedCount: dedupCount });
+  } catch (error) {
+    console.error("Migration error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+app.get('/api/semester-status', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('isSemesterCompleted lastCompletedSemester').lean();
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    let latestResult = null;
+    let previousResult = null;
+
+    if (user.lastCompletedSemester) {
+      latestResult = await ResultHistory.findOne({ userId: req.user.id, term: user.lastCompletedSemester }).lean();
+      const allResults = await ResultHistory.find({ userId: req.user.id }).lean();
+      const sorted = sortSemestersJS(allResults, 'desc');
+      const idx = sorted.findIndex(r => r.term.toLowerCase() === user.lastCompletedSemester.toLowerCase());
+      if (idx !== -1 && idx + 1 < sorted.length) {
+        previousResult = sorted[idx + 1];
+      }
+    }
+
+    res.json({
+      isSemesterCompleted: user.isSemesterCompleted,
+      lastCompletedSemester: user.lastCompletedSemester,
+      latestResult,
+      previousResult
+    });
+  } catch (error) {
+    console.error("Error in GET /api/semester-status:", error);
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+app.post('/api/semester-status/acknowledge', auth, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.id, { isSemesterCompleted: false });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error in POST /api/semester-status/acknowledge:", error);
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+app.delete('/api/tasks/archived/clear', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('lastCompletedSemester').lean();
+    if (!user || !user.lastCompletedSemester) {
+      return res.status(400).json({ message: "No completed semester recorded to clear tasks for" });
+    }
+
+    const pastCourses = await Course.find({ userId: req.user.id, semester: user.lastCompletedSemester }).lean();
+    const pastCourseNames = pastCourses.map(c => c.name);
+
+    if (pastCourseNames.length === 0) {
+      return res.json({ success: true, deletedCount: 0, message: "No courses found for completed semester" });
+    }
+
+    const deleteResult = await Task.deleteMany({
+      userId: req.user.id,
+      course: { $in: pastCourseNames, $ne: 'General' }
+    });
+
+    res.json({ success: true, deletedCount: deleteResult.deletedCount });
+  } catch (error) {
+    console.error("Error in DELETE /api/tasks/archived/clear:", error);
+    res.status(500).json({ message: "Error clearing archived tasks" });
+  }
+});
+
+
+
+
 
 app.get('/api/sync-diagnostics', auth, async (req, res) => {
   try {
@@ -5805,17 +6057,6 @@ const runTieredSync = async (mode, logName) => {
         await syncLog.save();
         if (err.message === "Session Expired") {
           await User.findByIdAndUpdate(user._id, { isPortalConnected: false });
-          const title = "UCP Session Expired ⚠️";
-          const message = "Your background sync failed because your session expired. Tap here to log in again.";
-          await sendPush(
-            user,
-            title,
-            message,
-            { type: "session_expired", action: "OPEN_APP" },
-            "smart-alert",
-            "default"
-          );
-          await createAcademicNotification(user._id, 'system', title, message);
         }
       } finally {
         
@@ -5876,17 +6117,6 @@ cron.schedule('*/10 * * * *', async () => {
             ucpCookieEncrypted: null,
             ucpCookie: null
           });
-          const title = "UCP Session Expired ⚠️";
-          const message = "Your background sync failed because your session expired. Tap here to log in again.";
-          await sendPush(
-            user,
-            title,
-            message,
-            { type: "session_expired", action: "OPEN_APP" },
-            "smart-alert",
-            "default"
-          );
-          await createAcademicNotification(user._id, 'system', title, message);
         } else {
           console.log(`[CRON] Session kept alive successfully for user ${user.email}`);
         }

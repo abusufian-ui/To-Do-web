@@ -12,17 +12,20 @@ import ParallelSyncDashboard from './ParallelSyncDashboard';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-const CoursePortalView = ({ activeTab, courses, filters }) => {
+const CoursePortalView = ({ activeTab, courses, filters, user, selectedSemester, onSemesterChange }) => {
   const uniCourses = courses.filter(c => c.type === 'uni');
   const [selectedCourse, setSelectedCourse] = useState(uniCourses.length > 0 ? uniCourses[0].name : null);
   
   const [previewFile, setPreviewFile] = useState(null);
   const [previewName, setPreviewName] = useState(null);
   
+  // Reset selected course when the course list changes (e.g. on semester switch)
   useEffect(() => {
     const uni = courses.filter(c => c.type === 'uni');
-    if (!selectedCourse && uni.length > 0) {
-      setSelectedCourse(uni[0].name);
+    // If the currently selected course is no longer in the new list, reset to first
+    const stillExists = uni.some(c => c.name === selectedCourse);
+    if (!stillExists) {
+      setSelectedCourse(uni.length > 0 ? uni[0].name : null);
     }
   }, [courses, selectedCourse]);
 
@@ -256,7 +259,20 @@ const CoursePortalView = ({ activeTab, courses, filters }) => {
   return (
     <div className="w-full h-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar-hide">
       
-      {}
+      {/* Past semester banner – mirrors mobile app behaviour */}
+      {selectedSemester && (
+        <div className="flex items-center justify-between gap-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-4 py-3">
+          <span className="text-sm font-bold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+            📚 Viewing {selectedSemester} Data (Past Semester)
+          </span>
+          <button
+            onClick={() => onSemesterChange && onSemesterChange('')}
+            className="text-xs font-bold text-brand-blue hover:underline shrink-0"
+          >
+            Switch to Current Semester
+          </button>
+        </div>
+      )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-gray-200 dark:border-[#333] pb-4 relative z-20">
         
         {}

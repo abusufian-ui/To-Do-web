@@ -11,6 +11,7 @@ const timetableSchema = new mongoose.Schema({
   room: { type: String, default: 'Unknown' },
   color: { type: String, default: 'bg-blue-500' },
   isMakeup: { type: Boolean, default: false },
+  semester: { type: String, default: '' },
   expiresAt: { type: Date },
   lastUpdated: { type: Date, default: Date.now }
 });

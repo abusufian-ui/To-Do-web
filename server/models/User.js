@@ -30,6 +30,7 @@ const userSchema = new mongoose.Schema({
   careerType: { type: String, default: null },
   program: { type: String, default: null },
   currentSemester: { type: String, default: null },
+  academicOrdinalSemester: { type: String, default: null },
   
   enrolledSections: [{ type: String }], 
   lastScrapedAt: { type: Date, default: null }, 
@@ -47,7 +48,9 @@ const userSchema = new mongoose.Schema({
   // 'complete' (first full scrape pushed). Drives the web onboarding progress UI.
   syncStatus: { type: String, default: null },
   syncProgress: { type: Number, default: 0 },
-  syncActivity: { type: String, default: 'Importing your data...' }
+  syncActivity: { type: String, default: 'Importing your data...' },
+  isSemesterCompleted: { type: Boolean, default: false },
+  lastCompletedSemester: { type: String, default: '' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

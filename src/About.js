@@ -142,9 +142,9 @@ const About = ({ user, onUpdateProfilePic, onUpdatePrivacy }) => {
               <span className="px-3 py-1 bg-gray-100 dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-400 text-xs font-bold rounded-full flex items-center gap-1.5">
                 <Mail size={12} /> {user.email}
               </span>
-              {user.currentSemester && (
+              {(user.academicOrdinalSemester || user.currentSemester) && (
                 <span className="px-3 py-1 bg-sky-50 dark:bg-sky-950/20 border border-sky-100 dark:border-sky-900/30 text-sky-600 dark:text-sky-400 text-xs font-bold rounded-full flex items-center gap-1.5">
-                  <GraduationCap size={12} /> {getSemesterDisplay(user.currentSemester)}
+                  <GraduationCap size={12} /> {getSemesterDisplay(user.academicOrdinalSemester || user.currentSemester)}
                 </span>
               )}
             </div>

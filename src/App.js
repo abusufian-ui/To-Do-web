@@ -23,6 +23,7 @@ import HyperFocus from './HyperFocus';
 import Keynote from './Keynote';
 import AddKeynoteModal from './AddKeynoteModal';
 import CoursePortalView from './CoursePortalView';
+import SemesterResultPage from './SemesterResultPage';
 
 import Datesheet from './Datesheet';
 import AnimatedLogo from './Animation'; 
@@ -80,6 +81,7 @@ const TAB_PATH_MAP = {
   'History': '/history',
   'Sync Diagnostics': '/sync-diagnostics',
   'Datesheet': '/datesheet',
+  'Result': '/result',
   'Cash-Overview': '/cash/overview',
   'Cash-Transactions': '/cash/transactions',
   'Cash-Analytics': '/cash/analytics',
@@ -158,8 +160,24 @@ function AppLayout() {
 
   const [isAddKeynoteOpen, setIsAddKeynoteOpen] = useState(false);
   const [keynoteToDelete, setKeynoteToDelete] = useState(null);
+
+  const [semesterStatus, setSemesterStatus] = useState(null);
+  const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [isBatchDeleteKeynotes, setIsBatchDeleteKeynotes] = useState(false);
   const [keynotesToBatchDelete, setKeynotesToBatchDelete] = useState([]);
+
+  const [selectedSemester, setSelectedSemester] = useState(() => {
+    return localStorage.getItem('selectedSemester') || '';
+  });
+
+  const handleSemesterChange = useCallback((sem) => {
+    setSelectedSemester(sem);
+    if (sem) {
+      localStorage.setItem('selectedSemester', sem);
+    } else {
+      localStorage.removeItem('selectedSemester');
+    }
+  }, []);
 
 
 
@@ -176,11 +194,35 @@ function AppLayout() {
   const [notifications, setNotifications] = useState([]);
   const [exams, setExams] = useState([]);
 
+  const visibleCourses = useMemo(() => {
+    const activeSem = (selectedSemester || user?.currentSemester || '').trim().toLowerCase();
+    return courses.filter(c => {
+      if (c.type === 'uni') {
+        const courseSem = (c.semester || '').trim().toLowerCase();
+        if (activeSem && courseSem && courseSem !== activeSem) return false;
+        const explicitPref = user?.coursePreferences?.[c.name];
+        if (explicitPref === false) return false;
+        if (explicitPref === undefined && c.creditHours === 0) return false;
+      }
+      return true;
+    });
+  }, [courses, user?.coursePreferences, selectedSemester, user?.currentSemester]);
+
   const activeExams = useMemo(() => {
     if (!exams || exams.length === 0) return [];
 
+    const visibleCourseNames = new Set((visibleCourses || []).map(c => c.name));
+    const semesterExams = exams.filter(e => {
+      if (e.course) {
+        return visibleCourseNames.has(e.course);
+      }
+      return true;
+    });
+
     const now = new Date();
-    const sortedExams = [...exams].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const sortedExams = [...semesterExams].sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (sortedExams.length === 0) return [];
+
     const lastExam = sortedExams[sortedExams.length - 1];
     const lastExamDate = new Date(lastExam.date);
 
@@ -191,7 +233,7 @@ function AppLayout() {
     }
 
     return [];
-  }, [exams]);
+  }, [exams, visibleCourses]);
 
   useEffect(() => {
     if (activeTab === 'Datesheet' && activeExams.length === 0) {
@@ -581,11 +623,40 @@ function AppLayout() {
           type: c.type === 'university' ? 'uni' : 'general',
           code: c.code,
           section: c.section,
-          creditHours: c.creditHours
+          creditHours: c.creditHours,
+          semester: c.semester
         }));
       }
     } catch (error) { console.error("Error fetching courses:", error); }
     setCourses(fetchedCourses);
+  }, [authHeaders]);
+
+  const fetchSemesterStatus = useCallback(async () => {
+    if (!token || !isAuthenticated) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/semester-status`, { headers: authHeaders });
+      if (res.ok) {
+        const data = await res.json();
+        setSemesterStatus(data);
+      }
+    } catch (error) {
+      console.error("Error fetching semester status:", error);
+    }
+  }, [authHeaders, token, isAuthenticated]);
+
+  const handleAcknowledgeSemester = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/semester-status/acknowledge`, {
+        method: 'POST',
+        headers: authHeaders
+      });
+      if (res.ok) {
+        setSemesterStatus(prev => prev ? { ...prev, isSemesterCompleted: false } : null);
+        setIsResultModalOpen(false);
+      }
+    } catch (error) {
+      console.error("Error acknowledging semester completion:", error);
+    }
   }, [authHeaders]);
 
   const fetchDashboardData = useCallback(async () => {
@@ -663,7 +734,8 @@ function AppLayout() {
           type: c.type === 'university' ? 'uni' : 'general',
           code: c.code,
           section: c.section,
-          creditHours: c.creditHours
+          creditHours: c.creditHours,
+          semester: c.semester
         }));
         setCourses(fetchedCourses);
       } else {
@@ -691,8 +763,9 @@ function AppLayout() {
   useEffect(() => {
     if (isAuthenticated && token) {
       fetchDashboardData();
+      fetchSemesterStatus();
     }
-  }, [isAuthenticated, token, fetchDashboardData]);
+  }, [isAuthenticated, token, fetchDashboardData, fetchSemesterStatus]);
 
   const handleLiveUpdate = useCallback((eventType) => {
     if (!token || !isAuthenticated) return;
@@ -866,7 +939,14 @@ function AppLayout() {
   };
 
   const getFilteredTasks = () => {
+    const visibleCourseNames = new Set((visibleCourses || []).map(c => c.name));
     return tasks.filter(task => {
+      if (task.course) {
+        const fullCourse = courses.find(c => c.name === task.course);
+        if (fullCourse && fullCourse.type === 'uni' && !visibleCourseNames.has(task.course)) {
+          return false;
+        }
+      }
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase();
         const matchesName = task.name?.toLowerCase().includes(query) || false;
@@ -883,7 +963,14 @@ function AppLayout() {
   };
 
   const getFilteredNotes = () => {
+    const visibleCourseIds = new Set((visibleCourses || []).map(c => c.id || c._id));
     return notes.filter(note => {
+      if (note.courseId) {
+        const fullCourse = courses.find(c => (c.id || c._id) === note.courseId);
+        if (fullCourse && fullCourse.type === 'uni' && !visibleCourseIds.has(note.courseId)) {
+          return false;
+        }
+      }
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase();
         const matchesTitle = note.title?.toLowerCase().includes(query) || false;
@@ -899,7 +986,14 @@ function AppLayout() {
   const isAudioUrl = (url) => url?.match(/\.(m4a|mp3|wav|ogg|aac|mp4|3gp)$/i) || url?.includes('video/upload');
 
   const getFilteredKeynotes = () => {
+    const visibleCourseNames = new Set((visibleCourses || []).map(c => c.name));
     return keynotes.filter(k => {
+      if (k.courseName) {
+        const fullCourse = courses.find(c => c.name === k.courseName);
+        if (fullCourse && fullCourse.type === 'uni' && !visibleCourseNames.has(k.courseName)) {
+          return false;
+        }
+      }
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase();
         const matchesTitle = k.title?.toLowerCase().includes(query) || false;
@@ -1055,20 +1149,20 @@ function AppLayout() {
     }
   };
 
-  
-  
-  
-  
-  const visibleCourses = useMemo(() => {
-    return courses.filter(c => {
-      if (c.type === 'uni') {
-        const explicitPref = user?.coursePreferences?.[c.name];
-        if (explicitPref === false) return false;
-        if (explicitPref === undefined && c.creditHours === 0) return false;
-      }
-      return true;
-    });
-  }, [courses, user?.coursePreferences]);
+  // Auto-clear stale selectedSemester if the selected semester no longer exists in courses
+  useEffect(() => {
+    if (!selectedSemester) return;
+    const existingSemesters = new Set(
+      courses
+        .filter(c => c.type === 'uni')
+        .map(c => (c.semester || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const normalizedSelected = selectedSemester.trim().toLowerCase();
+    if (!existingSemesters.has(normalizedSelected)) {
+      handleSemesterChange('');
+    }
+  }, [courses, selectedSemester, handleSemesterChange]);
 
   return (
     <Routes>
@@ -1124,6 +1218,8 @@ function AppLayout() {
                   onToggleRightSidebar={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
                   isRightSidebarOpen={isRightSidebarOpen}
                   pendingInvitations={pendingInvitations}
+                  semesterStatus={semesterStatus}
+                  onOpenResultModal={() => setIsResultModalOpen(true)}
                 />
 
                 <RightSidebar
@@ -1169,25 +1265,26 @@ function AppLayout() {
 
                   <div className={`w-full h-full ${activeTab === 'HyperFocus' ? 'block' : 'hidden'}`}><HyperFocus hfState={hfState} toggleAutomation={toggleAutomation} resetAutomation={resetAutomation} setSoundEnabled={setSoundEnabled} hfModes={HF_MODES} skipPhase={skipPhase} /></div>
                   <div className={`w-full h-full ${activeTab === 'Notes' ? 'block' : 'hidden'}`}><Notes courses={visibleCourses} notes={getFilteredNotes()} setNotes={setNotes} isAddingNew={isAddingNewNote} setIsAddingNew={setIsAddingNewNote} fetchNotes={fetchNotes} fetchBin={fetchBin} user={user} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Tasks' ? 'block' : 'hidden'}`}><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={visibleCourses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Calendar' ? 'block' : 'hidden'}`}><Calendar tasks={tasks} courses={visibleCourses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} user={user} activeGroup={activeGroup} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Timetable' ? 'block' : 'hidden'}`}><Timetable /></div>
+                  <div className={`w-full h-full ${activeTab === 'Tasks' ? 'block' : 'hidden'}`}><TaskTable tasks={getFilteredTasks()} updateTask={updateTask} courses={visibleCourses} deleteTask={deleteTask} user={user} activeGroup={activeGroup} pendingInvitations={pendingInvitations} fetchActiveGroup={fetchActiveGroup} fetchPendingInvitations={fetchPendingInvitations} fetchTasks={fetchTasks} toast={toast} setToast={setToast} semesterStatus={semesterStatus} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Calendar' ? 'block' : 'hidden'}`}><Calendar tasks={getFilteredTasks()} courses={visibleCourses} onAddWithDate={openAddTaskWithDate} onUpdate={updateTask} onDelete={deleteTask} user={user} activeGroup={activeGroup} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Timetable' ? 'block' : 'hidden'}`}><Timetable selectedSemester={selectedSemester} currentSemester={user?.currentSemester} /></div>
                   <div className={`w-full h-full ${activeTab === 'Keynotes' ? 'block' : 'hidden'}`}><Keynote keynotes={getFilteredKeynotes()} courses={visibleCourses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Habits') ? 'block' : 'hidden'}`}><HabitTracker activeTab={activeTab} /></div>
                   <div className={`w-full h-full ${activeTab === 'Grade Book' ? 'block' : 'hidden'}`}><GradeBook courses={visibleCourses} user={user} activeGroup={activeGroup} /></div>
                   {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
+                  {activeTab === 'Result' && <div className="w-full h-full"><SemesterResultPage semesterStatus={semesterStatus} onViewFullHistory={() => handleNavigate('History')} onDismiss={async () => { await handleAcknowledgeSemester(); handleNavigate('Welcome'); }} /></div>}
                   {activeTab === 'Sync Diagnostics' && <div className="w-full h-full"><SyncDiagnostics /></div>}
 
                   <div className={`w-full h-full ${(activeTab === 'Datesheet' && activeExams.length > 0) ? 'block' : 'hidden'}`}>
                     <Datesheet exams={activeExams} />
                   </div>
 
-                  <div className={`w-full h-full ${['Announcements', 'Attendance', 'Submissions', 'Course Material', 'Course Vault'].includes(activeTab) ? 'block' : 'hidden'}`}><CoursePortalView activeTab={activeTab} courses={visibleCourses} user={user} filters={filters} /></div>
+                  <div className={`w-full h-full ${['Announcements', 'Attendance', 'Submissions', 'Course Material', 'Course Vault'].includes(activeTab) ? 'block' : 'hidden'}`}><CoursePortalView activeTab={activeTab} courses={visibleCourses} user={user} filters={filters} selectedSemester={selectedSemester} onSemesterChange={handleSemesterChange} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Cash-') ? 'block' : 'hidden'}`}><CashManager activeTab={activeTab} filters={filters} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>
                   <div className={`w-full h-full ${activeTab === 'Bin' ? 'block' : 'hidden'}`}><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>
                   <div className={`w-full h-full ${activeTab === 'Admin' ? 'block' : 'hidden'}`}><AdminDashboard currentUser={user} /></div>
                   <div className={`w-full h-full ${activeTab === 'Profile' ? 'block' : 'hidden'}`}><About user={user} onUpdateProfilePic={handleUpdateProfilePic} onUpdatePrivacy={handleUpdatePrivacy} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Settings' ? 'block' : 'hidden'}`}><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} onUpdatePrivacy={handleUpdatePrivacy} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Settings' ? 'block' : 'hidden'}`}><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} onUpdatePrivacy={handleUpdatePrivacy} selectedSemester={selectedSemester} onSemesterChange={handleSemesterChange} /></div>
                 </div>
               </div>
 
@@ -1292,6 +1389,7 @@ function AppLayout() {
                   )}
                 </div>
               )}
+
             </div>
           ) : (
             <Navigate to="/login" replace />

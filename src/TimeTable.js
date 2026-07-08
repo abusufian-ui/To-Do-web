@@ -17,7 +17,7 @@ const colorThemes = [
   { bg: 'bg-indigo-50 dark:bg-indigo-900/20', border: 'border-indigo-200 dark:border-indigo-800/50', text: 'text-indigo-900 dark:text-indigo-100', icon: 'text-indigo-500 dark:text-indigo-400', hoverRing: 'hover:ring-indigo-300 dark:hover:ring-indigo-700/50', accent: 'bg-indigo-500' },
 ];
 
-const TimeTable = () => {
+const TimeTable = ({ selectedSemester, currentSemester }) => {
   const [classes, setClasses] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState(null);
@@ -28,7 +28,12 @@ const TimeTable = () => {
       try {
         const token = localStorage.getItem('token');
         const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-        const res = await fetch(`${API_BASE}/api/timetable`, {
+        const activeSem = selectedSemester || currentSemester;
+        const url = activeSem 
+          ? `${API_BASE}/api/timetable?semester=${encodeURIComponent(activeSem)}` 
+          : `${API_BASE}/api/timetable`;
+        
+        const res = await fetch(url, {
           headers: { 'x-auth-token': token }
         });
         if (res.ok) {
@@ -43,7 +48,7 @@ const TimeTable = () => {
     };
     
     fetchTimetable();
-  }, []);
+  }, [selectedSemester, currentSemester]);
 
   const getPositionStyles = (startTime, endTime) => {
     const [startH, startM] = (startTime || '00:00').split(':').map(Number);
