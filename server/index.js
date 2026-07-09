@@ -461,6 +461,7 @@ const allowedOrigins = [
   'https://myportalucp.online',
   'http://4.188.99.151',
   'https://horizon.ucp.edu.pk',
+  'https://www.myportalucp.online',
   'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof'
 ];
 
@@ -777,10 +778,14 @@ app.get('/api/public/settings', async (req, res) => {
   try {
     const now = Date.now();
     if (!cachedSettingsData || now > settingsCacheExpiry) {
-      let webPortalLink = "https://myportalucp.online/";
+      let webPortalLink = "https://web.myportalucp.online/";
       const linkSetting = await SystemSettings.findOne({ key: "web_portal_link" });
-      if (linkSetting) {
-        webPortalLink = linkSetting.value;
+      if (linkSetting && linkSetting.value) {
+        let val = linkSetting.value.trim();
+        if (!val.startsWith('http://') && !val.startsWith('https://')) {
+          val = 'https://' + val;
+        }
+        webPortalLink = val;
       }
 
       let termsLink = "";
@@ -915,8 +920,12 @@ app.post('/api/feedback/public', async (req, res) => {
 
 app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res) => {
   try {
-    const { link } = req.body;
+    let { link } = req.body;
     if (!link) return res.status(400).json({ message: "Link is required." });
+    
+    if (!link.startsWith('http://') && !link.startsWith('https://')) {
+      link = 'https://' + link;
+    }
 
     const setting = await SystemSettings.findOneAndUpdate(
       { key: "web_portal_link" },
