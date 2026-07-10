@@ -241,7 +241,7 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
 
                         if (tds.length < 5 || hasParentClass) {
                             // This is a parent (category) row!
-                            const nameAnchor = $doc(row).find('a.toggle-childrens');
+                            const nameAnchor = $doc(row).find('a.toggle-childrens, a.js-toggle-children-row');
                             let summaryName = "Unknown", weightValue = "";
 
                             if (nameAnchor.length > 0) {
@@ -263,8 +263,9 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                                 if (badge.length > 0) weightValue = badge.text().replace(/\s+/g, '').trim();
                             }
 
-                            // Skip summary / total row
-                            if (summaryName.toLowerCase().includes('total') || summaryName.toLowerCase() === 'unknown') {
+                            // Skip summary / total row (only skip if it is exactly total or grand total)
+                            const nameLower = summaryName.toLowerCase().trim();
+                            if (nameLower === 'total' || nameLower === 'grand total' || nameLower === 'sub total' || nameLower === 'unknown' || nameLower === 'obtained total') {
                                 return;
                             }
 
@@ -544,20 +545,17 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                 const dsRes = await fetchWithTimeout('https://horizon.ucp.edu.pk/student/exam/datesheet', defaultOptions);
                 const dsHtml = await dsRes.text();
                 const $dsDoc = cheerio.load(dsHtml);
-                const pageText = $dsDoc('body').text().toLowerCase();
 
-                if (!pageText.includes("no exam") && !pageText.includes("no exams scheduled")) {
-                    $dsDoc('table tbody tr').each((i, row) => {
-                        const tds = $dsDoc(row).find('td');
-                        if (tds.length >= 6 && !$dsDoc(tds[0]).attr('colspan')) {
-                            const courseName = $dsDoc(tds[1]).text().trim();
-                            const date = $dsDoc(tds[3]).text().trim();
-                            if (courseName && date) {
-                                datesheetData.push({ courseName, instructor: $dsDoc(tds[2]).text().trim() || "", date, time: $dsDoc(tds[4]).text().trim() || "", venue: $dsDoc(tds[5]).text().trim() || "TBA" });
-                            }
+                $dsDoc('table tbody tr').each((i, row) => {
+                    const tds = $dsDoc(row).find('td');
+                    if (tds.length >= 6 && !$dsDoc(tds[0]).attr('colspan')) {
+                        const courseName = $dsDoc(tds[1]).text().trim();
+                        const date = $dsDoc(tds[3]).text().trim();
+                        if (courseName && date) {
+                            datesheetData.push({ courseName, instructor: $dsDoc(tds[2]).text().trim() || "", date, time: $dsDoc(tds[4]).text().trim() || "", venue: $dsDoc(tds[5]).text().trim() || "TBA" });
                         }
-                    });
-                }
+                    }
+                });
             } catch (e) { }
             return datesheetData;
         };
