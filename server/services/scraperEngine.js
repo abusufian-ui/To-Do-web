@@ -229,40 +229,61 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                 const realName = courseMap.has(url) ? courseMap.get(url).name : "Unknown Course";
                 const results = [];
 
-                $doc('tr.table-parent-row').each((i, row) => {
+                const rows = $doc('.uk-table tbody tr, table tbody tr, tr');
+                let currentParent = null;
+
+                rows.each((i, row) => {
                     try {
-                        const nameAnchor = $doc(row).find('a.toggle-childrens');
-                        let summaryName = "Unknown", weightValue = "";
-
-                        if (nameAnchor.length) {
-                            let rawText = "";
-                            nameAnchor.contents().each((_, node) => {
-                                if (node.type === 'text') rawText += node.data;
-                            });
-                            summaryName = rawText.replace(/\s+/g, ' ').trim() || "Unknown";
-                            const badge = nameAnchor.find('.uk-badge');
-                            if (badge.length) weightValue = badge.text().replace(/\s+/g, '').trim();
-                        }
-
                         const tds = $doc(row).find('td');
-                        let summaryPercentage = tds.length >= 2 ? $doc(tds[1]).text().trim() : "0";
+                        if (tds.length === 0) return; // Header row
 
-                        let childDetails = [];
-                        let nextSibling = $doc(row).next();
-                        while (nextSibling.length && !nextSibling.hasClass('table-parent-row')) {
-                            const childTds = nextSibling.find('td');
-                            if (childTds.length >= 5) {
-                                childDetails.push({ 
-                                    name: $doc(childTds[0]).text().trim(), 
-                                    maxMarks: $doc(childTds[1]).text().trim() || "0", 
-                                    obtainedMarks: $doc(childTds[2]).text().trim() || "0", 
-                                    classAverage: $doc(childTds[3]).text().trim() || "0", 
-                                    percentage: $doc(childTds[4]).text().trim() || "0" 
+                        const hasParentClass = $doc(row).hasClass('table-parent-row');
+
+                        if (tds.length < 5 || hasParentClass) {
+                            // This is a parent (category) row!
+                            const nameAnchor = $doc(row).find('a.toggle-childrens');
+                            let summaryName = "Unknown", weightValue = "";
+
+                            if (nameAnchor.length > 0) {
+                                let rawText = "";
+                                nameAnchor.contents().each((_, node) => {
+                                    if (node.type === 'text') rawText += node.data;
+                                });
+                                summaryName = rawText.replace(/\s+/g, ' ').trim() || "Unknown";
+                                const badge = nameAnchor.find('.uk-badge');
+                                if (badge.length > 0) weightValue = badge.text().replace(/\s+/g, '').trim();
+                            } else {
+                                const firstTd = tds.eq(0);
+                                let rawText = "";
+                                firstTd.contents().each((_, node) => {
+                                    if (node.type === 'text') rawText += node.data;
+                                });
+                                summaryName = rawText.replace(/\s+/g, ' ').trim() || "Unknown";
+                                const badge = firstTd.find('.uk-badge, span.uk-badge');
+                                if (badge.length > 0) weightValue = badge.text().replace(/\s+/g, '').trim();
+                            }
+
+                            // Skip summary / total row
+                            if (summaryName.toLowerCase().includes('total') || summaryName.toLowerCase() === 'unknown') {
+                                return;
+                            }
+
+                            const summaryPercentage = tds.length >= 2 ? $doc(tds.eq(1)).text().trim() : "0";
+
+                            currentParent = { name: summaryName, weight: weightValue, percentage: summaryPercentage, details: [] };
+                            results.push(currentParent);
+                        } else {
+                            // This is a child (assessment item) row!
+                            if (currentParent && tds.length >= 5) {
+                                currentParent.details.push({
+                                    name: $doc(tds.eq(0)).text().trim(),
+                                    maxMarks: $doc(tds.eq(1)).text().trim() || "0",
+                                    obtainedMarks: $doc(tds.eq(2)).text().trim() || "0",
+                                    classAverage: $doc(tds.eq(3)).text().trim() || "0",
+                                    percentage: $doc(tds.eq(4)).text().trim() || "0"
                                 });
                             }
-                            nextSibling = nextSibling.next();
                         }
-                        results.push({ name: summaryName, weight: weightValue, percentage: summaryPercentage, details: childDetails });
                     } catch (e) { } 
                 });
 

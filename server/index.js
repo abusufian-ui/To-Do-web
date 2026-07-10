@@ -1329,6 +1329,7 @@ app.get('/api/web/check-sync-status', async (req, res) => {
         tempToken: token, 
         syncProgress: 100, 
         syncActivity: 'Sync complete! Setting up account…',
+        hasPassword: !!user.webPassword,
         ...identity 
       });
     }
@@ -1340,6 +1341,7 @@ app.get('/api/web/check-sync-status', async (req, res) => {
       tempToken: token, 
       syncProgress: user.syncProgress || 0,
       syncActivity: user.syncActivity || 'Importing your data...',
+      hasPassword: !!user.webPassword,
       ...identity 
     });
   } catch (err) {
@@ -1676,7 +1678,18 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
   const userId = req.user.id;
   const syncKey = userId.toString();
 
-  
+  // Hoist scraperEngine imports out of loops and handle failure gracefully.
+  let getCurrentSemesterCode, parseSemesterFromCourseCode;
+  try {
+    const engine = require('./services/scraperEngine');
+    getCurrentSemesterCode = engine.getCurrentSemesterCode;
+    parseSemesterFromCourseCode = engine.parseSemesterFromCourseCode;
+  } catch (err) {
+    console.error(`[SYNC] scraperEngine failed to load:`, err.message);
+    activeSyncs.delete(syncKey);
+    return res.status(500).json({ message: "Sync engine unavailable. Please try again." });
+  }
+
   if (activeSyncs.has(syncKey)) {
     console.warn(`[SYNC] ⚠️ Concurrent sync requested for user ${syncKey} while already in progress. Returning 200 OK to bypass client block.`);
     return res.status(200).json({ message: 'Sync already in progress. Re-using current run.' });
@@ -1773,7 +1786,6 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           const parsed = parseSemesterAndSectionFromCode(fullCode);
           const finalSection = sectionCode || parsed.section || '';
 
-          const { getCurrentSemesterCode } = require('./services/scraperEngine');
           const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
 
           const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: finalSemester };
@@ -2012,7 +2024,6 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
         const fullCode = classItem.courseCode || '';
         const parsed = parseSemesterAndSectionFromCode(fullCode);
-        const { getCurrentSemesterCode } = require('./services/scraperEngine');
         const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
 
         preparedClasses.push({
@@ -2038,7 +2049,6 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         if (classItem.room && !classItem.room.includes('Unknown') && !classItem.room.includes('TBA')) course.rooms.add(classItem.room);
       }
 
-      const { getCurrentSemesterCode } = require('./services/scraperEngine');
       const currentSem = req.body.semester || getCurrentSemesterCode();
       await Timetable.deleteMany({ userId, semester: currentSem });
       if (preparedClasses.length > 0) {
@@ -2053,7 +2063,6 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         const parsed = parseSemesterAndSectionFromCode(fullCode);
         const finalSection = sectionCode || parsed.section || '';
         
-        const { getCurrentSemesterCode } = require('./services/scraperEngine');
         const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
 
         const courseUpdatePayload = {
@@ -2194,7 +2203,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       portalId: user.portalId,
       ucpCookie: ucpCookie || user.ucpCookie,
       // First full scrape pushed — mark onboarding sync complete so the web can advance.
-      ...(user.syncStatus === 'scraping' ? { syncStatus: 'complete' } : {}),
+      ...((user.syncStatus === 'scraping' || user.tempSyncId) ? { syncStatus: 'complete' } : {}),
       ...(enrolledSections.length > 0 ? { enrolledSections } : {})
     };
 
@@ -2286,7 +2295,6 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
           
           
-          const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
           const activeSemester = parseSemesterFromCourseCode(item.courseCode) || req.body.semester || getCurrentSemesterCode();
 
           const isProcessed = !item.links || item.links.length === 0;
@@ -5615,6 +5623,12 @@ const calculateStudentScore = (userGrade, bestOfConfigs = {}) => {
   return calculateTrueScore(userGrade.assessments, bestOfConfigs).percentage;
 };
 
+const extractCourseIdFromUrl = (url) => {
+  if (!url) return null;
+  const parts = url.split('/');
+  return parts[parts.length - 1] || null;
+};
+
 const buildCourseLeaderboard = (matchingCourses, grades, bestOfConfigs = {}, gradeName = null) => {
   let leaderboard = matchingCourses.map(course => {
     const userGrade = grades.find(g => {
@@ -5625,9 +5639,15 @@ const buildCourseLeaderboard = (matchingCourses, grades, bestOfConfigs = {}, gra
         return g.courseName === gradeName;
       }
 
+      // 1. Try matching by numerical course ID extracted from the URLs
+      const courseId = extractCourseIdFromUrl(course.portalUrl);
+      const gradeCourseId = extractCourseIdFromUrl(g.courseUrl);
+      if (courseId && gradeCourseId && courseId === gradeCourseId) {
+        return true;
+      }
+
+      // 2. Fallbacks
       return (
-        (course.code && g.courseUrl && g.courseUrl.toLowerCase().includes(course.code.toLowerCase())) ||
-        (course.code && g.courseName && g.courseName.toLowerCase().includes(course.code.toLowerCase())) ||
         g.courseName === course.name || 
         (course.name && g.courseName && g.courseName.toLowerCase().includes(course.name.toLowerCase()))
       );
@@ -5720,25 +5740,20 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     let query = {};
     const courseCodeTrimmed = courseCodeParam.trim();
     
-    // If it is a full course code containing multiple hyphens (e.g. CSSE3163-S26-BS-CS-F23-F18)
-    if (courseCodeTrimmed.includes('-') && courseCodeTrimmed.split('-').length > 2) {
-      query.code = { $regex: '^' + escapeRegex(courseCodeTrimmed) + '$', $options: 'i' };
+    let baseCode = courseCodeTrimmed;
+    let section = (req.query.section || '').trim();
+
+    if (courseCodeTrimmed.includes('-')) {
+      const parts = courseCodeTrimmed.split('-');
+      baseCode = parts[0].trim();
+      section = parts[1].trim(); // Section is the second part (e.g. S26)
+    }
+
+    if (baseCode && section) {
+      // Relaxed regex matching ^baseCode-section(-|$) to include classmates across different programs/batches
+      query.code = { $regex: '^' + escapeRegex(baseCode) + '-' + escapeRegex(section) + '(-|$)', $options: 'i' };
     } else {
-      let courseCode = courseCodeTrimmed;
-      let section = (req.query.section || '').trim();
-
-      if (!section && courseCode.includes('-')) {
-        const parts = courseCode.split('-');
-        courseCode = parts[0].trim();
-        section = parts[parts.length - 1].trim();
-      }
-
-      if (section) {
-        // Match code starting with courseCode and containing the section
-        query.code = { $regex: '^' + escapeRegex(courseCode) + '.*' + escapeRegex(section) + '$', $options: 'i' };
-      } else {
-        query.code = { $regex: '^' + escapeRegex(courseCode) + '$', $options: 'i' };
-      }
+      query.code = { $regex: '^' + escapeRegex(courseCodeTrimmed) + '$', $options: 'i' };
     }
 
     if (courseName) {
@@ -5788,8 +5803,14 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
 
     let query = {};
     if (myCourse.code) {
-      // If a course code exists, it contains the full identifier including section/semester, match it directly
-      query.code = { $regex: '^' + escapeRegex(myCourse.code.trim()) + '$', $options: 'i' };
+      if (myCourse.code.includes('-')) {
+        const parts = myCourse.code.split('-');
+        const baseCode = parts[0].trim();
+        const section = parts[1].trim(); // Section is the second part (e.g. S26)
+        query.code = { $regex: '^' + escapeRegex(baseCode) + '-' + escapeRegex(section) + '(-|$)', $options: 'i' };
+      } else {
+        query.code = { $regex: '^' + escapeRegex(myCourse.code.trim()) + '$', $options: 'i' };
+      }
     } else {
       // Fallback to name and section matching if no code is available
       const targetSection = (myCourse.section || '').trim();

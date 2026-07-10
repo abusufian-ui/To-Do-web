@@ -74,6 +74,7 @@ export default function Login() {
     // Onboarding sync phase: 'waiting' (ping) | 'scraping' (bar) | 'mismatch' (warn) | 'done'
     const [syncPhase, setSyncPhase] = useState('waiting');
     const [mismatchInfo, setMismatchInfo] = useState(null);
+    const [mismatchedAccountHasPassword, setMismatchedAccountHasPassword] = useState(false);
     const [syncActivity, setSyncActivity] = useState('Importing your data...');
 
     // Password strength check
@@ -95,7 +96,8 @@ export default function Login() {
         setSyncToken(data.tempToken);
         setFirstName(data.name ? data.name.split(' ')[0] : 'Student');
         setFlowType('setup');
-        setTimeout(() => setStep('NEW_PASSWORD'), 600);
+        const targetStep = (data.hasPassword || mismatchedAccountHasPassword) ? 'EXISTING_PASSWORD' : 'NEW_PASSWORD';
+        setTimeout(() => setStep(targetStep), 600);
     };
 
 
@@ -145,7 +147,8 @@ export default function Login() {
                     rollNumber: detectedRoll,
                     email: data.email,
                     tempToken: data.tempToken,
-                    typedRoll
+                    typedRoll,
+                    hasPassword: data.hasPassword || false
                 });
                 return true; // handled (stop normal progression)
             }
@@ -241,6 +244,7 @@ export default function Login() {
         setFirstName(info.name ? info.name.split(' ')[0] : 'Student');
         setActiveEmail(info.email || `${info.rollNumber.toLowerCase()}@ucp.edu.pk`);
         setRollNumber(info.rollNumber.toLowerCase());
+        setMismatchedAccountHasPassword(info.hasPassword || false);
         setSyncPhase('scraping');
         setMismatchInfo(null);
         // If the server already returned 'done' state before the mismatch check, finalize now.
@@ -256,6 +260,7 @@ export default function Login() {
         if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); pollingIntervalRef.current = null; }
         if (syncProgressIntervalRef.current) { clearInterval(syncProgressIntervalRef.current); syncProgressIntervalRef.current = null; }
         mismatchAcceptedRef.current = false;
+        setMismatchedAccountHasPassword(false);
         setMismatchInfo(null);
         setSyncPhase('waiting');
         setSyncProgress(0);
@@ -356,6 +361,48 @@ export default function Login() {
             }
         } catch (err) {
             setError(err.response?.data?.message || "Login failed.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Existing Account Login for mismatch onboarding flow
+    const handleExistingAccountLogin = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError('');
+        try {
+            const targetEmail = activeEmail || `${rollNumber.toLowerCase().trim()}@ucp.edu.pk`;
+            const res = await axios.post(`${API_BASE}/api/web/login`, { email: targetEmail, password });
+            const token = res.data.token;
+
+            // Fetch full user details to check onboarding status
+            const userDetailsRes = await axios.get(`${API_BASE}/api/auth/user`, {
+                headers: { 'x-auth-token': token }
+            });
+            const fullUser = userDetailsRes.data;
+
+            if (fullUser.showProfilePicToCommunity === null || fullUser.showProfilePicToCommunity === undefined) {
+                // Not onboarded yet!
+                setTempUser(fullUser);
+                const name = fullUser.name || "Student";
+                const userInitials = name.match(/(\b\S)?/g)?.join("").match(/(^\S|\S$)?/g)?.join("").toUpperCase() || "U";
+                setInitials(userInitials);
+                
+                const pic = fullUser.customProfilePic || fullUser.portalProfilePic || fullUser.originalPortalProfilePic || fullUser.profilePic;
+                if (pic) {
+                    setProfilePicUrl(pic);
+                }
+
+                setSyncToken(token);
+                setStep('PREFERENCE_SETUP');
+            } else {
+                localStorage.setItem('token', token);
+                localStorage.setItem('user', JSON.stringify(res.data.user));
+                navigate('/dashboard');
+            }
+        } catch (err) {
+            setError(err.response?.data?.message || "Incorrect password. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -612,6 +659,7 @@ export default function Login() {
                                 {step === 'PASSWORD' && `Hey, ${firstName ? firstName.split(' ')[0] : ''}`}
                                 {step === 'OTP' && "Verification"}
                                 {step === 'NEW_PASSWORD' && "Secure Account"}
+                                {step === 'EXISTING_PASSWORD' && `Welcome back, ${firstName ? firstName.split(' ')[0] : ''}`}
                                 {step === 'EXTENSION_ONBOARDING' && "Sync Account"}
                                 {step === 'EXTENSION_PROMPT' && "Install Extension"}
                             </h2>
@@ -620,6 +668,7 @@ export default function Login() {
                                 {step === 'PASSWORD' && "Enter your web portal password"}
                                 {step === 'OTP' && `We sent a 6-digit code to ${email}`}
                                 {step === 'NEW_PASSWORD' && "Create a strong web portal password"}
+                                {step === 'EXISTING_PASSWORD' && "Enter your password to link your account"}
                                 {step === 'EXTENSION_ONBOARDING' && "Connect Horizon portal to initialize data"}
                                 {step === 'EXTENSION_PROMPT' && "Add Chrome extension for live data sync"}
                             </p>
@@ -783,7 +832,6 @@ export default function Login() {
                                         {passwordStrength === 4 && <span className="text-green-500">Strong</span>}
                                     </div>
                                 </div>
-
                                 <ul className={`text-xs space-y-2.5 mt-2 ${isDarkMode ? 'text-gray-400 bg-[#111] border-[#222]' : 'text-gray-600 bg-gray-50 border-gray-150'} p-4 rounded-xl border`}>
                                     <li className={`flex items-center gap-2 transition-colors duration-300 ${newPassword.length >= 8 ? 'text-green-500 font-medium' : ''}`}>
                                         <Check size={14} className={newPassword.length >= 8 ? 'opacity-100' : 'opacity-30'} /> At least 8 characters
@@ -801,6 +849,61 @@ export default function Login() {
 
                                 <button disabled={isLoading} className={`w-full ${isDarkMode ? 'bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] text-black' : 'bg-black hover:shadow-[0_4px_15px_rgba(0,0,0,0.15)] text-white hover:bg-neutral-900'} py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none mt-4`}>
                                     {isLoading ? 'Securing Account...' : 'Save & Log In'}
+                                </button>
+                            </form>
+                        )}
+
+                        {/* EXISTING PASSWORD LOGIN STEP */}
+                        {step === 'EXISTING_PASSWORD' && (
+                            <form onSubmit={handleExistingAccountLogin} className="space-y-5 animate-step-enter">
+                                <div className={`flex items-center gap-3 p-4 rounded-2xl ${isDarkMode ? 'bg-[#111] border-[#222]' : 'bg-gray-50 border-gray-150'} border mb-2`}>
+                                    <div className="w-10 h-10 rounded-full bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-blue-500 font-extrabold text-sm uppercase">
+                                        {firstName ? firstName.charAt(0).toUpperCase() : 'U'}
+                                    </div>
+                                    <div className="text-left">
+                                        <p className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{firstName}</p>
+                                        <p className={`text-[10px] font-semibold ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{rollNumber.toUpperCase()}</p>
+                                    </div>
+                                </div>
+
+                                <div className="relative">
+                                    <input
+                                        type={showNewPassword ? "text" : "password"}
+                                        placeholder="Enter password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className={`w-full px-5 py-3.5 ${isDarkMode ? 'bg-[#111] border-[#333] focus:border-white focus:ring-white/10 text-white' : 'bg-gray-50 border-black focus:border-black focus:ring-black/10 text-gray-900'} rounded-2xl border outline-none focus:ring-4 font-medium transition-all duration-300 pr-12`}
+                                        autoFocus
+                                        required
+                                    />
+                                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className={`absolute right-4 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} transition-colors`}>
+                                        {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleForgotPassword}
+                                        className="text-xs font-bold text-blue-500 hover:underline transition-all"
+                                    >
+                                        Forgot Password?
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setError('');
+                                            setStep('EMAIL');
+                                            setPassword('');
+                                        }}
+                                        className={`text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-950'} transition-all`}
+                                    >
+                                        <ArrowLeft size={14} /> Back to email
+                                    </button>
+                                </div>
+
+                                <button disabled={isLoading} className={`w-full ${isDarkMode ? 'bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.2)] text-black' : 'bg-black hover:shadow-[0_4px_15px_rgba(0,0,0,0.15)] text-white hover:bg-neutral-900'} py-4 rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:scale-100 disabled:shadow-none mt-2`}>
+                                    {isLoading ? 'Signing In...' : 'Sign In'}
                                 </button>
                             </form>
                         )}

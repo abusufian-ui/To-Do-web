@@ -25,18 +25,56 @@ function getAbsoluteGrade(pct) {
  */
 function getSmartCurveGrade(myScore, classAverage) {
   if (classAverage === 0) return getAbsoluteGrade(myScore);
+  
   const diff = myScore - classAverage;
-  if (diff >= 15) return { grade: 'A', points: 4.0, color: 'text-emerald-400' };
-  if (diff >= 10) return { grade: 'A-', points: 3.67, color: 'text-emerald-500' };
-  if (diff >= 5) return { grade: 'B+', points: 3.33, color: 'text-blue-400' };
-  if (diff >= 0) return { grade: 'B', points: 3.0, color: 'text-blue-500' };
-  if (diff >= -5) return { grade: 'B-', points: 2.67, color: 'text-indigo-400' };
-  if (diff >= -10) return { grade: 'C+', points: 2.33, color: 'text-amber-400' };
-  if (diff >= -15) return { grade: 'C', points: 2.0, color: 'text-amber-500' };
-  if (diff >= -20) return { grade: 'C-', points: 1.67, color: 'text-orange-500' };
-  if (diff >= -25) return { grade: 'D+', points: 1.33, color: 'text-rose-400' };
-  if (diff >= -30) return { grade: 'D', points: 1.0, color: 'text-rose-500' };
-  return { grade: 'F', points: 0.0, color: 'text-red-600' };
+  let relPoints = 3.0; // Base points at diff = 0
+  
+  if (diff >= 15) relPoints = 4.0;
+  else if (diff >= 10) relPoints = 3.67;
+  else if (diff >= 5) relPoints = 3.33;
+  else if (diff >= 0) relPoints = 3.0;
+  else if (diff >= -5) relPoints = 2.67;
+  else if (diff >= -10) relPoints = 2.33;
+  else if (diff >= -15) relPoints = 2.0;
+  else if (diff >= -20) relPoints = 1.67;
+  else if (diff >= -25) relPoints = 1.33;
+  else if (diff >= -30) relPoints = 1.0;
+  else relPoints = 0.0;
+
+  // Smart Hybrid Protections ("Smart as Hell" logic):
+  // 1. Ceiling protection: High absolute achievers are not dragged down by an extremely high class average.
+  if (myScore >= 86 && relPoints < 3.67) {
+    relPoints = 3.67;
+  }
+  if (myScore >= 90 && relPoints < 4.0) {
+    relPoints = 4.0;
+  }
+
+  // 2. Floor protection: Students with low absolute score cannot acing the course by relative means.
+  if (myScore < 50 && relPoints > 2.0) {
+    relPoints = Math.min(relPoints, 2.0); // Cap at C
+  }
+  
+  // 3. Absolute Failsafe: Standard academic policy fail threshold.
+  if (myScore < 35) {
+    relPoints = 0.0;
+  }
+
+  const pointsToGrade = (pts) => {
+    if (pts >= 4.0) return { grade: 'A', points: 4.0, color: 'text-emerald-400' };
+    if (pts >= 3.67) return { grade: 'A-', points: 3.67, color: 'text-emerald-500' };
+    if (pts >= 3.33) return { grade: 'B+', points: 3.33, color: 'text-blue-400' };
+    if (pts >= 3.0) return { grade: 'B', points: 3.0, color: 'text-blue-500' };
+    if (pts >= 2.67) return { grade: 'B-', points: 2.67, color: 'text-indigo-400' };
+    if (pts >= 2.33) return { grade: 'C+', points: 2.33, color: 'text-amber-400' };
+    if (pts >= 2.0) return { grade: 'C', points: 2.0, color: 'text-amber-500' };
+    if (pts >= 1.67) return { grade: 'C-', points: 1.67, color: 'text-orange-500' };
+    if (pts >= 1.33) return { grade: 'D+', points: 1.33, color: 'text-rose-400' };
+    if (pts >= 1.0) return { grade: 'D', points: 1.0, color: 'text-rose-500' };
+    return { grade: 'F', points: 0.0, color: 'text-red-600' };
+  };
+
+  return pointsToGrade(relPoints);
 }
 
 /**
