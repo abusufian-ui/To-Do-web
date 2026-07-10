@@ -6068,6 +6068,21 @@ app.get('/api/projection', auth, async (req, res) => {
   }
 });
 
+function getLeaderboardRegex(code, fallbackSection) {
+  if (!code) return null;
+  const trimmed = code.trim();
+  if (trimmed.includes('-')) {
+    const parts = trimmed.split('-');
+    const globalCode = parts[0].trim();
+    const section = parts[parts.length - 1].trim();
+    return new RegExp('^' + escapeRegex(globalCode) + '-.*-' + escapeRegex(section) + '$', 'i');
+  }
+  if (fallbackSection && fallbackSection.trim()) {
+    return new RegExp('^' + escapeRegex(trimmed) + '-.*-' + escapeRegex(fallbackSection.trim()) + '$', 'i');
+  }
+  return new RegExp('^' + escapeRegex(trimmed) + '$', 'i');
+}
+
 app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
   try {
     const courseCodeParam = req.params.courseCode;
@@ -6091,22 +6106,12 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     }
 
     let query = {};
-    const courseCodeTrimmed = courseCodeParam.trim();
-    
-    let baseCode = courseCodeTrimmed;
-    let section = (req.query.section || '').trim();
-
-    if (courseCodeTrimmed.includes('-')) {
-      const parts = courseCodeTrimmed.split('-');
-      baseCode = parts[0].trim();
-      section = parts[1].trim(); // Section is the second part (e.g. S26)
-    }
-
-    if (baseCode && section) {
-      // Relaxed regex matching ^baseCode-section(-|$) to include classmates across different programs/batches
-      query.code = { $regex: '^' + escapeRegex(baseCode) + '-' + escapeRegex(section) + '(-|$)', $options: 'i' };
+    const sectionParam = (req.query.section || '').trim();
+    const regex = getLeaderboardRegex(courseCodeParam, sectionParam);
+    if (regex) {
+      query.code = regex;
     } else {
-      query.code = { $regex: '^' + escapeRegex(courseCodeTrimmed) + '$', $options: 'i' };
+      query.code = { $regex: '^' + escapeRegex(courseCodeParam.trim()) + '$', $options: 'i' };
     }
 
     if (courseName) {
@@ -6156,11 +6161,9 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
 
     let query = {};
     if (myCourse.code) {
-      if (myCourse.code.includes('-')) {
-        const parts = myCourse.code.split('-');
-        const baseCode = parts[0].trim();
-        const section = parts[1].trim(); // Section is the second part (e.g. S26)
-        query.code = { $regex: '^' + escapeRegex(baseCode) + '-' + escapeRegex(section) + '(-|$)', $options: 'i' };
+      const regex = getLeaderboardRegex(myCourse.code, myCourse.section);
+      if (regex) {
+        query.code = regex;
       } else {
         query.code = { $regex: '^' + escapeRegex(myCourse.code.trim()) + '$', $options: 'i' };
       }
