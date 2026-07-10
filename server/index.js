@@ -1478,7 +1478,16 @@ app.post('/api/session/keep-alive', auth, async (req, res) => {
       return res.status(401).json({ error: "INVALID_COOKIE", message: "Failed to validate session cookie." });
     }
 
-    await User.findByIdAndUpdate(req.user.id, { $set: { ucpCookie: ucpCookie, isPortalConnected: true, lastSyncAt: new Date() } }, { strict: false });
+    const encrypted = encrypt(ucpCookie);
+    await User.findByIdAndUpdate(req.user.id, {
+      $set: {
+        ucpCookie: ucpCookie,
+        ucpCookieEncrypted: encrypted,
+        ucpCookieUpdatedAt: new Date(),
+        isPortalConnected: true,
+        lastSyncAt: new Date()
+      }
+    }, { strict: false });
     
     // F-005: Trigger B2 processing immediately on the spot (asynchronously to avoid blocking client)
     processUserMaterials(req.user.id.toString(), ucpCookie)
@@ -1674,6 +1683,65 @@ const mergeUserTasks = (existingTasks, incomingTasks) => {
   return mergedTasks;
 };
 
+const syncQueues = new Map();
+
+function queueSyncTask(userId, taskFn) {
+  if (!syncQueues.has(userId)) {
+    syncQueues.set(userId, Promise.resolve());
+  }
+  const prev = syncQueues.get(userId);
+  const next = (async () => {
+    try { await prev; } catch (err) {}
+    return await taskFn();
+  })();
+  syncQueues.set(userId, next);
+  next.finally(() => {
+    if (syncQueues.get(userId) === next) {
+      syncQueues.delete(userId);
+    }
+  });
+  return next;
+}
+
+function objectsAreEqual(obj1, obj2) {
+  const normalize = (val) => {
+    if (val === null || val === undefined || val === '') return null;
+    if (Array.isArray(val) && val.length === 0) return null;
+    return val;
+  };
+
+  const n1 = normalize(obj1);
+  const n2 = normalize(obj2);
+
+  if (n1 === null && n2 === null) return true;
+  if (n1 === null || n2 === null) return false;
+
+  if (typeof n1 !== 'object' || typeof n2 !== 'object') {
+    return String(n1).trim() === String(n2).trim();
+  }
+
+  if (n1 instanceof Date && n2 instanceof Date) {
+    return n1.getTime() === n2.getTime();
+  }
+
+  if (Array.isArray(n1)) {
+    if (!Array.isArray(n2) || n1.length !== n2.length) return false;
+    for (let i = 0; i < n1.length; i++) {
+      if (!objectsAreEqual(n1[i], n2[i])) return false;
+    }
+    return true;
+  }
+
+  const keys1 = Object.keys(n1).filter(k => !['_id', 'id', 'userId', 'lastUpdated', 'createdAt', 'updatedAt', '__v', 'lastScrapedAt', 'sequenceNumber', 'processed'].includes(k));
+  const keys2 = Object.keys(n2).filter(k => !['_id', 'id', 'userId', 'lastUpdated', 'createdAt', 'updatedAt', '__v', 'lastScrapedAt', 'sequenceNumber', 'processed'].includes(k));
+
+  const allKeys = new Set([...keys1, ...keys2]);
+  for (const key of allKeys) {
+    if (!objectsAreEqual(n1[key], n2[key])) return false;
+  }
+  return true;
+}
+
 app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => {
   const userId = req.user.id;
   const syncKey = userId.toString();
@@ -1686,21 +1754,15 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     parseSemesterFromCourseCode = engine.parseSemesterFromCourseCode;
   } catch (err) {
     console.error(`[SYNC] scraperEngine failed to load:`, err.message);
-    activeSyncs.delete(syncKey);
     return res.status(500).json({ message: "Sync engine unavailable. Please try again." });
   }
-
-  if (activeSyncs.has(syncKey)) {
-    console.warn(`[SYNC] ⚠️ Concurrent sync requested for user ${syncKey} while already in progress. Returning 200 OK to bypass client block.`);
-    return res.status(200).json({ message: 'Sync already in progress. Re-using current run.' });
-  }
-  activeSyncs.add(syncKey);
 
   try {
     const { gradesData, historyData, statsData, timetableData, attendanceData, announcementsData, submissionsData, datesheetData, portalId, ucpCookie, courseMap: clientCourseMap, syncMode, studentName, profilePic, syncLogId, materialLinksData } = req.body;
     const user = await User.findById(userId);
 
-    
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
     const mode = syncMode || 'AUTO_SYNC';
 
     let activePortalId = portalId;
@@ -1717,297 +1779,93 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     }
     if (!user.portalId) user.portalId = activePortalId.toUpperCase();
 
-    
-    let userUpdated = false;
-    if (req.path === '/api/extension-sync') {
-      if (!user.accessedExtension) {
-        user.accessedExtension = true;
-        userUpdated = true;
+    // Fetch existing records for diff comparison
+    const [
+      existingCourses,
+      existingAttendance,
+      existingAnnouncements,
+      existingSubmissions,
+      existingTimetable,
+      existingExams,
+      existingGrades,
+      existingHistory,
+      existingStats
+    ] = await Promise.all([
+      Course.find({ userId }).lean(),
+      Attendance.find({ userId }).lean(),
+      Announcement.find({ userId }).lean(),
+      Submission.find({ userId }).lean(),
+      Timetable.find({ userId, semester: req.body.semester || getCurrentSemesterCode() }).lean(),
+      Exam.find({ userId }).lean(),
+      Grade.find({ userId }).lean(),
+      ResultHistory.find({ userId }).lean(),
+      StudentStats.findOne({ userId }).lean()
+    ]);
+
+    const compareGrades = () => {
+      const arr = gradesData || [];
+      if (arr.length === 0) return true;
+      const newUrls = new Set(arr.map(g => g.courseUrl));
+      if (existingGrades.some(g => !newUrls.has(g.courseUrl))) return false;
+      const oldGradesMap = new Map(existingGrades.map(g => [g.courseUrl, g]));
+      for (const grade of arr) {
+        if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
+        const oldGrade = oldGradesMap.get(grade.courseUrl);
+        if (!oldGrade || !objectsAreEqual(oldGrade, grade)) return false;
       }
-    } else if (req.path === '/api/mobile-sync') {
-      if (!user.accessedMobile) {
-        user.accessedMobile = true;
-        userUpdated = true;
-      }
-    }
+      return true;
+    };
 
-    const profileChanged = updateProfileFields(user, req.body);
-    if (profileChanged || userUpdated) {
-      await user.save();
-    }
-
-    
-    let changesSummary = {};
-
-    
-    const enrolledSections = [];
-    const sectionLookup = {}; 
-    const baseCodeLookup = {}; 
-    if (clientCourseMap && typeof clientCourseMap === 'object') {
-      const coursePromises = [];
-      for (const [url, info] of Object.entries(clientCourseMap)) {
-        const fullCode = (info.code || '').trim();
-        const courseName = (info.name || '').trim();
-        const creditHours = info.creditHours !== undefined ? info.creditHours : 3; 
-
-        let sectionCode = '';
-        if (fullCode) {
-          const parts = fullCode.split('-');
-          const candidate = parts.length > 1 ? parts[parts.length - 1] : fullCode;
-          const isValidSection = candidate && 
-            !candidate.includes(' ') && 
-            !candidate.toLowerCase().includes('credit') && 
-            !candidate.toLowerCase().includes('hour') && 
-            candidate.length <= 15 &&
-            /^[a-zA-Z0-9-]+$/.test(candidate);
-
-          if (isValidSection) {
-            sectionCode = candidate;
-            enrolledSections.push(sectionCode);
-            sectionLookup[url] = sectionCode;
-          }
-        }
-
-        if (courseName) {
-          if (sectionCode) {
-            sectionLookup[courseName] = sectionCode;
-            if (!sectionLookup[`${courseName} - Lab`]) {
-              sectionLookup[`${courseName} - Lab`] = sectionCode;
-            }
-          }
-          if (fullCode) {
-            baseCodeLookup[courseName] = fullCode;
-            if (!baseCodeLookup[`${courseName} - Lab`]) {
-              baseCodeLookup[`${courseName} - Lab`] = fullCode;
-            }
-          }
-
-          
-          const parsed = parseSemesterAndSectionFromCode(fullCode);
-          const finalSection = sectionCode || parsed.section || '';
-
-          const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
-
-          const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: finalSemester };
-          if (fullCode) updatePayload.code = fullCode;
-          if (finalSection) updatePayload.section = finalSection;
-          if (url) updatePayload.portalUrl = url; 
-
-          coursePromises.push(Course.findOneAndUpdate(
-            { userId, name: courseName },
-            { $set: updatePayload },
-            { upsert: true }
-          ));
-        }
-      }
-      await Promise.all(coursePromises);
-    }
-    
-    
-    if (attendanceData && attendanceData.length > 0) {
-      const oldAttendances = await Attendance.find({ userId });
-      const oldAttMap = new Map(oldAttendances.map(a => [a.courseUrl, a]));
-      const attPromises = [];
-
-      for (const att of attendanceData) {
+    const compareAttendance = () => {
+      const arr = attendanceData || [];
+      if (arr.length === 0) return true;
+      const newUrls = new Set(arr.map(a => a.courseUrl));
+      if (existingAttendance.some(a => !newUrls.has(a.courseUrl))) return false;
+      const oldAttMap = new Map(existingAttendance.map(a => [a.courseUrl, a]));
+      for (const att of arr) {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
-        if (att.records) {
-          const oldAtt = oldAttMap.get(att.courseUrl);
-          const changes = detectAttendanceChanges(oldAtt, att);
-          
-          if (changes) {
-            if (changes.isNewAbsent) {
-              sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${changes.newAbsents}`);
-              await createAcademicNotification(userId, 'attendance', `Attendance Alert: ${att.courseName}`, `You have been marked absent! Total absents: ${changes.newAbsents}`);
-            }
-            if (changes.isCritical) {
-              sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
-              await createAcademicNotification(userId, 'attendance', `CRITICAL: ${att.courseName}`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
-            }
-            io.to(userId.toString()).emit('attendance_update', changes);
-            changesSummary.attendance = changesSummary.attendance || [];
-            if (!changesSummary.attendance.includes(att.courseName)) changesSummary.attendance.push(att.courseName);
-          }
-          attPromises.push(Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true }));
-        }
+        const oldAtt = oldAttMap.get(att.courseUrl);
+        if (!oldAtt || !objectsAreEqual(oldAtt, att)) return false;
       }
-      await Promise.all(attPromises);
-    }
+      return true;
+    };
 
-    
-    if (announcementsData && announcementsData.length > 0) {
-      const oldAnnouncements = await Announcement.find({ userId });
-      const oldAnnMap = new Map(oldAnnouncements.map(a => [a.courseUrl, a]));
-      const annPromises = [];
-
-      for (const ann of announcementsData) {
+    const compareAnnouncements = () => {
+      const arr = announcementsData || [];
+      if (arr.length === 0) return true;
+      const newUrls = new Set(arr.map(a => a.courseUrl));
+      if (existingAnnouncements.some(a => !newUrls.has(a.courseUrl))) return false;
+      const oldAnnMap = new Map(existingAnnouncements.map(a => [a.courseUrl, a]));
+      for (const ann of arr) {
         if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
-        if (ann.news) {
-          const oldAnn = oldAnnMap.get(ann.courseUrl);
-          const changes = detectAnnouncementChanges(oldAnn, ann);
-          
-          if (changes) {
-            sendPush(user, `New Announcement: ${ann.courseName} 📢`, changes.latestSubject || "Tap to view details.");
-            await createAcademicNotification(userId, 'announcement', `New Announcement: ${ann.courseName}`, changes.latestSubject || "Tap to view details.", ann.courseUrl);
-            io.to(userId.toString()).emit('announcement_update', changes);
-            changesSummary.announcements = changesSummary.announcements || [];
-            if (!changesSummary.announcements.includes(ann.courseName)) changesSummary.announcements.push(ann.courseName);
-          }
-          annPromises.push(Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true }));
-        }
+        const oldAnn = oldAnnMap.get(ann.courseUrl);
+        if (!oldAnn || !objectsAreEqual(oldAnn, ann)) return false;
       }
-      await Promise.all(annPromises);
-    }
+      return true;
+    };
 
-    
-    if (submissionsData && submissionsData.length > 0) {
-      const oldSubmissions = await Submission.find({ userId });
-      const oldSubMap = new Map(oldSubmissions.map(s => [s.courseUrl, s]));
-      const subPromises = [];
-
-      for (const sub of submissionsData) {
+    const compareSubmissions = () => {
+      const arr = submissionsData || [];
+      if (arr.length === 0) return true;
+      const oldSubMap = new Map(existingSubmissions.map(s => [s.courseUrl, s]));
+      for (const sub of arr) {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
-
-        if (sub.tasks) {
-          const oldSub = oldSubMap.get(sub.courseUrl);
-          const mergedTasks = mergeUserTasks(oldSub?.tasks, sub.tasks);
-          const changes = detectSubmissionChanges(oldSub, sub);
-          
-          if (changes) {
-            io.to(userId.toString()).emit('submission_update', changes);
-            changesSummary.submissions = changesSummary.submissions || [];
-            if (!changesSummary.submissions.includes(sub.courseName)) changesSummary.submissions.push(sub.courseName);
-          }
-
-          const newHash = computeSubmissionsHash(mergedTasks);
-          if (oldSub && oldSub.lastSyncHash === newHash) {
-            console.log(`[SYNC] Submissions for ${sub.courseName} unchanged (hash match), skipping save.`);
-          } else {
-            subPromises.push(Submission.findOneAndUpdate(
-              { userId, courseUrl: sub.courseUrl },
-              { $set: { courseName: sub.courseName, tasks: mergedTasks, lastSyncHash: newHash, lastUpdated: new Date() } },
-              { upsert: true }
-            ));
-          }
-
-          const sectionCode = sectionLookup[sub.courseName] || sectionLookup[sub.courseUrl] || '';
-          if (sectionCode) {
-            const peerCourseDocs = await Course.find({ name: sub.courseName, section: sectionCode });
-            const peerUserIds = peerCourseDocs.map(c => c.userId.toString()).filter(id => id !== userId.toString());
-            const uniquePeerIds = [...new Set(peerUserIds)];
-
-            if (uniquePeerIds.length > 0) {
-              const peerSubs = await Submission.find({ userId: { $in: uniquePeerIds }, courseUrl: sub.courseUrl });
-              const peerSubMap = new Map(peerSubs.map(s => [s.userId.toString(), s]));
-
-              for (const peerId of uniquePeerIds) {
-                const peerSub = peerSubMap.get(peerId);
-                const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
-
-                
-                
-                const existingTaskMap = new Map();
-                const cleanExistingTasks = [];
-                const seenTitles = new Set();
-
-                for (const t of existingTasks) {
-                  const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                  if (seenTitles.has(title)) {
-                    const current = existingTaskMap.get(title);
-                    if (t.status === 'Submitted' && current.status !== 'Submitted') {
-                      existingTaskMap.set(title, t);
-                      const idx = cleanExistingTasks.findIndex(item => 
-                        (item.title || '').replace(/\s+/g, ' ').trim().toLowerCase() === title
-                      );
-                      if (idx !== -1) cleanExistingTasks[idx] = t;
-                    }
-                  } else {
-                    existingTaskMap.set(title, t);
-                    cleanExistingTasks.push(t);
-                    seenTitles.add(title);
-                  }
-                }
-
-                
-                existingTasks.length = 0;
-                existingTasks.push(...cleanExistingTasks);
-
-                let merged = false;
-                let newPeerTasks = [];
-                let updatedPeerTasks = [];
-
-                mergedTasks.forEach(incomingTask => {
-                  const title = (incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                  const normDueDate = parseUCPDate(incomingTask.dueDate);
-                  const normStartDate = parseUCPDate(incomingTask.startDate);
-
-                  if (existingTaskMap.has(title)) {
-                    const existingTask = existingTaskMap.get(title);
-                    const oldDateParsed = parseUCPDate(existingTask.dueDate);
-
-                    if (oldDateParsed !== normDueDate) {
-                      existingTask.dueDate = normDueDate;
-                      existingTask.startDate = normStartDate;
-                      if (incomingTask.description) existingTask.description = incomingTask.description;
-                      if (incomingTask.attachmentUrl) existingTask.attachmentUrl = incomingTask.attachmentUrl;
-                      if (incomingTask.submissionUrl) existingTask.submissionUrl = incomingTask.submissionUrl;
-
-                      updatedPeerTasks.push(existingTask);
-                      merged = true;
-                    }
-                  } else {
-                    
-                    const peerTask = { 
-                      ...incomingTask, 
-                      status: 'Pending', 
-                      dueDate: normDueDate, 
-                      startDate: normStartDate 
-                    };
-                    existingTasks.push(peerTask);
-                    newPeerTasks.push(peerTask);
-                    merged = true;
-                  }
-                });
-
-                if (merged) {
-                  const peerNewHash = computeSubmissionsHash(existingTasks);
-                  subPromises.push(Submission.findOneAndUpdate(
-                    { userId: peerId, courseUrl: sub.courseUrl },
-                    { $set: { courseName: sub.courseName, tasks: existingTasks, lastSyncHash: peerNewHash, lastUpdated: new Date() } },
-                    { upsert: true }
-                  ).then(() => {
-                    io.to(peerId.toString()).emit('submission_update', {
-                      type: 'SUBMISSION_UPDATE',
-                      courseName: sub.courseName,
-                      newCount: newPeerTasks.length + updatedPeerTasks.length,
-                      newTasks: [...newPeerTasks, ...updatedPeerTasks]
-                    });
-                  }));
-                }
-              }
-            }
-          }
-        }
+        const oldSub = oldSubMap.get(sub.courseUrl);
+        const mergedTasks = mergeUserTasks(oldSub?.tasks, sub.tasks);
+        if (!oldSub || !objectsAreEqual(oldSub.tasks, mergedTasks)) return false;
       }
-      await Promise.all(subPromises);
-      const liveCookie = ucpCookie || user.ucpCookie;
-      if (liveCookie) {
-        setTimeout(() => processUserSubmissions(userId.toString(), liveCookie), 1000);
-      }
-    }
+      return true;
+    };
 
-    
-    if (timetableData && timetableData.length > 0) {
-      const courseMapLocal = new Map();
+    const compareTimetable = () => {
+      const arr = timetableData || [];
+      if (arr.length === 0) return true;
       const preparedClasses = [];
-
-      for (const classItem of timetableData) {
+      for (const classItem of arr) {
         const { id, ...classData } = classItem;
         if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
-
         const isMakeup = classData.isMakeup || (classData.instructor && classData.instructor.toLowerCase().includes('makeup'));
         let expiresAt = undefined;
-        
         if (isMakeup) {
           const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
           const targetDayIndex = dayNames.indexOf(classData.day);
@@ -2021,326 +1879,815 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
             expiresAt = targetDate;
           }
         }
-
         const fullCode = classItem.courseCode || '';
         const parsed = parseSemesterAndSectionFromCode(fullCode);
         const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
-
         preparedClasses.push({
           ...classData,
           isMakeup,
           expiresAt,
           userId,
-          semester: finalSemester,
-          lastUpdated: new Date()
+          semester: finalSemester
         });
-
-        if (!courseMapLocal.has(classItem.courseName)) {
-          courseMapLocal.set(classItem.courseName, { 
-            name: classItem.courseName, 
-            code: classItem.courseCode || '', 
-            color: classItem.color || '#3498db', 
-            instructors: new Set(), 
-            rooms: new Set() 
-          });
-        }
-        const course = courseMapLocal.get(classItem.courseName);
-        if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
-        if (classItem.room && !classItem.room.includes('Unknown') && !classItem.room.includes('TBA')) course.rooms.add(classItem.room);
       }
-
-      const currentSem = req.body.semester || getCurrentSemesterCode();
-      await Timetable.deleteMany({ userId, semester: currentSem });
-      if (preparedClasses.length > 0) {
-        await Timetable.insertMany(preparedClasses);
-      }
-
-      const timetablePromises = [];
-      for (const [courseName, data] of courseMapLocal.entries()) {
-        const sectionCode = sectionLookup[courseName] || '';
-        const fullCode = baseCodeLookup[courseName] || data.code || '';
-
-        const parsed = parseSemesterAndSectionFromCode(fullCode);
-        const finalSection = sectionCode || parsed.section || '';
-        
-        const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
-
-        const courseUpdatePayload = {
-          userId, 
-          name: courseName, 
-          type: 'university',
-          color: data.color || '#3498db'
-        };
-
-        if (fullCode) courseUpdatePayload.code = fullCode;
-        if (finalSection) courseUpdatePayload.section = finalSection;
-        if (finalSemester) courseUpdatePayload.semester = finalSemester;
-
-        
-        if (data.instructors && data.instructors.size > 0) {
-          courseUpdatePayload.instructors = Array.from(data.instructors);
-        }
-        if (data.rooms && data.rooms.size > 0) {
-          courseUpdatePayload.rooms = Array.from(data.rooms);
-        }
-
-        timetablePromises.push(Course.findOneAndUpdate(
-          { userId, name: courseName },
-          { $set: courseUpdatePayload },
-          { upsert: true }
-        ));
-      }
-      await Promise.all(timetablePromises);
-    }
-
-    
-    if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC' || mode === 'AUTO_SYNC') {
-      if (datesheetData && datesheetData.length > 0) {
-        const datesheetPromises = [];
-        for (const exam of datesheetData) {
-          datesheetPromises.push(Exam.findOneAndUpdate(
-            { userId, courseName: exam.courseName, date: exam.date },
-            { $set: { ...exam, userId, lastUpdated: new Date() } },
-            { upsert: true, new: true }
-          ));
-        }
-        await Promise.all(datesheetPromises);
-        changesSummary.datesheet = [...new Set(datesheetData.map(exam => exam.courseName))];
-      }
-    }
-
-    
-    if (gradesData && gradesData.length > 0) {
-      if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
-      
-      const oldGrades = await Grade.find({ userId });
-      const oldGradesMap = new Map(oldGrades.map(g => [g.courseUrl, g]));
-      const gradePromises = [];
-
-      for (const grade of gradesData) {
-        if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
-        
-        const oldGrade = oldGradesMap.get(grade.courseUrl);
-        const changes = detectGradeChanges(oldGrade, grade);
-        if (changes) {
-          sendPush(user, `Grade Update: ${grade.courseName} 📊`, `Your total weight is now ${changes.newPercentage}%`);
-          await createAcademicNotification(userId, 'marks', `Grade Update: ${grade.courseName}`, `Your total weight is now ${changes.newPercentage}%`, grade.courseUrl);
-          io.to(userId.toString()).emit('grade_update', changes);
-          changesSummary.grades = changesSummary.grades || [];
-          if (!changesSummary.grades.includes(grade.courseName)) changesSummary.grades.push(grade.courseName);
-        }
-        gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true }));
-      }
-      await Promise.all(gradePromises);
-    }
-
-    
-    if (historyData && historyData.length > 0) {
-      if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
-      
-      const existingHistory = await ResultHistory.find({ userId });
-      const historyMap = new Map(existingHistory.map(h => [h.term, h]));
-      const historyPromises = [];
-
-      for (const sem of historyData) {
-        if (!sem.term) continue;
-
-        const existing = historyMap.get(sem.term);
-        if (existing) {
-          const updateDoc = {};
-          if (sem.cgpa && (sem.cgpa !== "0.00" || existing.cgpa === "0.00")) {
-            updateDoc.cgpa = sem.cgpa;
-          }
-          if (sem.sgpa && (sem.sgpa !== "0.00" || existing.sgpa === "0.00")) {
-            updateDoc.sgpa = sem.sgpa;
-          }
-          if (sem.earnedCH !== undefined && sem.earnedCH !== null) {
-            updateDoc.earnedCH = sem.earnedCH;
-          }
-          if (sem.courses && sem.courses.length > 0) {
-            updateDoc.courses = sem.courses;
-          }
-          updateDoc.lastUpdated = new Date();
-          
-          historyPromises.push(ResultHistory.findOneAndUpdate(
-            { term: sem.term, userId },
-            { $set: updateDoc },
-            { upsert: true }
-          ));
-        } else {
-          historyPromises.push(ResultHistory.findOneAndUpdate(
-            { term: sem.term, userId },
-            { ...sem, userId, lastUpdated: new Date() },
-            { upsert: true }
-          ));
-        }
-      }
-      await Promise.all(historyPromises);
-    }
-
-    
-    if (statsData && Object.keys(statsData).length > 0) {
-      const existingStats = await StudentStats.findOne({ userId });
-      const updatePayload = { ...statsData, userId, lastUpdated: new Date() };
-
-      
-      if (existingStats && statsData.cgpa === "0.00" && existingStats.cgpa !== "0.00") {
-        delete updatePayload.cgpa;
-      }
-
-      await StudentStats.findOneAndUpdate(
-        { userId },
-        { $set: updatePayload },
-        { upsert: true }
-      );
-    }
-
-    
-    const updateFields = {
-      isPortalConnected: true,
-      lastSyncAt: new Date(),
-      lastScrapedAt: new Date(),
-      portalId: user.portalId,
-      ucpCookie: ucpCookie || user.ucpCookie,
-      // First full scrape pushed — mark onboarding sync complete so the web can advance.
-      ...((user.syncStatus === 'scraping' || user.tempSyncId) ? { syncStatus: 'complete' } : {}),
-      ...(enrolledSections.length > 0 ? { enrolledSections } : {})
+      return objectsAreEqual(existingTimetable, preparedClasses);
     };
 
-    try {
-      const userCourses = await Course.find({ userId, type: 'university' });
-      const courseSemesters = [...new Set(userCourses.map(c => c.semester).filter(Boolean))];
-      if (courseSemesters.length > 0) {
-        const history = await ResultHistory.find({ userId });
-        const historyTerms = new Set(history.map(h => h.term));
-        const allMatched = courseSemesters.every(sem => historyTerms.has(sem));
-        if (allMatched) {
-          const currentCompletedSem = courseSemesters[0];
-          if (!user.isSemesterCompleted || user.lastCompletedSemester !== currentCompletedSem) {
-            updateFields.isSemesterCompleted = true;
-            updateFields.lastCompletedSemester = currentCompletedSem;
+    const compareExams = () => {
+      const arr = datesheetData || [];
+      if (arr.length === 0) return true;
+      const oldExamsMap = new Map(existingExams.map(e => [`${e.courseName}_${e.date}`, e]));
+      for (const exam of arr) {
+        const oldExam = oldExamsMap.get(`${exam.courseName}_${exam.date}`);
+        if (!oldExam || !objectsAreEqual(oldExam, exam)) return false;
+      }
+      return true;
+    };
+
+    const compareHistory = () => {
+      const arr = historyData || [];
+      if (arr.length === 0) return true;
+      const newTerms = new Set(arr.map(h => h.term));
+      if (existingHistory.some(h => !newTerms.has(h.term))) return false;
+      const historyMap = new Map(existingHistory.map(h => [h.term, h]));
+      for (const sem of arr) {
+        if (!sem.term) continue;
+        const existing = historyMap.get(sem.term);
+        if (!existing || !objectsAreEqual(existing, sem)) return false;
+      }
+      return true;
+    };
+
+    const compareStats = () => {
+      if (!statsData || Object.keys(statsData).length === 0) return true;
+      if (!existingStats) return false;
+      const updatePayload = { ...statsData, userId };
+      if (statsData.cgpa === "0.00" && existingStats.cgpa !== "0.00") {
+        delete updatePayload.cgpa;
+      }
+      return objectsAreEqual(existingStats, updatePayload);
+    };
+
+    const compareCourses = () => {
+      if (!clientCourseMap || typeof clientCourseMap !== 'object') return true;
+      const oldCoursesMap = new Map(existingCourses.map(c => [c.name, c]));
+      for (const [url, info] of Object.entries(clientCourseMap)) {
+        const courseName = (info.name || '').trim();
+        if (!courseName) continue;
+        const oldCourse = oldCoursesMap.get(courseName);
+        if (!oldCourse) return false;
+        const fullCode = (info.code || '').trim();
+        const parsed = parseSemesterAndSectionFromCode(fullCode);
+        const creditHours = info.creditHours !== undefined ? info.creditHours : 3;
+        let sectionCode = '';
+        if (fullCode) {
+          const parts = fullCode.split('-');
+          const candidate = parts.length > 1 ? parts[parts.length - 1] : fullCode;
+          if (candidate && !candidate.includes(' ') && !candidate.toLowerCase().includes('credit') && candidate.length <= 15 && /^[a-zA-Z0-9-]+$/.test(candidate)) {
+            sectionCode = candidate;
           }
         }
+        const finalSection = sectionCode || parsed.section || '';
+        const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
+        const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: finalSemester };
+        if (fullCode) updatePayload.code = fullCode;
+        if (finalSection) updatePayload.section = finalSection;
+        if (url) updatePayload.portalUrl = url;
+        if (!objectsAreEqual(oldCourse, updatePayload)) return false;
       }
-    } catch (semErr) {
-      console.error("Error detecting semester completion:", semErr);
-    }
-    if (studentName && studentName !== 'UCP Student') updateFields.name = studentName;
-    if (profilePic) {
-      updateFields.portalProfilePic = profilePic;
-      if (!user.originalPortalProfilePic) {
-        updateFields.originalPortalProfilePic = profilePic;
+      return true;
+    };
+
+    const isIdentical = compareGrades() && compareAttendance() && compareAnnouncements() && compareSubmissions() && compareTimetable() && compareExams() && compareHistory() && compareStats() && compareCourses();
+
+    if (isIdentical) {
+      console.log(`[SYNC] User ${user.email} sync discarded: matches DB exactly.`);
+      const activeCookie = ucpCookie || user.ucpCookie;
+      if (activeCookie) {
+        await User.updateOne({ _id: userId }, {
+          $set: {
+            ucpCookie: activeCookie,
+            ucpCookieEncrypted: encrypt(activeCookie),
+            ucpCookieUpdatedAt: new Date(),
+            lastSyncAt: new Date(),
+            isPortalConnected: true,
+            ...((user.syncStatus === 'scraping' || user.tempSyncId) ? { syncStatus: 'complete' } : {})
+          }
+        });
       }
-      if (user.showProfilePicToCommunity === true && !user.customProfilePic) {
-        updateFields.profilePic = profilePic;
-      } else if (user.showProfilePicToCommunity !== true) {
-        updateFields.profilePic = null;
+      if (syncLogId) {
+        await SyncLog.findByIdAndUpdate(syncLogId, {
+          status: 'SUCCESS',
+          endTime: new Date(),
+          changesSummary: null
+        });
       }
+      return res.status(200).json({ message: "Sync complete. No changes detected." });
     }
 
-    await User.updateOne({ _id: userId }, {
-      $set: updateFields
-    });
+    const isFullSync = (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC');
 
-    if (syncLogId) {
-      
-      if (Object.keys(changesSummary).length === 0) changesSummary = null;
+    const executeUpdate = async () => {
+      try {
+        let userUpdated = false;
+        if (req.path === '/api/extension-sync') {
+          if (!user.accessedExtension) {
+            user.accessedExtension = true;
+            userUpdated = true;
+          }
+        } else if (req.path === '/api/mobile-sync') {
+          if (!user.accessedMobile) {
+            user.accessedMobile = true;
+            userUpdated = true;
+          }
+        }
 
-      await SyncLog.findByIdAndUpdate(syncLogId, {
-        status: 'SUCCESS',
-        endTime: new Date(),
-        changesSummary: changesSummary
-      });
-    }
+        const profileChanged = updateProfileFields(user, req.body);
+        if (profileChanged || userUpdated) {
+          await user.save();
+        }
 
+        let changesSummary = {};
+        const enrolledSections = [];
+        const sectionLookup = {}; 
+        const baseCodeLookup = {}; 
 
-    
-    
-    
-    
-    if (materialLinksData && Array.isArray(materialLinksData) && materialLinksData.length > 0) {
-      const liveCookie = ucpCookie || user.ucpCookie;
-      if (liveCookie) {
-        let stagedCount = 0;
-        const userCourses = await Course.find({ userId }).lean();
-        const courseMapDb = new Map(userCourses.map(c => [c.name, c]));
-        const materialPromises = [];
+        if (clientCourseMap && typeof clientCourseMap === 'object') {
+          const coursePromises = [];
+          for (const [url, info] of Object.entries(clientCourseMap)) {
+            const fullCode = (info.code || '').trim();
+            const courseName = (info.name || '').trim();
+            const creditHours = info.creditHours !== undefined ? info.creditHours : 3; 
 
-        for (const item of materialLinksData) {
-          if (!item.courseUrl) continue;
+            let sectionCode = '';
+            if (fullCode) {
+              const parts = fullCode.split('-');
+              const candidate = parts.length > 1 ? parts[parts.length - 1] : fullCode;
+              const isValidSection = candidate && 
+                !candidate.includes(' ') && 
+                !candidate.toLowerCase().includes('credit') && 
+                !candidate.toLowerCase().includes('hour') && 
+                candidate.length <= 15 &&
+                /^[a-zA-Z0-9-]+$/.test(candidate);
 
-          
-          let itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
-          const courseDoc = courseMapDb.get(item.courseName);
+              if (isValidSection) {
+                sectionCode = candidate;
+                enrolledSections.push(sectionCode);
+                sectionLookup[url] = sectionCode;
+              }
+            }
 
-          if (!itemSectionCode && courseDoc && courseDoc.section) {
-            itemSectionCode = courseDoc.section;
+            if (courseName) {
+              if (sectionCode) {
+                sectionLookup[courseName] = sectionCode;
+                if (!sectionLookup[`${courseName} - Lab`]) {
+                  sectionLookup[`${courseName} - Lab`] = sectionCode;
+                }
+              }
+              if (fullCode) {
+                baseCodeLookup[courseName] = fullCode;
+                if (!baseCodeLookup[`${courseName} - Lab`]) {
+                  baseCodeLookup[`${courseName} - Lab`] = fullCode;
+                }
+              }
+
+              const parsed = parseSemesterAndSectionFromCode(fullCode);
+              const finalSection = sectionCode || parsed.section || '';
+              const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
+
+              const updatePayload = { userId, name: courseName, type: 'university', creditHours, semester: finalSemester };
+              if (fullCode) updatePayload.code = fullCode;
+              if (finalSection) updatePayload.section = finalSection;
+              if (url) updatePayload.portalUrl = url; 
+
+              const oldCourse = existingCourses.find(c => c.name === courseName);
+              if (oldCourse && objectsAreEqual(oldCourse, updatePayload)) {
+                continue;
+              }
+
+              coursePromises.push(Course.findOneAndUpdate(
+                { userId, name: courseName },
+                { $set: updatePayload },
+                { upsert: true }
+              ));
+            }
+          }
+          await Promise.all(coursePromises);
+        }
+
+        if (attendanceData && attendanceData.length > 0) {
+          const oldAttMap = new Map(existingAttendance.map(a => [a.courseUrl, a]));
+          const attPromises = [];
+
+          for (const att of attendanceData) {
+            if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
+            if (att.records) {
+              const oldAtt = oldAttMap.get(att.courseUrl);
+
+              if (oldAtt && objectsAreEqual(oldAtt, att)) {
+                continue;
+              }
+
+              const changes = detectAttendanceChanges(oldAtt, att);
+              if (changes) {
+                if (changes.isNewAbsent) {
+                  sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${changes.newAbsents}`);
+                  await createAcademicNotification(userId, 'attendance', `Attendance Alert: ${att.courseName}`, `You have been marked absent! Total absents: ${changes.newAbsents}`);
+                }
+                if (changes.isCritical) {
+                  sendPush(user, `CRITICAL: ${att.courseName} 🚨`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
+                  await createAcademicNotification(userId, 'attendance', `CRITICAL: ${att.courseName}`, `You have hit 10 absents! Avoid further offs to prevent failing.`);
+                }
+                io.to(userId.toString()).emit('attendance_update', changes);
+                changesSummary.attendance = changesSummary.attendance || [];
+                if (!changesSummary.attendance.includes(att.courseName)) changesSummary.attendance.push(att.courseName);
+              }
+              attPromises.push(Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true }));
+            }
+          }
+          await Promise.all(attPromises);
+        }
+
+        if (announcementsData && announcementsData.length > 0) {
+          const oldAnnMap = new Map(existingAnnouncements.map(a => [a.courseUrl, a]));
+          const annPromises = [];
+
+          for (const ann of announcementsData) {
+            if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
+            if (ann.news) {
+              const oldAnn = oldAnnMap.get(ann.courseUrl);
+
+              if (oldAnn && objectsAreEqual(oldAnn, ann)) {
+                continue;
+              }
+
+              const changes = detectAnnouncementChanges(oldAnn, ann);
+              if (changes) {
+                sendPush(user, `New Announcement: ${ann.courseName} 📢`, changes.latestSubject || "Tap to view details.");
+                await createAcademicNotification(userId, 'announcement', `New Announcement: ${ann.courseName}`, changes.latestSubject || "Tap to view details.", ann.courseUrl);
+                io.to(userId.toString()).emit('announcement_update', changes);
+                changesSummary.announcements = changesSummary.announcements || [];
+                if (!changesSummary.announcements.includes(ann.courseName)) changesSummary.announcements.push(ann.courseName);
+              }
+              annPromises.push(Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true }));
+            }
+          }
+          await Promise.all(annPromises);
+        }
+
+        if (submissionsData && submissionsData.length > 0) {
+          const oldSubMap = new Map(existingSubmissions.map(s => [s.courseUrl, s]));
+          const subPromises = [];
+
+          for (const sub of submissionsData) {
+            if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
+
+            if (sub.tasks) {
+              const oldSub = oldSubMap.get(sub.courseUrl);
+              const mergedTasks = mergeUserTasks(oldSub?.tasks, sub.tasks);
+
+              if (oldSub && objectsAreEqual(oldSub.tasks, mergedTasks)) {
+                console.log(`[SYNC] Submissions for ${sub.courseName} unchanged, skipping.`);
+              } else {
+                const changes = detectSubmissionChanges(oldSub, sub);
+                if (changes) {
+                  io.to(userId.toString()).emit('submission_update', changes);
+                  changesSummary.submissions = changesSummary.submissions || [];
+                  if (!changesSummary.submissions.includes(sub.courseName)) changesSummary.submissions.push(sub.courseName);
+                }
+
+                const newHash = computeSubmissionsHash(mergedTasks);
+                subPromises.push(Submission.findOneAndUpdate(
+                  { userId, courseUrl: sub.courseUrl },
+                  { $set: { courseName: sub.courseName, tasks: mergedTasks, lastSyncHash: newHash, lastUpdated: new Date() } },
+                  { upsert: true }
+                ));
+              }
+
+              const sectionCode = sectionLookup[sub.courseName] || sectionLookup[sub.courseUrl] || '';
+              if (sectionCode) {
+                const peerCourseDocs = await Course.find({ name: sub.courseName, section: sectionCode });
+                const peerUserIds = peerCourseDocs.map(c => c.userId.toString()).filter(id => id !== userId.toString());
+                const uniquePeerIds = [...new Set(peerUserIds)];
+
+                if (uniquePeerIds.length > 0) {
+                  const peerSubs = await Submission.find({ userId: { $in: uniquePeerIds }, courseUrl: sub.courseUrl });
+                  const peerSubMap = new Map(peerSubs.map(s => [s.userId.toString(), s]));
+
+                  for (const peerId of uniquePeerIds) {
+                    const peerSub = peerSubMap.get(peerId);
+                    const existingTasks = peerSub && peerSub.tasks ? peerSub.tasks : [];
+
+                    const existingTaskMap = new Map();
+                    const cleanExistingTasks = [];
+                    const seenTitles = new Set();
+
+                    for (const t of existingTasks) {
+                      const title = (t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                      if (seenTitles.has(title)) {
+                        const current = existingTaskMap.get(title);
+                        if (t.status === 'Submitted' && current.status !== 'Submitted') {
+                          existingTaskMap.set(title, t);
+                          const idx = cleanExistingTasks.findIndex(item => 
+                            (item.title || '').replace(/\s+/g, ' ').trim().toLowerCase() === title
+                          );
+                          if (idx !== -1) cleanExistingTasks[idx] = t;
+                        }
+                      } else {
+                        existingTaskMap.set(title, t);
+                        cleanExistingTasks.push(t);
+                        seenTitles.add(title);
+                      }
+                    }
+
+                    existingTasks.length = 0;
+                    existingTasks.push(...cleanExistingTasks);
+
+                    let merged = false;
+                    let newPeerTasks = [];
+                    let updatedPeerTasks = [];
+
+                    mergedTasks.forEach(incomingTask => {
+                      const title = (incomingTask.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                      const normDueDate = parseUCPDate(incomingTask.dueDate);
+                      const normStartDate = parseUCPDate(incomingTask.startDate);
+
+                      if (existingTaskMap.has(title)) {
+                        const existingTask = existingTaskMap.get(title);
+                        const oldDateParsed = parseUCPDate(existingTask.dueDate);
+
+                        if (oldDateParsed !== normDueDate) {
+                          existingTask.dueDate = normDueDate;
+                          existingTask.startDate = normStartDate;
+                          if (incomingTask.description) existingTask.description = incomingTask.description;
+                          if (incomingTask.attachmentUrl) existingTask.attachmentUrl = incomingTask.attachmentUrl;
+                          if (incomingTask.submissionUrl) existingTask.submissionUrl = incomingTask.submissionUrl;
+
+                          updatedPeerTasks.push(existingTask);
+                          merged = true;
+                        }
+                      } else {
+                        const peerTask = { 
+                          ...incomingTask, 
+                          status: 'Pending', 
+                          dueDate: normDueDate, 
+                          startDate: normStartDate 
+                        };
+                        existingTasks.push(peerTask);
+                        newPeerTasks.push(peerTask);
+                        merged = true;
+                      }
+                    });
+
+                    if (merged) {
+                      const peerNewHash = computeSubmissionsHash(existingTasks);
+                      subPromises.push(Submission.findOneAndUpdate(
+                        { userId: peerId, courseUrl: sub.courseUrl },
+                        { $set: { courseName: sub.courseName, tasks: existingTasks, lastSyncHash: peerNewHash, lastUpdated: new Date() } },
+                        { upsert: true }
+                      ).then(() => {
+                        io.to(peerId.toString()).emit('submission_update', {
+                          type: 'SUBMISSION_UPDATE',
+                          courseName: sub.courseName,
+                          newCount: newPeerTasks.length + updatedPeerTasks.length,
+                          newTasks: [...newPeerTasks, ...updatedPeerTasks]
+                        });
+                      }));
+                    }
+                  }
+                }
+              }
+            }
+          }
+          await Promise.all(subPromises);
+          const liveCookie = ucpCookie || user.ucpCookie;
+          if (liveCookie) {
+            setTimeout(() => processUserSubmissions(userId.toString(), liveCookie), 1000);
+          }
+        }
+
+        if (timetableData && timetableData.length > 0) {
+          const courseMapLocal = new Map();
+          const preparedClasses = [];
+
+          for (const classItem of timetableData) {
+            const { id, ...classData } = classItem;
+            if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
+
+            const isMakeup = classData.isMakeup || (classData.instructor && classData.instructor.toLowerCase().includes('makeup'));
+            let expiresAt = undefined;
+
+            if (isMakeup) {
+              const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+              const targetDayIndex = dayNames.indexOf(classData.day);
+              if (targetDayIndex !== -1) {
+                const now = new Date();
+                const currentDayIndex = now.getDay();
+                let daysDiff = targetDayIndex - currentDayIndex;
+                const targetDate = new Date(now);
+                targetDate.setDate(now.getDate() + daysDiff);
+                targetDate.setHours(23, 59, 59, 999);
+                expiresAt = targetDate;
+              }
+            }
+
+            const fullCode = classItem.courseCode || '';
+            const parsed = parseSemesterAndSectionFromCode(fullCode);
+            const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
+
+            preparedClasses.push({
+              ...classData,
+              isMakeup,
+              expiresAt,
+              userId,
+              semester: finalSemester,
+              lastUpdated: new Date()
+            });
+
+            if (!courseMapLocal.has(classItem.courseName)) {
+              courseMapLocal.set(classItem.courseName, { 
+                name: classItem.courseName, 
+                code: classItem.courseCode || '', 
+                color: classItem.color || '#3498db', 
+                instructors: new Set(), 
+                rooms: new Set() 
+              });
+            }
+            const course = courseMapLocal.get(classItem.courseName);
+            if (classItem.instructor && !classItem.instructor.includes('Unknown')) course.instructors.add(classItem.instructor);
+            if (classItem.room && !classItem.room.includes('Unknown') && !classItem.room.includes('TBA')) course.rooms.add(classItem.room);
           }
 
-          if (!itemSectionCode && item.courseCode && item.courseCode.includes('-')) {
-            const parts = item.courseCode.split('-');
-            const candidate = parts[parts.length - 1].trim();
-            if (candidate && candidate.length <= 15 && /^[a-zA-Z0-9-]+$/.test(candidate)) {
-              itemSectionCode = candidate;
+          const currentSem = req.body.semester || getCurrentSemesterCode();
+
+          if (existingTimetable.length > 0 && objectsAreEqual(existingTimetable, preparedClasses)) {
+            console.log(`[SYNC] Timetable unchanged, skipping updates.`);
+          } else {
+            await Timetable.deleteMany({ userId, semester: currentSem });
+            if (preparedClasses.length > 0) {
+              await Timetable.insertMany(preparedClasses);
             }
           }
 
-          
-          if (courseDoc && courseDoc.creditHours === 0) {
-            console.log(`[SYNC] Skipping 0 credit hour course material staging: ${item.courseName}`);
-            continue;
+          const timetablePromises = [];
+          for (const [courseName, data] of courseMapLocal.entries()) {
+            const sectionCode = sectionLookup[courseName] || '';
+            const fullCode = baseCodeLookup[courseName] || data.code || '';
+
+            const parsed = parseSemesterAndSectionFromCode(fullCode);
+            const finalSection = sectionCode || parsed.section || '';
+            const finalSemester = parsed.semester || req.body.semester || getCurrentSemesterCode();
+
+            const courseUpdatePayload = {
+              userId, 
+              name: courseName, 
+              type: 'university',
+              color: data.color || '#3498db'
+            };
+
+            if (fullCode) courseUpdatePayload.code = fullCode;
+            if (finalSection) courseUpdatePayload.section = finalSection;
+            if (finalSemester) courseUpdatePayload.semester = finalSemester;
+
+            if (data.instructors && data.instructors.size > 0) {
+              courseUpdatePayload.instructors = Array.from(data.instructors);
+            }
+            if (data.rooms && data.rooms.size > 0) {
+              courseUpdatePayload.rooms = Array.from(data.rooms);
+            }
+
+            const oldCourse = existingCourses.find(c => c.name === courseName);
+            if (oldCourse && objectsAreEqual(oldCourse, courseUpdatePayload)) {
+              continue;
+            }
+
+            timetablePromises.push(Course.findOneAndUpdate(
+              { userId, name: courseName },
+              { $set: courseUpdatePayload },
+              { upsert: true }
+            ));
+          }
+          await Promise.all(timetablePromises);
+        }
+
+        if (mode === 'LOGIN_SYNC' || mode === 'FORCE_SYNC' || mode === 'AUTO_SYNC') {
+          if (datesheetData && datesheetData.length > 0) {
+            const oldExamsMap = new Map(existingExams.map(e => [`${e.courseName}_${e.date}`, e]));
+            const datesheetPromises = [];
+            for (const exam of datesheetData) {
+              const oldExam = oldExamsMap.get(`${exam.courseName}_${exam.date}`);
+
+              if (oldExam && objectsAreEqual(oldExam, exam)) {
+                continue;
+              }
+
+              datesheetPromises.push(Exam.findOneAndUpdate(
+                { userId, courseName: exam.courseName, date: exam.date },
+                { $set: { ...exam, userId, lastUpdated: new Date() } },
+                { upsert: true, new: true }
+              ));
+            }
+            if (datesheetPromises.length > 0) {
+              await Promise.all(datesheetPromises);
+              changesSummary.datesheet = [...new Set(datesheetData.map(exam => exam.courseName))];
+            }
+          }
+        }
+
+        if (gradesData && gradesData.length > 0) {
+          const oldGradesMap = new Map(existingGrades.map(g => [g.courseUrl, g]));
+          let hasAnyGradeChanges = false;
+          const gradesToUpdate = [];
+          const newUrls = new Set(gradesData.map(g => g.courseUrl));
+
+          if (existingGrades.some(g => !newUrls.has(g.courseUrl))) {
+            hasAnyGradeChanges = true;
           }
 
-          const itemTeacherName = (courseDoc?.instructors || [])[0] || '';
+          for (const grade of gradesData) {
+            if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
+            const oldGrade = oldGradesMap.get(grade.courseUrl);
+            if (!oldGrade || !objectsAreEqual(oldGrade, grade)) {
+              hasAnyGradeChanges = true;
+              gradesToUpdate.push({ grade, oldGrade });
+            }
+          }
 
-          
-          
-          const activeSemester = parseSemesterFromCourseCode(item.courseCode) || req.body.semester || getCurrentSemesterCode();
+          if (hasAnyGradeChanges) {
+            if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
+            const gradePromises = [];
 
-          const isProcessed = !item.links || item.links.length === 0;
+            for (const { grade, oldGrade } of gradesToUpdate) {
+              const changes = detectGradeChanges(oldGrade, grade);
+              if (changes) {
+                sendPush(user, `Grade Update: ${grade.courseName} 📊`, `Your total weight is now ${changes.newPercentage}%`);
+                await createAcademicNotification(userId, 'marks', `Grade Update: ${grade.courseName}`, `Your total weight is now ${changes.newPercentage}%`, grade.courseUrl);
+                io.to(userId.toString()).emit('grade_update', changes);
+                changesSummary.grades = changesSummary.grades || [];
+                if (!changesSummary.grades.includes(grade.courseName)) changesSummary.grades.push(grade.courseName);
+              }
+              gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true }));
+            }
 
-          const finalCourseCode = item.courseCode || courseDoc?.code || '';
+            if (mode === 'LOGIN_SYNC') {
+              for (const grade of gradesData) {
+                if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
+                const wasInUpdate = gradesToUpdate.some(u => u.grade.courseUrl === grade.courseUrl);
+                if (!wasInUpdate) {
+                  gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true }));
+                }
+              }
+            }
+            await Promise.all(gradePromises);
+          }
+        }
 
-          materialPromises.push(MaterialLink.findOneAndUpdate(
-            { userId, courseUrl: item.courseUrl },
-            {
-              $set: {
+        if (historyData && historyData.length > 0) {
+          const historyMap = new Map(existingHistory.map(h => [h.term, h]));
+          const newTerms = new Set(historyData.map(h => h.term));
+          let hasAnyHistoryChanges = existingHistory.some(h => !newTerms.has(h.term));
+          const historyToUpdate = [];
+
+          for (const sem of historyData) {
+            if (!sem.term) continue;
+            const existing = historyMap.get(sem.term);
+            if (!existing || !objectsAreEqual(existing, sem)) {
+              hasAnyHistoryChanges = true;
+              historyToUpdate.push({ sem, existing });
+            }
+          }
+
+          if (hasAnyHistoryChanges) {
+            if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
+            const historyPromises = [];
+
+            for (const { sem, existing } of historyToUpdate) {
+              if (existing) {
+                const updateDoc = {};
+                if (sem.cgpa && (sem.cgpa !== "0.00" || existing.cgpa === "0.00")) {
+                  updateDoc.cgpa = sem.cgpa;
+                }
+                if (sem.sgpa && (sem.sgpa !== "0.00" || existing.sgpa === "0.00")) {
+                  updateDoc.sgpa = sem.sgpa;
+                }
+                if (sem.earnedCH !== undefined && sem.earnedCH !== null) {
+                  updateDoc.earnedCH = sem.earnedCH;
+                }
+                if (sem.courses && sem.courses.length > 0) {
+                  updateDoc.courses = sem.courses;
+                }
+                updateDoc.lastUpdated = new Date();
+
+                historyPromises.push(ResultHistory.findOneAndUpdate(
+                  { term: sem.term, userId },
+                  { $set: updateDoc },
+                  { upsert: true }
+                ));
+              } else {
+                historyPromises.push(ResultHistory.findOneAndUpdate(
+                  { term: sem.term, userId },
+                  { ...sem, userId, lastUpdated: new Date() },
+                  { upsert: true }
+                ));
+              }
+            }
+
+            if (mode === 'LOGIN_SYNC') {
+              for (const sem of historyData) {
+                if (!sem.term) continue;
+                const wasInUpdate = historyToUpdate.some(u => u.sem.term === sem.term);
+                if (!wasInUpdate) {
+                  historyPromises.push(ResultHistory.findOneAndUpdate(
+                    { term: sem.term, userId },
+                    { ...sem, userId, lastUpdated: new Date() },
+                    { upsert: true }
+                  ));
+                }
+              }
+            }
+            await Promise.all(historyPromises);
+          }
+        }
+
+        if (statsData && Object.keys(statsData).length > 0) {
+          const updatePayload = { ...statsData, userId, lastUpdated: new Date() };
+          if (existingStats && statsData.cgpa === "0.00" && existingStats.cgpa !== "0.00") {
+            delete updatePayload.cgpa;
+          }
+          if (existingStats && objectsAreEqual(existingStats, updatePayload)) {
+            console.log(`[SYNC] Student stats unchanged.`);
+          } else {
+            await StudentStats.findOneAndUpdate(
+              { userId },
+              { $set: updatePayload },
+              { upsert: true }
+            );
+          }
+        }
+
+        const activeCookie = ucpCookie || user.ucpCookie;
+        const updateFields = {
+          isPortalConnected: true,
+          lastSyncAt: new Date(),
+          lastScrapedAt: new Date(),
+          portalId: user.portalId,
+          ucpCookie: activeCookie,
+          ucpCookieEncrypted: activeCookie ? encrypt(activeCookie) : null,
+          ucpCookieUpdatedAt: new Date(),
+          ...((user.syncStatus === 'scraping' || user.tempSyncId) ? { syncStatus: 'complete' } : {}),
+          ...(enrolledSections.length > 0 ? { enrolledSections } : {})
+        };
+
+        try {
+          const userCourses = await Course.find({ userId, type: 'university' });
+          const courseSemesters = [...new Set(userCourses.map(c => c.semester).filter(Boolean))];
+          if (courseSemesters.length > 0) {
+            const history = await ResultHistory.find({ userId });
+            const historyTerms = new Set(history.map(h => h.term));
+            const allMatched = courseSemesters.every(sem => historyTerms.has(sem));
+            if (allMatched) {
+              const currentCompletedSem = courseSemesters[0];
+              if (!user.isSemesterCompleted || user.lastCompletedSemester !== currentCompletedSem) {
+                updateFields.isSemesterCompleted = true;
+                updateFields.lastCompletedSemester = currentCompletedSem;
+              }
+            }
+          }
+        } catch (semErr) {
+          console.error("Error detecting semester completion:", semErr);
+        }
+        if (studentName && studentName !== 'UCP Student') updateFields.name = studentName;
+        if (profilePic) {
+          updateFields.portalProfilePic = profilePic;
+          if (!user.originalPortalProfilePic) {
+            updateFields.originalPortalProfilePic = profilePic;
+          }
+          if (user.showProfilePicToCommunity === true && !user.customProfilePic) {
+            updateFields.profilePic = profilePic;
+          } else if (user.showProfilePicToCommunity !== true) {
+            updateFields.profilePic = null;
+          }
+        }
+
+        await User.updateOne({ _id: userId }, { $set: updateFields });
+
+        if (syncLogId) {
+          if (Object.keys(changesSummary).length === 0) changesSummary = null;
+          await SyncLog.findByIdAndUpdate(syncLogId, {
+            status: 'SUCCESS',
+            endTime: new Date(),
+            changesSummary: changesSummary
+          });
+        }
+
+        if (materialLinksData && Array.isArray(materialLinksData) && materialLinksData.length > 0) {
+          const liveCookie = ucpCookie || user.ucpCookie;
+          if (liveCookie) {
+            let stagedCount = 0;
+            const userCourses = await Course.find({ userId }).lean();
+            const courseMapDb = new Map(userCourses.map(c => [c.name, c]));
+
+            const existingMaterialLinks = await MaterialLink.find({ userId }).lean();
+            const existingMaterialMap = new Map(existingMaterialLinks.map(m => [m.courseUrl, m]));
+
+            const materialPromises = [];
+
+            for (const item of materialLinksData) {
+              if (!item.courseUrl) continue;
+
+              let itemSectionCode = sectionLookup[item.courseUrl] || sectionLookup[item.courseName] || '';
+              const courseDoc = courseMapDb.get(item.courseName);
+
+              if (!itemSectionCode && courseDoc && courseDoc.section) {
+                itemSectionCode = courseDoc.section;
+              }
+
+              if (!itemSectionCode && item.courseCode && item.courseCode.includes('-')) {
+                const parts = item.courseCode.split('-');
+                const candidate = parts[parts.length - 1].trim();
+                if (candidate && candidate.length <= 15 && /^[a-zA-Z0-9-]+$/.test(candidate)) {
+                  itemSectionCode = candidate;
+                }
+              }
+
+              if (courseDoc && courseDoc.creditHours === 0) {
+                console.log(`[SYNC] Skipping 0 credit hour course material staging: ${item.courseName}`);
+                continue;
+              }
+
+              const itemTeacherName = (courseDoc?.instructors || [])[0] || '';
+              const activeSemester = parseSemesterFromCourseCode(item.courseCode) || req.body.semester || getCurrentSemesterCode();
+              const isProcessed = !item.links || item.links.length === 0;
+              const finalCourseCode = item.courseCode || courseDoc?.code || '';
+
+              const linksPayload = (item.links || []).map((l, index) => ({
+                fileName: l.fileName || '',
+                description: l.description || '',
+                downloadUrl: l.downloadUrl || '',
+                token: l.token || '',
+                processed: false,
+                sequenceNumber: index
+              }));
+
+              const updatePayload = {
                 courseName: item.courseName || '',
                 courseCode: finalCourseCode,
                 sectionCode: itemSectionCode,
                 teacherName: itemTeacherName,
-                links: (item.links || []).map((l, index) => ({
-                  fileName: l.fileName || '',
-                  description: l.description || '',
-                  downloadUrl: l.downloadUrl || '',
-                  token: l.token || '',
-                  processed: false,
-                  sequenceNumber: index
-                })),
-                lastScrapedAt: new Date(),
-                processed: isProcessed,
-                semester: activeSemester
+                links: linksPayload,
+                isProcessed
+              };
+
+              const existingMaterial = existingMaterialMap.get(item.courseUrl);
+              if (existingMaterial && objectsAreEqual(existingMaterial, updatePayload)) {
+                continue;
               }
-            },
-            { upsert: true }
-          ));
-          stagedCount++;
-        }
-        await Promise.all(materialPromises);
-        changesSummary.courseMaterials = [...new Set(materialLinksData.map(m => m.courseName))];
 
-        if (stagedCount > 0) {
-          console.log(`[SYNC] 📥 Staged ${stagedCount} material link sets. Firing processor immediately.`);
-          
-          processUserMaterials(userId.toString(), liveCookie)
-            .catch(err => console.error(`[SYNC_B2_PROC] Async processing failed:`, err.message));
+              stagedCount++;
+              materialPromises.push(MaterialLink.findOneAndUpdate(
+                { userId, courseUrl: item.courseUrl },
+                {
+                  $set: {
+                    ...updatePayload,
+                    lastScrapedAt: new Date()
+                  }
+                },
+                { upsert: true }
+              ));
+            }
+            await Promise.all(materialPromises);
+            changesSummary.courseMaterials = [...new Set(materialLinksData.map(m => m.courseName))];
+
+            if (stagedCount > 0) {
+              console.log(`[SYNC] 📥 Staged ${stagedCount} material link sets. Firing processor immediately.`);
+              processUserMaterials(userId.toString(), liveCookie)
+                .catch(err => console.error(`[SYNC_B2_PROC] Async processing failed:`, err.message));
+            }
+          }
         }
+
+        await updateUserCurrentSemester(userId);
+        res.json({ message: "Sync & Diffing complete securely!" });
+
+      } catch (error) {
+        const { syncLogId } = req.body;
+        if (syncLogId) {
+          await SyncLog.findByIdAndUpdate(syncLogId, {
+            status: 'FAILED',
+            error: error.message,
+            endTime: new Date()
+          });
+        }
+        const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
+        res.status(statusCode).json({ message: error.message });
       }
+    };
+
+    if (isFullSync) {
+      await executeUpdate();
+    } else {
+      await queueSyncTask(userId, executeUpdate);
     }
-
-    await updateUserCurrentSemester(userId);
-
-    res.json({ message: "Sync & Diffing complete securely!" });
 
   } catch (error) {
     const { syncLogId } = req.body;
@@ -4389,6 +4736,10 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
 
     if (user) {
       user.ucpCookie = ucpCookie;
+      if (ucpCookie) {
+        user.ucpCookieEncrypted = encrypt(ucpCookie);
+        user.ucpCookieUpdatedAt = new Date();
+      }
       user.isPortalConnected = true;
       user.name = name && name !== 'UCP Student' ? name : user.name;
       if (effectiveSyncId) {
@@ -4414,6 +4765,8 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         password: await bcrypt.hash(Math.random().toString(36).slice(-10), 10),
         isPortalConnected: true,
         ucpCookie: ucpCookie,
+        ucpCookieEncrypted: ucpCookie ? encrypt(ucpCookie) : null,
+        ucpCookieUpdatedAt: ucpCookie ? new Date() : null,
         portalProfilePic: finalProfilePicUrl,
         originalPortalProfilePic: finalProfilePicUrl,
         tempSyncId: effectiveSyncId || null,
@@ -6035,12 +6388,6 @@ const runTieredSync = async (mode, logName) => {
 
 
     for (let user of activeUsers) {
-      
-      if (user.lastSyncAt && (Date.now() - new Date(user.lastSyncAt).getTime()) < 12 * 60 * 1000) {
-        console.log(`[CRON] ⏭️ Skipping ${user.email} - synced ${Math.round((Date.now() - new Date(user.lastSyncAt).getTime()) / 1000)}s ago.`);
-        continue;
-      }
-
       const cronSyncKey = user._id.toString();
 
       
