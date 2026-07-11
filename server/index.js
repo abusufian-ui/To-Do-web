@@ -1703,6 +1703,64 @@ function queueSyncTask(userId, taskFn) {
   return next;
 }
 
+function logDetailedDifference(obj1, obj2, path = '') {
+  const normalize = (val) => {
+    if (val === null || val === undefined || val === '') return null;
+    if (Array.isArray(val) && val.length === 0) return null;
+    return val;
+  };
+
+  const n1 = normalize(obj1);
+  const n2 = normalize(obj2);
+
+  if (n1 === null && n2 === null) return true;
+  if (n1 === null || n2 === null) {
+    console.log(`[SYNC] [DIFF] Mismatch at "${path}": one is null/empty. DB: ${n1 === null ? 'empty' : JSON.stringify(n1)} | Scraped: ${n2 === null ? 'empty' : JSON.stringify(n2)}`);
+    return false;
+  }
+
+  if (typeof n1 !== 'object' || typeof n2 !== 'object') {
+    const match = String(n1).trim() === String(n2).trim();
+    if (!match) {
+      console.log(`[SYNC] [DIFF] Mismatch at "${path}": DB value "${n1}" !== Scraped value "${n2}"`);
+    }
+    return match;
+  }
+
+  if (n1 instanceof Date && n2 instanceof Date) {
+    const match = n1.getTime() === n2.getTime();
+    if (!match) {
+      console.log(`[SYNC] [DIFF] Mismatch at "${path}" (Date): DB "${n1.toISOString()}" !== Scraped "${n2.toISOString()}"`);
+    }
+    return match;
+  }
+
+  if (Array.isArray(n1)) {
+    if (!Array.isArray(n2)) {
+      console.log(`[SYNC] [DIFF] Mismatch at "${path}": DB is Array, Scraped is not`);
+      return false;
+    }
+    if (n1.length !== n2.length) {
+      console.log(`[SYNC] [DIFF] Array length mismatch at "${path}": DB length ${n1.length} !== Scraped length ${n2.length}`);
+      return false;
+    }
+    for (let i = 0; i < n1.length; i++) {
+      if (!logDetailedDifference(n1[i], n2[i], `${path}[${i}]`)) return false;
+    }
+    return true;
+  }
+
+  const ignoreKeys = ['_id', 'id', 'userId', 'lastUpdated', 'createdAt', 'updatedAt', '__v', 'lastScrapedAt', 'sequenceNumber', 'processed'];
+  const keys1 = Object.keys(n1).filter(k => !ignoreKeys.includes(k));
+  const keys2 = Object.keys(n2).filter(k => !ignoreKeys.includes(k));
+
+  const allKeys = new Set([...keys1, ...keys2]);
+  for (const key of allKeys) {
+    if (!logDetailedDifference(n1[key], n2[key], path ? `${path}.${key}` : key)) return false;
+  }
+  return true;
+}
+
 function objectsAreEqual(obj1, obj2) {
   const normalize = (val) => {
     if (val === null || val === undefined || val === '') return null;
@@ -1806,55 +1864,100 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       const arr = gradesData || [];
       if (arr.length === 0) return true;
       const newUrls = new Set(arr.map(g => g.courseUrl));
-      if (existingGrades.some(g => !newUrls.has(g.courseUrl))) return false;
+      if (existingGrades.some(g => !newUrls.has(g.courseUrl))) {
+        console.log(`[SYNC] [DIFF] Grades: Database contains courses not present in the scraped payload.`);
+        return false;
+      }
       const oldGradesMap = new Map(existingGrades.map(g => [g.courseUrl, g]));
+      let match = true;
       for (const grade of arr) {
         if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
         const oldGrade = oldGradesMap.get(grade.courseUrl);
-        if (!oldGrade || !objectsAreEqual(oldGrade, grade)) return false;
+        if (!oldGrade) {
+          console.log(`[SYNC] [DIFF] Grades: Scraped course "${grade.courseName}" (${grade.courseUrl}) not found in database.`);
+          match = false;
+          continue;
+        }
+        if (!logDetailedDifference(oldGrade, grade, `Grades(${grade.courseName})`)) {
+          match = false;
+        }
       }
-      return true;
+      if (match) console.log(`[SYNC] [NO_DIFF] Grades match database exactly.`);
+      return match;
     };
 
     const compareAttendance = () => {
       const arr = attendanceData || [];
       if (arr.length === 0) return true;
       const newUrls = new Set(arr.map(a => a.courseUrl));
-      if (existingAttendance.some(a => !newUrls.has(a.courseUrl))) return false;
+      if (existingAttendance.some(a => !newUrls.has(a.courseUrl))) {
+        console.log(`[SYNC] [DIFF] Attendance: Database contains courses not present in the scraped payload.`);
+        return false;
+      }
       const oldAttMap = new Map(existingAttendance.map(a => [a.courseUrl, a]));
+      let match = true;
       for (const att of arr) {
         if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
         const oldAtt = oldAttMap.get(att.courseUrl);
-        if (!oldAtt || !objectsAreEqual(oldAtt, att)) return false;
+        if (!oldAtt) {
+          console.log(`[SYNC] [DIFF] Attendance: Scraped course "${att.courseName}" (${att.courseUrl}) not found in database.`);
+          match = false;
+          continue;
+        }
+        if (!logDetailedDifference(oldAtt, att, `Attendance(${att.courseName})`)) {
+          match = false;
+        }
       }
-      return true;
+      if (match) console.log(`[SYNC] [NO_DIFF] Attendance matches database exactly.`);
+      return match;
     };
 
     const compareAnnouncements = () => {
       const arr = announcementsData || [];
       if (arr.length === 0) return true;
       const newUrls = new Set(arr.map(a => a.courseUrl));
-      if (existingAnnouncements.some(a => !newUrls.has(a.courseUrl))) return false;
+      if (existingAnnouncements.some(a => !newUrls.has(a.courseUrl))) {
+        console.log(`[SYNC] [DIFF] Announcements: Database contains courses not present in the scraped payload.`);
+        return false;
+      }
       const oldAnnMap = new Map(existingAnnouncements.map(a => [a.courseUrl, a]));
+      let match = true;
       for (const ann of arr) {
         if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
         const oldAnn = oldAnnMap.get(ann.courseUrl);
-        if (!oldAnn || !objectsAreEqual(oldAnn, ann)) return false;
+        if (!oldAnn) {
+          console.log(`[SYNC] [DIFF] Announcements: Scraped course "${ann.courseName}" (${ann.courseUrl}) not found in database.`);
+          match = false;
+          continue;
+        }
+        if (!logDetailedDifference(oldAnn, ann, `Announcements(${ann.courseName})`)) {
+          match = false;
+        }
       }
-      return true;
+      if (match) console.log(`[SYNC] [NO_DIFF] Announcements match database exactly.`);
+      return match;
     };
 
     const compareSubmissions = () => {
       const arr = submissionsData || [];
       if (arr.length === 0) return true;
       const oldSubMap = new Map(existingSubmissions.map(s => [s.courseUrl, s]));
+      let match = true;
       for (const sub of arr) {
         if (!sub.courseUrl || !sub.courseName || sub.courseName.includes("Unknown")) continue;
         const oldSub = oldSubMap.get(sub.courseUrl);
+        if (!oldSub) {
+          console.log(`[SYNC] [DIFF] Submissions: Scraped course "${sub.courseName}" (${sub.courseUrl}) not found in database.`);
+          match = false;
+          continue;
+        }
         const mergedTasks = mergeUserTasks(oldSub?.tasks, sub.tasks);
-        if (!oldSub || !objectsAreEqual(oldSub.tasks, mergedTasks)) return false;
+        if (!logDetailedDifference(oldSub.tasks, mergedTasks, `Submissions(${sub.courseName}).tasks`)) {
+          match = false;
+        }
       }
-      return true;
+      if (match) console.log(`[SYNC] [NO_DIFF] Submissions match database exactly.`);
+      return match;
     };
 
     const compareTimetable = () => {
@@ -1890,52 +1993,85 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           semester: finalSemester
         });
       }
-      return objectsAreEqual(existingTimetable, preparedClasses);
+      const match = logDetailedDifference(existingTimetable, preparedClasses, 'Timetable');
+      if (match) console.log(`[SYNC] [NO_DIFF] Timetable matches database exactly.`);
+      return match;
     };
 
     const compareExams = () => {
       const arr = datesheetData || [];
       if (arr.length === 0) return true;
       const oldExamsMap = new Map(existingExams.map(e => [`${e.courseName}_${e.date}`, e]));
+      let match = true;
       for (const exam of arr) {
         const oldExam = oldExamsMap.get(`${exam.courseName}_${exam.date}`);
-        if (!oldExam || !objectsAreEqual(oldExam, exam)) return false;
+        if (!oldExam) {
+          console.log(`[SYNC] [DIFF] Exams: Exam for "${exam.courseName}" on ${exam.date} not found in database.`);
+          match = false;
+          continue;
+        }
+        if (!logDetailedDifference(oldExam, exam, `Exams(${exam.courseName}_${exam.date})`)) {
+          match = false;
+        }
       }
-      return true;
+      if (match) console.log(`[SYNC] [NO_DIFF] Exams match database exactly.`);
+      return match;
     };
 
     const compareHistory = () => {
       const arr = historyData || [];
       if (arr.length === 0) return true;
       const newTerms = new Set(arr.map(h => h.term));
-      if (existingHistory.some(h => !newTerms.has(h.term))) return false;
+      if (existingHistory.some(h => !newTerms.has(h.term))) {
+        console.log(`[SYNC] [DIFF] History: Database contains terms not present in the scraped payload.`);
+        return false;
+      }
       const historyMap = new Map(existingHistory.map(h => [h.term, h]));
+      let match = true;
       for (const sem of arr) {
         if (!sem.term) continue;
         const existing = historyMap.get(sem.term);
-        if (!existing || !objectsAreEqual(existing, sem)) return false;
+        if (!existing) {
+          console.log(`[SYNC] [DIFF] History: Scraped term "${sem.term}" not found in database.`);
+          match = false;
+          continue;
+        }
+        if (!logDetailedDifference(existing, sem, `History(${sem.term})`)) {
+          match = false;
+        }
       }
-      return true;
+      if (match) console.log(`[SYNC] [NO_DIFF] History matches database exactly.`);
+      return match;
     };
 
     const compareStats = () => {
       if (!statsData || Object.keys(statsData).length === 0) return true;
-      if (!existingStats) return false;
+      if (!existingStats) {
+        console.log(`[SYNC] [DIFF] Stats: No existing stats found in database.`);
+        return false;
+      }
       const updatePayload = { ...statsData, userId };
       if (statsData.cgpa === "0.00" && existingStats.cgpa !== "0.00") {
         delete updatePayload.cgpa;
       }
-      return objectsAreEqual(existingStats, updatePayload);
+      const match = logDetailedDifference(existingStats, updatePayload, 'Stats');
+      if (match) console.log(`[SYNC] [NO_DIFF] Stats match database exactly.`);
+      return match;
     };
 
     const compareCourses = () => {
       if (!clientCourseMap || typeof clientCourseMap !== 'object') return true;
       const oldCoursesMap = new Map(existingCourses.map(c => [c.name, c]));
+      let match = true;
       for (const [url, info] of Object.entries(clientCourseMap)) {
         const courseName = (info.name || '').trim();
         if (!courseName) continue;
         const oldCourse = oldCoursesMap.get(courseName);
-        if (!oldCourse) return false;
+        if (!oldCourse) {
+          console.log(`[SYNC] [DIFF] Courses: Scraped course "${courseName}" not found in database.`);
+          match = false;
+          continue;
+        }
         const fullCode = (info.code || '').trim();
         const parsed = parseSemesterAndSectionFromCode(fullCode);
         const creditHours = info.creditHours !== undefined ? info.creditHours : 3;
@@ -1953,15 +2089,28 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         if (fullCode) updatePayload.code = fullCode;
         if (finalSection) updatePayload.section = finalSection;
         if (url) updatePayload.portalUrl = url;
-        if (!objectsAreEqual(oldCourse, updatePayload)) return false;
+        if (!logDetailedDifference(oldCourse, updatePayload, `Courses(${courseName})`)) {
+          match = false;
+        }
       }
-      return true;
+      if (match) console.log(`[SYNC] [NO_DIFF] Courses match database exactly.`);
+      return match;
     };
 
-    const isIdentical = compareGrades() && compareAttendance() && compareAnnouncements() && compareSubmissions() && compareTimetable() && compareExams() && compareHistory() && compareStats() && compareCourses();
+    const gradesMatch = compareGrades();
+    const attendanceMatch = compareAttendance();
+    const announcementsMatch = compareAnnouncements();
+    const submissionsMatch = compareSubmissions();
+    const timetableMatch = compareTimetable();
+    const examsMatch = compareExams();
+    const historyMatch = compareHistory();
+    const statsMatch = compareStats();
+    const coursesMatch = compareCourses();
+
+    const isIdentical = gradesMatch && attendanceMatch && announcementsMatch && submissionsMatch && timetableMatch && examsMatch && historyMatch && statsMatch && coursesMatch;
 
     if (isIdentical) {
-      console.log(`[SYNC] User ${user.email} sync discarded: matches DB exactly.`);
+      console.log(`[SYNC] User ${user.email} sync DISCARDED: scraped data matches database exactly.`);
       const activeCookie = ucpCookie || user.ucpCookie;
       if (activeCookie) {
         await User.updateOne({ _id: userId }, {
@@ -1989,6 +2138,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
     const executeUpdate = async () => {
       try {
+        console.log(`[SYNC] Sync mode: ${mode}. Differences found. Executing database updates for user: ${user.email}`);
         let userUpdated = false;
         if (req.path === '/api/extension-sync') {
           if (!user.accessedExtension) {
@@ -2004,6 +2154,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
         const profileChanged = updateProfileFields(user, req.body);
         if (profileChanged || userUpdated) {
+          console.log(`[SYNC] [WRITE] Updating student profile fields in database.`);
           await user.save();
         }
 
@@ -2065,6 +2216,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 continue;
               }
 
+              console.log(`[SYNC] [WRITE] Updating course "${courseName}" in database.`);
               coursePromises.push(Course.findOneAndUpdate(
                 { userId, name: courseName },
                 { $set: updatePayload },
@@ -2088,6 +2240,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 continue;
               }
 
+              console.log(`[SYNC] [WRITE] Updating attendance for course "${att.courseName}" in database.`);
               const changes = detectAttendanceChanges(oldAtt, att);
               if (changes) {
                 if (changes.isNewAbsent) {
@@ -2121,6 +2274,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 continue;
               }
 
+              console.log(`[SYNC] [WRITE] Updating announcements for course "${ann.courseName}" in database.`);
               const changes = detectAnnouncementChanges(oldAnn, ann);
               if (changes) {
                 sendPush(user, `New Announcement: ${ann.courseName} 📢`, changes.latestSubject || "Tap to view details.");
@@ -2149,6 +2303,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
               if (oldSub && objectsAreEqual(oldSub.tasks, mergedTasks)) {
                 console.log(`[SYNC] Submissions for ${sub.courseName} unchanged, skipping.`);
               } else {
+                console.log(`[SYNC] [WRITE] Updating submissions for course "${sub.courseName}" in database.`);
                 const changes = detectSubmissionChanges(oldSub, sub);
                 if (changes) {
                   io.to(userId.toString()).emit('submission_update', changes);
@@ -2361,6 +2516,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
               continue;
             }
 
+            console.log(`[SYNC] [WRITE] Updating course "${courseName}" details in database.`);
             timetablePromises.push(Course.findOneAndUpdate(
               { userId, name: courseName },
               { $set: courseUpdatePayload },
@@ -2381,6 +2537,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 continue;
               }
 
+              console.log(`[SYNC] [WRITE] Updating exam datesheet for "${exam.courseName}" on ${exam.date} in database.`);
               datesheetPromises.push(Exam.findOneAndUpdate(
                 { userId, courseName: exam.courseName, date: exam.date },
                 { $set: { ...exam, userId, lastUpdated: new Date() } },
@@ -2414,10 +2571,14 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           }
 
           if (hasAnyGradeChanges) {
-            if (mode === 'LOGIN_SYNC') await Grade.deleteMany({ userId });
+            if (mode === 'LOGIN_SYNC') {
+              console.log(`[SYNC] [WRITE] Deleting old grades for LOGIN_SYNC.`);
+              await Grade.deleteMany({ userId });
+            }
             const gradePromises = [];
 
             for (const { grade, oldGrade } of gradesToUpdate) {
+              console.log(`[SYNC] [WRITE] Updating grades for course "${grade.courseName}" in database.`);
               const changes = detectGradeChanges(oldGrade, grade);
               if (changes) {
                 sendPush(user, `Grade Update: ${grade.courseName} 📊`, `Your total weight is now ${changes.newPercentage}%`);
@@ -2434,6 +2595,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
                 const wasInUpdate = gradesToUpdate.some(u => u.grade.courseUrl === grade.courseUrl);
                 if (!wasInUpdate) {
+                  console.log(`[SYNC] [WRITE] Re-inserting unmodified course grade for "${grade.courseName}" during LOGIN_SYNC.`);
                   gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true }));
                 }
               }
@@ -2458,10 +2620,14 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           }
 
           if (hasAnyHistoryChanges) {
-            if (mode === 'LOGIN_SYNC') await ResultHistory.deleteMany({ userId });
+            if (mode === 'LOGIN_SYNC') {
+              console.log(`[SYNC] [WRITE] Deleting old result history for LOGIN_SYNC.`);
+              await ResultHistory.deleteMany({ userId });
+            }
             const historyPromises = [];
 
             for (const { sem, existing } of historyToUpdate) {
+              console.log(`[SYNC] [WRITE] Updating result history term "${sem.term}" in database.`);
               if (existing) {
                 const updateDoc = {};
                 if (sem.cgpa && (sem.cgpa !== "0.00" || existing.cgpa === "0.00")) {
@@ -2497,6 +2663,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 if (!sem.term) continue;
                 const wasInUpdate = historyToUpdate.some(u => u.sem.term === sem.term);
                 if (!wasInUpdate) {
+                  console.log(`[SYNC] [WRITE] Re-inserting unmodified result history for "${sem.term}" during LOGIN_SYNC.`);
                   historyPromises.push(ResultHistory.findOneAndUpdate(
                     { term: sem.term, userId },
                     { ...sem, userId, lastUpdated: new Date() },
@@ -2517,6 +2684,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           if (existingStats && objectsAreEqual(existingStats, updatePayload)) {
             console.log(`[SYNC] Student stats unchanged.`);
           } else {
+            console.log(`[SYNC] [WRITE] Updating student stats in database.`);
             await StudentStats.findOneAndUpdate(
               { userId },
               { $set: updatePayload },
