@@ -6334,19 +6334,34 @@ app.get('/api/projection', auth, async (req, res) => {
   }
 });
 
-function getLeaderboardRegex(code, fallbackSection) {
+function getClassmateQuery(code, fallbackSection) {
   if (!code) return null;
   const trimmed = code.trim();
+  let globalCode = trimmed;
+  let section = (fallbackSection || '').trim();
+
   if (trimmed.includes('-')) {
     const parts = trimmed.split('-');
-    const globalCode = parts[0].trim();
-    const section = parts[parts.length - 1].trim();
-    return new RegExp('^' + escapeRegex(globalCode) + '-.*-' + escapeRegex(section) + '$', 'i');
+    globalCode = parts[0].trim();
+    section = parts[parts.length - 1].trim();
   }
-  if (fallbackSection && fallbackSection.trim()) {
-    return new RegExp('^' + escapeRegex(trimmed) + '-.*-' + escapeRegex(fallbackSection.trim()) + '$', 'i');
+
+  if (!globalCode) return null;
+
+  const globalCodeRegex = { $regex: '^' + escapeRegex(globalCode) + '$', $options: 'i' };
+  
+  if (section) {
+    const sectionRegex = { $regex: '^' + escapeRegex(section) + '$', $options: 'i' };
+    const longCodeRegex = { $regex: '^' + escapeRegex(globalCode) + '-.*-' + escapeRegex(section) + '$', $options: 'i' };
+    return {
+      $or: [
+        { code: longCodeRegex },
+        { code: globalCodeRegex, section: sectionRegex }
+      ]
+    };
   }
-  return new RegExp('^' + escapeRegex(trimmed) + '$', 'i');
+
+  return { code: globalCodeRegex };
 }
 
 app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
@@ -6373,9 +6388,9 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
 
     let query = {};
     const sectionParam = (req.query.section || '').trim();
-    const regex = getLeaderboardRegex(courseCodeParam, sectionParam);
-    if (regex) {
-      query.code = regex;
+    const classmateFilter = getClassmateQuery(courseCodeParam, sectionParam);
+    if (classmateFilter) {
+      query = { ...query, ...classmateFilter };
     } else {
       query.code = { $regex: '^' + escapeRegex(courseCodeParam.trim()) + '$', $options: 'i' };
     }
@@ -6427,9 +6442,9 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
 
     let query = {};
     if (myCourse.code) {
-      const regex = getLeaderboardRegex(myCourse.code, myCourse.section);
-      if (regex) {
-        query.code = regex;
+      const classmateFilter = getClassmateQuery(myCourse.code, myCourse.section);
+      if (classmateFilter) {
+        query = { ...query, ...classmateFilter };
       } else {
         query.code = { $regex: '^' + escapeRegex(myCourse.code.trim()) + '$', $options: 'i' };
       }
