@@ -1761,6 +1761,74 @@ function logDetailedDifference(obj1, obj2, path = '') {
   return true;
 }
 
+function mergeGradesNonDestructively(oldGrade, newGrade) {
+  if (!oldGrade) return newGrade;
+
+  const merged = JSON.parse(JSON.stringify(newGrade));
+
+  const isZeroOrEmpty = (val) => val === null || val === undefined || val === '' || val === '0' || val === '0.00' || val === 0;
+  
+  if (isZeroOrEmpty(newGrade.totalPercentage) && !isZeroOrEmpty(oldGrade.totalPercentage)) {
+    merged.totalPercentage = oldGrade.totalPercentage;
+  }
+
+  if (newGrade.assessments && Array.isArray(newGrade.assessments)) {
+    const oldAssessmentsMap = new Map((oldGrade.assessments || []).map(a => [a.name, a]));
+    
+    merged.assessments = newGrade.assessments.map(newAss => {
+      const oldAss = oldAssessmentsMap.get(newAss.name);
+      if (!oldAss) return newAss;
+
+      const mergedAss = JSON.parse(JSON.stringify(newAss));
+      if (isZeroOrEmpty(newAss.percentage) && !isZeroOrEmpty(oldAss.percentage)) {
+        mergedAss.percentage = oldAss.percentage;
+      }
+
+      if (newAss.details && Array.isArray(newAss.details)) {
+        const oldDetailsMap = new Map((oldAss.details || []).map(d => [d.name, d]));
+        mergedAss.details = newAss.details.map(newDet => {
+          const oldDet = oldDetailsMap.get(newDet.name);
+          if (!oldDet) return newDet;
+
+          const mergedDet = JSON.parse(JSON.stringify(newDet));
+          if (isZeroOrEmpty(newDet.obtainedMarks) && !isZeroOrEmpty(oldDet.obtainedMarks)) {
+            mergedDet.obtainedMarks = oldDet.obtainedMarks;
+            mergedDet.percentage = oldDet.percentage;
+          }
+          if (isZeroOrEmpty(newDet.classAverage) && !isZeroOrEmpty(oldDet.classAverage)) {
+            mergedDet.classAverage = oldDet.classAverage;
+          }
+          return mergedDet;
+        });
+      }
+      return mergedAss;
+    });
+  } else if (oldGrade.assessments) {
+    merged.assessments = oldGrade.assessments;
+  }
+
+  return merged;
+}
+
+function mergeAttendanceNonDestructively(oldAtt, newAtt) {
+  if (!oldAtt) return newAtt;
+  const merged = JSON.parse(JSON.stringify(newAtt));
+  if ((!newAtt.records || newAtt.records.length === 0) && oldAtt.records && oldAtt.records.length > 0) {
+    merged.records = oldAtt.records;
+    merged.summary = oldAtt.summary;
+  }
+  return merged;
+}
+
+function mergeAnnouncementsNonDestructively(oldAnn, newAnn) {
+  if (!oldAnn) return newAnn;
+  const merged = JSON.parse(JSON.stringify(newAnn));
+  if ((!newAnn.news || newAnn.news.length === 0) && oldAnn.news && oldAnn.news.length > 0) {
+    merged.news = oldAnn.news;
+  }
+  return merged;
+}
+
 function objectsAreEqual(obj1, obj2) {
   const normalize = (val) => {
     if (val === null || val === undefined || val === '') return null;
@@ -2235,13 +2303,14 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
             if (!att.courseUrl || !att.courseName || att.courseName.includes("Unknown")) continue;
             if (att.records) {
               const oldAtt = oldAttMap.get(att.courseUrl);
+              const mergedAtt = mergeAttendanceNonDestructively(oldAtt, att);
 
-              if (oldAtt && objectsAreEqual(oldAtt, att)) {
+              if (oldAtt && objectsAreEqual(oldAtt, mergedAtt)) {
                 continue;
               }
 
               console.log(`[SYNC] [WRITE] Updating attendance for course "${att.courseName}" in database.`);
-              const changes = detectAttendanceChanges(oldAtt, att);
+              const changes = detectAttendanceChanges(oldAtt, mergedAtt);
               if (changes) {
                 if (changes.isNewAbsent) {
                   sendPush(user, `Attendance Alert: ${att.courseName} ⚠️`, `You have been marked absent! Total absents: ${changes.newAbsents}`);
@@ -2255,7 +2324,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 changesSummary.attendance = changesSummary.attendance || [];
                 if (!changesSummary.attendance.includes(att.courseName)) changesSummary.attendance.push(att.courseName);
               }
-              attPromises.push(Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...att, lastUpdated: new Date() }, { upsert: true }));
+              attPromises.push(Attendance.findOneAndUpdate({ userId, courseUrl: att.courseUrl }, { ...mergedAtt, lastUpdated: new Date() }, { upsert: true }));
             }
           }
           await Promise.all(attPromises);
@@ -2269,13 +2338,14 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
             if (!ann.courseUrl || !ann.courseName || ann.courseName.includes("Unknown")) continue;
             if (ann.news) {
               const oldAnn = oldAnnMap.get(ann.courseUrl);
+              const mergedAnn = mergeAnnouncementsNonDestructively(oldAnn, ann);
 
-              if (oldAnn && objectsAreEqual(oldAnn, ann)) {
+              if (oldAnn && objectsAreEqual(oldAnn, mergedAnn)) {
                 continue;
               }
 
               console.log(`[SYNC] [WRITE] Updating announcements for course "${ann.courseName}" in database.`);
-              const changes = detectAnnouncementChanges(oldAnn, ann);
+              const changes = detectAnnouncementChanges(oldAnn, mergedAnn);
               if (changes) {
                 sendPush(user, `New Announcement: ${ann.courseName} 📢`, changes.latestSubject || "Tap to view details.");
                 await createAcademicNotification(userId, 'announcement', `New Announcement: ${ann.courseName}`, changes.latestSubject || "Tap to view details.", ann.courseUrl);
@@ -2283,7 +2353,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 changesSummary.announcements = changesSummary.announcements || [];
                 if (!changesSummary.announcements.includes(ann.courseName)) changesSummary.announcements.push(ann.courseName);
               }
-              annPromises.push(Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...ann, lastUpdated: new Date() }, { upsert: true }));
+              annPromises.push(Announcement.findOneAndUpdate({ userId, courseUrl: ann.courseUrl }, { ...mergedAnn, lastUpdated: new Date() }, { upsert: true }));
             }
           }
           await Promise.all(annPromises);
@@ -2477,11 +2547,10 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
           if (existingTimetable.length > 0 && objectsAreEqual(existingTimetable, preparedClasses)) {
             console.log(`[SYNC] Timetable unchanged, skipping updates.`);
-          } else {
+          } else if (preparedClasses.length > 0) {
+            console.log(`[SYNC] [WRITE] Updating timetable in database (entries count: ${preparedClasses.length}).`);
             await Timetable.deleteMany({ userId, semester: currentSem });
-            if (preparedClasses.length > 0) {
-              await Timetable.insertMany(preparedClasses);
-            }
+            await Timetable.insertMany(preparedClasses);
           }
 
           const timetablePromises = [];
@@ -2578,8 +2647,9 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
             const gradePromises = [];
 
             for (const { grade, oldGrade } of gradesToUpdate) {
+              const mergedGrade = mergeGradesNonDestructively(oldGrade, grade);
               console.log(`[SYNC] [WRITE] Updating grades for course "${grade.courseName}" in database.`);
-              const changes = detectGradeChanges(oldGrade, grade);
+              const changes = detectGradeChanges(oldGrade, mergedGrade);
               if (changes) {
                 sendPush(user, `Grade Update: ${grade.courseName} 📊`, `Your total weight is now ${changes.newPercentage}%`);
                 await createAcademicNotification(userId, 'marks', `Grade Update: ${grade.courseName}`, `Your total weight is now ${changes.newPercentage}%`, grade.courseUrl);
@@ -2587,7 +2657,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 changesSummary.grades = changesSummary.grades || [];
                 if (!changesSummary.grades.includes(grade.courseName)) changesSummary.grades.push(grade.courseName);
               }
-              gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true }));
+              gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...mergedGrade, userId, lastUpdated: new Date() }, { upsert: true }));
             }
 
             if (mode === 'LOGIN_SYNC') {
@@ -2595,8 +2665,10 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
                 if (!grade.courseUrl || !grade.courseName || grade.courseName.includes("Unknown")) continue;
                 const wasInUpdate = gradesToUpdate.some(u => u.grade.courseUrl === grade.courseUrl);
                 if (!wasInUpdate) {
-                  console.log(`[SYNC] [WRITE] Re-inserting unmodified course grade for "${grade.courseName}" during LOGIN_SYNC.`);
-                  gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...grade, userId, lastUpdated: new Date() }, { upsert: true }));
+                  const oldGrade = oldGradesMap.get(grade.courseUrl);
+                  const mergedGrade = mergeGradesNonDestructively(oldGrade, grade);
+                  console.log(`[SYNC] [WRITE] Re-inserting course grade for "${grade.courseName}" during LOGIN_SYNC.`);
+                  gradePromises.push(Grade.findOneAndUpdate({ courseUrl: grade.courseUrl, userId }, { ...mergedGrade, userId, lastUpdated: new Date() }, { upsert: true }));
                 }
               }
             }
@@ -4759,8 +4831,34 @@ const updateProfileFields = (user, body) => {
   }
 
   // Set user.currentSemester to the parsed term code (like Spring 2026)
-  const { getCurrentSemesterCode } = require('./services/scraperEngine');
-  const incomingTerm = (body.semester || getCurrentSemesterCode() || '').trim();
+  const { getCurrentSemesterCode, parseSemesterFromCourseCode } = require('./services/scraperEngine');
+  let incomingTerm = (body.semester || '').trim();
+
+  // Detect term from courseMap in request body if not explicitly provided
+  if (!incomingTerm) {
+    const courseMap = body.courseMap;
+    if (courseMap && typeof courseMap === 'object') {
+      const semesters = [];
+      for (const info of Object.values(courseMap)) {
+        if (info.code) {
+          const sem = parseSemesterFromCourseCode(info.code);
+          if (sem) semesters.push(sem);
+        }
+      }
+      if (semesters.length > 0) {
+        const freq = {};
+        semesters.forEach(s => freq[s] = (freq[s] || 0) + 1);
+        const sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
+        incomingTerm = sorted[0];
+      }
+    }
+  }
+
+  // Fallback to getCurrentSemesterCode ONLY if user has no semester set in DB yet
+  if (!incomingTerm && (!user.currentSemester || String(user.currentSemester).trim() === '')) {
+    incomingTerm = getCurrentSemesterCode();
+  }
+
   if (incomingTerm) {
     const existingTerm = user.currentSemester ? String(user.currentSemester).trim() : '';
     if (incomingTerm !== existingTerm) {

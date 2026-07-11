@@ -50,6 +50,34 @@ const TimeTable = ({ selectedSemester, currentSemester }) => {
     fetchTimetable();
   }, [selectedSemester, currentSemester]);
 
+  const formatSemester = (sem) => {
+    if (!sem) return 'Spring Semester';
+    const trimmed = sem.trim();
+    const parts = trimmed.split(' ');
+    if (parts.length === 2) {
+      const season = parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase();
+      let year = parts[1];
+      if (year.length === 2) {
+        year = '20' + year;
+      }
+      return `${season} ${year}`;
+    }
+    const match = trimmed.match(/^([sSfFuU])(\d{2})$/);
+    if (match) {
+      const seasonChar = match[1].toLowerCase();
+      let season = '';
+      if (seasonChar === 's') season = 'Spring';
+      else if (seasonChar === 'f') season = 'Fall';
+      else if (seasonChar === 'u') season = 'Summer';
+      let year = match[2];
+      if (year.length === 2) {
+        year = '20' + year;
+      }
+      return `${season} ${year}`;
+    }
+    return trimmed.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  };
+
   const getPositionStyles = (startTime, endTime) => {
     const [startH, startM] = (startTime || '00:00').split(':').map(Number);
     const [endH, endM] = (endTime || '00:00').split(':').map(Number);
@@ -92,7 +120,7 @@ const TimeTable = ({ selectedSemester, currentSemester }) => {
         
         <div className="hidden sm:flex items-center gap-3">
           <span className="px-3 py-1.5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-600/20 dark:to-indigo-600/20 text-blue-700 dark:text-blue-400 rounded-md text-xs font-bold tracking-wide border border-blue-100 dark:border-blue-800/30">
-            Spring Semester
+            {formatSemester(selectedSemester || currentSemester)}
           </span>
         </div>
       </div>
