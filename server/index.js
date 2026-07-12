@@ -3769,23 +3769,32 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
       { model: Grade, field: 'userId' }
     ];
 
-    const usersWithStorage = await Promise.all(users.map(async (user) => {
-      let storageBytes = 15360; 
+    const storageMap = {};
+    for (const user of users) {
+      storageMap[user._id.toString()] = 15360;
+    }
 
-      if (!isCompact) {
-        for (const { model, field } of modelsToMeasure) {
-          try {
-            const result = await model.aggregate([
-              { $match: { [field]: user._id } },
-              { $group: { _id: null, size: { $sum: { $bsonSize: "$$ROOT" } } } }
-            ]);
-            if (result && result.length > 0) storageBytes += result[0].size;
-          } catch (e) {
-            
+    if (!isCompact) {
+      await Promise.all(modelsToMeasure.map(async ({ model, field }) => {
+        try {
+          const results = await model.aggregate([
+            { $group: { _id: `$${field}`, size: { $sum: { $bsonSize: "$$ROOT" } } } }
+          ]);
+          for (const row of results) {
+            if (row._id) {
+              const uid = row._id.toString();
+              if (storageMap[uid] !== undefined) {
+                storageMap[uid] += row.size;
+              }
+            }
           }
+        } catch (e) {
+          // ignore
         }
-      }
+      }));
+    }
 
+    const usersWithStorage = users.map((user) => {
       return {
         _id: user._id,
         name: user.name,
@@ -3804,9 +3813,9 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         lastSyncAt: user.lastSyncAt,
         ucpCookie: user.ucpCookie ? true : false,
         createdAt: user.createdAt,
-        storageUsed: storageBytes
+        storageUsed: storageMap[user._id.toString()] || 15360
       };
-    }));
+    });
 
     res.json(usersWithStorage);
   } catch (error) {
