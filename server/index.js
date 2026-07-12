@@ -452,7 +452,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.104:8081',
+  'http://192.168.0.103:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -2545,12 +2545,31 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
           const currentSem = req.body.semester || getCurrentSemesterCode();
 
-          if (existingTimetable.length > 0 && objectsAreEqual(existingTimetable, preparedClasses)) {
+          // Deduplicate preparedClasses by day, startTime, courseName, and semester to avoid unique constraint violations
+          const uniqueClassesMap = new Map();
+          for (const item of preparedClasses) {
+            const key = `${item.day}_${item.startTime}_${item.courseName}_${item.semester}`;
+            if (!uniqueClassesMap.has(key)) {
+              uniqueClassesMap.set(key, item);
+            }
+          }
+          const deduplicatedClasses = Array.from(uniqueClassesMap.values());
+
+          if (existingTimetable.length > 0 && objectsAreEqual(existingTimetable, deduplicatedClasses)) {
             console.log(`[SYNC] Timetable unchanged, skipping updates.`);
-          } else if (preparedClasses.length > 0) {
-            console.log(`[SYNC] [WRITE] Updating timetable in database (entries count: ${preparedClasses.length}).`);
-            await Timetable.deleteMany({ userId, semester: currentSem });
-            await Timetable.insertMany(preparedClasses);
+          } else if (deduplicatedClasses.length > 0) {
+            console.log(`[SYNC] [WRITE] Updating timetable in database (entries count: ${deduplicatedClasses.length}).`);
+            
+            // Delete existing records for the semesters we are about to insert to prevent unique key violations
+            const semestersToClear = [...new Set(deduplicatedClasses.map(c => c.semester))];
+            for (const sem of semestersToClear) {
+              if (sem) {
+                console.log(`[SYNC] [WRITE] Clearing existing timetable for user: ${userId} and semester: ${sem}`);
+                await Timetable.deleteMany({ userId, semester: sem });
+              }
+            }
+
+            await Timetable.insertMany(deduplicatedClasses);
           }
 
           const timetablePromises = [];
@@ -2910,6 +2929,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         res.json({ message: "Sync & Diffing complete securely!" });
 
       } catch (error) {
+        console.error("[SYNC_ERROR_STACK] Error in executeUpdate:", error);
         const { syncLogId } = req.body;
         if (syncLogId) {
           await SyncLog.findByIdAndUpdate(syncLogId, {
@@ -2930,6 +2950,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     }
 
   } catch (error) {
+    console.error("[SYNC_ERROR_STACK] Error in outer sync handler:", error);
     const { syncLogId } = req.body;
     if (syncLogId) {
       await SyncLog.findByIdAndUpdate(syncLogId, {
@@ -2941,7 +2962,6 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
     const statusCode = error.message.includes('Mismatch') || error.message.includes('not detected') ? 400 : 500;
     res.status(statusCode).json({ message: error.message });
   } finally {
-    
     activeSyncs.delete(syncKey);
   }
 });

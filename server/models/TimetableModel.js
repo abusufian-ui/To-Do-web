@@ -17,7 +17,7 @@ const timetableSchema = new mongoose.Schema({
 });
 
 
-timetableSchema.index({ userId: 1, day: 1, startTime: 1, courseName: 1 }, { unique: true });
+timetableSchema.index({ userId: 1, day: 1, startTime: 1, courseName: 1, semester: 1 }, { unique: true });
 
 
 timetableSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
