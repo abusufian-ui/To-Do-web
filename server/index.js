@@ -2938,8 +2938,18 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
             }
           }
         }
-
         await updateUserCurrentSemester(userId);
+
+        // Invalidate leaderboard cache for all sections this user belongs to
+        try {
+          const syncedUserCourses = await Course.find({ userId });
+          for (const c of syncedUserCourses) {
+            invalidateLeaderboardCache(c.code, c.section);
+          }
+        } catch (cacheErr) {
+          console.warn('[CACHE ERROR] Failed to invalidate cache:', cacheErr.message);
+        }
+
         res.json({ message: "Sync & Diffing complete securely!" });
 
       } catch (error) {
@@ -6460,6 +6470,20 @@ const extractCourseIdFromUrl = (url) => {
   const parts = url.split('/');
   return parts[parts.length - 1] || null;
 };
+// Leaderboard in-memory shared cache
+const leaderboardCache = new Map();
+const LEADERBOARD_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+
+const invalidateLeaderboardCache = (code, section) => {
+  if (!code) return;
+  const prefix = `${code.trim().toUpperCase()}_${(section || '').trim().toUpperCase()}_`;
+  for (const key of leaderboardCache.keys()) {
+    if (key.startsWith(prefix)) {
+      leaderboardCache.delete(key);
+      console.log(`[CACHE] Invalidated leaderboard cache for key: ${key}`);
+    }
+  }
+};
 
 const buildCourseLeaderboard = (matchingCourses, grades, bestOfConfigs = {}, gradeName = null) => {
   let leaderboard = matchingCourses.map(course => {
@@ -6599,8 +6623,21 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
       return res.status(403).json({ error: "Leaderboard has been disabled for your account by an administrator." });
     }
 
-    let query = {};
     const sectionParam = (req.query.section || '').trim();
+    const normalizedCode = (courseCodeParam || '').trim().toUpperCase();
+    const normalizedName = (courseName || '').trim().toUpperCase();
+    const normalizedSection = sectionParam.toUpperCase();
+    const classKey = normalizedCode ? `${normalizedCode}_${normalizedSection}` : `${normalizedName}_${normalizedSection}`;
+    const cacheKey = `${classKey}_default_${bestOfQuery || 'default'}`;
+
+    const cached = leaderboardCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && (now - cached.timestamp < LEADERBOARD_CACHE_TTL)) {
+      console.log(`[CACHE HIT] Serving extension leaderboard from cache for key: ${cacheKey}`);
+      return res.status(200).json(cached.data);
+    }
+
+    let query = {};
     const classmateFilter = getClassmateQuery(courseCodeParam, sectionParam);
     if (classmateFilter) {
       query = { ...query, ...classmateFilter };
@@ -6622,6 +6659,12 @@ app.get('/api/extension/leaderboard/:courseCode', async (req, res) => {
     const grades = await Grade.find({ userId: { $in: userIds } });
 
     const leaderboard = buildCourseLeaderboard(matchingCourses, grades, bestOfConfigs);
+
+    leaderboardCache.set(cacheKey, {
+      data: leaderboard,
+      timestamp: now
+    });
+    console.log(`[CACHE MISS] Populated extension leaderboard cache for key: ${cacheKey}`);
 
     res.status(200).json(leaderboard);
   } catch (error) {
@@ -6670,6 +6713,18 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
       query.section = { $regex: '^' + escapeRegex(targetSection) + '$', $options: 'i' };
       query.name = { $regex: '^' + escapeRegex(myCourse.name.trim()) + '$', $options: 'i' };
     }
+    const normalizedCode = (myCourse.code || '').trim().toUpperCase();
+    const normalizedName = (myCourse.name || '').trim().toUpperCase();
+    const normalizedSection = (myCourse.section || '').trim().toUpperCase();
+    const classKey = normalizedCode ? `${normalizedCode}_${normalizedSection}` : `${normalizedName}_${normalizedSection}`;
+    const cacheKey = `${classKey}_${gradeName || 'default'}_${bestOfQuery || 'default'}`;
+
+    const cached = leaderboardCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && (now - cached.timestamp < LEADERBOARD_CACHE_TTL)) {
+      console.log(`[CACHE HIT] Serving course leaderboard from cache for key: ${cacheKey}`);
+      return res.status(200).json(cached.data);
+    }
 
     const matchingCourses = await Course.find(query).populate('userId', 'name portalId customProfilePic'); 
     
@@ -6681,6 +6736,12 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     const grades = await Grade.find({ userId: { $in: userIds } });
 
     const leaderboard = buildCourseLeaderboard(matchingCourses, grades, bestOfConfigs, gradeName);
+
+    leaderboardCache.set(cacheKey, {
+      data: leaderboard,
+      timestamp: now
+    });
+    console.log(`[CACHE MISS] Populated course leaderboard cache for key: ${cacheKey}`);
 
     res.status(200).json(leaderboard);
   } catch (error) {

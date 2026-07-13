@@ -21,5 +21,7 @@ const CourseSchema = new mongoose.Schema({
 });
 
 CourseSchema.index({ userId: 1, name: 1 }, { unique: true });
+CourseSchema.index({ code: 1, section: 1 });
+CourseSchema.index({ name: 1, section: 1 });
 
 module.exports = mongoose.model('Course', CourseSchema);
