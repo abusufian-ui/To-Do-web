@@ -45,27 +45,28 @@ function getClientIp(req) {
 }
 
 function parseUserAgent(uaString) {
-  const ua = uaString || '';
+  const rawUa = uaString || '';
+  const ua = rawUa.toLowerCase();
   let os = 'Unknown OS';
   let browser = 'Unknown Browser';
   let deviceType = 'Desktop';
 
-  if (ua.includes('Windows')) os = 'Windows';
-  else if (ua.includes('Macintosh') || ua.includes('Mac OS')) os = 'macOS';
-  else if (ua.includes('Linux') && !ua.includes('Android')) os = 'Linux';
-  else if (ua.includes('Android')) { os = 'Android'; deviceType = 'Mobile'; }
-  else if (ua.includes('iPhone') || ua.includes('iPad') || ua.includes('iPod')) { os = 'iOS'; deviceType = 'Mobile'; }
+  if (ua.includes('windows')) os = 'Windows';
+  else if (ua.includes('macintosh') || ua.includes('mac os')) os = 'macOS';
+  else if (ua.includes('android')) { os = 'Android'; deviceType = 'Mobile'; }
+  else if (ua.includes('linux')) os = 'Linux';
+  else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) { os = 'iOS'; deviceType = 'Mobile'; }
 
-  if (ua.includes('Edg/')) browser = 'Edge';
-  else if (ua.includes('Chrome/') || ua.includes('CriOS/')) browser = 'Chrome';
-  else if (ua.includes('Safari/') && !ua.includes('Chrome/') && !ua.includes('CriOS/')) browser = 'Safari';
-  else if (ua.includes('Firefox/') || ua.includes('FxiOS/')) browser = 'Firefox';
-  else if (ua.includes('MSIE') || ua.includes('Trident/')) browser = 'Internet Explorer';
+  if (rawUa.includes('Edg/')) browser = 'Edge';
+  else if (rawUa.includes('Chrome/') || rawUa.includes('CriOS/')) browser = 'Chrome';
+  else if (rawUa.includes('Safari/') && !rawUa.includes('Chrome/') && !rawUa.includes('CriOS/')) browser = 'Safari';
+  else if (rawUa.includes('Firefox/') || rawUa.includes('FxiOS/')) browser = 'Firefox';
+  else if (rawUa.includes('MSIE') || rawUa.includes('Trident/')) browser = 'Internet Explorer';
   
-  if (ua.includes('okhttp') || ua.includes('Expo') || ua.includes('React-Native')) {
+  if (rawUa.includes('okhttp') || rawUa.includes('Expo') || rawUa.includes('React-Native')) {
     deviceType = 'Mobile App';
     browser = 'Native App';
-  } else if (ua.includes('chrome-extension://')) {
+  } else if (rawUa.includes('chrome-extension://')) {
     deviceType = 'Chrome Extension';
     browser = 'Extension';
   }
@@ -148,10 +149,10 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
     // Smart email login alert trigger if it's a new device/IP combination
     const activeResend = resendInstance || resend;
     if (!deviceExists) {
-      if (activeResend) {
+      if (transporter || activeResend) {
         const User = require('../models/User');
         const user = await User.findById(userId);
-        if (user && user.email && user.email.endsWith('@ucp.edu.pk')) {
+        if (user && user.email && (user.email.endsWith('@ucp.edu.pk') || user.email.endsWith('@gmail.com'))) {
           await sendLoginAlertEmail(user, session, activeResend);
         }
       }
