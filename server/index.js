@@ -3756,8 +3756,53 @@ app.post('/api/groups/remove-member', auth, async (req, res) => {
 });
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
-    const users = await User.find().select('-password').sort({ createdAt: -1 });
-    const isCompact = req.query.compact === 'true';
+    const isCompact = req.query.compact === 'true' || req.query.all === 'true';
+
+    if (isCompact) {
+      const users = await User.find().select('-password').sort({ createdAt: -1 });
+      const usersWithStorage = users.map((user) => {
+        return {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          profilePic: user.profilePic,
+          portalProfilePic: user.portalProfilePic,
+          originalPortalProfilePic: user.originalPortalProfilePic,
+          customProfilePic: user.customProfilePic,
+          isAdmin: user.isAdmin,
+          isBlocked: user.isBlocked || false,
+          isLeaderboardEnabled: user.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
+            ? true
+            : (user.isLeaderboardEnabled !== false),
+          isPortalConnected: user.isPortalConnected,
+          portalId: user.portalId,
+          lastSyncAt: user.lastSyncAt,
+          ucpCookie: user.ucpCookie ? true : false,
+          createdAt: user.createdAt,
+          storageUsed: 15360
+        };
+      });
+      return res.json(usersWithStorage);
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const searchQuery = req.query.search || '';
+
+    const filter = {};
+    if (searchQuery) {
+      filter.$or = [
+        { name: { $regex: searchQuery, $options: 'i' } },
+        { email: { $regex: searchQuery, $options: 'i' } }
+      ];
+    }
+
+    const totalUsers = await User.countDocuments(filter);
+    const users = await User.find(filter)
+      .select('-password')
+      .sort({ isAdmin: -1, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
     const modelsToMeasure = [
       { model: Task, field: 'userId' },
@@ -3774,25 +3819,25 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
       storageMap[user._id.toString()] = 15360;
     }
 
-    if (!isCompact) {
-      await Promise.all(modelsToMeasure.map(async ({ model, field }) => {
-        try {
-          const results = await model.aggregate([
-            { $group: { _id: `$${field}`, size: { $sum: { $bsonSize: "$$ROOT" } } } }
-          ]);
-          for (const row of results) {
-            if (row._id) {
-              const uid = row._id.toString();
-              if (storageMap[uid] !== undefined) {
-                storageMap[uid] += row.size;
-              }
+    const userIds = users.map(u => u._id);
+    await Promise.all(modelsToMeasure.map(async ({ model, field }) => {
+      try {
+        const results = await model.aggregate([
+          { $match: { [field]: { $in: userIds } } },
+          { $group: { _id: `$${field}`, count: { $sum: 1 } } }
+        ]);
+        for (const row of results) {
+          if (row._id) {
+            const uid = row._id.toString();
+            if (storageMap[uid] !== undefined) {
+              storageMap[uid] += row.count * 300; // 300 bytes per document estimate
             }
           }
-        } catch (e) {
-          // ignore
         }
-      }));
-    }
+      } catch (e) {
+        // ignore
+      }
+    }));
 
     const usersWithStorage = users.map((user) => {
       return {
@@ -3805,7 +3850,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         customProfilePic: user.customProfilePic,
         isAdmin: user.isAdmin,
         isBlocked: user.isBlocked || false,
-        isLeaderboardEnabled: user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
+        isLeaderboardEnabled: user.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
           ? true
           : (user.isLeaderboardEnabled !== false),
         isPortalConnected: user.isPortalConnected,
@@ -3817,7 +3862,23 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
       };
     });
 
-    res.json(usersWithStorage);
+    // Super Admin strictly first, then admins, then others by creation date
+    usersWithStorage.sort((a, b) => {
+      const aIsSuper = a.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+      const bIsSuper = b.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+      if (aIsSuper && !bIsSuper) return -1;
+      if (!aIsSuper && bIsSuper) return 1;
+      if (a.isAdmin && !b.isAdmin) return -1;
+      if (!a.isAdmin && b.isAdmin) return 1;
+      return 0;
+    });
+
+    res.json({
+      users: usersWithStorage,
+      totalUsers,
+      page,
+      pages: Math.ceil(totalUsers / limit)
+    });
   } catch (error) {
     console.error("Admin Fetch Users Error:", error);
     res.status(500).json({ message: "Failed to fetch users" });

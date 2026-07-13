@@ -118,10 +118,49 @@ const UserAvatar = ({ u, size = 10, showBlock = false }) => {
 
 const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, onRefresh }) => {
   const [search, setSearch] = useState('');
+  const [localUsers, setLocalUsers] = useState([]);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
+  const [loadingLocal, setLoadingLocal] = useState(true);
+
   const [userToDelete, setUserToDelete] = useState(null);
   const [roleToToggle, setRoleToToggle] = useState(null);
   const [blockingId, setBlockingId] = useState(null);
   const [processingId, setProcessingId] = useState(null);
+
+  const prevSearchRef = useRef(search);
+
+  const fetchLocalUsers = async (targetPage, targetSearch) => {
+    setLoadingLocal(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users?page=${targetPage}&limit=50&search=${encodeURIComponent(targetSearch)}`, {
+        headers: { 'x-auth-token': token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLocalUsers(data.users || []);
+        setTotalUsers(data.totalUsers || 0);
+        setTotalPages(data.pages || 1);
+        setPage(data.page || 1);
+      }
+    } catch (err) {
+      console.error("Failed to fetch local users:", err);
+    }
+    setLoadingLocal(false);
+  };
+
+  useEffect(() => {
+    if (prevSearchRef.current !== search) {
+      prevSearchRef.current = search;
+      const delayDebounce = setTimeout(() => {
+        fetchLocalUsers(1, search);
+      }, 300);
+      return () => clearTimeout(delayDebounce);
+    } else {
+      fetchLocalUsers(page, search);
+    }
+  }, [page, search]);
 
   const triggerMaterialSync = async (u) => {
     setProcessingId(u._id);
@@ -147,25 +186,14 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
     }
   };
 
-  const filtered = users.filter(u =>
-    u.name.toLowerCase().includes(search.toLowerCase()) ||
-    (u.email && u.email.toLowerCase().includes(search.toLowerCase()))
-  ).sort((a, b) => {
-    const aIsSuper = a.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-    const bIsSuper = b.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-    if (aIsSuper && !bIsSuper) return -1;
-    if (!aIsSuper && bIsSuper) return 1;
-    if (a.isAdmin && !b.isAdmin) return -1;
-    if (!a.isAdmin && b.isAdmin) return 1;
-    return 0;
-  });
-
   const executeDelete = async () => {
     if (!userToDelete) return;
     try {
       const res = await fetch(`${API_BASE}/api/admin/users/${userToDelete}`, { method: 'DELETE', headers: { 'x-auth-token': token } });
       if (res.ok) {
+        setLocalUsers(prev => prev.filter(u => u._id !== userToDelete));
         onUsersChange(users.filter(u => u._id !== userToDelete));
+        setTotalUsers(t => Math.max(0, t - 1));
         ToastConfig.show({ title: 'Deleted', message: 'User removed successfully.', type: 'success' });
       } else {
         const data = await res.json();
@@ -181,6 +209,7 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
       const res = await fetch(`${API_BASE}/api/admin/users/${roleToToggle._id}/role`, { method: 'PUT', headers: { 'x-auth-token': token } });
       const data = await res.json();
       if (res.ok) {
+        setLocalUsers(prev => prev.map(u => u._id === roleToToggle._id ? { ...u, isAdmin: data.isAdmin } : u));
         onUsersChange(users.map(u => u._id === roleToToggle._id ? { ...u, isAdmin: data.isAdmin } : u));
         ToastConfig.show({ title: 'Success', message: 'Role updated.', type: 'success' });
       } else ToastConfig.show({ title: 'Error', message: data.message || 'Failed', type: 'error' });
@@ -194,6 +223,7 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
       const res = await fetch(`${API_BASE}/api/admin/users/${u._id}/block`, { method: 'PUT', headers: { 'x-auth-token': token } });
       const data = await res.json();
       if (res.ok) {
+        setLocalUsers(prev => prev.map(x => x._id === u._id ? { ...x, isBlocked: data.isBlocked } : x));
         onUsersChange(users.map(x => x._id === u._id ? { ...x, isBlocked: data.isBlocked } : x));
         ToastConfig.show({ title: data.isBlocked ? 'Blocked' : 'Unblocked', message: `${u.name} has been ${data.isBlocked ? 'blocked' : 'unblocked'}.`, type: data.isBlocked ? 'error' : 'success' });
       } else ToastConfig.show({ title: 'Error', message: data.message || 'Failed', type: 'error' });
@@ -213,6 +243,7 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
       });
       const data = await res.json();
       if (res.ok) {
+        setLocalUsers(prev => prev.map(u => ({ ...u, isLeaderboardEnabled: enable })));
         onUsersChange(users.map(u => ({ ...u, isLeaderboardEnabled: enable })));
         ToastConfig.show({
           title: 'Success',
@@ -235,6 +266,7 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
       });
       const data = await res.json();
       if (res.ok) {
+        setLocalUsers(prev => prev.map(x => x._id === u._id ? { ...x, isLeaderboardEnabled: data.isLeaderboardEnabled } : x));
         onUsersChange(users.map(x => x._id === u._id ? { ...x, isLeaderboardEnabled: data.isLeaderboardEnabled } : x));
         ToastConfig.show({
           title: 'Success',
@@ -258,17 +290,15 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
             <input type="text" placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500" />
           </div>
-          <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{users.length} total</span>
-          {onRefresh && (
-            <button
-              onClick={onRefresh}
-              disabled={loading}
-              className="p-2.5 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center border border-gray-200 dark:border-transparent"
-              title="Refresh users from live DB"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
-          )}
+          <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{totalUsers} total</span>
+          <button
+            onClick={() => fetchLocalUsers(page, search)}
+            disabled={loadingLocal}
+            className="p-2.5 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center border border-gray-200 dark:border-transparent"
+            title="Refresh users from live DB"
+          >
+            <RefreshCw size={14} className={loadingLocal ? 'animate-spin' : ''} />
+          </button>
         </div>
         
         <div className="flex items-center gap-2">
@@ -300,15 +330,15 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {loadingLocal ? (
               <tr><td colSpan="7" className="text-center py-12 text-gray-400 animate-pulse">Loading users…</td></tr>
-            ) : filtered.map(u => {
-              const isTargetSuperAdmin = u.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+            ) : localUsers.map(u => {
+              const isTargetSuperAdmin = u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
               return (
                 <tr key={u._id} className={`border-b border-gray-100 dark:border-[#27272a] hover:bg-gray-50 dark:hover:bg-[#1c1c1f] transition-colors ${u.isBlocked ? 'opacity-60' : ''}`}>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
-                      <UserAvatar u={u} size={10} showBlock />
+                       <UserAvatar u={u} size={10} showBlock />
                       <div>
                         <p className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5 flex-wrap">
                           {u.name}
@@ -332,7 +362,7 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
                   <td className="px-6 py-3 text-xs font-bold text-gray-700 dark:text-gray-300">{formatBytes(u.storageUsed)}</td>
                   <td className="px-6 py-3">
                     {(() => {
-                      const isTargetSuperAdmin = u.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+                      const isTargetSuperAdmin = u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
                       const canToggle = !isTargetSuperAdmin && (isSuperAdmin || !u.isAdmin);
                       const isLdEnabled = isTargetSuperAdmin ? true : u.isLeaderboardEnabled;
                       return (
@@ -395,12 +425,33 @@ const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, 
                 </tr>
               );
             })}
-            {!loading && filtered.length === 0 && (
+            {!loadingLocal && localUsers.length === 0 && (
               <tr><td colSpan="7" className="text-center py-12 text-gray-400">No users match "{search}"</td></tr>
             )}
           </tbody>
         </table>
       </div>
+      {totalPages > 1 && (
+        <div className="p-4 border-t border-gray-200 dark:border-[#27272a] flex items-center justify-between gap-3 bg-gray-50/50 dark:bg-[#151518]/50">
+          <button
+            disabled={page <= 1 || loadingLocal}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            className="px-4 py-2 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 border border-gray-200 dark:border-transparent"
+          >
+            Previous
+          </button>
+          <span className="text-xs font-mono text-gray-500">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            disabled={page >= totalPages || loadingLocal}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            className="px-4 py-2 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 border border-gray-200 dark:border-transparent"
+          >
+            Next
+          </button>
+        </div>
+      )}
       <ConfirmationModal isOpen={!!userToDelete} onClose={() => setUserToDelete(null)} onConfirm={executeDelete}
         title="Delete User?" message="This will permanently wipe the account and all associated data. This cannot be undone." confirmText="Delete" confirmStyle="danger" />
       <ConfirmationModal isOpen={!!roleToToggle} onClose={() => setRoleToToggle(null)} onConfirm={executeToggleRole}
@@ -2429,7 +2480,7 @@ const AdminDashboard = ({ currentUser }) => {
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users`, { headers: { 'x-auth-token': token } });
+      const res = await fetch(`${API_BASE}/api/admin/users?compact=true`, { headers: { 'x-auth-token': token } });
       const data = await res.json();
       if (Array.isArray(data)) setUsers(data);
     } catch { }
