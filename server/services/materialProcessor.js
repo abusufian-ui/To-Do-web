@@ -304,22 +304,34 @@ async function processUserMaterials(userId, cookieString) {
 
         
         await Promise.all(pendingLinks.map(async (linkSet) => {
-            let { courseUrl, courseName, courseCode, sectionCode, teacherName, links, semester } = linkSet;
+            let { courseUrl, courseName, courseCode, sectionCode, teacherName, links } = linkSet;
 
-            if (!sectionCode) {
-                const Course = require('../models/Course');
-                const courseDoc = await Course.findOne({
-                    userId: userIdStr,
-                    $or: [
-                        { name: courseName },
-                        { code: courseCode },
-                        { code: { $regex: '^' + courseCode.split('-')[0].trim() + '(-|$)', $options: 'i' } }
-                    ]
-                }).lean();
-                if (courseDoc && courseDoc.section) {
+            const Course = require('../models/Course');
+            const courseDoc = await Course.findOne({
+                userId: userIdStr,
+                $or: [
+                    { name: courseName },
+                    { code: courseCode },
+                    { code: { $regex: '^' + courseCode.split('-')[0].trim() + '(-|$)', $options: 'i' } }
+                ]
+            }).lean();
+
+            let semester = '';
+            if (courseDoc) {
+                if (!sectionCode && courseDoc.section) {
                     sectionCode = courseDoc.section;
                     console.log(`[MATERIAL_PROC] Resolved section dynamically for ${courseName}: ${sectionCode}`);
                     await MaterialLink.findByIdAndUpdate(linkSet._id, { $set: { sectionCode } });
+                }
+                semester = courseDoc.semester;
+            }
+
+            if (!semester) {
+                try {
+                    const { getCurrentSemesterCode } = require('./scraperEngine');
+                    semester = getCurrentSemesterCode();
+                } catch (e) {
+                    semester = 'spring 26';
                 }
             }
 

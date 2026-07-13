@@ -10,7 +10,6 @@ const MaterialLinkSchema = new mongoose.Schema({
     courseCode:   { type: String, default: '' },   
     sectionCode:  { type: String, default: '' },   
     teacherName:  { type: String, default: '' },   
-    semester:     { type: String, default: '' },
 
     
     links: [{
