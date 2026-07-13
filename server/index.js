@@ -1434,6 +1434,11 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
       return res.status(400).json({ message: "Incorrect password." });
     }
 
+    if (!user.accessedWeb) {
+      user.accessedWeb = true;
+      await user.save();
+    }
+
     const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
     await registerDeviceSession(user.id, token, req, resend);
     res.json({
@@ -1889,6 +1894,26 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
+    // Mark platform access immediately upon receiving request
+    let platformChanged = false;
+    const ua = req.headers['user-agent'] || '';
+    const isAxios = ua.toLowerCase().includes('axios');
+
+    if (req.path === '/api/extension-sync') {
+      if (!isAxios && !user.accessedExtension) {
+        user.accessedExtension = true;
+        platformChanged = true;
+      }
+    } else if (req.path === '/api/mobile-sync') {
+      if (!user.accessedMobile) {
+        user.accessedMobile = true;
+        platformChanged = true;
+      }
+    }
+    if (platformChanged) {
+      await user.save();
+    }
+
     const mode = syncMode || 'AUTO_SYNC';
 
     let activePortalId = portalId;
@@ -2208,17 +2233,6 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
       try {
         console.log(`[SYNC] Sync mode: ${mode}. Differences found. Executing database updates for user: ${user.email}`);
         let userUpdated = false;
-        if (req.path === '/api/extension-sync') {
-          if (!user.accessedExtension) {
-            user.accessedExtension = true;
-            userUpdated = true;
-          }
-        } else if (req.path === '/api/mobile-sync') {
-          if (!user.accessedMobile) {
-            user.accessedMobile = true;
-            userUpdated = true;
-          }
-        }
 
         const profileChanged = updateProfileFields(user, req.body);
         if (profileChanged || userUpdated) {
@@ -3754,12 +3768,45 @@ app.post('/api/groups/remove-member', auth, async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 });
+app.get('/api/admin/users/stats', auth, adminAuth, async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments({});
+    const activeSyncingUsers = await User.countDocuments({ isPortalConnected: true });
+    const webUsers = await User.countDocuments({ isPortalConnected: true });
+    const mobileUsers = await User.countDocuments({ accessedMobile: true });
+    const extensionUsers = await User.countDocuments({ accessedExtension: true });
+    res.json({ totalUsers, activeSyncingUsers, webUsers, mobileUsers, extensionUsers });
+  } catch (error) {
+    console.error("Admin Fetch Stats Error:", error);
+    res.status(500).json({ message: "Failed to fetch stats" });
+  }
+});
+
 app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
   try {
     const isCompact = req.query.compact === 'true' || req.query.all === 'true';
+    const portalConnected = req.query.portalConnected === 'true';
+    const hasPushTokens = req.query.hasPushTokens === 'true';
+    const searchQuery = req.query.search || '';
+
+    const filter = {};
+    if (searchQuery) {
+      filter.$or = [
+        { name: { $regex: searchQuery, $options: 'i' } },
+        { email: { $regex: searchQuery, $options: 'i' } },
+        { secondaryEmail: { $regex: searchQuery, $options: 'i' } }
+      ];
+    }
+    if (portalConnected) {
+      filter.isPortalConnected = true;
+      filter.ucpCookie = { $ne: null };
+    }
+    if (hasPushTokens) {
+      filter.pushTokens = { $exists: true, $not: { $size: 0 } };
+    }
 
     if (isCompact) {
-      const users = await User.find().select('-password').sort({ createdAt: -1 });
+      const users = await User.find(filter).select('-password').sort({ createdAt: -1 });
       const usersWithStorage = users.map((user) => {
         return {
           _id: user._id,
@@ -3779,6 +3826,18 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
           lastSyncAt: user.lastSyncAt,
           ucpCookie: user.ucpCookie ? true : false,
           createdAt: user.createdAt,
+          secondaryEmail: user.secondaryEmail,
+          dob: user.dob,
+          gender: user.gender,
+          faculty: user.faculty,
+          careerType: user.careerType,
+          program: user.program,
+          currentSemester: user.currentSemester,
+          academicOrdinalSemester: user.academicOrdinalSemester,
+          syncStatus: user.syncStatus,
+          accessedWeb: user.accessedWeb || false,
+          accessedMobile: user.accessedMobile || false,
+          accessedExtension: user.accessedExtension || false,
           storageUsed: 15360
         };
       });
@@ -3787,15 +3846,6 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
-    const searchQuery = req.query.search || '';
-
-    const filter = {};
-    if (searchQuery) {
-      filter.$or = [
-        { name: { $regex: searchQuery, $options: 'i' } },
-        { email: { $regex: searchQuery, $options: 'i' } }
-      ];
-    }
 
     const totalUsers = await User.countDocuments(filter);
     const users = await User.find(filter)
@@ -3858,6 +3908,18 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         lastSyncAt: user.lastSyncAt,
         ucpCookie: user.ucpCookie ? true : false,
         createdAt: user.createdAt,
+        secondaryEmail: user.secondaryEmail,
+        dob: user.dob,
+        gender: user.gender,
+        faculty: user.faculty,
+        careerType: user.careerType,
+        program: user.program,
+        currentSemester: user.currentSemester,
+        academicOrdinalSemester: user.academicOrdinalSemester,
+        syncStatus: user.syncStatus,
+        accessedWeb: user.accessedWeb || false,
+        accessedMobile: user.accessedMobile || false,
+        accessedExtension: user.accessedExtension || false,
         storageUsed: storageMap[user._id.toString()] || 15360
       };
     });
@@ -4579,6 +4641,12 @@ app.post('/api/login', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user || !(await bcrypt.compare(password, user.password))) return res.status(400).json({ message: 'Invalid credentials' });
     if (user.isBlocked) return res.status(503).json({ message: 'Network Error: Timeout communicating with identity provider.' });
+
+    if (!user.accessedMobile) {
+      user.accessedMobile = true;
+      await user.save();
+    }
+
     const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
     await registerDeviceSession(user.id, token, req, resend);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, isPortalConnected: user.isPortalConnected } });
@@ -5102,6 +5170,16 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         user.tempSyncId = effectiveSyncId;
         user.syncStatus = 'scraping'; // extension connected; importing data
       }
+      // Platform connection detection
+      const ua = req.headers['user-agent'] || '';
+      const origin = req.headers.origin || req.headers.referer || '';
+      const isMobile = ua.includes('okhttp') || ua.includes('Expo') || ua.includes('React-Native') || ua.includes('Darwin') || ua.includes('Android') || !!req.body.dob || !!req.body.faculty || !!req.body.program;
+      const isExtension = origin.startsWith('chrome-extension://') || (!isMobile && (ua.includes('Chrome') || !!effectiveSyncId));
+      if (isExtension) {
+        user.accessedExtension = true;
+      } else if (isMobile) {
+        user.accessedMobile = true;
+      }
       if (finalProfilePicUrl) {
         user.portalProfilePic = finalProfilePicUrl;
         if (!user.originalPortalProfilePic) {
@@ -5115,6 +5193,12 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
       await user.save();
     } else {
       isNewUser = true;
+      // Platform connection detection
+      const ua = req.headers['user-agent'] || '';
+      const origin = req.headers.origin || req.headers.referer || '';
+      const isMobile = ua.includes('okhttp') || ua.includes('Expo') || ua.includes('React-Native') || ua.includes('Darwin') || ua.includes('Android') || !!req.body.dob || !!req.body.faculty || !!req.body.program;
+      const isExtension = origin.startsWith('chrome-extension://') || (!isMobile && (ua.includes('Chrome') || !!effectiveSyncId));
+
       user = new User({
         name: name || formattedRoll.toUpperCase(),
         email: email,
@@ -5126,7 +5210,9 @@ app.post('/api/auth/microsoft-login', async (req, res) => {
         portalProfilePic: finalProfilePicUrl,
         originalPortalProfilePic: finalProfilePicUrl,
         tempSyncId: effectiveSyncId || null,
-        syncStatus: effectiveSyncId ? 'scraping' : null
+        syncStatus: effectiveSyncId ? 'scraping' : null,
+        accessedExtension: isExtension,
+        accessedMobile: isMobile
       });
       updateProfileFields(user, req.body);
       await user.save();

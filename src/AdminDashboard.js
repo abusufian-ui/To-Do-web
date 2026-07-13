@@ -14,6 +14,7 @@ import ConfirmationModal from './ConfirmationModal';
 import SyncDiagnostics from './SyncDiagnostics';
 import CourseVaultManagerApp from './CourseVaultManagerApp';
 import AdminCourseMaterialsApp from './AdminCourseMaterialsApp';
+import UserDirectoryApp from './UserDirectoryApp';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const SUPER_ADMIN_EMAIL = process.env.REACT_APP_SUPER_ADMIN_EMAIL || 'l1f23bscs1329@ucp.edu.pk';
@@ -116,364 +117,43 @@ const UserAvatar = ({ u, size = 10, showBlock = false }) => {
 
 
 
-const UserDirectoryApp = ({ users, loading, isSuperAdmin, token, onUsersChange, onRefresh }) => {
-  const [search, setSearch] = useState('');
-  const [localUsers, setLocalUsers] = useState([]);
-  const [totalUsers, setTotalUsers] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [page, setPage] = useState(1);
-  const [loadingLocal, setLoadingLocal] = useState(true);
-
-  const [userToDelete, setUserToDelete] = useState(null);
-  const [roleToToggle, setRoleToToggle] = useState(null);
-  const [blockingId, setBlockingId] = useState(null);
-  const [processingId, setProcessingId] = useState(null);
-
-  const prevSearchRef = useRef(search);
-
-  const fetchLocalUsers = async (targetPage, targetSearch) => {
-    setLoadingLocal(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/users?page=${targetPage}&limit=50&search=${encodeURIComponent(targetSearch)}`, {
-        headers: { 'x-auth-token': token }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLocalUsers(data.users || []);
-        setTotalUsers(data.totalUsers || 0);
-        setTotalPages(data.pages || 1);
-        setPage(data.page || 1);
-      }
-    } catch (err) {
-      console.error("Failed to fetch local users:", err);
-    }
-    setLoadingLocal(false);
-  };
-
-  useEffect(() => {
-    if (prevSearchRef.current !== search) {
-      prevSearchRef.current = search;
-      const delayDebounce = setTimeout(() => {
-        fetchLocalUsers(1, search);
-      }, 300);
-      return () => clearTimeout(delayDebounce);
-    } else {
-      fetchLocalUsers(page, search);
-    }
-  }, [page, search]);
-
-  const triggerMaterialSync = async (u) => {
-    setProcessingId(u._id);
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/trigger-processor`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': token
-        },
-        body: JSON.stringify({ userId: u._id, type: 'single_user_process' })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        ToastConfig.show({ title: 'Success', message: data.message || 'Material processing complete.', type: 'success' });
-      } else {
-        ToastConfig.show({ title: 'Processing Failed', message: data.message || 'Error processing materials.', type: 'error' });
-      }
-    } catch (err) {
-      ToastConfig.show({ title: 'Error', message: 'Failed to communicate with processor server.', type: 'error' });
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const executeDelete = async () => {
-    if (!userToDelete) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${userToDelete}`, { method: 'DELETE', headers: { 'x-auth-token': token } });
-      if (res.ok) {
-        setLocalUsers(prev => prev.filter(u => u._id !== userToDelete));
-        onUsersChange(users.filter(u => u._id !== userToDelete));
-        setTotalUsers(t => Math.max(0, t - 1));
-        ToastConfig.show({ title: 'Deleted', message: 'User removed successfully.', type: 'success' });
-      } else {
-        const data = await res.json();
-        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to delete', type: 'error' });
-      }
-    } catch { ToastConfig.show({ title: 'Error', message: 'Failed to delete user', type: 'error' }); }
-    setUserToDelete(null);
-  };
-
-  const executeToggleRole = async () => {
-    if (!roleToToggle) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${roleToToggle._id}/role`, { method: 'PUT', headers: { 'x-auth-token': token } });
-      const data = await res.json();
-      if (res.ok) {
-        setLocalUsers(prev => prev.map(u => u._id === roleToToggle._id ? { ...u, isAdmin: data.isAdmin } : u));
-        onUsersChange(users.map(u => u._id === roleToToggle._id ? { ...u, isAdmin: data.isAdmin } : u));
-        ToastConfig.show({ title: 'Success', message: 'Role updated.', type: 'success' });
-      } else ToastConfig.show({ title: 'Error', message: data.message || 'Failed', type: 'error' });
-    } catch { ToastConfig.show({ title: 'Error', message: 'Failed to update role', type: 'error' }); }
-    setRoleToToggle(null);
-  };
- 
-  const toggleBlock = async (u) => {
-    setBlockingId(u._id);
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${u._id}/block`, { method: 'PUT', headers: { 'x-auth-token': token } });
-      const data = await res.json();
-      if (res.ok) {
-        setLocalUsers(prev => prev.map(x => x._id === u._id ? { ...x, isBlocked: data.isBlocked } : x));
-        onUsersChange(users.map(x => x._id === u._id ? { ...x, isBlocked: data.isBlocked } : x));
-        ToastConfig.show({ title: data.isBlocked ? 'Blocked' : 'Unblocked', message: `${u.name} has been ${data.isBlocked ? 'blocked' : 'unblocked'}.`, type: data.isBlocked ? 'error' : 'success' });
-      } else ToastConfig.show({ title: 'Error', message: data.message || 'Failed', type: 'error' });
-    } catch { ToastConfig.show({ title: 'Error', message: 'Failed', type: 'error' }); }
-    setBlockingId(null);
-  };
-
-  const handleBulkLeaderboardToggle = async (enable) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/users/leaderboard-toggle-all`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': token
-        },
-        body: JSON.stringify({ enable })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setLocalUsers(prev => prev.map(u => ({ ...u, isLeaderboardEnabled: enable })));
-        onUsersChange(users.map(u => ({ ...u, isLeaderboardEnabled: enable })));
-        ToastConfig.show({
-          title: 'Success',
-          message: `Leaderboard ${enable ? 'enabled' : 'disabled'} for all users successfully.`,
-          type: 'success'
-        });
-      } else {
-        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to update leaderboard access', type: 'error' });
-      }
-    } catch {
-      ToastConfig.show({ title: 'Error', message: 'Failed to update leaderboard access', type: 'error' });
-    }
-  };
-
-  const handleToggleLeaderboard = async (u) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${u._id}/leaderboard-toggle`, {
-        method: 'PUT',
-        headers: { 'x-auth-token': token }
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setLocalUsers(prev => prev.map(x => x._id === u._id ? { ...x, isLeaderboardEnabled: data.isLeaderboardEnabled } : x));
-        onUsersChange(users.map(x => x._id === u._id ? { ...x, isLeaderboardEnabled: data.isLeaderboardEnabled } : x));
-        ToastConfig.show({
-          title: 'Success',
-          message: `Leaderboard access ${data.isLeaderboardEnabled ? 'granted' : 'revoked'} for ${u.name}.`,
-          type: 'success'
-        });
-      } else {
-        ToastConfig.show({ title: 'Error', message: data.message || 'Failed to toggle access', type: 'error' });
-      }
-    } catch {
-      ToastConfig.show({ title: 'Error', message: 'Failed to toggle access', type: 'error' });
-    }
-  };
-
-  return (
-    <div>
-      <div className="p-5 border-b border-gray-200 dark:border-[#27272a] flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
-            <input type="text" placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500" />
-          </div>
-          <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{totalUsers} total</span>
-          <button
-            onClick={() => fetchLocalUsers(page, search)}
-            disabled={loadingLocal}
-            className="p-2.5 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center border border-gray-200 dark:border-transparent"
-            title="Refresh users from live DB"
-          >
-            <RefreshCw size={14} className={loadingLocal ? 'animate-spin' : ''} />
-          </button>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleBulkLeaderboardToggle(true)}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/10 hover:shadow-indigo-600/20 active:scale-95 transition-all flex items-center gap-1.5"
-          >
-            🔓 Enable Leaderboard for All
-          </button>
-          <button
-            onClick={() => handleBulkLeaderboardToggle(false)}
-            className="px-3.5 py-2 bg-gray-200 dark:bg-[#27272a] hover:bg-gray-300 dark:hover:bg-[#323237] text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold active:scale-95 transition-all flex items-center gap-1.5"
-          >
-            🔒 Disable for All
-          </button>
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="text-xs text-gray-500 uppercase bg-gray-100 dark:bg-[#1c1c1f] border-b border-gray-200 dark:border-[#27272a]">
-            <tr>
-              <th className="px-6 py-3">Identity</th>
-              <th className="px-6 py-3">Email</th>
-              <th className="px-6 py-3">Status</th>
-              <th className="px-6 py-3">Last Sync</th>
-              <th className="px-6 py-3">Storage</th>
-              <th className="px-6 py-3">Leaderboard</th>
-              <th className="px-6 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loadingLocal ? (
-              <tr><td colSpan="7" className="text-center py-12 text-gray-400 animate-pulse">Loading users…</td></tr>
-            ) : localUsers.map(u => {
-              const isTargetSuperAdmin = u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-              return (
-                <tr key={u._id} className={`border-b border-gray-100 dark:border-[#27272a] hover:bg-gray-50 dark:hover:bg-[#1c1c1f] transition-colors ${u.isBlocked ? 'opacity-60' : ''}`}>
-                  <td className="px-6 py-3">
-                    <div className="flex items-center gap-3">
-                       <UserAvatar u={u} size={10} showBlock />
-                      <div>
-                        <p className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5 flex-wrap">
-                          {u.name}
-                          {isTargetSuperAdmin && <span className="text-[9px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500 px-1.5 py-0.5 rounded border border-yellow-200 dark:border-yellow-900/50">SUPER ADMIN</span>}
-                          {!isTargetSuperAdmin && u.isAdmin && <span className="text-[9px] bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-500 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-900/50">ADMIN</span>}
-                          {u.isBlocked && <span className="text-[9px] bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-900/50">BLOCKED</span>}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-3 text-xs text-gray-500">{u.email}</td>
-                  <td className="px-6 py-3">
-                    {u.isPortalConnected
-                      ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Linked</span>
-                      : <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700">Pending</span>
-                    }
-                  </td>
-                  <td className="px-6 py-3 text-xs text-gray-500">
-                    {u.lastSyncAt ? new Date(u.lastSyncAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}
-                  </td>
-                  <td className="px-6 py-3 text-xs font-bold text-gray-700 dark:text-gray-300">{formatBytes(u.storageUsed)}</td>
-                  <td className="px-6 py-3">
-                    {(() => {
-                      const isTargetSuperAdmin = u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
-                      const canToggle = !isTargetSuperAdmin && (isSuperAdmin || !u.isAdmin);
-                      const isLdEnabled = isTargetSuperAdmin ? true : u.isLeaderboardEnabled;
-                      return (
-                        <button
-                          onClick={() => handleToggleLeaderboard(u)}
-                          disabled={!canToggle}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 focus:outline-none ${
-                            isLdEnabled
-                              ? 'bg-indigo-600 dark:bg-indigo-500'
-                              : 'bg-gray-300 dark:bg-gray-700'
-                          } ${!canToggle ? 'opacity-45 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
-                          title={isTargetSuperAdmin 
-                            ? 'Super Admin always has access' 
-                            : u.isAdmin 
-                              ? (isSuperAdmin ? 'Toggle Admin Leaderboard Access' : 'Only Super Admin can change Admin access') 
-                              : 'Toggle Leaderboard Access'}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${
-                              isLdEnabled ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                          />
-                        </button>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-6 py-3">
-                    <div className="flex justify-end gap-1">
-                      {u.isPortalConnected && (
-                        <button onClick={() => triggerMaterialSync(u)} disabled={processingId === u._id}
-                          className="p-2 rounded-lg text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all disabled:opacity-50"
-                          title="Trigger Material Sync & Process">
-                          {processingId === u._id 
-                            ? <span className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin block"></span> 
-                            : <RefreshCw size={16} />}
-                        </button>
-                      )}
-                      {!isTargetSuperAdmin && (isSuperAdmin || !u.isAdmin) && (
-                        <button onClick={() => toggleBlock(u)} disabled={blockingId === u._id}
-                          className={`p-2 rounded-lg transition-all ${u.isBlocked ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/10' : 'text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/10'} disabled:opacity-50`}
-                          title={u.isBlocked ? 'Unblock Account' : 'Block Account'}>
-                          {blockingId === u._id ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin block"></span> : u.isBlocked ? <UserCheck size={16} /> : <BanIcon size={16} />}
-                        </button>
-                      )}
-                      {(!u.isAdmin || isSuperAdmin) && !isTargetSuperAdmin && (
-                        <button onClick={() => setUserToDelete(u._id)}
-                          className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all" title="Delete User">
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                      {isSuperAdmin && !isTargetSuperAdmin && (
-                        <button onClick={() => setRoleToToggle(u)}
-                          className={`p-2 rounded-lg transition-all ${u.isAdmin ? 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/10' : 'text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}
-                          title={u.isAdmin ? 'Demote Admin' : 'Promote to Admin'}>
-                          <Shield size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {!loadingLocal && localUsers.length === 0 && (
-              <tr><td colSpan="7" className="text-center py-12 text-gray-400">No users match "{search}"</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {totalPages > 1 && (
-        <div className="p-4 border-t border-gray-200 dark:border-[#27272a] flex items-center justify-between gap-3 bg-gray-50/50 dark:bg-[#151518]/50">
-          <button
-            disabled={page <= 1 || loadingLocal}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            className="px-4 py-2 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 border border-gray-200 dark:border-transparent"
-          >
-            Previous
-          </button>
-          <span className="text-xs font-mono text-gray-500">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            disabled={page >= totalPages || loadingLocal}
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            className="px-4 py-2 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 border border-gray-200 dark:border-transparent"
-          >
-            Next
-          </button>
-        </div>
-      )}
-      <ConfirmationModal isOpen={!!userToDelete} onClose={() => setUserToDelete(null)} onConfirm={executeDelete}
-        title="Delete User?" message="This will permanently wipe the account and all associated data. This cannot be undone." confirmText="Delete" confirmStyle="danger" />
-      <ConfirmationModal isOpen={!!roleToToggle} onClose={() => setRoleToToggle(null)} onConfirm={executeToggleRole}
-        title="Change Role?" message={`Are you sure you want to ${roleToToggle?.isAdmin ? 'demote' : 'promote'} ${roleToToggle?.name}?`} confirmText="Confirm" confirmStyle="warning" />
-    </div>
-  );
-};
 
 
 
-
-const SessionInspectorApp = ({ users, token, loading, onRefresh }) => {
+const SessionInspectorApp = ({ token }) => {
   const [results, setResults] = useState({});
   const [checking, setChecking] = useState({});
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [portalUsers, setPortalUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const portalUsers = users.filter(u => u.isPortalConnected && u.ucpCookie);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
 
-  const filteredUsers = portalUsers.filter(u =>
-    u.name.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const fetchPortalUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users?portalConnected=true&search=${encodeURIComponent(debouncedSearch)}&limit=100`, {
+        headers: { 'x-auth-token': token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPortalUsers(data.users || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchPortalUsers();
+  }, [debouncedSearch]);
 
   const checkSession = async (userId) => {
     setChecking(p => ({ ...p, [userId]: true }));
@@ -491,78 +171,71 @@ const SessionInspectorApp = ({ users, token, loading, onRefresh }) => {
     <div className="p-6">
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">Verify whether a user's UCP portal session cookie is still active. Only portal-linked users with stored cookies are shown.</p>
-        {onRefresh && (
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50 border border-gray-200 dark:border-transparent shrink-0"
-            title="Refresh users and session cookies from live DB"
-          >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh Live Data</span>
-          </button>
-        )}
+        <button
+          onClick={fetchPortalUsers}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-100 dark:bg-[#27272a] hover:bg-gray-200 dark:hover:bg-[#323237] text-gray-600 dark:text-gray-300 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50 border border-gray-200 dark:border-transparent shrink-0"
+          title="Refresh users and session cookies from live DB"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh Live Data</span>
+        </button>
       </div>
 
-      {portalUsers.length > 0 && (
-        <div className="mb-6 flex items-center gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
-            <input 
-              type="text" 
-              placeholder="Search students by name or email…" 
-              value={search} 
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 transition-colors" 
-            />
-          </div>
-          <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{filteredUsers.length} total</span>
+      <div className="mb-6 flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-2.5 text-gray-400" size={15} />
+          <input 
+            type="text" 
+            placeholder="Search students by name or email…" 
+            value={search} 
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-[#27272a] border border-gray-200 dark:border-transparent rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 transition-colors" 
+          />
         </div>
-      )}
+        <span className="text-xs font-mono bg-gray-100 dark:bg-[#27272a] px-3 py-2 rounded-lg text-gray-500">{portalUsers.length} total</span>
+      </div>
 
-      {portalUsers.length === 0 && (
+      {loading && portalUsers.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">Loading portal sessions...</div>
+      ) : portalUsers.length === 0 ? (
         <div className="text-center py-16 text-gray-400 dark:text-gray-600">
           <Cookie size={40} className="mx-auto mb-3 opacity-40" />
           <p className="font-bold">No portal-linked users with cookies found.</p>
         </div>
-      )}
-
-      {portalUsers.length > 0 && filteredUsers.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          No students match "{search}"
+      ) : (
+        <div className="space-y-3">
+          {portalUsers.map(u => {
+            const result = results[u._id];
+            return (
+              <div key={u._id} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#18181b] hover:shadow-sm transition-all">
+                <UserAvatar u={u} size={10} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-900 dark:text-white text-sm">{u.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                  {result && (
+                    <div className="mt-1">
+                      {result.isAlive
+                        ? <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1"><Wifi size={12} /> Session Active · started {formatTimeAgo(result.sinceMs)}</span>
+                        : <span className="text-red-500 dark:text-red-400 text-xs font-bold flex items-center gap-1"><WifiOff size={12} /> Session Dead · {result.reason || 'Cookie invalid'}</span>
+                      }
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => checkSession(u._id)} disabled={checking[u._id]}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-60 shrink-0">
+                  <RefreshCw size={14} className={checking[u._id] ? 'animate-spin' : ''} />
+                  {checking[u._id] ? 'Checking…' : result ? 'Re-Check' : 'Verify'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
-
-      <div className="space-y-3">
-        {filteredUsers.map(u => {
-          const result = results[u._id];
-          return (
-            <div key={u._id} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#18181b] hover:shadow-sm transition-all">
-              <UserAvatar u={u} size={10} />
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-gray-900 dark:text-white text-sm">{u.name}</p>
-                <p className="text-xs text-gray-500 truncate">{u.email}</p>
-                {result && (
-                  <div className="mt-1">
-                    {result.isAlive
-                      ? <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1"><Wifi size={12} /> Session Active · started {formatTimeAgo(result.sinceMs)}</span>
-                      : <span className="text-red-500 dark:text-red-400 text-xs font-bold flex items-center gap-1"><WifiOff size={12} /> Session Dead · {result.reason || 'Cookie invalid'}</span>
-                    }
-                  </div>
-                )}
-              </div>
-              <button onClick={() => checkSession(u._id)} disabled={checking[u._id]}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-60 shrink-0">
-                <RefreshCw size={14} className={checking[u._id] ? 'animate-spin' : ''} />
-                {checking[u._id] ? 'Checking…' : result ? 'Re-Check' : 'Verify'}
-              </button>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 };
+
 
 // ────────────────────────────────────────────────────────────────────────────────
 // APP 3.5: ACTIVE SESSIONS MANAGER (PORTAL SESSIONS)
@@ -732,18 +405,23 @@ const ActiveSessionsManagerApp = ({ token }) => {
 // ────────────────────────────────────────────────────────────────────────────────
 // APP 4: NOTIFICATIONS MANAGER
 // ────────────────────────────────────────────────────────────────────────────────
-const NotificationsManagerApp = ({ users, isSuperAdmin, token }) => {
+const NotificationsManagerApp = ({ isSuperAdmin, token }) => {
   const [pushTitle, setPushTitle] = useState('');
   const [pushMessage, setPushMessage] = useState('');
   const [targetType, setTargetType] = useState('all');
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [userSearch, setUserSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pushUsers, setPushUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
 
-  useEffect(() => { fetchHistory(); }, []);
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
   const fetchHistory = async () => {
     setLoadingHistory(true);
@@ -755,21 +433,41 @@ const NotificationsManagerApp = ({ users, isSuperAdmin, token }) => {
     setLoadingHistory(false);
   };
 
-  const pushUsers = users.filter(u => u.email.toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase());
-  const filteredPushUsers = pushUsers.filter(u =>
-    u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-    (u.email && u.email.toLowerCase().includes(userSearch.toLowerCase()))
-  );
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(userSearch);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [userSearch]);
 
-  const allFilteredSelected = filteredPushUsers.length > 0 && filteredPushUsers.every(u => selectedUserIds.includes(u._id));
+  const fetchPushUsers = async () => {
+    if (targetType !== 'specific') return;
+    setLoadingUsers(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users?hasPushTokens=true&search=${encodeURIComponent(debouncedSearch)}&limit=100`, {
+        headers: { 'x-auth-token': token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPushUsers((data.users || []).filter(u => u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase()));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoadingUsers(false);
+  };
+
+  useEffect(() => {
+    fetchPushUsers();
+  }, [debouncedSearch, targetType]);
+
+  const allFilteredSelected = pushUsers.length > 0 && pushUsers.every(u => selectedUserIds.includes(u._id));
 
   const toggleSelectAll = () => {
     if (allFilteredSelected) {
-      // Deselect all currently filtered
-      setSelectedUserIds(prev => prev.filter(id => !filteredPushUsers.find(u => u._id === id)));
+      setSelectedUserIds(prev => prev.filter(id => !pushUsers.find(u => u._id === id)));
     } else {
-      // Select all filtered (merge with existing)
-      const newIds = filteredPushUsers.map(u => u._id);
+      const newIds = pushUsers.map(u => u._id);
       setSelectedUserIds(prev => [...new Set([...prev, ...newIds])]);
     }
   };
@@ -866,9 +564,11 @@ const NotificationsManagerApp = ({ users, isSuperAdmin, token }) => {
             </div>
             {/* List */}
             <div className="max-h-48 overflow-y-auto custom-scrollbar">
-              {filteredPushUsers.length === 0 ? (
+              {loadingUsers && pushUsers.length === 0 ? (
+                <div className="py-6 text-center text-xs text-gray-400">Loading target users…</div>
+              ) : pushUsers.length === 0 ? (
                 <div className="py-6 text-center text-xs text-gray-400">No users match</div>
-              ) : filteredPushUsers.map(u => {
+              ) : pushUsers.map(u => {
                 const isSelected = selectedUserIds.includes(u._id);
                 return (
                   <button key={u._id} onClick={() => toggleUser(u._id)}
@@ -1538,12 +1238,16 @@ const SupportTicketsApp = ({ tickets, loading, token, onTicketsChange, onRefresh
 // ────────────────────────────────────────────────────────────────────────────────
 // APP 8: BACKBLAZE B2 MANAGER & MANUAL SYNC
 // ────────────────────────────────────────────────────────────────────────────────
-const BackBlazeManagerApp = ({ token, users }) => {
+const BackBlazeManagerApp = ({ token }) => {
   const [b2Files, setB2Files] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [connectedUsers, setConnectedUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [syncType, setSyncType] = useState('single_user_process');
   const [triggering, setTriggering] = useState(false);
 
@@ -1570,6 +1274,33 @@ const BackBlazeManagerApp = ({ token, users }) => {
   useEffect(() => {
     fetchB2Files();
   }, []);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(userSearch);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [userSearch]);
+
+  const fetchConnectedUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users?portalConnected=true&search=${encodeURIComponent(debouncedSearch)}&limit=50`, {
+        headers: { 'x-auth-token': token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setConnectedUsers(data.users || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoadingUsers(false);
+  };
+
+  useEffect(() => {
+    fetchConnectedUsers();
+  }, [debouncedSearch]);
 
   const handleTriggerSync = async () => {
     if (syncType !== 'nightly_sync_all' && !selectedUserId) {
@@ -1638,8 +1369,6 @@ const BackBlazeManagerApp = ({ token, users }) => {
     f.key.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const connectedUsers = users.filter(u => u.isPortalConnected && u.ucpCookie);
-
   return (
     <div className="p-6 space-y-8 animate-fadeIn">
       {/* SECTION 1: Manual Trigger Panel */}
@@ -1668,19 +1397,29 @@ const BackBlazeManagerApp = ({ token, users }) => {
 
           {syncType !== 'nightly_sync_all' && (
             <div className="animate-fadeIn">
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Target Student / User</label>
-              <select
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0c0c0e] border border-gray-200 dark:border-[#27272a] rounded-xl text-sm text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 font-medium"
-              >
-                <option value="">-- Select Active Portal Student --</option>
-                {connectedUsers.map(u => (
-                  <option key={u._id} value={u._id}>
-                    {u.name || 'No Name'} ({u.email || u.rollNumber})
-                  </option>
-                ))}
-              </select>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Search & Select Student</label>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="Type name or email to search..."
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  className="w-full px-4 py-2 bg-white dark:bg-[#0c0c0e] border border-gray-200 dark:border-[#27272a] rounded-xl text-xs text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500"
+                />
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  disabled={loadingUsers}
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#0c0c0e] border border-gray-200 dark:border-[#27272a] rounded-xl text-xs text-gray-800 dark:text-gray-200 outline-none focus:border-blue-500 transition-colors font-medium"
+                >
+                  <option value="">{loadingUsers ? 'Loading...' : '-- Select Active Portal Student --'}</option>
+                  {connectedUsers.map(u => (
+                    <option key={u._id} value={u._id}>
+                      {u.name || 'No Name'} ({u.email || u.rollNumber})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 
@@ -2462,6 +2201,7 @@ const AdminDashboard = ({ currentUser }) => {
 
   // Users & active app
   const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState({ totalUsers: 0, activeSyncingUsers: 0 });
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [activeApp, setActiveApp] = useState(null);
   const [tickets, setTickets] = useState([]);
@@ -2480,9 +2220,11 @@ const AdminDashboard = ({ currentUser }) => {
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users?compact=true`, { headers: { 'x-auth-token': token } });
-      const data = await res.json();
-      if (Array.isArray(data)) setUsers(data);
+      const res = await fetch(`${API_BASE}/api/admin/users/stats`, { headers: { 'x-auth-token': token } });
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
     } catch { }
     setLoadingUsers(false);
   };
@@ -2574,7 +2316,7 @@ const AdminDashboard = ({ currentUser }) => {
 
   // ── App definitions ──────────────────────────────────────────────────────
   const apps = [
-    { id: 'users',         label: 'User Directory',        icon: Users,        color: 'bg-blue-100 dark:bg-blue-900/30',    textColor: 'text-blue-600 dark:text-blue-400',    badge: users.length },
+    { id: 'users',         label: 'User Directory',        icon: Users,        color: 'bg-blue-100 dark:bg-blue-900/30',    textColor: 'text-blue-600 dark:text-blue-400',    badge: stats.totalUsers },
     { id: 'tickets',       label: 'Support Tickets',       icon: Mail,         color: 'bg-yellow-100 dark:bg-yellow-900/30', textColor: 'text-yellow-600 dark:text-yellow-500', badge: tickets.filter(t => t.status === 'open').length },
     { id: 'sessions',      label: 'Session Inspector',      icon: Cookie,       color: 'bg-emerald-100 dark:bg-emerald-900/30', textColor: 'text-emerald-600 dark:text-emerald-400' },
     { id: 'portalSessions', label: 'Active Devices Manager',icon: Monitor,      color: 'bg-indigo-100 dark:bg-indigo-900/30', textColor: 'text-indigo-600 dark:text-indigo-400' },
@@ -2612,15 +2354,15 @@ const AdminDashboard = ({ currentUser }) => {
 
         {/* App content */}
         <div className={`flex-1 bg-white dark:bg-[#111113] relative min-h-0 ${isSidebarApp ? 'overflow-hidden flex flex-col' : 'overflow-y-auto custom-scrollbar'}`}>
-          {activeApp === 'users'         && <UserDirectoryApp users={users} loading={loadingUsers} isSuperAdmin={isSuperAdmin} token={token} onUsersChange={setUsers} onRefresh={fetchUsers} />}
+          {activeApp === 'users'         && <UserDirectoryApp isSuperAdmin={isSuperAdmin} token={token} />}
           {activeApp === 'tickets'       && <SupportTicketsApp tickets={tickets} loading={loadingTickets} token={token} onTicketsChange={setTickets} onRefresh={fetchTickets} />}
-          {activeApp === 'sessions'      && <SessionInspectorApp users={users} token={token} loading={loadingUsers} onRefresh={fetchUsers} />}
+          {activeApp === 'sessions'      && <SessionInspectorApp token={token} />}
           {activeApp === 'portalSessions' && <ActiveSessionsManagerApp token={token} />}
           {activeApp === 'diagnostics'   && <SyncDiagnostics />}
-          {activeApp === 'notifications' && <NotificationsManagerApp users={users} isSuperAdmin={isSuperAdmin} token={token} />}
+          {activeApp === 'notifications' && <NotificationsManagerApp isSuperAdmin={isSuperAdmin} token={token} />}
           {activeApp === 'security'      && <SecurityApp token={token} />}
           {activeApp === 'settings'      && <WebsiteConfigApp token={token} />}
-          {activeApp === 'b2'            && <BackBlazeManagerApp token={token} users={users} />}
+          {activeApp === 'b2'            && <BackBlazeManagerApp token={token} />}
           {activeApp === 'vaultManager'  && <CourseVaultManagerApp token={token} />}
           {activeApp === 'courseMaterials'&& <AdminCourseMaterialsApp token={token} />}
         </div>
