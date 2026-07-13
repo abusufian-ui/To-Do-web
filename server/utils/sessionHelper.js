@@ -106,7 +106,7 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
     
     // Check if user has logged in from this device/IP combination before
     const isLocal = ip === '127.0.0.1' || ip === '::1' || !ip;
-    const deviceExists = isLocal ? true : await DeviceSession.exists({ userId, ipAddress: ip, os, browser });
+    const deviceExists = isLocal ? true : await DeviceSession.exists({ userId, ipAddress: ip, os, browser, isActive: true });
 
     const location = await getIpLocation(ip);
 
