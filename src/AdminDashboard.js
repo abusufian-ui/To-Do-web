@@ -2303,7 +2303,18 @@ const AdminDashboard = ({ currentUser }) => {
             {isPinLoading ? <span className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full"></span> : <><Lock size={18} /> Authorize Access</>}
           </button>
           <button
-            onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.href = '/login'; }}
+            onClick={() => {
+              const token = localStorage.getItem('token');
+              if (token) {
+                fetch(`${API_BASE}/api/security/logout`, {
+                  method: 'POST',
+                  headers: { 'x-auth-token': token }
+                }).catch(err => console.error("Error during server logout:", err));
+              }
+              localStorage.clear();
+              sessionStorage.clear();
+              window.location.href = '/login';
+            }}
             className="mt-4 text-xs font-semibold text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
           >
             Forgot PIN? Log out

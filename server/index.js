@@ -4737,6 +4737,43 @@ app.delete('/api/security/sessions/:id', auth, async (req, res) => {
   }
 });
 
+app.post('/api/security/logout', auth, async (req, res) => {
+  try {
+    const token = req.header('x-auth-token');
+    const currentSignature = token ? (token.split('.')[2] || '') : '';
+    if (currentSignature) {
+      await DeviceSession.updateOne({ userId: req.user.id, tokenSignature: currentSignature }, { isActive: false });
+    }
+    res.json({ success: true, message: 'Logged out successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/security/sessions/bulk-revoke', auth, async (req, res) => {
+  try {
+    const { sessionIds } = req.body;
+    if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
+      return res.status(400).json({ message: 'Session IDs must be a non-empty array.' });
+    }
+
+    const sessions = await DeviceSession.find({
+      _id: { $in: sessionIds },
+      userId: req.user.id
+    });
+
+    for (const session of sessions) {
+      session.isActive = false;
+      await session.save();
+      io.to(session.tokenSignature).emit('session_revoked', { message: 'This device has been logged out remotely.' });
+    }
+
+    res.json({ success: true, message: `${sessions.length} devices logged out successfully.` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.get('/api/admin/security/sessions', auth, async (req, res) => {
   try {
     const adminUser = await User.findById(req.user.id);

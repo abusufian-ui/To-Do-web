@@ -390,6 +390,13 @@ function AppLayout() {
 
   
   const handleLogout = useCallback(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch(`${API_BASE}/api/security/logout`, {
+        method: 'POST',
+        headers: { 'x-auth-token': token }
+      }).catch(err => console.error("Error during server logout:", err));
+    }
     localStorage.clear();
     sessionStorage.clear();
     setToken(null);

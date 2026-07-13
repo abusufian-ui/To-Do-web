@@ -1,8 +1,35 @@
 const DeviceSession = require('../models/DeviceSession');
 const axios = require('axios');
 const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+// Configure Nodemailer transporter for Brevo SMTP
+let transporter = null;
+if (process.env.BREVO_SMTP_USER && process.env.BREVO_SMTP_KEY) {
+  transporter = nodemailer.createTransport({
+    host: 'smtp-relay.brevo.com',
+    port: parseInt(process.env.BREVO_SMTP_PORT, 10) || 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: process.env.BREVO_SMTP_USER,
+      pass: process.env.BREVO_SMTP_KEY
+    }
+  });
+}
+
+function normalizeIp(ip) {
+  if (!ip) return '';
+  let cleanIp = ip.trim();
+  if (cleanIp.startsWith('::ffff:')) {
+    cleanIp = cleanIp.substring(7);
+  }
+  if (cleanIp === '::1') {
+    cleanIp = '127.0.0.1';
+  }
+  return cleanIp;
+}
 
 function getClientIp(req) {
   let ip = req.headers['cf-connecting-ip'] || 
@@ -14,7 +41,7 @@ function getClientIp(req) {
   if (ip.includes(',')) {
     ip = ip.split(',')[0].trim();
   }
-  return ip;
+  return normalizeIp(ip);
 }
 
 function parseUserAgent(uaString) {
@@ -76,9 +103,9 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
     const { os, browser, deviceType } = parseUserAgent(ua);
     const ip = getClientIp(req);
     
-    // Check if user has logged in from this IP before
-    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || !ip;
-    const ipExists = isLocal ? true : await DeviceSession.exists({ userId, ipAddress: ip });
+    // Check if user has logged in from this device/IP combination before
+    const isLocal = ip === '127.0.0.1' || ip === '::1' || !ip;
+    const deviceExists = isLocal ? true : await DeviceSession.exists({ userId, ipAddress: ip, os, browser });
 
     const location = await getIpLocation(ip);
 
@@ -87,8 +114,9 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
     // duplicate entry in the "Active Devices" list.
     let session = await DeviceSession.findOne({
       userId,
-      userAgent: ua,
       ipAddress: ip,
+      os,
+      browser,
       isActive: true
     });
 
@@ -117,9 +145,9 @@ async function registerDeviceSession(userId, token, req, resendInstance) {
     await session.save();
     console.log(`🔐 Registered session for user ${userId} on ${os} (${browser})`);
 
-    // Smart email login alert trigger if it's a new IP address
+    // Smart email login alert trigger if it's a new device/IP combination
     const activeResend = resendInstance || resend;
-    if (!ipExists) {
+    if (!deviceExists) {
       if (activeResend) {
         const User = require('../models/User');
         const user = await User.findById(userId);
@@ -205,9 +233,21 @@ async function sendLoginAlertEmail(user, session, resend) {
       </div>
     `;
 
-    if (resend) {
+    const fromEmail = process.env.BREVO_SMTP_HOST || 'security@myportalucp.online';
+
+    if (transporter) {
+      // Send using Brevo SMTP via Nodemailer
+      await transporter.sendMail({
+        from: `"MyPortal Security" <${fromEmail}>`,
+        to: user.email,
+        subject: 'New Login Detected - MyPortal',
+        html: emailHtml
+      });
+      console.log(`✉️ [Brevo SMTP] Login alert email sent successfully to ${user.email} for IP ${session.ipAddress}.`);
+    } else if (resend) {
+      // Fallback to Resend
       const response = await resend.emails.send({
-        from: 'MyPortal <otp@myportalucp.online>',
+        from: `MyPortal Security <${fromEmail}>`,
         to: user.email,
         subject: 'New Login Detected - MyPortal',
         html: emailHtml
@@ -220,7 +260,7 @@ async function sendLoginAlertEmail(user, session, resend) {
         console.log(`✉️ [Resend] Login alert email sent successfully to ${user.email} for IP ${session.ipAddress}. Resend ID: ${id}`);
       }
     } else {
-      console.warn(`⚠️ Resend client is not configured. Skipping login alert email for ${user.email}`);
+      console.warn(`⚠️ Neither Brevo SMTP nor Resend is configured. Skipping login alert email for ${user.email}`);
     }
   } catch (err) {
     console.error('Failed to send login alert email:', err.message);

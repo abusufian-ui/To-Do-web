@@ -7,7 +7,7 @@ import {
     ChevronDown, FileText, Activity, Camera,
     Smartphone, Monitor, Eye, EyeOff,
     Send, UploadCloud, LifeBuoy, MessageSquare,
-    MapPin, LogOut
+    MapPin, LogOut, Check
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 import { StaticLogo } from './StaticLogo';
@@ -216,9 +216,11 @@ const SecuritySection = ({ user, showToast }) => {
     const [lockTimer, setLockTimer] = useState(user?.securitySettings?.autoLockTimer || 900000);
     const [sessions, setSessions] = useState([]);
     const [sessionsLoading, setSessionsLoading] = useState(true);
+    const [selectedSessionIds, setSelectedSessionIds] = useState([]);
 
     const fetchSessions = async () => {
         try {
+            setSelectedSessionIds([]);
             const token = localStorage.getItem('token');
             const res = await fetch(`${API_BASE}/api/security/sessions`, {
                 headers: { 'x-auth-token': token }
@@ -238,6 +240,21 @@ const SecuritySection = ({ user, showToast }) => {
         fetchSessions();
     }, []);
 
+    const toggleSelectSession = (id) => {
+        setSelectedSessionIds(prev => 
+            prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
+        );
+    };
+
+    const toggleSelectAll = () => {
+        const revokableSessions = sessions.filter(s => !s.isCurrent);
+        if (selectedSessionIds.length === revokableSessions.length) {
+            setSelectedSessionIds([]);
+        } else {
+            setSelectedSessionIds(revokableSessions.map(s => s.id));
+        }
+    };
+
     const handleRevokeSession = async (sessionId) => {
         try {
             const token = localStorage.getItem('token');
@@ -248,8 +265,35 @@ const SecuritySection = ({ user, showToast }) => {
             if (res.ok) {
                 showToast("Device logged out successfully", "success");
                 setSessions(prev => prev.filter(s => s.id !== sessionId));
+                setSelectedSessionIds(prev => prev.filter(sid => sid !== sessionId));
             } else {
                 showToast("Failed to revoke session", "error");
+            }
+        } catch (err) {
+            showToast("Server error", "error");
+        }
+    };
+
+    const handleBulkRevoke = async () => {
+        if (selectedSessionIds.length === 0) return;
+        if (!window.confirm(`Are you sure you want to sign out of the ${selectedSessionIds.length} selected devices?`)) return;
+
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_BASE}/api/security/sessions/bulk-revoke`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-auth-token': token 
+                },
+                body: JSON.stringify({ sessionIds: selectedSessionIds })
+            });
+            if (res.ok) {
+                showToast(`${selectedSessionIds.length} devices logged out successfully`, "success");
+                setSessions(prev => prev.filter(s => !selectedSessionIds.includes(s.id)));
+                setSelectedSessionIds([]);
+            } else {
+                showToast("Failed to revoke selected sessions", "error");
             }
         } catch (err) {
             showToast("Server error", "error");
@@ -350,6 +394,35 @@ const SecuritySection = ({ user, showToast }) => {
                     <p className="text-sm text-gray-500 mt-1">Manage and track your active portal sessions across web, mobile, and extension interfaces. Revoke access to log out unrecognized devices immediately.</p>
                 </div>
 
+                {!sessionsLoading && sessions.filter(s => !s.isCurrent).length > 0 && (
+                    <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-[#2C2C2C] gap-4">
+                        <div className="flex items-center gap-3">
+                            <label className="relative flex items-center justify-center cursor-pointer select-none shrink-0 group">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedSessionIds.length === sessions.filter(s => !s.isCurrent).length}
+                                    onChange={toggleSelectAll}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-5 h-5 rounded-md border border-gray-300 dark:border-[#333] peer-checked:border-brand-blue bg-transparent peer-checked:bg-brand-blue/10 dark:peer-checked:bg-brand-blue/20 transition-all flex items-center justify-center group-hover:border-brand-blue/50">
+                                    <Check size={11} className="text-brand-blue opacity-0 peer-checked:opacity-100 transition-opacity font-black" />
+                                </div>
+                            </label>
+                            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 select-none">
+                                Select All ({sessions.filter(s => !s.isCurrent).length})
+                            </span>
+                        </div>
+                        {selectedSessionIds.length > 0 && (
+                            <button
+                                onClick={handleBulkRevoke}
+                                className="px-3.5 py-2 text-xs font-bold text-red-500 hover:text-white bg-red-500/10 hover:bg-red-500 rounded-xl border border-red-500/20 hover:border-transparent transition-all flex items-center gap-1.5 shrink-0"
+                            >
+                                <LogOut size={13} /> Sign Out Selected ({selectedSessionIds.length})
+                            </button>
+                        )}
+                    </div>
+                )}
+
                 {sessionsLoading ? (
                     <div className="flex items-center justify-center py-8">
                         <RefreshCw className="animate-spin text-brand-blue" size={24} />
@@ -359,6 +432,21 @@ const SecuritySection = ({ user, showToast }) => {
                         {sessions.map((session) => (
                             <div key={session.id} className="flex items-center justify-between py-5 first:pt-0 last:pb-0 gap-4">
                                 <div className="flex items-center gap-4 min-w-0">
+                                    {!session.isCurrent ? (
+                                        <label className="relative flex items-center justify-center cursor-pointer select-none shrink-0 group">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedSessionIds.includes(session.id)}
+                                                onChange={() => toggleSelectSession(session.id)}
+                                                className="sr-only peer"
+                                            />
+                                            <div className="w-5 h-5 rounded-md border border-gray-300 dark:border-[#333] peer-checked:border-brand-blue bg-transparent peer-checked:bg-brand-blue/10 dark:peer-checked:bg-brand-blue/20 transition-all flex items-center justify-center group-hover:border-brand-blue/50">
+                                                <Check size={11} className="text-brand-blue opacity-0 peer-checked:opacity-100 transition-opacity font-black" />
+                                            </div>
+                                        </label>
+                                    ) : (
+                                        <div className="w-5 h-5 shrink-0" />
+                                    )}
                                     <div className="p-3 bg-gray-50 dark:bg-[#121212] border border-gray-100 dark:border-[#2C2C2C] rounded-xl shrink-0">
                                         {getDeviceIcon(session.deviceType)}
                                     </div>
