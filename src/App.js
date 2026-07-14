@@ -162,6 +162,7 @@ function AppLayout() {
   const [keynoteToDelete, setKeynoteToDelete] = useState(null);
 
   const [semesterStatus, setSemesterStatus] = useState(null);
+  const hasRecheckedRef = useRef(false);
   const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [isBatchDeleteKeynotes, setIsBatchDeleteKeynotes] = useState(false);
   const [keynotesToBatchDelete, setKeynotesToBatchDelete] = useState([]);
@@ -645,6 +646,27 @@ function AppLayout() {
       if (res.ok) {
         const data = await res.json();
         setSemesterStatus(data);
+
+        // Self-heal check: if results are not announced, trigger a recheck on the server once
+        if (data && !data.isSemesterCompleted && !hasRecheckedRef.current) {
+          hasRecheckedRef.current = true;
+          console.log("[App] Triggering self-heal semester-status/recheck...");
+          const recheckRes = await fetch(`${API_BASE}/api/semester-status/recheck`, {
+            method: 'POST',
+            headers: authHeaders
+          });
+          if (recheckRes.ok) {
+            const recheckData = await recheckRes.json();
+            if (recheckData.isSemesterCompleted) {
+              console.log("[App] Self-heal complete! Results are now announced.");
+              setSemesterStatus(prev => prev ? { 
+                ...prev, 
+                isSemesterCompleted: recheckData.isSemesterCompleted,
+                lastCompletedSemester: recheckData.lastCompletedSemester
+              } : recheckData);
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching semester status:", error);
@@ -1277,7 +1299,7 @@ function AppLayout() {
                   <div className={`w-full h-full ${activeTab === 'Timetable' ? 'block' : 'hidden'}`}><Timetable selectedSemester={selectedSemester} currentSemester={user?.currentSemester} /></div>
                   <div className={`w-full h-full ${activeTab === 'Keynotes' ? 'block' : 'hidden'}`}><Keynote keynotes={getFilteredKeynotes()} courses={visibleCourses} onToggleRead={handleToggleKeynoteRead} onDelete={deleteKeynote} onBatchDelete={handleBatchDeleteKeynotes} user={user} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Habits') ? 'block' : 'hidden'}`}><HabitTracker activeTab={activeTab} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Grade Book' ? 'block' : 'hidden'}`}><GradeBook courses={visibleCourses} user={user} activeGroup={activeGroup} /></div>
+                  <div className={`w-full h-full ${activeTab === 'Grade Book' ? 'block' : 'hidden'}`}><GradeBook courses={visibleCourses} user={user} activeGroup={activeGroup} selectedSemester={selectedSemester} /></div>
                   {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
                   {activeTab === 'Result' && <div className="w-full h-full"><SemesterResultPage semesterStatus={semesterStatus} onViewFullHistory={() => handleNavigate('History')} onDismiss={async () => { await handleAcknowledgeSemester(); handleNavigate('Welcome'); }} /></div>}
                   {activeTab === 'Sync Diagnostics' && <div className="w-full h-full"><SyncDiagnostics /></div>}

@@ -262,7 +262,7 @@ const GradeCategoryRow = ({ category, onBestOfChange }) => {
 };
 
 
-const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
+const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
   const [allGrades, setAllGrades] = useState([]);
   const [stats, setStats] = useState({ cgpa: "0.00", credits: "0", inprogressCr: "0" });
   const [loading, setLoading] = useState(true);
@@ -315,9 +315,13 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
       const token = localStorage.getItem('token');
       const headers = { 'Content-Type': 'application/json', 'x-auth-token': token };
 
+      const statsUrl = selectedSemester
+        ? `${API_BASE}/api/student-stats?term=${encodeURIComponent(selectedSemester)}`
+        : `${API_BASE}/api/student-stats`;
+
       const [gradesRes, statsRes] = await Promise.all([
         fetch(`${API_BASE}/api/grades`, { headers }),
-        fetch(`${API_BASE}/api/student-stats`, { headers })
+        fetch(statsUrl, { headers })
       ]);
 
       const gradesData = await gradesRes.json();
@@ -337,7 +341,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedSemester]);
 
   // Live-sync: refresh grades immediately when a live socket event fires
   useEffect(() => {
@@ -641,7 +645,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2 group-hover:scale-110 transition-transform duration-700"></div>
               <div className="relative z-10 flex flex-col h-full justify-between">
                 <div className="flex items-center gap-2 text-blue-100 font-medium text-sm tracking-wide">
-                  <GraduationCap size={18} /> Current CGPA
+                  <GraduationCap size={18} /> {stats.isHistorical ? `${stats.term} Final CGPA` : "Current CGPA"}
                 </div>
                 <div className="mt-4">
                   <span className="text-6xl font-black tracking-tighter">{stats.cgpa || "0.00"}</span>
@@ -649,24 +653,38 @@ const GradeBook = ({ courses, isMainSidebarOpen, user }) => {
                 </div>
               </div>
             </div>
-            <div className="bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-blue-500/30 transition-colors">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4">
-                <TrendingUp size={20} />
+            {stats.isHistorical ? (
+              <div className="md:col-span-2 bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-emerald-500/30 transition-colors">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
+                  <Target size={20} />
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{stats.credits || "0"}</div>
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Earned Credits</div>
+                </div>
               </div>
-              <div>
-                <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{projectedCgpa.toFixed(2)}</div>
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Projected CGPA</div>
-              </div>
-            </div>
-            <div className="bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-emerald-500/30 transition-colors">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
-                <Target size={20} />
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{stats.inprogressCr || "0"}</div>
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">In Progress Credits</div>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-blue-500/30 transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{projectedCgpa.toFixed(2)}</div>
+                    <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Projected CGPA</div>
+                  </div>
+                </div>
+                <div className="bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-emerald-500/30 transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
+                    <Target size={20} />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{stats.inprogressCr || "0"}</div>
+                    <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">In Progress Credits</div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {grades.length === 0 ? (

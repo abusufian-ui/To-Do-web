@@ -419,6 +419,52 @@ const normalizeSemesterTerm = (term) => {
   );
 };
 
+const parseOrdinalNumber = (str) => {
+  if (!str) return 0;
+  const match = str.match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : 0;
+};
+
+const checkSemesterCompletion = async (userId, user, statsData = null, existingStats = null) => {
+  try {
+    const Course = mongoose.model('Course');
+    const ResultHistory = mongoose.model('ResultHistory');
+
+    const userCourses = await Course.find({ userId, type: 'university' });
+    const courseSemesters = [...new Set(userCourses.map(c => c.semester).filter(Boolean))];
+    if (courseSemesters.length === 0) return null;
+
+    const history = await ResultHistory.find({ userId });
+    const historyTerms = new Set(history.map(h => normalizeSemesterTerm(h.term)));
+    const allMatched = courseSemesters.every(sem => historyTerms.has(normalizeSemesterTerm(sem)));
+
+    // Secondary detection: check if credits/CGPA has changed (increased) and non-zero CGPA
+    let statsTrigger = false;
+    if (statsData && existingStats) {
+      const newCr = parseFloat(statsData.credits) || 0;
+      const oldCr = parseFloat(existingStats.credits) || 0;
+      const newCgpa = parseFloat(statsData.cgpa) || 0;
+      if (newCr > oldCr && newCgpa > 0) {
+        statsTrigger = true;
+      }
+    }
+
+    if (allMatched || statsTrigger) {
+      const sortedMatched = sortSemestersJS(
+        courseSemesters.filter(s => historyTerms.has(normalizeSemesterTerm(s))).map(s => ({ term: s })),
+        'desc'
+      );
+      const currentCompletedSem = sortedMatched[0]?.term || courseSemesters[0];
+      return currentCompletedSem;
+    }
+    return null;
+  } catch (err) {
+    console.error("Error in checkSemesterCompletion helper:", err);
+    return null;
+  }
+};
+
+
 const app = express();
 app.set('trust proxy', 1);
 
@@ -2829,18 +2875,11 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         };
 
         try {
-          const userCourses = await Course.find({ userId, type: 'university' });
-          const courseSemesters = [...new Set(userCourses.map(c => c.semester).filter(Boolean))];
-          if (courseSemesters.length > 0) {
-            const history = await ResultHistory.find({ userId });
-            const historyTerms = new Set(history.map(h => normalizeSemesterTerm(h.term)));
-            const allMatched = courseSemesters.every(sem => historyTerms.has(normalizeSemesterTerm(sem)));
-            if (allMatched) {
-              const currentCompletedSem = courseSemesters[0];
-              if (!user.isSemesterCompleted || user.lastCompletedSemester !== currentCompletedSem) {
-                updateFields.isSemesterCompleted = true;
-                updateFields.lastCompletedSemester = currentCompletedSem;
-              }
+          const currentCompletedSem = await checkSemesterCompletion(userId, user, statsData, existingStats);
+          if (currentCompletedSem) {
+            if (!user.isSemesterCompleted || user.lastCompletedSemester !== currentCompletedSem) {
+              updateFields.isSemesterCompleted = true;
+              updateFields.lastCompletedSemester = currentCompletedSem;
             }
           }
         } catch (semErr) {
@@ -5049,6 +5088,12 @@ const updateProfileFields = (user, body) => {
       user.academicOrdinalSemester = incomingOrdinal;
       hasChanges = true;
       logDetails['academicOrdinalSemester'] = { status: 'REPLACED', old: existingOrdinal, new: incomingOrdinal };
+      
+      if (existingOrdinal && parseOrdinalNumber(incomingOrdinal) > parseOrdinalNumber(existingOrdinal)) {
+        console.log(`[PROFILE_SYNC] 🎓 Semester advanced! Resetting results announcement flags: isSemesterCompleted = false`);
+        user.isSemesterCompleted = false;
+        user.lastCompletedSemester = '';
+      }
     }
   }
 
@@ -5532,7 +5577,30 @@ app.get('/api/timetable', auth, async (req, res) => {
     res.status(500).json({ message: "Error" });
   }
 });
-app.get('/api/student-stats', auth, async (req, res) => { try { res.json(await StudentStats.findOne({ userId: req.user.id }).lean() || { cgpa: "0.00", credits: "0", inprogressCr: "0" }); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/student-stats', auth, async (req, res) => {
+  try {
+    const term = req.query.term || req.query.t;
+    if (term) {
+      const normalizedTerm = normalizeSemesterTerm(term);
+      const ResultHistory = mongoose.model('ResultHistory');
+      const allResults = await ResultHistory.find({ userId: req.user.id }).lean();
+      const matched = allResults.find(r => normalizeSemesterTerm(r.term).toLowerCase() === normalizedTerm.toLowerCase());
+      if (matched) {
+        return res.json({
+          cgpa: matched.cgpa || "0.00",
+          credits: matched.earnedCH || "0",
+          inprogressCr: "0",
+          isHistorical: true,
+          term: matched.term
+        });
+      }
+    }
+    res.json(await StudentStats.findOne({ userId: req.user.id }).lean() || { cgpa: "0.00", credits: "0", inprogressCr: "0" });
+  } catch (error) {
+    console.error("Error in GET /api/student-stats:", error);
+    res.status(500).json({ message: "Error" });
+  }
+});
 app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 }).lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
 app.get('/api/results-history', auth, async (req, res) => { try { const raw = await ResultHistory.find({ userId: req.user.id }).lean(); res.json(sortSemestersJS(raw, 'desc')); } catch (error) { res.status(500).json({ message: "Error" }); } });
 
@@ -5639,13 +5707,38 @@ app.get('/api/semester-status', auth, async (req, res) => {
 
 app.post('/api/semester-status/acknowledge', auth, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, { isSemesterCompleted: false });
+    // No database write — acknowledgement is managed client-side per session.
     res.json({ success: true });
   } catch (error) {
     console.error("Error in POST /api/semester-status/acknowledge:", error);
     res.status(500).json({ message: "Error" });
   }
 });
+
+app.post('/api/semester-status/recheck', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const currentCompletedSem = await checkSemesterCompletion(req.user.id, user);
+    if (currentCompletedSem) {
+      if (!user.isSemesterCompleted || user.lastCompletedSemester !== currentCompletedSem) {
+        user.isSemesterCompleted = true;
+        user.lastCompletedSemester = currentCompletedSem;
+        await user.save();
+      }
+    }
+    res.json({
+      success: true,
+      isSemesterCompleted: user.isSemesterCompleted,
+      lastCompletedSemester: user.lastCompletedSemester
+    });
+  } catch (error) {
+    console.error("Error in POST /api/semester-status/recheck:", error);
+    res.status(500).json({ message: "Error" });
+  }
+});
+
 
 app.delete('/api/tasks/archived/clear', auth, async (req, res) => {
   try {
