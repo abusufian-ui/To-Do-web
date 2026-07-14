@@ -402,6 +402,23 @@ const parseSemesterAndSectionFromCode = (fullCode) => {
   return { semester, section };
 };
 
+/**
+ * Normalize a semester/term string so that abbreviated 2-digit years are
+ * expanded to 4-digit years for consistent comparison.
+ * Examples:
+ *   "Spring 26"   -> "Spring 2026"
+ *   "Fall 25"     -> "Fall 2025"
+ *   "Spring 2026" -> "Spring 2026"  (unchanged)
+ */
+const normalizeSemesterTerm = (term) => {
+  if (!term) return '';
+  // Match a season word followed by a 2-digit year (but NOT already 4-digit)
+  return term.trim().replace(
+    /^(Spring|Summer|Fall|Winter)\s+(\d{2})$/i,
+    (_, season, yy) => `${season.charAt(0).toUpperCase()}${season.slice(1).toLowerCase()} 20${yy}`
+  );
+};
+
 const app = express();
 app.set('trust proxy', 1);
 
@@ -2816,8 +2833,8 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           const courseSemesters = [...new Set(userCourses.map(c => c.semester).filter(Boolean))];
           if (courseSemesters.length > 0) {
             const history = await ResultHistory.find({ userId });
-            const historyTerms = new Set(history.map(h => h.term));
-            const allMatched = courseSemesters.every(sem => historyTerms.has(sem));
+            const historyTerms = new Set(history.map(h => normalizeSemesterTerm(h.term)));
+            const allMatched = courseSemesters.every(sem => historyTerms.has(normalizeSemesterTerm(sem)));
             if (allMatched) {
               const currentCompletedSem = courseSemesters[0];
               if (!user.isSemesterCompleted || user.lastCompletedSemester !== currentCompletedSem) {
@@ -5091,14 +5108,14 @@ const updateUserCurrentSemester = async (userId) => {
     const courses = await Course.find({ userId, type: 'university' }).lean();
     const history = await ResultHistory.find({ userId }).lean();
 
-    const historyTerms = new Set(history.map(h => h.term.trim().toLowerCase()));
+    const historyTerms = new Set(history.map(h => normalizeSemesterTerm(h.term).toLowerCase()));
 
     // Find semesters of courses that are NOT in results history
     const activeSemesters = [];
     for (const c of courses) {
       if (c.semester) {
         const semTrim = c.semester.trim();
-        if (!historyTerms.has(semTrim.toLowerCase())) {
+        if (!historyTerms.has(normalizeSemesterTerm(semTrim).toLowerCase())) {
           activeSemesters.push(semTrim);
         }
       }
@@ -5598,10 +5615,11 @@ app.get('/api/semester-status', auth, async (req, res) => {
     let previousResult = null;
 
     if (user.lastCompletedSemester) {
-      latestResult = await ResultHistory.findOne({ userId: req.user.id, term: user.lastCompletedSemester }).lean();
+      const normalizedLastSem = normalizeSemesterTerm(user.lastCompletedSemester);
       const allResults = await ResultHistory.find({ userId: req.user.id }).lean();
+      latestResult = allResults.find(r => normalizeSemesterTerm(r.term).toLowerCase() === normalizedLastSem.toLowerCase()) || null;
       const sorted = sortSemestersJS(allResults, 'desc');
-      const idx = sorted.findIndex(r => r.term.toLowerCase() === user.lastCompletedSemester.toLowerCase());
+      const idx = sorted.findIndex(r => normalizeSemesterTerm(r.term).toLowerCase() === normalizedLastSem.toLowerCase());
       if (idx !== -1 && idx + 1 < sorted.length) {
         previousResult = sorted[idx + 1];
       }
