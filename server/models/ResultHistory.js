@@ -9,6 +9,7 @@ const resultHistorySchema = new mongoose.Schema({
   courses: [
     {
       name: String,
+      code: { type: String, default: 'N/A' },
       creditHours: String,
       gradePoints: String,
       finalGrade: String

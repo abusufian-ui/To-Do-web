@@ -55,11 +55,12 @@ const SemesterResultPage = ({ semesterStatus, onViewFullHistory, onDismiss }) =>
   // Find best course
   const topCourse = useMemo(() => {
     if (courses.length === 0) return null;
-    return [...courses].sort((a, b) => {
-      const aGp = parseFloat(a.gradePoints) || 0;
-      const bGp = parseFloat(b.gradePoints) || 0;
-      return bGp - aGp;
-    })[0];
+    const getGP = (c) => {
+      const qp = parseFloat(c.gradePoints) || 0;
+      const ch = parseFloat(c.creditHours) || 1;
+      return ch > 0 ? qp / ch : 0;
+    };
+    return [...courses].sort((a, b) => getGP(b) - getGP(a))[0];
   }, [courses]);
 
   // Comparison math
@@ -282,8 +283,13 @@ const SemesterResultPage = ({ semesterStatus, onViewFullHistory, onDismiss }) =>
                 <tbody className="divide-y divide-gray-800/40">
                   {courses.map((c, index) => {
                     const grade = c.finalGrade || "W";
-                    const isGood = ['A', 'A-', 'B+'].includes(grade);
-                    const gradeColor = isGood ? 'text-green-500' : 'text-amber-500';
+                    const gUpper = grade.trim().toUpperCase();
+                    let gradeColor = 'text-amber-500';
+                    if (['A', 'A-', 'B+'].includes(gUpper)) {
+                      gradeColor = 'text-green-500';
+                    } else if (['C-', 'D+', 'D', 'F', 'W'].includes(gUpper)) {
+                      gradeColor = 'text-red-500';
+                    }
                     return (
                       <motion.tr 
                         key={index} 
@@ -312,8 +318,8 @@ const SemesterResultPage = ({ semesterStatus, onViewFullHistory, onDismiss }) =>
               <div className="bg-[#1E1E1E]/55 border border-gray-800 rounded-2xl p-5 flex flex-col hover:border-gray-700 transition-colors">
                 <Award size={20} className="text-blue-500 mb-3" />
                 <span className="text-[10px] font-bold text-[#9BA1A6] uppercase tracking-wider mb-1">Top Course</span>
-                <span className="text-sm font-black text-[#ECEDEE] truncate" title={topCourse.name}>{topCourse.name}</span>
-                <span className="text-[10px] text-[#9BA1A6] font-semibold mt-1">GPA {topCourse.gradePoints} (Grade {topCourse.finalGrade})</span>
+                <span className="text-sm font-black text-[#ECEDEE]" title={topCourse.name}>{topCourse.name}</span>
+                <span className="text-[10px] text-[#9BA1A6] font-semibold mt-1">GPA {((parseFloat(topCourse.gradePoints) || 0) / (parseFloat(topCourse.creditHours) || 1)).toFixed(2)} (Grade {topCourse.finalGrade})</span>
               </div>
             )}
 

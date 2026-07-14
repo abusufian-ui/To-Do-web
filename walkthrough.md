@@ -1,3 +1,58 @@
+# Walkthrough — Results Announcement & Historical Stats Snapshot
+
+We have successfully implemented and resolved the academic status issues and result metrics cards in the server, the web app, and the mobile app.
+
+---
+
+## 1. Changes Made
+
+### Server (`server/index.js`)
+
+1. **`checkSemesterCompletion` Helper:**
+   - Unified completion check logic.
+   - Finds matching semesters between courses and results history.
+   - Leverages `sortSemestersJS` to accurately pick the **newest matching semester** instead of picking the first element of an arbitrary-order array.
+   - **Secondary Detection Signal:** Detects when completed credits (`credits`) increase while the CGPA is non-zero as a definitive trigger that results have been declared.
+
+2. **Self-Healing Recheck Endpoint (`POST /api/semester-status/recheck`):**
+   - Protected endpoint that re-evaluates the user's courses and history on demand.
+   - Corrects and sets `isSemesterCompleted` and `lastCompletedSemester` for any user who synced before the year-normalization fix was deployed.
+
+3. **Persistent Banner & Acknowledge Logic (`POST /api/semester-status/acknowledge`):**
+   - Modified to NOT reset user flags in the database. Acknowledging now only dismisses the modal for the current session/client, keeping the banner/tab available.
+   - **Ordinal Advancement Reset:** Integrated a check during profile sync. When `academicOrdinalSemester` changes upward (e.g. `"6th Semester"` → `"7th Semester"`), it resets `isSemesterCompleted` to `false` and clears `lastCompletedSemester`.
+
+4. **Semester-Aware Stats Endpoint (`GET /api/student-stats`):**
+   - Added support for `?term=` (or `?t=`) query parameter.
+   - If provided, retrieves that semester's CGPA and earned credit hours (`earnedCH`) from `ResultHistory` instead of live `StudentStats`.
+
+5. **Course Code Dynamic Enrichment & Schema Update:**
+   - Added `code: String` to the `ResultHistory` schema definition.
+   - Populated course codes dynamically during scraper sync.
+   - Added `enrichResultHistoryWithCodes` helper that queries the `Course` collection to dynamically resolve codes for pre-existing history records inside the `GET /api/results-history` and `GET /api/semester-status` endpoints.
+
+---
+
+### Web App & Mobile App Metrics fixes (`src/` & `portal-mobile/`)
+
+1. **Correct Top Course Sorting & Display:**
+   - Fixed sorting calculation to sort by actual GPA `(gradePoints / creditHours)` rather than raw quality points, correctly identifying `"Computer Communications and Networks - Lab"` (Grade B, 3.00 GPA) as the top course over `"Computer Communications and Networks"` (Grade B-, 2.67 GPA).
+   - Displayed actual GPA instead of quality points on the "Top Course" metric card on both web and mobile.
+
+2. **Full Visibility & Wrapping:**
+   - Removed text truncation/ellipsis classes (`truncate`, `numberOfLines={1}`) on both the metrics cards and list rows, allowing course names to wrap naturally and remain fully readable.
+   - Added dynamic course codes display underneath each course name in the mobile course breakdown list.
+
+3. **Grade Color Classification:**
+   - Red color for: `C-`, `D+`, `D`, `F`, `W`
+   - Green color for: `A`, `A-`, `B+`
+   - Yellow color for all other grades (like `B`, `B-`, `C+`, `C`).
+
+4. **Self-Healing on App Load:**
+   - Configured `App.js` and `index.tsx` to call `/recheck` once per session if the completion status is false to automatically repair state.
+
+---
+
 # Walkthrough of Web Portal Onboarding Flow, Course Material, Session Security, and Unified Grading
 
 We have successfully implemented and verified the **Premium Web Portal Onboarding Flow**, alongside previous fixes for Course Material Sync, Session Security, Course Metadata, and the **Unified Grading and CGPA Projection System**.

@@ -464,6 +464,44 @@ const checkSemesterCompletion = async (userId, user, statsData = null, existingS
   }
 };
 
+const enrichResultHistoryWithCodes = async (userId, data) => {
+  if (!data) return data;
+  try {
+    const Course = mongoose.model('Course');
+    const userCourses = await Course.find({ userId }).lean();
+    const courseCodeMap = {};
+    userCourses.forEach(c => {
+      if (c.name && c.code) {
+        courseCodeMap[c.name.trim().toLowerCase()] = c.code;
+      }
+    });
+
+    const enrichItem = (item) => {
+      if (item && item.courses) {
+        item.courses = item.courses.map(c => {
+          let code = c.code;
+          if (!code || code === 'N/A') {
+            code = courseCodeMap[c.name.trim().toLowerCase()] || 'N/A';
+          }
+          return { ...c, code };
+        });
+      }
+      return item;
+    };
+
+    if (Array.isArray(data)) {
+      return data.map(enrichItem);
+    } else {
+      return enrichItem(data);
+    }
+  } catch (err) {
+    console.error("Error enriching ResultHistory with codes:", err);
+    return data;
+  }
+};
+
+
+
 
 const app = express();
 app.set('trust proxy', 1);
@@ -2773,6 +2811,30 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
         }
 
         if (historyData && historyData.length > 0) {
+          try {
+            const Course = mongoose.model('Course');
+            const userCourses = await Course.find({ userId }).lean();
+            const courseCodeMap = {};
+            userCourses.forEach(c => {
+              if (c.name && c.code) {
+                courseCodeMap[c.name.trim().toLowerCase()] = c.code;
+              }
+            });
+            historyData.forEach(sem => {
+              if (sem.courses) {
+                sem.courses = sem.courses.map(c => {
+                  let code = c.code;
+                  if (!code || code === 'N/A') {
+                    code = courseCodeMap[c.name.trim().toLowerCase()] || 'N/A';
+                  }
+                  return { ...c, code };
+                });
+              }
+            });
+          } catch (codeErr) {
+            console.error("Error pre-populating course codes in historyData sync:", codeErr);
+          }
+
           const historyMap = new Map(existingHistory.map(h => [h.term, h]));
           const newTerms = new Set(historyData.map(h => h.term));
           let hasAnyHistoryChanges = existingHistory.some(h => !newTerms.has(h.term));
@@ -5602,7 +5664,16 @@ app.get('/api/student-stats', auth, async (req, res) => {
   }
 });
 app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 }).lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
-app.get('/api/results-history', auth, async (req, res) => { try { const raw = await ResultHistory.find({ userId: req.user.id }).lean(); res.json(sortSemestersJS(raw, 'desc')); } catch (error) { res.status(500).json({ message: "Error" }); } });
+app.get('/api/results-history', auth, async (req, res) => {
+  try {
+    const raw = await ResultHistory.find({ userId: req.user.id }).lean();
+    const sorted = sortSemestersJS(raw, 'desc');
+    const enriched = await enrichResultHistoryWithCodes(req.user.id, sorted);
+    res.json(enriched);
+  } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
 
 app.get('/api/sync-diagnostics/users', auth, async (req, res) => {
   try {
@@ -5693,11 +5764,14 @@ app.get('/api/semester-status', auth, async (req, res) => {
       }
     }
 
+    const enrichedLatest = await enrichResultHistoryWithCodes(req.user.id, latestResult);
+    const enrichedPrevious = await enrichResultHistoryWithCodes(req.user.id, previousResult);
+
     res.json({
       isSemesterCompleted: user.isSemesterCompleted,
       lastCompletedSemester: user.lastCompletedSemester,
-      latestResult,
-      previousResult
+      latestResult: enrichedLatest,
+      previousResult: enrichedPrevious
     });
   } catch (error) {
     console.error("Error in GET /api/semester-status:", error);
