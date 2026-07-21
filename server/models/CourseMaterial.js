@@ -39,6 +39,10 @@ CourseMaterialSchema.index({ courseCode: 1, sectionCode: 1, normalizedFileName: 
 
 CourseMaterialSchema.index({ courseCode: 1, sectionCode: 1, semester: 1 });
 CourseMaterialSchema.index({ userId: 1, courseCode: 1 });
+CourseMaterialSchema.index({ courseCode: 1, b2Key: 1 });
+CourseMaterialSchema.index({ courseName: 1 });
+CourseMaterialSchema.index({ b2Key: 1 });
+
 
 
 CourseMaterialSchema.pre('findOneAndDelete', async function() {

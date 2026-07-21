@@ -227,6 +227,14 @@ const CoursePortalView = ({ activeTab, courses, filters, user, selectedSemester,
   const currentCourseCode = currentCourse?.code;
   const currentCourseName = currentCourse?.name;
 
+  if (activeTab === 'Course Vault') {
+    return (
+      <div className="w-full h-full relative">
+        <CourseVault />
+      </div>
+    );
+  }
+
   if (activeTab === 'Course Material') {
     return (
       <div className="w-full h-full relative">

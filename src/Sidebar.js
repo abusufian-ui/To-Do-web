@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Trash2, Wallet, PieChart, 
   CreditCard, PiggyBank, ChevronDown, LayoutDashboard, History, Award,
   GraduationCap, Shield, Activity, Clock, ArrowRightLeft, Lightbulb, Code2, Bell, ClipboardCheck, FileUp,
-  Link, Cloud, Globe, Mail, FolderOpen, Database
+  Link, Globe, Mail, FolderOpen, Database
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0, user }) => {
@@ -47,10 +47,24 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Habits-Analytics', label: 'Analytics Engine', icon: BarChart3 },
   ];
 
+  const [adminPortalUrl, setAdminPortalUrl] = useState('http://localhost:3001');
+
+  React.useEffect(() => {
+    const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    fetch(`${API_BASE}/api/public/settings`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.adminPortalLink) {
+          setAdminPortalUrl(data.adminPortalLink);
+        }
+      })
+      .catch(err => console.error("Error fetching public settings in sidebar:", err));
+  }, []);
+
   const linksSubItems = [
+    { id: 'Link-Admin', label: 'Admin Site', icon: Shield, url: adminPortalUrl },
     { id: 'Link-Horizon', label: 'Horizon Portal', icon: Globe, url: 'https://horizon.ucp.edu.pk' },
     { id: 'Link-Email', label: 'Uni Email', icon: Mail, url: 'https://outlook.office.com/mail/' },
-    { id: 'Link-Cloud', label: 'Cloud Workspace', icon: Cloud, url: 'http://20.219.15.106/#/', adminOnly: true },
   ];
 
   const handleCashClick = () => {
@@ -93,7 +107,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     }
   };
 
-  const isAcademicsActive = ['Timetable', 'Announcements', 'Attendance', 'Submissions', 'Course Material', 'Course Vault', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
+  const isAcademicsActive = ['Enrollment', 'Timetable', 'Announcements', 'Attendance', 'Submissions', 'Course Material', 'Course Vault', 'Keynotes', 'Grade Book', 'History'].includes(activeTab);  
   const isCashActive = activeTab.startsWith('Cash');
   const isHabitsActive = activeTab.startsWith('Habits');
 
@@ -303,23 +317,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
           </div>
         )}
 
-        {}
-        {user && user.isAdmin && (
-          <button
-            onClick={() => handleSubItemClick('Admin')}
-            className={`
-              w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group relative
-              ${activeTab === 'Admin' 
-                ? 'bg-red-600 text-white shadow-lg shadow-red-500/20' 
-                : 'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'}
-              ${!isOpen && 'md:justify-center'}
-            `}
-          >
-            <div className="relative"><Shield size={20} strokeWidth={2} /></div>
-            {isOpen && <span className="text-sm font-bold whitespace-nowrap flex-1 text-left">Admin Panel</span>}
-            {!isOpen && <div className="hidden md:block absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">Admin</div>}
-          </button>
-        )}
+
 
       </div>
 

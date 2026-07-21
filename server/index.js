@@ -40,6 +40,9 @@ const { parseUCPDate } = require('./utils/dateParser');
 const { escapeRegex } = require('./utils/regexEscaper');
 const crypto = require('crypto');
 const { Resend } = require('resend');
+const { isPastPaper, classifyFile, detectPaperType } = require('./utils/vaultClassifier');
+const { addWatermark } = require('./utils/pdfWatermark');
+
 
 
 const http = require('http');
@@ -889,6 +892,16 @@ app.get('/api/public/settings', async (req, res) => {
         webPortalLink = val;
       }
 
+      let adminPortalLink = "http://localhost:3001";
+      const adminLinkSetting = await SystemSettings.findOne({ key: "admin_portal_link" });
+      if (adminLinkSetting && adminLinkSetting.value) {
+        let val = adminLinkSetting.value.trim();
+        if (!val.startsWith('http://') && !val.startsWith('https://')) {
+          val = 'https://' + val;
+        }
+        adminPortalLink = val;
+      }
+
       let termsLink = "";
       const termsSetting = await SystemSettings.findOne({ key: "terms_link" });
       if (termsSetting) {
@@ -924,7 +937,7 @@ app.get('/api/public/settings', async (req, res) => {
         }
       }
 
-      cachedSettingsData = { webPortalLink, termsLink, whatsappGroupLink, chromeExtensionLink, rawApkInfo };
+      cachedSettingsData = { webPortalLink, adminPortalLink, termsLink, whatsappGroupLink, chromeExtensionLink, rawApkInfo };
       settingsCacheExpiry = now + 60000; 
     }
 
@@ -940,6 +953,7 @@ app.get('/api/public/settings', async (req, res) => {
 
     res.json({
       webPortalLink: cachedSettingsData.webPortalLink,
+      adminPortalLink: cachedSettingsData.adminPortalLink,
       termsLink: cachedSettingsData.termsLink,
       whatsappGroupLink: cachedSettingsData.whatsappGroupLink,
       chromeExtensionLink: cachedSettingsData.chromeExtensionLink,
@@ -1038,6 +1052,28 @@ app.post('/api/admin/settings/web-portal-link', auth, adminAuth, async (req, res
   } catch (error) {
     console.error("Save Web Portal Link Error:", error);
     res.status(500).json({ message: "Server Error saving portal link" });
+  }
+});
+
+app.post('/api/admin/settings/admin-portal-link', auth, adminAuth, async (req, res) => {
+  try {
+    let { link } = req.body;
+    if (!link) return res.status(400).json({ message: "Link is required." });
+    
+    if (!link.startsWith('http://') && !link.startsWith('https://')) {
+      link = 'https://' + link;
+    }
+
+    const setting = await SystemSettings.findOneAndUpdate(
+      { key: "admin_portal_link" },
+      { value: link },
+      { upsert: true, new: true }
+    );
+    invalidateSettingsCache();
+    res.json({ success: true, link: setting.value });
+  } catch (error) {
+    console.error("Save Admin Portal Link Error:", error);
+    res.status(500).json({ message: "Server Error saving admin portal link" });
   }
 });
 
@@ -8030,19 +8066,606 @@ app.get('/api/admin/course-materials/student-sections/:userId', auth, adminAuth,
 });
 
 
-app.get('/api/course-vault/:courseCode', auth, (req, res) => {
-  res.json([]);
+// ── COURSE VAULT APIS ────────────────────────────────────────────────────────
+
+const vaultMemoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
+
+function canonicalizeCourseName(name) {
+  if (!name) return '';
+  let str = name.toString().trim();
+  if (/^advanced?\s+web(\s+programming)?$/i.test(str) || /^awp$/i.test(str)) {
+    return 'Advanced Web Programming';
+  }
+  if (/^theory\s+of\s+automata(\s+(and|&)\s+formal\s+languages)?$/i.test(str) || /^toa$/i.test(str) || /^tafl$/i.test(str)) {
+    return 'Theory of Automata & Formal Languages';
+  }
+  return str;
+}
+
+const normStr = (s) => {
+  if (!s) return '';
+  const canonical = canonicalizeCourseName(s);
+  return canonical.toLowerCase().replace(/[^a-z0-9]/g, '');
+};
+
+function deriveAbbreviation(courseName, existingAbbr) {
+  const canonical = canonicalizeCourseName(courseName);
+  if (existingAbbr && existingAbbr.trim() && existingAbbr !== 'CRS') return existingAbbr.trim();
+  if (!canonical) return 'COURSE';
+  if (/^advanced\s+web\s+programming$/i.test(canonical)) return 'AWP';
+  if (/^theory\s+of\s+automata/i.test(canonical)) return 'TAFL';
+  const isLab = /lab/i.test(canonical);
+  const cleanName = canonical.replace(/[-_]lab/i, '').replace(/lab/i, '').trim();
+  const words = cleanName.split(/\s+/).filter(w => !['and', 'to', 'of', 'in', 'for', 'the', '&'].includes(w.toLowerCase()));
+  let abbr = words.map(w => w[0] ? w[0].toUpperCase() : '').join('');
+  if (abbr.length < 2) abbr = cleanName.substring(0, 4).toUpperCase();
+  if (isLab && !abbr.endsWith('-Lab') && !abbr.endsWith('Lab')) abbr += '-Lab';
+  return abbr;
+}
+
+// Helper to test if a document matches the target course parameter
+const isCourseMatch = (docCourseName, docCourseCode, targetKey) => {
+  const k1 = normStr(docCourseName);
+  const k2 = normStr(docCourseCode);
+  return k1 === targetKey || k2 === targetKey;
+};
+
+// 1. List all courses with vault content (Fast Aggregation & Personalized Order)
+app.get('/api/vault/courses', auth, async (req, res) => {
+  try {
+    // One-time DB cleanups for merged courses
+    try {
+      await CourseVaultFile.updateMany(
+        { courseName: /^advance[d]?\s+web(\s+programming)?$/i },
+        { $set: { courseName: 'Advanced Web Programming', abbreviation: 'AWP' } }
+      );
+      await CourseMaterial.updateMany(
+        { courseName: /^advance[d]?\s+web(\s+programming)?$/i },
+        { $set: { courseName: 'Advanced Web Programming' } }
+      );
+      await CourseVaultFile.updateMany(
+        { courseName: /^theory\s+of\s+automata$/i },
+        { $set: { courseName: 'Theory of Automata & Formal Languages', abbreviation: 'TAFL' } }
+      );
+      await CourseMaterial.updateMany(
+        { courseName: /^theory\s+of\s+automata$/i },
+        { $set: { courseName: 'Theory of Automata & Formal Languages' } }
+      );
+    } catch (_) {}
+
+    const courseMap = new Map();
+
+    const getCourseEntry = (cName, abbr) => {
+      const key = normStr(cName);
+      if (!courseMap.has(key)) {
+        courseMap.set(key, {
+          courseName: cName,
+          abbreviation: deriveAbbreviation(cName, abbr),
+          seenPapers: new Set(),
+          seenNotes: new Set(),
+          pastPaperCount: 0,
+          lectureNoteCount: 0
+        });
+      }
+      return courseMap.get(key);
+    };
+
+    const vaultFiles = await CourseVaultFile.find({ status: 'published' })
+      .select('courseName courseCode abbreviation category paperType teacherName displayName fileName')
+      .lean();
+
+    for (const f of vaultFiles) {
+      const cName = canonicalizeCourseName(f.courseName);
+      if (!cName) continue;
+      const entry = getCourseEntry(cName, f.abbreviation);
+      const fKey = normStr(f.displayName || f.fileName);
+      if (f.category === 'past_paper') {
+        entry.seenPapers.add(`${f.paperType}_${fKey}`);
+      } else {
+        const tName = f.teacherName || 'General / Course Material';
+        entry.seenNotes.add(`${tName}_${fKey}`);
+      }
+    }
+
+    const materials = await CourseMaterial.find({ b2Key: { $exists: true, $ne: '' } })
+      .select('courseName courseCode fileName teacherName')
+      .lean();
+
+    for (const m of materials) {
+      const rawName = m.courseName || m.courseCode;
+      const cName = canonicalizeCourseName(rawName);
+      if (!cName) continue;
+      const entry = getCourseEntry(cName, '');
+      const fKey = normStr(m.fileName);
+      if (isPastPaper(m.fileName)) {
+        const pType = detectPaperType(m.fileName);
+        entry.seenPapers.add(`${pType}_${fKey}`);
+      } else {
+        const tName = m.teacherName || 'General / Course Material';
+        entry.seenNotes.add(`${tName}_${fKey}`);
+      }
+    }
+
+    for (const entry of courseMap.values()) {
+      entry.pastPaperCount = entry.seenPapers.size;
+      entry.lectureNoteCount = entry.seenNotes.size;
+      delete entry.seenPapers;
+      delete entry.seenNotes;
+    }
+
+    // Personalization: Fetch user faculty/enrolled courses
+    let user = null;
+    let userCourses = [];
+    if (req.user?.id) {
+      try {
+        user = await User.findById(req.user.id).select('faculty program').lean();
+        userCourses = await Course.find({ userId: req.user.id }).select('name code').lean();
+      } catch (_) {}
+    }
+
+    const enrolledKeys = new Set();
+    for (const uc of userCourses) {
+      if (uc.name) enrolledKeys.add(normStr(uc.name));
+      if (uc.code) enrolledKeys.add(normStr(uc.code));
+    }
+
+    const facultyStr = ((user?.faculty || '') + ' ' + (user?.program || '')).toLowerCase();
+    const itKeywords = [
+      'itc', 'dsa', 'daa', 'oop', 'ai', 'ccn', 'cn', 'os', 'dbs', 'db', 'se', 'dld',
+      'cag', 'awp', 'web', 'pf', 'cc', 'coal', 'sqa', 'mad', 'ml', 'dl', 'sre', 'hci',
+      'dip', 'is', 'cyber', 'data', 'compiler', 'programming', 'computer', 'software',
+      'network', 'database', 'algorithm', 'machine', 'intelligence', 'security',
+      'systems', 'logic', 'structures', 'calculus', 'discrete', 'assembly', 'information'
+    ];
+
+    const isFieldRelated = (courseObj) => {
+      const cName = courseObj.courseName.toLowerCase();
+      const cAbbr = (courseObj.abbreviation || '').toLowerCase();
+
+      // Default to IT/CS matching if user is in IT faculty or if faculty is unspecified
+      if (!facultyStr || /info|computer|software|it|cs|se|tech|comput/i.test(facultyStr)) {
+        return itKeywords.some(kw => cName.includes(kw) || cAbbr.includes(kw));
+      }
+
+      if (/busin|manage|account|financ|market|admin|fms/i.test(facultyStr)) {
+        const bizKeywords = ['account', 'finance', 'management', 'marketing', 'economics', 'business', 'reporting', 'audit', 'tax', 'stat'];
+        return bizKeywords.some(kw => cName.includes(kw) || cAbbr.includes(kw));
+      }
+
+      if (/engineer|ee|me|civil|electr/i.test(facultyStr)) {
+        const engKeywords = ['circuit', 'electrical', 'mechanical', 'thermo', 'signal', 'control', 'engineering', 'physics'];
+        return engKeywords.some(kw => cName.includes(kw) || cAbbr.includes(kw));
+      }
+
+      return false;
+    };
+
+    for (const entry of courseMap.values()) {
+      const key = normStr(entry.courseName);
+      const abbrKey = normStr(entry.abbreviation);
+
+      entry.isEnrolled = enrolledKeys.has(key) || enrolledKeys.has(abbrKey);
+      entry.isRelated = !entry.isEnrolled && isFieldRelated(entry);
+
+      if (entry.isEnrolled) {
+        entry.tier = 1;
+      } else if (entry.isRelated) {
+        entry.tier = 2;
+      } else {
+        entry.tier = 3;
+      }
+    }
+
+    const coursesList = Array.from(courseMap.values()).sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier; // Tier 1 (Enrolled) < Tier 2 (Related) < Tier 3 (Others)
+      return a.courseName.localeCompare(b.courseName);
+    });
+
+    res.json(coursesList);
+  } catch (err) {
+    console.error('[API] /api/vault/courses error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch vault courses.' });
+  }
+});
+
+// 2. Fetch past papers for a course (Targeted Universal Canonical Matching)
+app.get('/api/vault/past-papers/:courseName', auth, async (req, res) => {
+  try {
+    const courseParam = req.params.courseName;
+    const targetKey = normStr(courseParam);
+
+    const result = {
+      mid_term: [],
+      final_term: [],
+      quiz: [],
+      assignment: [],
+      graded_lab: [],
+      class_participation: [],
+      other: []
+    };
+
+    const seenHashes = new Set();
+    const seenNames = new Set();
+
+    const vaultFiles = await CourseVaultFile.find({
+      status: 'published',
+      category: 'past_paper'
+    }).lean();
+
+    for (const f of vaultFiles) {
+      if (!isCourseMatch(f.courseName, f.courseCode, targetKey)) continue;
+      if (f.contentHash && seenHashes.has(f.contentHash)) continue;
+      const nameKey = `${f.paperType}_${normStr(f.displayName || f.fileName)}`;
+      if (seenNames.has(nameKey)) continue;
+
+      if (f.contentHash) seenHashes.add(f.contentHash);
+      seenNames.add(nameKey);
+
+      const typeKey = result[f.paperType] ? f.paperType : 'other';
+      result[typeKey].push({
+        id: f._id,
+        source: 'vault',
+        displayName: f.displayName || f.fileName,
+        fileName: f.fileName,
+        fileSize: f.fileSize,
+        fileType: f.fileType,
+        paperType: f.paperType,
+        createdAt: f.createdAt
+      });
+    }
+
+    const materials = await CourseMaterial.find({
+      b2Key: { $exists: true, $ne: '' }
+    }).lean();
+
+    for (const m of materials) {
+      if (!isCourseMatch(m.courseName, m.courseCode, targetKey)) continue;
+      if (isPastPaper(m.fileName)) {
+        const pType = detectPaperType(m.fileName);
+        const nameKey = `${pType}_${normStr(m.fileName)}`;
+        if (seenNames.has(nameKey)) continue;
+        seenNames.add(nameKey);
+
+        const typeKey = result[pType] ? pType : 'other';
+        result[typeKey].push({
+          id: m._id,
+          source: 'material',
+          displayName: m.fileName,
+          fileName: m.fileName,
+          fileSize: m.fileSize,
+          fileType: m.fileType || 'pdf',
+          paperType: pType,
+          createdAt: m.createdAt
+        });
+      }
+    }
+
+    const submissions = await Submission.find({
+      'tasks.b2Key': { $exists: true, $ne: '' }
+    }).lean();
+
+    for (const sub of submissions) {
+      if (!isCourseMatch(sub.courseName, sub.courseCode, targetKey)) continue;
+      for (const task of (sub.tasks || [])) {
+        if (task.b2Key && isPastPaper(task.title)) {
+          const pType = detectPaperType(task.title);
+          const nameKey = `${pType}_${normStr(task.title)}`;
+          if (seenNames.has(nameKey)) continue;
+          seenNames.add(nameKey);
+
+          const typeKey = result[pType] ? pType : 'other';
+          result[typeKey].push({
+            id: task._id,
+            source: 'submission',
+            displayName: task.title,
+            fileName: task.title,
+            fileSize: task.fileSize || 0,
+            fileType: task.fileType || 'pdf',
+            paperType: pType,
+            createdAt: sub.lastUpdated
+          });
+        }
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('[API] /api/vault/past-papers error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch past papers.' });
+  }
+});
+
+// 3. Fetch lecture notes for a course grouped by teacher (Targeted Universal Canonical Matching)
+app.get('/api/vault/lecture-notes/:courseName', auth, async (req, res) => {
+  try {
+    const courseParam = req.params.courseName;
+    const targetKey = normStr(courseParam);
+
+    const teacherMap = new Map();
+
+    const getTeacherBucket = (teacher) => {
+      const tName = (teacher || 'General / Course Material').trim();
+      if (!teacherMap.has(tName)) {
+        teacherMap.set(tName, new Map());
+      }
+      return teacherMap.get(tName);
+    };
+
+    const vaultFiles = await CourseVaultFile.find({
+      status: 'published',
+      category: 'lecture_note'
+    }).lean();
+
+    for (const f of vaultFiles) {
+      if (!isCourseMatch(f.courseName, f.courseCode, targetKey)) continue;
+      const bucket = getTeacherBucket(f.teacherName);
+      const fKey = normStr(f.displayName || f.fileName);
+      if (!bucket.has(fKey)) {
+        bucket.set(fKey, {
+          id: f._id,
+          source: 'vault',
+          displayName: f.displayName || f.fileName,
+          fileName: f.fileName,
+          fileSize: f.fileSize,
+          fileType: f.fileType,
+          sections: f.section ? [f.section] : [],
+          createdAt: f.createdAt
+        });
+      }
+    }
+
+    const materials = await CourseMaterial.find({
+      b2Key: { $exists: true, $ne: '' }
+    }).lean();
+
+    for (const m of materials) {
+      if (!isCourseMatch(m.courseName, m.courseCode, targetKey)) continue;
+      if (!isPastPaper(m.fileName)) {
+        const tName = m.teacherName || 'General / Course Material';
+        const bucket = getTeacherBucket(tName);
+        const fKey = normStr(m.fileName);
+        if (!bucket.has(fKey)) {
+          bucket.set(fKey, {
+            id: m._id,
+            source: 'material',
+            displayName: m.fileName,
+            fileName: m.fileName,
+            fileSize: m.fileSize,
+            fileType: m.fileType || 'pdf',
+            sections: m.sectionCode ? [m.sectionCode] : [],
+            createdAt: m.createdAt
+          });
+        }
+      }
+    }
+
+    const result = [];
+    for (const [tName, fileMap] of teacherMap.entries()) {
+      const files = Array.from(fileMap.values());
+      if (files.length > 0) {
+        result.push({
+          teacherName: tName,
+          files
+        });
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('[API] /api/vault/lecture-notes error:', err.message);
+    res.status(500).json({ message: 'Failed to fetch lecture notes.' });
+  }
 });
 
 
-app.get('/api/course-vault/view/:id', auth, (req, res) => {
-  res.status(404).json({ message: 'Course Vault is disabled.' });
+
+// 4. Stream PDF Data (100% IDM-proof, Anti-Hijack Custom Content-Type for Canvas Viewer)
+app.get('/api/vault/stream-data/:source/:fileId', async (req, res) => {
+  try {
+    const userAgent = req.header('user-agent') || '';
+    const secFetchDest = req.header('sec-fetch-dest');
+    const secFetchMode = req.header('sec-fetch-mode');
+
+    // Block IDM extension, external download managers, and direct address bar navigation
+    if (
+      secFetchDest === 'document' ||
+      secFetchMode === 'navigate' ||
+      /idm|downloadmanager|wget|curl/i.test(userAgent)
+    ) {
+      return res.status(403).send('<html><body style="background:#0e0e11;color:#ffb4ab;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><h2>🚫 Direct browser access prohibited. Please use the Protected Viewer.</h2></body></html>');
+    }
+
+    const token = req.header('x-auth-token') || req.query.token;
+    if (token && token !== 'null' && token !== 'undefined') {
+      try {
+        jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALG] });
+      } catch (e) {
+        console.warn('[API] /api/vault/stream-data token verification note:', e.message);
+      }
+    }
+
+    const { source, fileId } = req.params;
+    let b2Key = '';
+
+    if (source === 'vault') {
+      const file = await CourseVaultFile.findById(fileId).lean();
+      if (!file || !file.b2Key) return res.status(404).json({ message: 'File not found.' });
+      b2Key = file.b2Key;
+    } else if (source === 'material') {
+      const file = await CourseMaterial.findById(fileId).lean();
+      if (!file || !file.b2Key) return res.status(404).json({ message: 'File not found.' });
+      b2Key = file.b2Key;
+    } else if (source === 'submission') {
+      const sub = await Submission.findOne({ 'tasks._id': fileId }).lean();
+      if (!sub) return res.status(404).json({ message: 'Attachment not found.' });
+      const task = (sub.tasks || []).find(t => t._id.toString() === fileId);
+      if (!task || !task.b2Key) return res.status(404).json({ message: 'Attachment not found.' });
+      b2Key = task.b2Key;
+    } else {
+      return res.status(400).json({ message: 'Invalid source.' });
+    }
+
+    const { downloadFileFromB2 } = require('./utils/b2Client');
+    const buffer = await downloadFileFromB2(b2Key);
+
+    // Custom content type to completely fool IDM and prevent download prompts
+    res.setHeader('Content-Type', 'application/x-vault-stream; charset=binary');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (err) {
+    console.error('[API] /api/vault/stream-data error:', err.message);
+    res.status(500).json({ message: 'Failed to load document stream.' });
+  }
 });
 
+// 5. Download file (Strictly restricted: PDF downloads are 100% disabled)
+app.get('/api/vault/download/:source/:fileId', async (req, res) => {
+  try {
+    const token = req.header('x-auth-token') || req.query.token;
+    if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
 
-app.post('/api/course-material/upload', auth, (req, res) => {
-  return res.status(403).json({ message: 'Manual uploads are disabled. Course materials are synced automatically from Horizon Portal.' });
+    jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALG] });
+
+    const { source, fileId } = req.params;
+    let b2Key = '';
+    let displayName = 'download';
+    let fileType = '';
+
+    if (source === 'vault') {
+      const file = await CourseVaultFile.findById(fileId).lean();
+      if (!file || !file.b2Key) return res.status(404).json({ message: 'File not found.' });
+      b2Key = file.b2Key;
+      displayName = file.displayName || file.fileName || 'document';
+      fileType = file.fileType || 'pdf';
+    } else if (source === 'material') {
+      const file = await CourseMaterial.findById(fileId).lean();
+      if (!file || !file.b2Key) return res.status(404).json({ message: 'File not found.' });
+      b2Key = file.b2Key;
+      displayName = file.fileName || 'document';
+      fileType = file.fileType || 'pdf';
+    } else if (source === 'submission') {
+      const sub = await Submission.findOne({ 'tasks._id': fileId }).lean();
+      if (!sub) return res.status(404).json({ message: 'Attachment not found.' });
+      const task = (sub.tasks || []).find(t => t._id.toString() === fileId);
+      if (!task || !task.b2Key) return res.status(404).json({ message: 'Attachment not found.' });
+      b2Key = task.b2Key;
+      displayName = task.title || 'attachment';
+      fileType = task.fileType || 'pdf';
+    } else {
+      return res.status(400).json({ message: 'Invalid source.' });
+    }
+
+    if (fileType === 'pdf' || /\.pdf$/i.test(displayName) || /\.pdf$/i.test(b2Key)) {
+      return res.status(403).json({ message: 'PDF downloads are disabled. Please use the Protected Viewer.' });
+    }
+
+    const { downloadFileFromB2, getMimeType } = require('./utils/b2Client');
+    const ext = getExtension(displayName);
+    const isPdf = fileType === 'pdf' || ext === '.pdf' || getMimeType(displayName) === 'application/pdf';
+
+    // All PDF downloads are disabled inside the Course Vault
+    if (isPdf) {
+      return res.status(403).json({ message: 'PDF downloads are disabled in Course Vault. Please use the online PDF viewer.' });
+    }
+
+    const buffer = await downloadFileFromB2(b2Key);
+    const safeName = displayName.replace(/[^\w\s.-]/gi, '_');
+
+    res.setHeader('Content-Type', getMimeType(safeName));
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeName)}"`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (err) {
+    console.error('[API] /api/vault/download error:', err.message);
+    res.status(500).json({ message: 'Failed to download file.' });
+  }
 });
+
+// Helper for file extension
+function getExtension(filename) {
+  return ('.' + (filename.split('.').pop() || '')).toLowerCase();
+}
+
+// 5. Admin Upload Endpoint
+app.post('/api/admin/vault/upload', auth, adminAuth, vaultMemoryUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
+
+    const { courseName, abbreviation, category, paperType, teacherName, displayName } = req.body;
+    if (!courseName || !displayName || !category) {
+      return res.status(400).json({ message: 'Missing required fields (courseName, displayName, category).' });
+    }
+
+    let buffer = req.file.buffer;
+    let originalName = req.file.originalname;
+    let ext = getExtension(originalName);
+
+    // Convert docx/pptx to PDF if convertible
+    const { convertToPdf } = require('./utils/documentConverter');
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), 'myportal-vault-admin');
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+    if (['.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls'].includes(ext)) {
+      const tempPath = path.join(tempDir, `${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+      fs.writeFileSync(tempPath, buffer);
+      try {
+        const pdfPath = await convertToPdf(tempPath, tempDir);
+        buffer = fs.readFileSync(pdfPath);
+        ext = '.pdf';
+        originalName = originalName.replace(/\.[^.]+$/, '.pdf');
+        try { fs.unlinkSync(pdfPath); } catch (_) {}
+      } catch (convErr) {
+        console.warn('[ADMIN_VAULT] Document conversion failed, uploading original:', convErr.message);
+      } finally {
+        try { fs.unlinkSync(tempPath); } catch (_) {}
+      }
+    }
+
+    const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+    const courseSlug = normStr(courseName);
+    const safeDisplay = displayName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const b2Key = `course-vault-papers/${courseSlug}/${Date.now()}_${safeDisplay}${ext}`;
+
+    const { uploadToB2, getMimeType } = require('./utils/b2Client');
+    await uploadToB2(b2Key, buffer, getMimeType(originalName));
+
+    const finalAbbr = deriveAbbreviation(courseName, abbreviation);
+
+    const vaultFile = await CourseVaultFile.create({
+      courseCode: finalAbbr,
+      courseName,
+      abbreviation: finalAbbr,
+      displayName,
+      teacherName: teacherName || '',
+      category,
+      paperType: paperType || detectPaperType(displayName),
+      contentHash,
+      source: 'admin_upload',
+      status: 'published',
+      fileName: originalName,
+      normalizedFileName: normStr(originalName),
+      b2Key,
+      fileType: ext.replace('.', ''),
+      fileSize: buffer.length,
+      uploadedBy: req.user.id
+    });
+
+    res.json(vaultFile);
+  } catch (err) {
+    console.error('[API] /api/admin/vault/upload error:', err.message);
+    res.status(500).json({ message: err.message || 'Failed to upload file to vault.' });
+  }
+});
+
 
 
 app.use((err, req, res, next) => {

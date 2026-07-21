@@ -12,7 +12,6 @@ import Login from './Login';
 import Calendar from './Calendar';
 import GradeBook from './GradeBook';
 import ResultHistory from './ResultHistory';
-import AdminDashboard from './AdminDashboard';
 import CashManager from './CashManager';
 import TaskSummaryModal from './TaskSummaryModal';
 import About from './About';
@@ -24,14 +23,15 @@ import Keynote from './Keynote';
 import AddKeynoteModal from './AddKeynoteModal';
 import CoursePortalView from './CoursePortalView';
 import SemesterResultPage from './SemesterResultPage';
+import CourseVaultPdfViewer from './CourseVaultPdfViewer';
+
 
 import Datesheet from './Datesheet';
 import AnimatedLogo from './Animation'; 
 import { CustomToast, ToastConfig } from './CustomToast';
-import SyncDiagnostics from './SyncDiagnostics';
 
 import useLiveSync from './hooks/useLiveSync';
-import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock, Users } from 'lucide-react';
+import { Heart, ArrowRight, X, Activity, Coffee, FastForward, Shield, Lock } from 'lucide-react';
 
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
@@ -79,7 +79,6 @@ const TAB_PATH_MAP = {
   'Keynotes': '/keynotes',
   'Grade Book': '/gradebook',
   'History': '/history',
-  'Sync Diagnostics': '/sync-diagnostics',
   'Datesheet': '/datesheet',
   'Result': '/result',
   'Cash-Overview': '/cash/overview',
@@ -92,7 +91,6 @@ const TAB_PATH_MAP = {
   'Habits-Tracker': '/habits/tracker',
   'Habits-Analytics': '/habits/analytics',
   'Bin': '/bin',
-  'Admin': '/admin',
   'Profile': '/profile',
   'Settings': '/settings'
 };
@@ -290,7 +288,11 @@ function AppLayout() {
       const m = Math.floor(hfState.timeLeft / 60).toString().padStart(2, '0');
       const s = (hfState.timeLeft % 60).toString().padStart(2, '0');
       document.title = `(${m}:${s}) ${HF_MODES[hfState.modeId]?.title || 'Focus'}`;
-    } else { document.title = "Student Portal"; }
+    } else {
+      if (typeof window !== 'undefined' && window.location.pathname !== '/pdf-viewer') {
+        document.title = "Student Portal";
+      }
+    }
   }, [hfState.timeLeft, hfState.isAutomated, hfState.modeId]);
 
   const executePhaseTransition = useCallback(async () => {
@@ -1197,6 +1199,7 @@ function AppLayout() {
     <Routes>
       {}
       <Route path="/test-logo" element={<AnimatedLogo />} />
+      <Route path="/pdf-viewer" element={<CourseVaultPdfViewer />} />
 
       <Route
         path="/login"
@@ -1302,7 +1305,6 @@ function AppLayout() {
                   <div className={`w-full h-full ${activeTab === 'Grade Book' ? 'block' : 'hidden'}`}><GradeBook courses={visibleCourses} user={user} activeGroup={activeGroup} selectedSemester={selectedSemester} /></div>
                   {activeTab === 'History' && <div className="w-full h-full"><ResultHistory /></div>}
                   {activeTab === 'Result' && <div className="w-full h-full"><SemesterResultPage semesterStatus={semesterStatus} onViewFullHistory={() => handleNavigate('History')} onDismiss={async () => { await handleAcknowledgeSemester(); handleNavigate('Welcome'); }} /></div>}
-                  {activeTab === 'Sync Diagnostics' && <div className="w-full h-full"><SyncDiagnostics /></div>}
 
                   <div className={`w-full h-full ${(activeTab === 'Datesheet' && activeExams.length > 0) ? 'block' : 'hidden'}`}>
                     <Datesheet exams={activeExams} />
@@ -1311,7 +1313,6 @@ function AppLayout() {
                   <div className={`w-full h-full ${['Announcements', 'Attendance', 'Submissions', 'Course Material', 'Course Vault'].includes(activeTab) ? 'block' : 'hidden'}`}><CoursePortalView activeTab={activeTab} courses={visibleCourses} user={user} filters={filters} selectedSemester={selectedSemester} onSemesterChange={handleSemesterChange} /></div>
                   <div className={`w-full h-full ${activeTab.startsWith('Cash-') ? 'block' : 'hidden'}`}><CashManager activeTab={activeTab} filters={filters} isAddingNew={isAddingNewTransaction} setIsAddingNew={setIsAddingNewTransaction} /></div>
                   <div className={`w-full h-full ${activeTab === 'Bin' ? 'block' : 'hidden'}`}><Bin binItems={binItems} restoreItem={restoreItem} permanentlyDeleteItem={permanentlyDeleteItem} deleteAll={deleteAllBin} restoreAll={restoreAllBin} /></div>
-                  <div className={`w-full h-full ${activeTab === 'Admin' ? 'block' : 'hidden'}`}><AdminDashboard currentUser={user} /></div>
                   <div className={`w-full h-full ${activeTab === 'Profile' ? 'block' : 'hidden'}`}><About user={user} onUpdateProfilePic={handleUpdateProfilePic} onUpdatePrivacy={handleUpdatePrivacy} /></div>
                   <div className={`w-full h-full ${activeTab === 'Settings' ? 'block' : 'hidden'}`}><Settings user={user} idleTimeout={idleTimeout} setIdleTimeout={setIdleTimeout} onManualSync={handleManualSync} onDisconnect={handleDisconnect} onLinkPortal={handleLinkPortal} onUpdateProfile={handleUpdateProfile} onChangePassword={handleChangePassword} courses={courses} addCourse={addCourse} removeCourse={removeCourse} onUpdatePrivacy={handleUpdatePrivacy} selectedSemester={selectedSemester} onSemesterChange={handleSemesterChange} /></div>
                 </div>
@@ -1433,7 +1434,8 @@ function AppLayout() {
 // 🌐 APP ROOT (Wraps the layout in a Router environment)
 // =========================================================
 export default function App() {
-  const [showSplash, setShowSplash] = React.useState(true);
+  const isPdfViewer = typeof window !== 'undefined' && window.location.pathname === '/pdf-viewer';
+  const [showSplash, setShowSplash] = React.useState(() => !isPdfViewer);
   const [isDarkMode] = React.useState(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) return savedTheme === 'dark';
@@ -1441,15 +1443,16 @@ export default function App() {
   });
 
   React.useEffect(() => {
+    if (isPdfViewer) return;
     const timer = setTimeout(() => {
       setShowSplash(false);
     }, 2500);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isPdfViewer]);
 
   return (
     <Router>
-      {showSplash && (
+      {!isPdfViewer && showSplash && (
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center transition-opacity duration-1000 ${isDarkMode ? 'bg-black' : 'bg-white'}`}>
           <AnimatedLogo isDarkMode={isDarkMode} />
         </div>

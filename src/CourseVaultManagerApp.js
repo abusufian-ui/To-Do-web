@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Folder, FileText, CheckCircle, Trash2, Upload, RefreshCw, FolderPlus, Inbox } from 'lucide-react';
 import axios from 'axios';
+import VaultUploadPanel from './VaultUploadPanel';
+
 
 const CourseVaultManagerApp = ({ token }) => {
   const [activeTab, setActiveTab] = useState('inbox'); 
@@ -117,6 +119,12 @@ const CourseVaultManagerApp = ({ token }) => {
         </h2>
         <div className="flex gap-2">
           <button
+            onClick={() => setActiveTab('upload')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'upload' ? 'bg-blue-500 text-white' : 'bg-slate-700 hover:bg-slate-600'}`}
+          >
+            <Upload size={16} /> Upload New File
+          </button>
+          <button
             onClick={() => setActiveTab('inbox')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'inbox' ? 'bg-blue-500 text-white' : 'bg-slate-700 hover:bg-slate-600'}`}
           >
@@ -132,7 +140,12 @@ const CourseVaultManagerApp = ({ token }) => {
       </div>
 
       <div className="p-4">
-        {loading && <div className="text-center p-4 text-slate-400">Loading...</div>}
+        {activeTab === 'upload' && (
+          <VaultUploadPanel token={token} onUploadSuccess={fetchPendingFiles} />
+        )}
+
+        {loading && activeTab !== 'upload' && <div className="text-center p-4 text-slate-400">Loading...</div>}
+
 
         {}
         {activeTab === 'inbox' && !loading && (
