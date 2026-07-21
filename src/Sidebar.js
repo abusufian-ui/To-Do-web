@@ -47,7 +47,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
     { id: 'Habits-Analytics', label: 'Analytics Engine', icon: BarChart3 },
   ];
 
-  const [adminPortalUrl, setAdminPortalUrl] = useState('http://localhost:3001');
+  const [adminPortalUrl, setAdminPortalUrl] = useState('https://admin.myportalucp.online');
 
   React.useEffect(() => {
     const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';

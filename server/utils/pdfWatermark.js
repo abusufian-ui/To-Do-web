@@ -1,15 +1,21 @@
 'use strict';
 
-const { PDFDocument, rgb, degrees, StandardFonts } = require('pdf-lib');
+let pdfLib = null;
+try {
+  pdfLib = require('pdf-lib');
+} catch (err) {
+  console.warn('[PDF_WATERMARK] Note: pdf-lib module is not installed on this instance. Watermarking gracefully bypassed until npm install.');
+}
 
 /**
  * Adds a diagonal "My Portal UCP" watermark to every page of a PDF buffer.
- * If processing fails, returns the original buffer as a safe fallback.
+ * If processing fails or pdf-lib is missing, returns the original buffer as a safe fallback.
  */
 async function addWatermark(pdfBuffer) {
-  if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer)) return pdfBuffer;
+  if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || !pdfLib) return pdfBuffer;
 
   try {
+    const { PDFDocument, rgb, degrees, StandardFonts } = pdfLib;
     const pdfDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const text = 'MY PORTAL UCP';

@@ -566,6 +566,7 @@ const allowedOrigins = [
   'http://4.188.99.151',
   'https://horizon.ucp.edu.pk',
   'https://www.myportalucp.online',
+  'https://admin.myportalucp.online',
   'chrome-extension://fgipkgekakeenpklgdgeibndjmmcgaof'
 ];
 
@@ -575,6 +576,7 @@ const extraOrigins = (process.env.EXTRA_CORS_ORIGINS || '')
 const corsAllowList = new Set([
   ...allowedOrigins,
   'https://web.myportalucp.online',
+  'https://admin.myportalucp.online',
   'https://api.myportalucp.online',
   ...extraOrigins,
 ]);
@@ -892,7 +894,7 @@ app.get('/api/public/settings', async (req, res) => {
         webPortalLink = val;
       }
 
-      let adminPortalLink = "http://localhost:3001";
+      let adminPortalLink = "https://admin.myportalucp.online";
       const adminLinkSetting = await SystemSettings.findOne({ key: "admin_portal_link" });
       if (adminLinkSetting && adminLinkSetting.value) {
         let val = adminLinkSetting.value.trim();
