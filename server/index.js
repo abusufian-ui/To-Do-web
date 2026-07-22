@@ -3960,9 +3960,24 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
       filter.$or = [
         { name: { $regex: searchQuery, $options: 'i' } },
         { email: { $regex: searchQuery, $options: 'i' } },
-        { secondaryEmail: { $regex: searchQuery, $options: 'i' } }
+        { secondaryEmail: { $regex: searchQuery, $options: 'i' } },
+        { portalId: { $regex: searchQuery, $options: 'i' } },
+        { faculty: { $regex: searchQuery, $options: 'i' } },
+        { program: { $regex: searchQuery, $options: 'i' } }
       ];
     }
+    if (req.query.isAdmin !== undefined) {
+      filter.isAdmin = req.query.isAdmin === 'true';
+    }
+    if (req.query.isBlocked !== undefined) {
+      filter.isBlocked = req.query.isBlocked === 'true';
+    }
+    if (req.query.role) {
+      if (req.query.role === 'admin') filter.isAdmin = true;
+      if (req.query.role === 'user' || req.query.role === 'student') filter.isAdmin = false;
+      if (req.query.role === 'blocked') filter.isBlocked = true;
+    }
+
     if (portalConnected) {
       filter.isPortalConnected = true;
       filter.ucpCookie = { $ne: null };
@@ -4011,49 +4026,18 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
     }
 
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
+    const limit = parseInt(req.query.limit) || 20;
 
-    const totalUsers = await User.countDocuments(filter);
-    const users = await User.find(filter)
-      .select('-password')
-      .sort({ isAdmin: -1, createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
-
-    const modelsToMeasure = [
-      { model: Task, field: 'userId' },
-      { model: Note, field: 'user' },
-      { model: Keynote, field: 'userId' },
-      { model: Transaction, field: 'userId' },
-      { model: Habit, field: 'userId' },
-      { model: Timetable, field: 'userId' },
-      { model: Grade, field: 'userId' }
-    ];
-
-    const storageMap = {};
-    for (const user of users) {
-      storageMap[user._id.toString()] = 15360;
-    }
-
-    const userIds = users.map(u => u._id);
-    await Promise.all(modelsToMeasure.map(async ({ model, field }) => {
-      try {
-        const results = await model.aggregate([
-          { $match: { [field]: { $in: userIds } } },
-          { $group: { _id: `$${field}`, count: { $sum: 1 } } }
-        ]);
-        for (const row of results) {
-          if (row._id) {
-            const uid = row._id.toString();
-            if (storageMap[uid] !== undefined) {
-              storageMap[uid] += row.count * 300; // 300 bytes per document estimate
-            }
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-    }));
+    // Run count and query in parallel with .lean() for lightning speed
+    const [totalUsers, users] = await Promise.all([
+      User.countDocuments(filter),
+      User.find(filter)
+        .select('-password -ucpCookieEncrypted')
+        .sort({ isAdmin: -1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean()
+    ]);
 
     const usersWithStorage = users.map((user) => {
       return {
@@ -4086,7 +4070,7 @@ app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
         accessedWeb: user.accessedWeb || false,
         accessedMobile: user.accessedMobile || false,
         accessedExtension: user.accessedExtension || false,
-        storageUsed: storageMap[user._id.toString()] || 15360
+        storageUsed: 15360
       };
     });
 
@@ -4621,6 +4605,235 @@ app.delete('/api/admin/b2-files', auth, adminAuth, async (req, res) => {
     res.json({ success: true, message: 'File deleted from B2 and references removed.' });
   } catch (error) {
     console.error('[ADMIN B2 DELETE ERROR]', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/admin/vault/files - List all vault files (from CourseVaultFile and CourseMaterial)
+app.get('/api/admin/vault/files', auth, adminAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+    const { category, search } = req.query;
+
+    const vaultFilter = {};
+    const matFilter = { b2Key: { $exists: true, $ne: '' } };
+
+    if (category === 'past_paper') {
+      vaultFilter.category = 'past_paper';
+    } else if (category === 'lecture_note') {
+      vaultFilter.category = 'lecture_note';
+    }
+
+    if (search) {
+      const sRegex = { $regex: search, $options: 'i' };
+      vaultFilter.$or = [
+        { courseName: sRegex },
+        { courseCode: sRegex },
+        { displayName: sRegex },
+        { fileName: sRegex },
+        { teacherName: sRegex },
+        { paperType: sRegex }
+      ];
+      matFilter.$or = [
+        { courseName: sRegex },
+        { courseCode: sRegex },
+        { fileName: sRegex },
+        { teacherName: sRegex }
+      ];
+    }
+
+    const [vaultFiles, materialFiles] = await Promise.all([
+      CourseVaultFile.find(vaultFilter).sort({ createdAt: -1 }).lean(),
+      CourseMaterial.find(matFilter).sort({ createdAt: -1 }).lean()
+    ]);
+
+    // Map vault files
+    const mappedVault = vaultFiles.map(f => ({
+      _id: f._id,
+      displayName: f.displayName || f.fileName,
+      fileName: f.fileName,
+      courseName: f.courseName,
+      courseCode: f.courseCode || 'COURSE',
+      category: f.category || 'past_paper',
+      paperType: f.paperType || 'other',
+      teacherName: f.teacherName || 'General',
+      fileSize: f.fileSize || 0,
+      fileType: f.fileType || 'pdf',
+      b2Key: f.b2Key,
+      createdAt: f.createdAt,
+      source: 'vault'
+    }));
+
+    // Map course material files
+    const mappedMaterials = materialFiles.map(m => {
+      const isPaper = typeof isPastPaper === 'function' ? isPastPaper(m.fileName) : false;
+      const pType = typeof detectPaperType === 'function' ? detectPaperType(m.fileName) : 'other';
+      const cat = isPaper ? 'past_paper' : 'lecture_note';
+
+      return {
+        _id: m._id,
+        displayName: m.fileName,
+        fileName: m.fileName,
+        courseName: m.courseName || m.courseCode || 'Course Material',
+        courseCode: m.courseCode || 'COURSE',
+        category: cat,
+        paperType: isPaper ? pType : '',
+        teacherName: m.teacherName || 'Scraped Material',
+        fileSize: m.fileSize || 0,
+        fileType: m.fileType || 'pdf',
+        b2Key: m.b2Key,
+        createdAt: m.createdAt,
+        source: 'material'
+      };
+    }).filter(m => {
+      if (category === 'past_paper') return m.category === 'past_paper';
+      if (category === 'lecture_note') return m.category === 'lecture_note';
+      return true;
+    });
+
+    const combined = [...mappedVault, ...mappedMaterials].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const totalFiles = combined.length;
+    const startIndex = (page - 1) * limit;
+    const paginatedFiles = combined.slice(startIndex, startIndex + limit);
+
+    res.json({
+      files: paginatedFiles,
+      totalFiles,
+      page,
+      pages: Math.ceil(totalFiles / limit) || 1
+    });
+  } catch (error) {
+    console.error('[ADMIN VAULT LIST ERROR]', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/admin/vault/meta - Metadata for dropdowns (courses, teachers, paperTypes)
+app.get('/api/admin/vault/meta', auth, adminAuth, async (req, res) => {
+  try {
+    const [teachers, paperTypes, vaultFileRecords, dbCourseRecords, materialRecords] = await Promise.all([
+      CourseVaultFile.distinct('teacherName', { teacherName: { $ne: '' } }),
+      CourseVaultFile.distinct('paperType', { paperType: { $ne: '' } }),
+      CourseVaultFile.find({}, 'courseName courseCode').lean(),
+      Course.find({}, 'name code').lean(),
+      CourseMaterial.find({}, 'courseName courseCode teacherName').lean()
+    ]);
+
+    // Build unified course list with name & code
+    const courseMap = new Map();
+
+    for (const rec of dbCourseRecords) {
+      if (rec.name) {
+        courseMap.set(rec.name.trim().toLowerCase(), { name: rec.name.trim(), code: rec.code || 'COURSE' });
+      }
+    }
+    for (const rec of vaultFileRecords) {
+      if (rec.courseName) {
+        const key = rec.courseName.trim().toLowerCase();
+        if (!courseMap.has(key)) {
+          courseMap.set(key, { name: rec.courseName.trim(), code: rec.courseCode || 'COURSE' });
+        }
+      }
+    }
+    for (const rec of materialRecords) {
+      if (rec.courseName) {
+        const key = rec.courseName.trim().toLowerCase();
+        if (!courseMap.has(key)) {
+          courseMap.set(key, { name: rec.courseName.trim(), code: rec.courseCode || 'COURSE' });
+        }
+      }
+    }
+
+    const allTeachers = new Set([
+      ...teachers.map(t => t ? t.trim() : '').filter(Boolean),
+      ...materialRecords.map(m => m.teacherName ? m.teacherName.trim() : '').filter(Boolean)
+    ]);
+
+    const coursesList = Array.from(courseMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const teachersList = Array.from(allTeachers).sort();
+    const standardPaperTypes = ['mid_term', 'final_term', 'quiz', 'assignment', 'graded_lab', 'class_participation', 'other'];
+    const customPaperTypes = paperTypes.filter(t => t && !standardPaperTypes.includes(t));
+
+    res.json({
+      courses: coursesList,
+      teachers: teachersList,
+      standardPaperTypes,
+      customPaperTypes: customPaperTypes.sort()
+    });
+  } catch (error) {
+    console.error('[ADMIN VAULT META ERROR]', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// DELETE /api/admin/vault/files/:id - Delete file from Backblaze B2 and MongoDB
+app.delete('/api/admin/vault/files/:id', auth, adminAuth, async (req, res) => {
+  try {
+    let file = await CourseVaultFile.findById(req.params.id);
+    let isMaterial = false;
+
+    if (!file) {
+      file = await CourseMaterial.findById(req.params.id);
+      isMaterial = true;
+    }
+
+    if (!file) {
+      return res.status(404).json({ message: 'Vault file not found.' });
+    }
+
+    // Delete from Backblaze B2 if key exists
+    if (file.b2Key) {
+      try {
+        const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+        const command = new DeleteObjectCommand({
+          Bucket: B2_BUCKET,
+          Key: file.b2Key
+        });
+        await b2.send(command);
+      } catch (b2Err) {
+        console.warn(`[ADMIN B2 FILE DELETE WARNING] Key ${file.b2Key}:`, b2Err.message);
+      }
+    }
+
+    if (isMaterial) {
+      await CourseMaterial.findByIdAndDelete(req.params.id);
+    } else {
+      await CourseVaultFile.findByIdAndDelete(req.params.id);
+    }
+
+    res.json({ success: true, message: 'Vault file deleted from B2 and database.' });
+  } catch (error) {
+    console.error('[ADMIN VAULT FILE DELETE ERROR]', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// PUT /api/admin/vault/files/:id/rename - Rename display title of vault file or course material
+app.put('/api/admin/vault/files/:id/rename', auth, adminAuth, async (req, res) => {
+  try {
+    const { displayName } = req.body;
+    if (!displayName || !displayName.trim()) {
+      return res.status(400).json({ message: 'Display name is required.' });
+    }
+
+    let file = await CourseVaultFile.findById(req.params.id);
+    if (file) {
+      file.displayName = displayName.trim();
+      await file.save();
+      return res.json({ success: true, file });
+    }
+
+    let mat = await CourseMaterial.findById(req.params.id);
+    if (mat) {
+      mat.fileName = displayName.trim();
+      await mat.save();
+      return res.json({ success: true, file: mat });
+    }
+
+    return res.status(404).json({ message: 'File not found.' });
+  } catch (error) {
+    console.error('[ADMIN VAULT RENAME ERROR]', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -7840,19 +8053,6 @@ app.put('/api/admin/vault/files/:id/publish', adminAuth, async (req, res) => {
 });
 
 
-app.delete('/api/admin/vault/files/:id', adminAuth, async (req, res) => {
-  try {
-    const file = await CourseVaultFile.findById(req.params.id);
-    if (!file) return res.status(404).json({ message: 'Not found' });
-    if (file.b2Key) {
-        
-    }
-    await CourseVaultFile.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
 
 
 
@@ -8295,7 +8495,7 @@ app.get('/api/vault/past-papers/:courseName', auth, async (req, res) => {
     const vaultFiles = await CourseVaultFile.find({
       status: 'published',
       category: 'past_paper'
-    }).lean();
+    }).populate('uploadedBy', 'name email').lean();
 
     for (const f of vaultFiles) {
       if (!isCourseMatch(f.courseName, f.courseCode, targetKey)) continue;
@@ -8306,15 +8506,27 @@ app.get('/api/vault/past-papers/:courseName', auth, async (req, res) => {
       if (f.contentHash) seenHashes.add(f.contentHash);
       seenNames.add(nameKey);
 
+      let uploaderFirstName = '';
+      if (f.source === 'admin_upload' || f.uploadedBy) {
+        const rawName = f.uploadedBy?.name || f.uploadedBy?.email || '';
+        if (rawName) {
+          uploaderFirstName = rawName.trim().split(' ')[0].split('@')[0];
+          uploaderFirstName = uploaderFirstName.charAt(0).toUpperCase() + uploaderFirstName.slice(1);
+        }
+      }
+
       const typeKey = result[f.paperType] ? f.paperType : 'other';
       result[typeKey].push({
         id: f._id,
         source: 'vault',
+        originSource: f.source || 'vault',
+        uploaderFirstName,
         displayName: f.displayName || f.fileName,
         fileName: f.fileName,
         fileSize: f.fileSize,
         fileType: f.fileType,
         paperType: f.paperType,
+        contentHash: f.contentHash || null,
         createdAt: f.createdAt
       });
     }
@@ -8335,6 +8547,8 @@ app.get('/api/vault/past-papers/:courseName', auth, async (req, res) => {
         result[typeKey].push({
           id: m._id,
           source: 'material',
+          originSource: 'course_material',
+          uploaderFirstName: '',
           displayName: m.fileName,
           fileName: m.fileName,
           fileSize: m.fileSize,
@@ -8362,6 +8576,8 @@ app.get('/api/vault/past-papers/:courseName', auth, async (req, res) => {
           result[typeKey].push({
             id: task._id,
             source: 'submission',
+            originSource: 'submission',
+            uploaderFirstName: '',
             displayName: task.title,
             fileName: task.title,
             fileSize: task.fileSize || 0,
@@ -8399,21 +8615,34 @@ app.get('/api/vault/lecture-notes/:courseName', auth, async (req, res) => {
     const vaultFiles = await CourseVaultFile.find({
       status: 'published',
       category: 'lecture_note'
-    }).lean();
+    }).populate('uploadedBy', 'name email').lean();
 
     for (const f of vaultFiles) {
       if (!isCourseMatch(f.courseName, f.courseCode, targetKey)) continue;
       const bucket = getTeacherBucket(f.teacherName);
       const fKey = normStr(f.displayName || f.fileName);
+
+      let uploaderFirstName = '';
+      if (f.source === 'admin_upload' || f.uploadedBy) {
+        const rawName = f.uploadedBy?.name || f.uploadedBy?.email || '';
+        if (rawName) {
+          uploaderFirstName = rawName.trim().split(' ')[0].split('@')[0];
+          uploaderFirstName = uploaderFirstName.charAt(0).toUpperCase() + uploaderFirstName.slice(1);
+        }
+      }
+
       if (!bucket.has(fKey)) {
         bucket.set(fKey, {
           id: f._id,
           source: 'vault',
+          originSource: f.source || 'vault',
+          uploaderFirstName,
           displayName: f.displayName || f.fileName,
           fileName: f.fileName,
           fileSize: f.fileSize,
           fileType: f.fileType,
           sections: f.section ? [f.section] : [],
+          contentHash: f.contentHash || null,
           createdAt: f.createdAt
         });
       }
@@ -8433,6 +8662,8 @@ app.get('/api/vault/lecture-notes/:courseName', auth, async (req, res) => {
           bucket.set(fKey, {
             id: m._id,
             source: 'material',
+            originSource: 'course_material',
+            uploaderFirstName: '',
             displayName: m.fileName,
             fileName: m.fileName,
             fileSize: m.fileSize,
@@ -8532,7 +8763,9 @@ app.get('/api/vault/download/:source/:fileId', async (req, res) => {
     const token = req.header('x-auth-token') || req.query.token;
     if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
 
-    jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALG] });
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: [JWT_ALG] });
+    const requestingUser = await User.findById(decoded.id).select('isAdmin').lean();
+    const isAdmin = requestingUser && requestingUser.isAdmin;
 
     const { source, fileId } = req.params;
     let b2Key = '';
@@ -8563,17 +8796,13 @@ app.get('/api/vault/download/:source/:fileId', async (req, res) => {
       return res.status(400).json({ message: 'Invalid source.' });
     }
 
-    if (fileType === 'pdf' || /\.pdf$/i.test(displayName) || /\.pdf$/i.test(b2Key)) {
-      return res.status(403).json({ message: 'PDF downloads are disabled. Please use the Protected Viewer.' });
-    }
-
     const { downloadFileFromB2, getMimeType } = require('./utils/b2Client');
     const ext = getExtension(displayName);
     const isPdf = fileType === 'pdf' || ext === '.pdf' || getMimeType(displayName) === 'application/pdf';
 
-    // All PDF downloads are disabled inside the Course Vault
-    if (isPdf) {
-      return res.status(403).json({ message: 'PDF downloads are disabled in Course Vault. Please use the online PDF viewer.' });
+    // PDF downloads are disabled for students, but ALLOWED for Admins (Master Rights)
+    if (isPdf && !isAdmin) {
+      return res.status(403).json({ message: 'PDF downloads are disabled for students. Please use the online PDF viewer.' });
     }
 
     const buffer = await downloadFileFromB2(b2Key);
@@ -8632,6 +8861,94 @@ app.post('/api/admin/vault/upload', auth, adminAuth, vaultMemoryUpload.single('f
     }
 
     const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+    // ── Server-side Comprehensive Duplicate Detection (Hash, File Size & Normalized Name) ──
+    const targetCourseNorm = normStr(courseName);
+    const targetAbbrNorm = abbreviation ? normStr(abbreviation) : '';
+    const normOriginal = normStr(originalName);
+    const normDisplay = normStr(displayName);
+
+    const existingVaultFiles = await CourseVaultFile.find({
+      status: 'published'
+    }).select('courseName courseCode abbreviation displayName fileName originalFileName normalizedFileName contentHash fileSize category').lean();
+
+    let duplicateFound = null;
+
+    for (const f of existingVaultFiles) {
+      const matchCourse = isCourseMatch(f.courseName, f.courseCode || f.abbreviation, targetCourseNorm) ||
+                          (targetAbbrNorm && isCourseMatch(f.courseName, f.courseCode || f.abbreviation, targetAbbrNorm));
+      if (!matchCourse) continue;
+
+      // 1. SHA-256 contentHash match (byte-for-byte identical)
+      if (f.contentHash && f.contentHash === contentHash) {
+        duplicateFound = {
+          name: f.displayName || f.fileName,
+          reason: `Byte-for-byte identical (SHA-256 hash match) to "${f.displayName || f.fileName}"`
+        };
+        break;
+      }
+
+      // 2. Exact File Size match (in bytes)
+      if (f.fileSize && f.fileSize === buffer.length && buffer.length > 0) {
+        duplicateFound = {
+          name: f.displayName || f.fileName,
+          reason: `Identical file size (${buffer.length} bytes) to "${f.displayName || f.fileName}"`
+        };
+        break;
+      }
+
+      // 3. Normalized Name match
+      const fNormDisplay = normStr(f.displayName || '');
+      const fNormFile = normStr(f.fileName || '');
+      const fNormOrig = normStr(f.originalFileName || '');
+
+      if ((fNormDisplay && (fNormDisplay === normDisplay || fNormDisplay === normOriginal)) ||
+          (fNormFile && (fNormFile === normOriginal || fNormFile === normDisplay)) ||
+          (fNormOrig && (fNormOrig === normOriginal || fNormOrig === normDisplay))) {
+        duplicateFound = {
+          name: f.displayName || f.fileName,
+          reason: `Matching filename/title to existing file "${f.displayName || f.fileName}"`
+        };
+        break;
+      }
+    }
+
+    if (!duplicateFound) {
+      const existingMaterials = await CourseMaterial.find({
+        b2Key: { $exists: true, $ne: '' }
+      }).select('courseName courseCode fileName fileSize').lean();
+
+      for (const m of existingMaterials) {
+        const matchCourse = isCourseMatch(m.courseName, m.courseCode, targetCourseNorm) ||
+                            (targetAbbrNorm && isCourseMatch(m.courseName, m.courseCode, targetAbbrNorm));
+        if (!matchCourse) continue;
+
+        if (m.fileSize && m.fileSize === buffer.length && buffer.length > 0) {
+          duplicateFound = {
+            name: m.fileName,
+            reason: `Identical file size (${buffer.length} bytes) to existing material "${m.fileName}"`
+          };
+          break;
+        }
+
+        const mNorm = normStr(m.fileName || '');
+        if (mNorm && (mNorm === normOriginal || mNorm === normDisplay)) {
+          duplicateFound = {
+            name: m.fileName,
+            reason: `Matching filename to existing material "${m.fileName}"`
+          };
+          break;
+        }
+      }
+    }
+
+    if (duplicateFound) {
+      return res.status(409).json({
+        duplicate: true,
+        existingFileName: duplicateFound.name,
+        message: `Duplicate detected in this course: ${duplicateFound.reason}. Upload blocked.`
+      });
+    }
 
     const courseSlug = normStr(courseName);
     const safeDisplay = displayName.replace(/[^a-zA-Z0-9._-]/g, '_');
