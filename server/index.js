@@ -3501,6 +3501,16 @@ mongoose.connect(dbLink, {
       }
     });
     console.log("🟢 Database Live Sync Watchdogs Active!");
+
+    // Ensure any existing admin without a security question is required to set one up on next login
+    User.updateMany(
+      { isAdmin: true, $or: [{ adminSecurityQuestion: null }, { adminSecurityAnswer: null }] },
+      { $set: { adminSecuritySetupDone: false } }
+    ).then(res => {
+      if (res.modifiedCount > 0) {
+        console.log(`🔒 [SECURITY INIT] Set ${res.modifiedCount} admin account(s) for security question setup on next login.`);
+      }
+    }).catch(err => console.error('[SECURITY INIT CHECK ERROR]', err.message));
   } catch (err) {
     console.log("⚠️ MongoDB Change Streams require a Replica Set (Active by default on MongoDB Atlas).");
   }
