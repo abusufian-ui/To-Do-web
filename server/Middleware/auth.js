@@ -17,6 +17,9 @@ const auth = async (req, res, next) => {
     if (!userId) return res.status(401).json({ message: 'Token is not valid' });
 
     // Validate active login session
+    const tokenSignature = token.split('.')[2] || '';
+    if (!tokenSignature) return res.status(401).json({ message: 'Token is not valid' });
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(401).json({ logout: true, message: 'Account does not exist. Access denied.' });
@@ -31,7 +34,11 @@ const auth = async (req, res, next) => {
 
     let session = await DeviceSession.findOne({ userId, tokenSignature });
     if (!session) {
-      // Auto-register session for existing valid tokens (non-admin users)
+      // For admin users, do NOT auto-register sessions — old tokens must fail
+      if (user.isAdmin) {
+        return res.status(401).json({ logout: true, message: 'Admin session not found.' });
+      }
+      // Auto-register session for existing valid tokens (non-admin users only)
       session = await registerDeviceSession(userId, token, req);
       if (!session) return res.status(401).json({ message: 'Token is not valid' });
     } else {
