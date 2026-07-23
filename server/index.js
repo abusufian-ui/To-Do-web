@@ -4772,10 +4772,24 @@ app.delete('/api/admin/vault/files/:id', auth, adminAuth, async (req, res) => {
   try {
     let file = await CourseVaultFile.findById(req.params.id);
     let isMaterial = false;
+    let isSubmission = false;
+    let submissionDoc = null;
+    let taskDoc = null;
 
     if (!file) {
       file = await CourseMaterial.findById(req.params.id);
-      isMaterial = true;
+      if (file) {
+        isMaterial = true;
+      }
+    }
+
+    if (!file) {
+      submissionDoc = await Submission.findOne({ "tasks._id": req.params.id });
+      if (submissionDoc) {
+        taskDoc = submissionDoc.tasks.id(req.params.id);
+        file = taskDoc;
+        isSubmission = true;
+      }
     }
 
     if (!file) {
@@ -4797,7 +4811,18 @@ app.delete('/api/admin/vault/files/:id', auth, adminAuth, async (req, res) => {
     }
 
     if (isMaterial) {
-      await CourseMaterial.findByIdAndDelete(req.params.id);
+      // Soft delete: set isAdminDeleted and clear b2Key so it isn't re-scraped
+      await CourseMaterial.findByIdAndUpdate(req.params.id, {
+        $set: {
+          isAdminDeleted: true,
+          b2Key: ''
+        }
+      });
+    } else if (isSubmission) {
+      // Soft delete submission task inside arrays
+      taskDoc.isAdminDeleted = true;
+      taskDoc.b2Key = '';
+      await submissionDoc.save();
     } else {
       await CourseVaultFile.findByIdAndDelete(req.params.id);
     }
@@ -7658,7 +7683,7 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
     const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
     const activeSemester = course?.semester || getCurrentSemesterCode();
 
-    const materials = await CourseMaterial.find({ courseCode: globalCode, sectionCode, semester: activeSemester })
+    const materials = await CourseMaterial.find({ courseCode: globalCode, sectionCode, semester: activeSemester, isAdminDeleted: { $ne: true } })
       .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key sequenceNumber')
       .sort({ isArchiveExtracted: 1, sequenceNumber: 1, fileName: 1 })
       .lean();
@@ -7709,7 +7734,7 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
     const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
     const activeSemester = course?.semester || getCurrentSemesterCode();
 
-    const count = await CourseMaterial.countDocuments({ courseCode: globalCode, sectionCode, semester: activeSemester });
+    const count = await CourseMaterial.countDocuments({ courseCode: globalCode, sectionCode, semester: activeSemester, isAdminDeleted: { $ne: true } });
     
     
     const pendingLinkSet = await MaterialLink.findOne({
@@ -7719,7 +7744,7 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
       semester: activeSemester
     }).lean();
 
-    const latest = await CourseMaterial.findOne({ courseCode: globalCode, sectionCode, semester: activeSemester })
+    const latest = await CourseMaterial.findOne({ courseCode: globalCode, sectionCode, semester: activeSemester, isAdminDeleted: { $ne: true } })
       .sort({ createdAt: -1 }).lean();
 
     if (pendingLinkSet && pendingLinkSet.links && pendingLinkSet.links.length > 0) {
@@ -7769,7 +7794,7 @@ app.post('/api/course-material/download-urls', auth, async (req, res) => {
 
     if (resolvedFileIds.length === 0 && courseCode) {
       const globalCode = courseCode.split('-')[0].trim();
-      const query = { courseCode: globalCode };
+      const query = { courseCode: globalCode, isAdminDeleted: { $ne: true } };
       if (sectionCode) query.sectionCode = sectionCode;
       
       let activeSemester = semester;
@@ -8543,7 +8568,8 @@ app.get('/api/vault/past-papers/:courseName', auth, async (req, res) => {
     }
 
     const materials = await CourseMaterial.find({
-      b2Key: { $exists: true, $ne: '' }
+      b2Key: { $exists: true, $ne: '' },
+      isAdminDeleted: { $ne: true }
     }).lean();
 
     for (const m of materials) {
@@ -8577,7 +8603,7 @@ app.get('/api/vault/past-papers/:courseName', auth, async (req, res) => {
     for (const sub of submissions) {
       if (!isCourseMatch(sub.courseName, sub.courseCode, targetKey)) continue;
       for (const task of (sub.tasks || [])) {
-        if (task.b2Key && isPastPaper(task.title)) {
+        if (task.b2Key && isPastPaper(task.title) && task.isAdminDeleted !== true) {
           const pType = detectPaperType(task.title);
           const nameKey = `${pType}_${normStr(task.title)}`;
           if (seenNames.has(nameKey)) continue;
@@ -8660,7 +8686,8 @@ app.get('/api/vault/lecture-notes/:courseName', auth, async (req, res) => {
     }
 
     const materials = await CourseMaterial.find({
-      b2Key: { $exists: true, $ne: '' }
+      b2Key: { $exists: true, $ne: '' },
+      isAdminDeleted: { $ne: true }
     }).lean();
 
     for (const m of materials) {

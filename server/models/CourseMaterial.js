@@ -29,6 +29,7 @@ const CourseMaterialSchema = new mongoose.Schema({
 
     semester:           { type: String, required: true },   
     sequenceNumber:     { type: Number },
+    isAdminDeleted:     { type: Boolean, default: false },
 
     createdAt:          { type: Date, default: Date.now }
 });

@@ -14,7 +14,8 @@ const submissionSchema = new mongoose.Schema({
         submissionUrl: String,
         b2Key: { type: String, default: '' },
         fileType: { type: String, default: '' },
-        fileSize: { type: Number, default: 0 }
+        fileSize: { type: Number, default: 0 },
+        isAdminDeleted: { type: Boolean, default: false }
     }],
     lastSyncHash: String,
     lastUpdated: { type: Date, default: Date.now }
