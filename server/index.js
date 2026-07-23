@@ -93,7 +93,7 @@ const MaterialLink   = require('./models/MaterialLink');
 const DeviceSession = require('./models/DeviceSession');
 const ScraperHealth = require('./models/ScraperHealth');
 const { getAbsoluteGrade, getSmartCurveGrade, calculateTrueScore, calculateClassAverageScore, getProjectedGradeForCourse, computeProjection } = require('./services/grading');
-const { registerDeviceSession } = require('./utils/sessionHelper');
+const { registerDeviceSession, sendAdminLoginAlertEmail, sendAdminOTPEmail } = require('./utils/sessionHelper');
 const { convertToPdf } = require('./utils/documentConverter');
 
 const SEASON_ORDER = { spring: 0, summer: 1, fall: 2 };
@@ -1551,6 +1551,9 @@ app.post('/api/web/set-password-via-sync', authLimiter, async (req, res) => {
   }
 });
 
+// ── ADMIN SECURITY & SINGLE-SESSION AUTHENTICATION ENDPOINTS ──
+
+// 1. Updated /api/web/login with Admin Security Checks
 app.post('/api/web/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1578,6 +1581,26 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
       await user.save();
     }
 
+    // Admin Security Step: require security question verification before full session JWT is issued
+    if (user.isAdmin) {
+      const tempToken = jwt.sign({ id: user.id, isTempAdminToken: true }, JWT_SECRET, { expiresIn: '10m', algorithm: JWT_ALG });
+      if (!user.adminSecuritySetupDone || !user.adminSecurityQuestion || !user.adminSecurityAnswer) {
+        return res.json({
+          requiresSetup: true,
+          tempToken,
+          user: { id: user.id, name: user.name, email: user.email, isAdmin: true }
+        });
+      }
+
+      return res.json({
+        requiresSecurityAnswer: true,
+        question: user.adminSecurityQuestion,
+        tempToken,
+        user: { id: user.id, name: user.name, email: user.email, isAdmin: true }
+      });
+    }
+
+    // Regular non-admin users
     const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
     await registerDeviceSession(user.id, token, req, resend);
     res.json({
@@ -1586,6 +1609,235 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: "Error logging in." });
+  }
+});
+
+// 2. Setup Security Question (First time admin login)
+app.post('/api/admin/auth/setup-security', async (req, res) => {
+  try {
+    const { tempToken, question, answer } = req.body;
+    if (!tempToken || !question || !answer || !answer.trim()) {
+      return res.status(400).json({ message: "Question and answer are required." });
+    }
+
+    const decoded = jwt.verify(tempToken, JWT_SECRET, { algorithms: [JWT_ALG] });
+    if (!decoded.isTempAdminToken) {
+      return res.status(401).json({ message: "Invalid session token. Please log in again." });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ message: "Access Denied." });
+    }
+
+    const hashedAnswer = await bcrypt.hash(answer.trim().toLowerCase(), 10);
+    user.adminSecurityQuestion = question.trim();
+    user.adminSecurityAnswer = hashedAnswer;
+    user.adminSecuritySetupDone = true;
+
+    // Issue full session token & enforce single-session
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
+    const tokenSignature = token.split('.')[2] || '';
+    user.adminSessionToken = tokenSignature;
+    await user.save();
+
+    const session = await registerDeviceSession(user.id, token, req, resend);
+    await sendAdminLoginAlertEmail(user, session, resend);
+
+    res.json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic }
+    });
+  } catch (err) {
+    console.error('[ADMIN SETUP SECURITY ERROR]', err);
+    res.status(401).json({ message: "Authentication failed or token expired." });
+  }
+});
+
+// 3. Verify Security Question Answer (Every admin login)
+app.post('/api/admin/auth/verify-security', async (req, res) => {
+  try {
+    const { tempToken, answer } = req.body;
+    if (!tempToken || !answer || !answer.trim()) {
+      return res.status(400).json({ message: "Security answer is required." });
+    }
+
+    const decoded = jwt.verify(tempToken, JWT_SECRET, { algorithms: [JWT_ALG] });
+    if (!decoded.isTempAdminToken) {
+      return res.status(401).json({ message: "Invalid session token. Please log in again." });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ message: "Access Denied." });
+    }
+
+    const isMatch = await bcrypt.compare(answer.trim().toLowerCase(), user.adminSecurityAnswer || '');
+    if (!isMatch) {
+      return res.status(400).json({ message: "Incorrect security answer. Access denied." });
+    }
+
+    // Issue full session token & enforce single-session
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d', algorithm: JWT_ALG });
+    const tokenSignature = token.split('.')[2] || '';
+    user.adminSessionToken = tokenSignature;
+    await user.save();
+
+    const session = await registerDeviceSession(user.id, token, req, resend);
+    await sendAdminLoginAlertEmail(user, session, resend);
+
+    res.json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic }
+    });
+  } catch (err) {
+    console.error('[ADMIN VERIFY SECURITY ERROR]', err);
+    res.status(401).json({ message: "Authentication failed or token expired." });
+  }
+});
+
+// 4. Validate Admin Single-Session (Polled by frontend)
+app.get('/api/admin/auth/validate-session', auth, adminAuth, async (req, res) => {
+  try {
+    const rawToken = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
+    const tokenSignature = rawToken ? rawToken.split('.')[2] : '';
+
+    const user = await User.findById(req.user.id).select('adminSessionToken isAdmin').lean();
+    if (!user || !user.isAdmin) {
+      return res.json({ valid: false, message: 'Account not found or demoted.' });
+    }
+
+    if (!user.adminSessionToken || user.adminSessionToken !== tokenSignature) {
+      return res.json({ valid: false, message: 'Session terminated: Another device logged into this admin account.' });
+    }
+
+    res.json({ valid: true });
+  } catch (err) {
+    res.status(500).json({ valid: false, message: 'Server validation error.' });
+  }
+});
+
+// 5. Request OTP for Forgot Password / Security Question
+app.post('/api/admin/auth/request-reset', async (req, res) => {
+  try {
+    const { email, purpose } = req.body;
+    if (!email || !email.trim()) {
+      return res.status(400).json({ message: "Admin email is required." });
+    }
+
+    const formattedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: formattedEmail });
+    if (!user || !user.isAdmin) {
+      return res.status(404).json({ message: "Administrator account not found." });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.adminResetOTP = otp;
+    user.adminResetOTPExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    await sendAdminOTPEmail(user, otp, purpose || 'password', resend);
+
+    res.json({
+      success: true,
+      message: "Security verification code sent to primary & secondary email addresses."
+    });
+  } catch (err) {
+    console.error('[ADMIN REQUEST RESET ERROR]', err);
+    res.status(500).json({ message: "Failed to send reset OTP." });
+  }
+});
+
+// 6. Verify OTP
+app.post('/api/admin/auth/verify-otp-reset', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP code are required." });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user || !user.isAdmin) {
+      return res.status(404).json({ message: "Admin account not found." });
+    }
+
+    if (!user.adminResetOTP || user.adminResetOTP !== otp.trim()) {
+      return res.status(400).json({ message: "Invalid OTP code." });
+    }
+
+    if (!user.adminResetOTPExpires || new Date() > new Date(user.adminResetOTPExpires)) {
+      return res.status(400).json({ message: "OTP code has expired. Please request a new one." });
+    }
+
+    user.adminResetOTP = null;
+    user.adminResetOTPExpires = null;
+    await user.save();
+
+    const resetToken = jwt.sign({ id: user.id, isResetToken: true }, JWT_SECRET, { expiresIn: '15m', algorithm: JWT_ALG });
+    res.json({ success: true, resetToken });
+  } catch (err) {
+    console.error('[ADMIN VERIFY OTP ERROR]', err);
+    res.status(500).json({ message: "OTP verification failed." });
+  }
+});
+
+// 7. Reset Password
+app.post('/api/admin/auth/reset-password', async (req, res) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+    if (!resetToken || !newPassword || newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters." });
+    }
+
+    const decoded = jwt.verify(resetToken, JWT_SECRET, { algorithms: [JWT_ALG] });
+    if (!decoded.isResetToken) {
+      return res.status(401).json({ message: "Invalid reset authorization token." });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ message: "Access Denied." });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.webPassword = hashedPassword;
+    await user.save();
+
+    res.json({ success: true, message: "Password updated successfully. You may now log in." });
+  } catch (err) {
+    console.error('[ADMIN RESET PASSWORD ERROR]', err);
+    res.status(401).json({ message: "Reset authorization expired or invalid." });
+  }
+});
+
+// 8. Reset Security Question
+app.post('/api/admin/auth/reset-security-question', async (req, res) => {
+  try {
+    const { resetToken, question, answer } = req.body;
+    if (!resetToken || !question || !answer || !answer.trim()) {
+      return res.status(400).json({ message: "Question and answer are required." });
+    }
+
+    const decoded = jwt.verify(resetToken, JWT_SECRET, { algorithms: [JWT_ALG] });
+    if (!decoded.isResetToken) {
+      return res.status(401).json({ message: "Invalid reset authorization token." });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ message: "Access Denied." });
+    }
+
+    const hashedAnswer = await bcrypt.hash(answer.trim().toLowerCase(), 10);
+    user.adminSecurityQuestion = question.trim();
+    user.adminSecurityAnswer = hashedAnswer;
+    user.adminSecuritySetupDone = true;
+    await user.save();
+
+    res.json({ success: true, message: "Security question updated successfully. You may now log in." });
+  } catch (err) {
+    console.error('[ADMIN RESET QUESTION ERROR]', err);
+    res.status(401).json({ message: "Reset authorization expired or invalid." });
   }
 });
 

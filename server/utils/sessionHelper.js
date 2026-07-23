@@ -268,9 +268,182 @@ async function sendLoginAlertEmail(user, session, resend) {
   }
 }
 
+async function sendAdminLoginAlertEmail(user, session, resendInstance) {
+  try {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+    const timeStr = now.toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    const emailHtml = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #050505; padding: 40px 20px; color: #f3f4f6;">
+        <div style="max-width: 540px; margin: 0 auto; background-color: #09090b; border-radius: 20px; padding: 40px 32px; border: 1px solid #27272a; box-shadow: 0 20px 50px rgba(239, 68, 68, 0.12);">
+          
+          <div style="text-align: center; margin-bottom: 28px;">
+            <div style="display: inline-block; background-color: rgba(239, 68, 68, 0.12); color: #ef4444; padding: 12px 20px; border-radius: 16px; border: 1px solid rgba(239, 68, 68, 0.25); margin-bottom: 16px;">
+              <span style="font-size: 18px; font-weight: 900; letter-spacing: 0.05em; color: #ef4444;">MY PORTAL UCP</span>
+            </div>
+            <h2 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.025em;">Admin Console Login Alert</h2>
+            <p style="color: #ef4444; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px;">Security Audit Log</p>
+          </div>
+
+          <p style="font-size: 15px; line-height: 1.6; color: #d1d5db; margin-bottom: 24px;">
+            Hello <strong>${user.name || 'Admin'}</strong>,<br/><br/>
+            An administrator login to your <strong>My Portal UCP Admin Console</strong> account was authorized.
+          </p>
+
+          <div style="background-color: #121215; border: 1px solid #27272a; border-radius: 14px; padding: 20px; margin-bottom: 28px;">
+            <h3 style="font-size: 12px; text-transform: uppercase; color: #ef4444; margin-top: 0; margin-bottom: 16px; letter-spacing: 0.08em; font-weight: 800;">Authentication Telemetry</h3>
+            
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr style="border-bottom: 1px solid #1e1e21;">
+                <td style="padding: 10px 0; color: #9ca3af; width: 35%;">Admin Account</td>
+                <td style="padding: 10px 0; color: #ffffff; font-weight: 700;">${user.email}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #1e1e21;">
+                <td style="padding: 10px 0; color: #9ca3af;">Device & OS</td>
+                <td style="padding: 10px 0; color: #ffffff; font-weight: 600;">${session ? `${session.os} (${session.browser})` : 'Web Browser'}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #1e1e21;">
+                <td style="padding: 10px 0; color: #9ca3af;">Location</td>
+                <td style="padding: 10px 0; color: #ffffff; font-weight: 600;">${session ? session.location : 'Recorded'}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #1e1e21;">
+                <td style="padding: 10px 0; color: #9ca3af;">IP Address</td>
+                <td style="padding: 10px 0; color: #ef4444; font-weight: 700; font-family: monospace;">${session ? session.ipAddress : 'Recorded'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #9ca3af;">Timestamp</td>
+                <td style="padding: 10px 0; color: #ffffff; font-weight: 600;">${timeStr} — ${dateStr}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="font-size: 13px; line-height: 1.6; color: #9ca3af; margin-bottom: 28px;">
+            <strong style="color: #ef4444;">Single Session Enforcement:</strong> Any previous admin sessions on other devices have been automatically terminated.
+          </p>
+
+          <hr style="border: none; border-top: 1px solid #27272a; margin: 24px 0;" />
+          
+          <p style="color: #6b7280; font-size: 11px; text-align: center; line-height: 1.5; margin: 0;">
+            This is an automated security notification sent to all registered email addresses for this administrator account.
+          </p>
+        </div>
+      </div>
+    `;
+
+    const recipients = [user.email];
+    if (user.secondaryEmail && user.secondaryEmail.trim() && user.secondaryEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+      recipients.push(user.secondaryEmail.trim());
+    }
+
+    const fromEmail = process.env.BREVO_SMTP_HOST || 'security@myportalucp.online';
+    const activeResend = resendInstance || resend;
+
+    for (const recipient of recipients) {
+      if (transporter) {
+        await transporter.sendMail({
+          from: `"My Portal Security" <${fromEmail}>`,
+          to: recipient,
+          subject: `🔴 Admin Login Alert: ${user.name || 'Admin'} logged in`,
+          html: emailHtml
+        });
+        console.log(`✉️ [Brevo SMTP] Admin login alert sent to ${recipient}`);
+      } else if (activeResend) {
+        await activeResend.emails.send({
+          from: `My Portal Security <${fromEmail}>`,
+          to: recipient,
+          subject: `🔴 Admin Login Alert: ${user.name || 'Admin'} logged in`,
+          html: emailHtml
+        });
+        console.log(`✉️ [Resend] Admin login alert sent to ${recipient}`);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to send admin login alert email:', err.message);
+  }
+}
+
+async function sendAdminOTPEmail(user, otp, purpose, resendInstance) {
+  try {
+    const isPassword = purpose === 'password';
+    const title = isPassword ? 'Password Reset Verification' : 'Security Question Reset Verification';
+
+    const emailHtml = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #050505; padding: 40px 20px; color: #f3f4f6;">
+        <div style="max-width: 540px; margin: 0 auto; background-color: #09090b; border-radius: 20px; padding: 40px 32px; border: 1px solid #27272a; box-shadow: 0 20px 50px rgba(239, 68, 68, 0.12);">
+          
+          <div style="text-align: center; margin-bottom: 28px;">
+            <div style="display: inline-block; background-color: rgba(239, 68, 68, 0.12); color: #ef4444; padding: 12px 20px; border-radius: 16px; border: 1px solid rgba(239, 68, 68, 0.25); margin-bottom: 16px;">
+              <span style="font-size: 18px; font-weight: 900; letter-spacing: 0.05em; color: #ef4444;">MY PORTAL UCP</span>
+            </div>
+            <h2 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.025em;">${title}</h2>
+            <p style="color: #9ca3af; font-size: 12px; margin-top: 6px;">One-Time Security Verification Code</p>
+          </div>
+
+          <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin-bottom: 24px; text-align: center;">
+            Use the 6-digit OTP code below to verify your identity and reset your admin ${isPassword ? 'password' : 'security question'}.
+          </p>
+
+          <div style="background-color: #121215; border-radius: 16px; padding: 24px; text-align: center; margin-bottom: 28px; border: 1px solid rgba(239,68,68,0.3);">
+            <span style="font-family: monospace, monospace; font-size: 38px; font-weight: 900; letter-spacing: 12px; color: #ef4444;">${otp}</span>
+            <p style="color: #6b7280; font-size: 11px; margin-top: 10px; margin-bottom: 0;">Code expires in 10 minutes</p>
+          </div>
+
+          <p style="font-size: 12px; line-height: 1.6; color: #9ca3af; margin-bottom: 24px; text-align: center;">
+            If you did not request this verification code, please ignore this email and ensure your admin credentials are secure.
+          </p>
+
+          <hr style="border: none; border-top: 1px solid #27272a; margin: 24px 0;" />
+          
+          <p style="color: #6b7280; font-size: 11px; text-align: center; line-height: 1.5; margin: 0;">
+            My Portal UCP Admin Security Subsystem • Restricted Access
+          </p>
+        </div>
+      </div>
+    `;
+
+    const recipients = [user.email];
+    if (user.secondaryEmail && user.secondaryEmail.trim() && user.secondaryEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+      recipients.push(user.secondaryEmail.trim());
+    }
+
+    const fromEmail = process.env.BREVO_SMTP_HOST || 'security@myportalucp.online';
+    const activeResend = resendInstance || resend;
+
+    for (const recipient of recipients) {
+      if (transporter) {
+        await transporter.sendMail({
+          from: `"My Portal Security" <${fromEmail}>`,
+          to: recipient,
+          subject: `🔑 ${otp} — Your Admin Verification Code`,
+          html: emailHtml
+        });
+        console.log(`✉️ [Brevo SMTP] Admin OTP sent to ${recipient}`);
+      } else if (activeResend) {
+        await activeResend.emails.send({
+          from: `My Portal Security <${fromEmail}>`,
+          to: recipient,
+          subject: `🔑 ${otp} — Your Admin Verification Code`,
+          html: emailHtml
+        });
+        console.log(`✉️ [Resend] Admin OTP sent to ${recipient}`);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to send admin OTP email:', err.message);
+  }
+}
+
 module.exports = {
   parseUserAgent,
   getIpLocation,
   registerDeviceSession,
-  getClientIp
+  getClientIp,
+  sendAdminLoginAlertEmail,
+  sendAdminOTPEmail
 };
+
