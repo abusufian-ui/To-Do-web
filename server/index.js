@@ -657,10 +657,18 @@ app.use((req, res, next) => {
 
 const adminAuth = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id).select('isAdmin').lean();
+    const rawToken = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
+    const tokenSignature = rawToken ? rawToken.split('.')[2] : '';
+
+    const user = await User.findById(req.user.id).select('isAdmin adminSessionToken').lean();
     if (!user || !user.isAdmin) {
       return res.status(403).json({ message: "Access Denied: Admins Only" });
     }
+
+    if (!user.adminSessionToken || user.adminSessionToken !== tokenSignature) {
+      return res.status(401).json({ logout: true, message: "Session terminated: Logged in on another device." });
+    }
+
     next();
   } catch (error) {
     res.status(500).json({ message: "Server Error" });

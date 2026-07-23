@@ -17,12 +17,21 @@ const auth = async (req, res, next) => {
     if (!userId) return res.status(401).json({ message: 'Token is not valid' });
 
     // Validate active login session
-    const tokenSignature = token.split('.')[2] || '';
-    if (!tokenSignature) return res.status(401).json({ message: 'Token is not valid' });
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(401).json({ logout: true, message: 'Account does not exist. Access denied.' });
+    }
+
+    // Enforce Admin Single Session Signature Check
+    if (user.isAdmin) {
+      if (!user.adminSessionToken || user.adminSessionToken !== tokenSignature) {
+        return res.status(401).json({ logout: true, message: 'Admin session terminated. Logged in on another device.' });
+      }
+    }
 
     let session = await DeviceSession.findOne({ userId, tokenSignature });
     if (!session) {
-      // Auto-register session for existing valid tokens (backward compatibility / new devices using cached token)
+      // Auto-register session for existing valid tokens (non-admin users)
       session = await registerDeviceSession(userId, token, req);
       if (!session) return res.status(401).json({ message: 'Token is not valid' });
     } else {
@@ -38,11 +47,6 @@ const auth = async (req, res, next) => {
 
     if (!session.isActive) {
       return res.status(401).json({ logout: true, message: 'Session has been revoked.' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(401).json({ logout: true, message: 'Account does not exist. Access denied.' });
     }
     if (user.isBlocked) {
       return res.status(503).json({ logout: true, isBlocked: true, error: 'Network Error: Timeout communicating with identity provider.', message: 'Network Error: Timeout communicating with identity provider.' });
