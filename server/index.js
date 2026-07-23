@@ -1589,8 +1589,9 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
       await user.save();
     }
 
-    // Admin Security Step: require security question verification before full session JWT is issued
-    if (user.isAdmin) {
+    // Admin Security Step: require security question verification ONLY when logging into the Admin Console
+    const isAdminPortal = req.body.isAdminPortal || req.headers['x-admin-portal'] === 'true';
+    if (user.isAdmin && isAdminPortal) {
       const tempToken = jwt.sign({ id: user.id, isTempAdminToken: true }, JWT_SECRET, { expiresIn: '10m', algorithm: JWT_ALG });
       if (!user.adminSecuritySetupDone || !user.adminSecurityQuestion || !user.adminSecurityAnswer) {
         return res.json({

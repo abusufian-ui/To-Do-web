@@ -25,20 +25,9 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ logout: true, message: 'Account does not exist. Access denied.' });
     }
 
-    // Enforce Admin Single Session Signature Check
-    if (user.isAdmin) {
-      if (!user.adminSessionToken || user.adminSessionToken !== tokenSignature) {
-        return res.status(401).json({ logout: true, message: 'Admin session terminated. Logged in on another device.' });
-      }
-    }
-
     let session = await DeviceSession.findOne({ userId, tokenSignature });
     if (!session) {
-      // For admin users, do NOT auto-register sessions — old tokens must fail
-      if (user.isAdmin) {
-        return res.status(401).json({ logout: true, message: 'Admin session not found.' });
-      }
-      // Auto-register session for existing valid tokens (non-admin users only)
+      // Auto-register session for existing valid tokens
       session = await registerDeviceSession(userId, token, req);
       if (!session) return res.status(401).json({ message: 'Token is not valid' });
     } else {
