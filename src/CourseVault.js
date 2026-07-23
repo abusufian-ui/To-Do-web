@@ -40,6 +40,39 @@ const isPdfFile = (item) => {
   return item.fileType === 'pdf' || nameLower.endsWith('.pdf') || b2Lower.endsWith('.pdf');
 };
 
+const getProgramAbbreviation = (progName) => {
+  if (!progName) return '';
+  const str = progName.trim();
+  const lower = str.toLowerCase();
+
+  if (lower.includes('computer science')) return 'BSCS';
+  if (lower.includes('artificial intelligence')) return 'BSAI';
+  if (lower.includes('software engineering')) return 'BSSE';
+  if (lower.includes('data science')) return 'BSDS';
+  if (lower.includes('cyber security') || lower.includes('cybersecurity')) return 'BSCY';
+  if (lower.includes('accounting') && lower.includes('finance')) return 'BSAF';
+  if (lower.includes('business administration')) {
+    if (lower.includes('master') || lower.includes('mba')) return 'MBA';
+    return 'BBA';
+  }
+  if (lower.includes('bba')) return 'BBA';
+  if (lower.includes('mba')) return 'MBA';
+  if (lower.includes('psychology')) return 'BSPSY';
+  if (lower.includes('pharmacy') || lower.includes('pharm')) return 'PharmD';
+  if (lower.includes('political')) return 'BSPOL';
+
+  if (/^[A-Z]{2,6}$/.test(str)) return str;
+
+  return str
+    .replace(/bachelor of science in/i, 'BS')
+    .replace(/bachelor of science/i, 'BS')
+    .replace(/bachelor of/i, 'B')
+    .replace(/master of/i, 'M')
+    .split(/\s+/)
+    .map(w => w[0].toUpperCase())
+    .join('');
+};
+
 const CourseVault = () => {
   const [courses, setCourses] = useState([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
@@ -434,6 +467,13 @@ const CourseVault = () => {
     return a.courseName.localeCompare(b.courseName);
   });
 
+  /* Filter counts */
+  const enrolledCount = courses.filter(c => c.isEnrolled).length;
+  const relatedCount = courses.filter(c => c.isRelated || c.isEnrolled).length;
+
+  // Calculate Batch Action Types
+  const pdfCount = selectedFileObjects.filter(f => isPdfFile(f)).length;
+  const docCount = selectedFileObjects.filter(f => !isPdfFile(f)).length;
 
   let batchButtonText = '';
   let batchButtonClass = '';

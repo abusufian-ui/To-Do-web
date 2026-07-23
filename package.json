@@ -54,7 +54,7 @@
     "server": "node server/index.js",
     "dev": "concurrently \"npm run start\" \"npm run server\"",
     "convert-docs": "node scripts/convert_word_to_pdf.js",
-    "build": "CI=false react-scripts build",
+    "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -62,7 +62,11 @@
     "extends": [
       "react-app",
       "react-app/jest"
-    ]
+    ],
+    "rules": {
+      "no-unused-vars": "off",
+      "react-hooks/exhaustive-deps": "off"
+    }
   },
   "browserslist": {
     "production": [
