@@ -368,30 +368,46 @@ const CourseVault = () => {
     return (
       <div
         onClick={() => handleOpenCourse(course)}
-        className="bg-white dark:bg-[#181820] border border-gray-200 dark:border-gray-800/80 rounded-2xl p-5 h-48 flex flex-col justify-between cursor-pointer hover:border-blue-500/60 dark:hover:border-blue-400/60 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 group transform hover:-translate-y-1"
+        className="bg-white dark:bg-[#181820] border border-gray-200 dark:border-gray-800/80 rounded-2xl p-5 min-h-[13rem] flex flex-col justify-between cursor-pointer hover:border-blue-500/60 dark:hover:border-blue-400/60 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 group transform hover:-translate-y-1"
       >
-        <div className="flex justify-between items-center flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <UCPLogo className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
-            <span className="px-2.5 py-0.5 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/80 text-blue-600 dark:text-blue-400 text-[11px] font-extrabold rounded-md tracking-wider">
-              [{course.abbreviation || 'CRS'}]
-            </span>
-            {course.isEnrolled && (
-              <span className="px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 text-emerald-600 dark:text-emerald-400 text-[10px] font-extrabold rounded-md flex items-center gap-1">
-                ⚡ ENROLLED
+        <div>
+          <div className="flex justify-between items-center flex-wrap gap-2 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <UCPLogo className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span className="px-2.5 py-0.5 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/80 text-blue-600 dark:text-blue-400 text-[11px] font-extrabold rounded-md tracking-wider">
+                [{course.abbreviation || 'CRS'}]
               </span>
-            )}
+              {course.isEnrolled && (
+                <span className="px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 text-emerald-600 dark:text-emerald-400 text-[10px] font-extrabold rounded-md flex items-center gap-1">
+                  ⚡ ENROLLED
+                </span>
+              )}
+              {course.isRelated && course.recommendationReason && (
+                <span className="px-2.5 py-0.5 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800/80 text-purple-600 dark:text-purple-400 text-[10px] font-extrabold rounded-md flex items-center gap-1">
+                  ✦ {course.recommendationReason}
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1 shrink-0">
+              <Folder size={13} /> {(course.pastPaperCount || 0) + (course.lectureNoteCount || 0)}
+            </span>
           </div>
-          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1">
-            <Folder size={13} /> {(course.pastPaperCount || 0) + (course.lectureNoteCount || 0)}
-          </span>
+
+          <h3 className="text-base font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-snug">
+            {course.courseName}
+          </h3>
+
+          {course.programs && course.programs.length > 0 && (
+            <div className="text-[11px] text-purple-600/90 dark:text-purple-300/90 font-semibold truncate mt-1.5 flex items-center gap-1">
+              <span className="shrink-0">🎓</span>
+              <span className="truncate">
+                {course.programs.slice(0, 2).join(' • ')}{course.programs.length > 2 ? ` +${course.programs.length - 2} more` : ''}
+              </span>
+            </div>
+          )}
         </div>
 
-        <h3 className="text-base font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-snug">
-          {course.courseName}
-        </h3>
-
-        <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-800/60">
+        <div className="flex gap-2 pt-3 mt-2 border-t border-gray-100 dark:border-gray-800/60">
           <span className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800/60 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700/50 rounded-lg text-xs font-semibold">
             📄 {course.pastPaperCount || 0} papers
           </span>
@@ -471,6 +487,16 @@ const CourseVault = () => {
                 <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
                   {selectedCourse.courseName}
                 </h1>
+                {selectedCourse.programs && selectedCourse.programs.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
+                    <span className="text-xs font-bold text-gray-400">Taught in:</span>
+                    {selectedCourse.programs.map((p, idx) => (
+                      <span key={idx} className="px-2.5 py-0.5 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/50 text-purple-600 dark:text-purple-300 text-xs font-semibold rounded-md flex items-center gap-1">
+                        🎓 {p}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

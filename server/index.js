@@ -8614,6 +8614,27 @@ function deriveAbbreviation(courseName, existingAbbr) {
   return abbr;
 }
 
+function cleanProgramName(prog) {
+  if (!prog || typeof prog !== 'string') return '';
+  let str = prog.trim();
+  if (!str) return '';
+  if (/computer\s+science/i.test(str)) return 'BS Computer Science';
+  if (/software\s+engineering/i.test(str)) return 'BS Software Engineering';
+  if (/data\s+science/i.test(str)) return 'BS Data Science';
+  if (/artificial\s+intelligence/i.test(str)) return 'BS Artificial Intelligence';
+  if (/cyber\s+security/i.test(str)) return 'BS Cyber Security';
+  if (/accounting\s+and\s+finance/i.test(str)) return 'BS Accounting & Finance';
+  if (/business\s+administration/i.test(str)) {
+    if (/master|mba/i.test(str)) return 'MBA';
+    return 'BBA';
+  }
+  if (/psychology/i.test(str)) return 'BS Psychology';
+  if (/pharmacy/i.test(str)) return 'Pharm-D';
+  if (/political/i.test(str)) return 'BS Political Science';
+  return str.replace(/^bachelor\s+of\s+science\s*\(([^)]+)\)/i, 'BS $1')
+            .replace(/^b\.sc\.\s*/i, 'BS ');
+}
+
 // Helper to test if a document matches the target course parameter
 const isCourseMatch = (docCourseName, docCourseCode, targetKey) => {
   const k1 = normStr(docCourseName);
@@ -8654,6 +8675,7 @@ app.get('/api/vault/courses', auth, async (req, res) => {
           abbreviation: deriveAbbreviation(cName, abbr),
           seenPapers: new Set(),
           seenNotes: new Set(),
+          programsSet: new Set(),
           pastPaperCount: 0,
           lectureNoteCount: 0
         });
@@ -8697,14 +8719,38 @@ app.get('/api/vault/courses', auth, async (req, res) => {
       }
     }
 
+    // Populate course program associations from all enrolled student courses
+    try {
+      const dbCourses = await Course.find({}).populate({ path: 'userId', select: 'program' }).lean();
+      for (const c of dbCourses) {
+        if (!c.userId || !c.userId.program) continue;
+        const cleanedProg = cleanProgramName(c.userId.program);
+        if (!cleanedProg) continue;
+
+        const keyByName = normStr(c.name);
+        const keyByCode = normStr(c.code);
+
+        if (courseMap.has(keyByName)) {
+          courseMap.get(keyByName).programsSet.add(cleanedProg);
+        }
+        if (keyByCode && courseMap.has(keyByCode)) {
+          courseMap.get(keyByCode).programsSet.add(cleanedProg);
+        }
+      }
+    } catch (e) {
+      console.warn('[API] /api/vault/courses program mapping note:', e.message);
+    }
+
     for (const entry of courseMap.values()) {
       entry.pastPaperCount = entry.seenPapers.size;
       entry.lectureNoteCount = entry.seenNotes.size;
+      entry.programs = Array.from(entry.programsSet);
       delete entry.seenPapers;
       delete entry.seenNotes;
+      delete entry.programsSet;
     }
 
-    // Personalization: Fetch user faculty/enrolled courses
+    // Personalization: Fetch user faculty/enrolled courses & program
     let user = null;
     let userCourses = [];
     if (req.user?.id) {
@@ -8720,6 +8766,7 @@ app.get('/api/vault/courses', auth, async (req, res) => {
       if (uc.code) enrolledKeys.add(normStr(uc.code));
     }
 
+    const userCleanedProgram = cleanProgramName(user?.program);
     const facultyStr = ((user?.faculty || '') + ' ' + (user?.program || '')).toLowerCase();
     const itKeywords = [
       'itc', 'dsa', 'daa', 'oop', 'ai', 'ccn', 'cn', 'os', 'dbs', 'db', 'se', 'dld',
@@ -8756,7 +8803,23 @@ app.get('/api/vault/courses', auth, async (req, res) => {
       const abbrKey = normStr(entry.abbreviation);
 
       entry.isEnrolled = enrolledKeys.has(key) || enrolledKeys.has(abbrKey);
-      entry.isRelated = !entry.isEnrolled && isFieldRelated(entry);
+
+      let isProgramMatch = false;
+      if (userCleanedProgram && entry.programs && entry.programs.length > 0) {
+        isProgramMatch = entry.programs.some(p => normStr(p) === normStr(userCleanedProgram) || p.toLowerCase().includes(userCleanedProgram.toLowerCase()));
+      }
+
+      if (!entry.isEnrolled) {
+        if (isProgramMatch) {
+          entry.isRelated = true;
+          entry.recommendationReason = `Taught in ${userCleanedProgram}`;
+        } else {
+          entry.isRelated = isFieldRelated(entry);
+          if (entry.isRelated) {
+            entry.recommendationReason = `Recommended for your field`;
+          }
+        }
+      }
 
       if (entry.isEnrolled) {
         entry.tier = 1;
