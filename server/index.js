@@ -4827,14 +4827,25 @@ app.put('/api/admin/vault/files/:id/rename', auth, adminAuth, async (req, res) =
     let mat = await CourseMaterial.findById(req.params.id);
     if (mat) {
       mat.fileName = displayName.trim();
+      mat.normalizedFileName = normStr(displayName.trim());
       await mat.save();
       return res.json({ success: true, file: mat });
+    }
+
+    let sub = await Submission.findOne({ "tasks._id": req.params.id });
+    if (sub) {
+      const task = sub.tasks.id(req.params.id);
+      if (task) {
+        task.title = displayName.trim();
+        await sub.save();
+        return res.json({ success: true, file: { id: task._id, displayName: task.title } });
+      }
     }
 
     return res.status(404).json({ message: 'File not found.' });
   } catch (error) {
     console.error('[ADMIN VAULT RENAME ERROR]', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: error.message || 'Server error during rename.' });
   }
 });
 
