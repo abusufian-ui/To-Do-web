@@ -8781,19 +8781,30 @@ app.get('/api/vault/courses', auth, async (req, res) => {
       const cName = courseObj.courseName.toLowerCase();
       const cAbbr = (courseObj.abbreviation || '').toLowerCase();
 
-      // Default to IT/CS matching if user is in IT faculty or if faculty is unspecified
+      // If course is explicitly associated only with non-IT programs (like BBA, MBA), don't recommend for CS
+      if (courseObj.programs && courseObj.programs.length > 0) {
+        const isNonITOnly = courseObj.programs.every(p => {
+          const lp = p.toLowerCase();
+          return lp.includes('bba') || lp.includes('mba') || lp.includes('accounting') || lp.includes('finance') || lp.includes('business') || lp.includes('psychology') || lp.includes('pharmacy');
+        });
+        if (isNonITOnly && /info|computer|software|it|cs|se|tech|comput/i.test(facultyStr)) {
+          return false;
+        }
+      }
+
+      // IT/CS matching if user is in IT faculty or if faculty is unspecified
       if (!facultyStr || /info|computer|software|it|cs|se|tech|comput/i.test(facultyStr)) {
-        return itKeywords.some(kw => cName.includes(kw) || cAbbr.includes(kw));
+        return itKeywords.some(kw => cName.includes(kw) || cAbbr === kw);
       }
 
       if (/busin|manage|account|financ|market|admin|fms/i.test(facultyStr)) {
         const bizKeywords = ['account', 'finance', 'management', 'marketing', 'economics', 'business', 'reporting', 'audit', 'tax', 'stat'];
-        return bizKeywords.some(kw => cName.includes(kw) || cAbbr.includes(kw));
+        return bizKeywords.some(kw => cName.includes(kw) || cAbbr === kw);
       }
 
       if (/engineer|ee|me|civil|electr/i.test(facultyStr)) {
         const engKeywords = ['circuit', 'electrical', 'mechanical', 'thermo', 'signal', 'control', 'engineering', 'physics'];
-        return engKeywords.some(kw => cName.includes(kw) || cAbbr.includes(kw));
+        return engKeywords.some(kw => cName.includes(kw) || cAbbr === kw);
       }
 
       return false;
@@ -8832,7 +8843,13 @@ app.get('/api/vault/courses', auth, async (req, res) => {
     }
 
     const coursesList = Array.from(courseMap.values()).sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier; // Tier 1 (Enrolled) < Tier 2 (Related) < Tier 3 (Others)
+      // 1. Enrolled courses on top
+      if (a.isEnrolled !== b.isEnrolled) return a.isEnrolled ? -1 : 1;
+      // 2. Descending document count (courses with more papers/notes shown at top)
+      const totalDocsA = (a.pastPaperCount || 0) + (a.lectureNoteCount || 0);
+      const totalDocsB = (b.pastPaperCount || 0) + (b.lectureNoteCount || 0);
+      if (totalDocsB !== totalDocsA) return totalDocsB - totalDocsA;
+      // 3. Fallback alphabetical
       return a.courseName.localeCompare(b.courseName);
     });
 

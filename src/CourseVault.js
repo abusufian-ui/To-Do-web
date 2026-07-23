@@ -286,17 +286,12 @@ const CourseVault = () => {
     const isSelected = selectedFileIds.has(item.id);
     const isPdf = isPdfFile(item);
     const nameLower = (item.displayName || item.fileName || '').toLowerCase();
-    const fileLabel = isPdf ? 'PDF Document' : nameLower.split('.').pop().toUpperCase() + ' File';
-
-    const rawTitle = item.displayName || item.fileName || 'Untitled Document';
-    const hasTeacherInTitle = item.teacherName && rawTitle.toLowerCase().includes(item.teacherName.toLowerCase());
-    const displayTitle = (item.teacherName && !hasTeacherInTitle)
-      ? `${rawTitle} (by ${item.teacherName})`
-      : rawTitle;
+    const displayTitle = item.displayName || item.fileName;
+    const fileLabel = PAPER_TYPE_CONFIG[item.paperType]?.label || 'Document';
 
     return (
-      <div className={`flex items-center justify-between gap-4 p-4 rounded-xl border transition-all duration-200 group ${
-        isSelected
+      <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all duration-200 group ${
+        isSelected 
           ? 'bg-blue-50/90 dark:bg-blue-950/30 border-blue-500/80 dark:border-blue-400/70 shadow-sm'
           : 'bg-gray-50/80 dark:bg-gray-900/60 border-gray-200 dark:border-gray-800 hover:bg-white dark:hover:bg-[#1E1E24] hover:border-blue-400/50 dark:hover:border-blue-500/40'
       }`}>
@@ -341,29 +336,27 @@ const CourseVault = () => {
           </div>
         </div>
 
-        {/* Primary Action Button: Web Portal Brand Blue */}
+        {/* Primary Action Button */}
         {isPdf ? (
           <button
             onClick={() => handleOpenPdf(item)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/35 transition-all shrink-0 whitespace-nowrap"
           >
-            <ExternalLink size={14} /> Open PDF
+            <ExternalLink size={14} /> Open
           </button>
         ) : (
           <button
             onClick={() => handleDownload(item)}
-            disabled={isDownloading}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold rounded-xl transition-all shrink-0 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold rounded-xl transition-all shrink-0 whitespace-nowrap"
           >
-            {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            {isDownloading ? 'Downloading…' : 'Download File'}
+            <Download size={14} /> Download
           </button>
         )}
       </div>
     );
   };
 
-  /* ── Course Card Component with UCP Logo ── */
+  /* ── Course Card Component ── */
   const CourseCard = ({ course }) => {
     return (
       <div
@@ -382,11 +375,6 @@ const CourseVault = () => {
                   ⚡ ENROLLED
                 </span>
               )}
-              {course.isRelated && course.recommendationReason && (
-                <span className="px-2.5 py-0.5 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800/80 text-purple-600 dark:text-purple-400 text-[10px] font-extrabold rounded-md flex items-center gap-1">
-                  ✦ {course.recommendationReason}
-                </span>
-              )}
             </div>
             <span className="text-xs text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1 shrink-0">
               <Folder size={13} /> {(course.pastPaperCount || 0) + (course.lectureNoteCount || 0)}
@@ -397,14 +385,21 @@ const CourseVault = () => {
             {course.courseName}
           </h3>
 
-          {course.programs && course.programs.length > 0 && (
-            <div className="text-[11px] text-purple-600/90 dark:text-purple-300/90 font-semibold truncate mt-1.5 flex items-center gap-1">
-              <span className="shrink-0">🎓</span>
-              <span className="truncate">
-                {course.programs.slice(0, 2).join(' • ')}{course.programs.length > 2 ? ` +${course.programs.length - 2} more` : ''}
-              </span>
-            </div>
-          )}
+          {course.programs && course.programs.length > 0 && (() => {
+            const shortProgs = course.programs
+              .map(p => getProgramAbbreviation(p))
+              .filter(Boolean)
+              .filter((v, i, a) => a.indexOf(v) === i);
+            if (shortProgs.length === 0) return null;
+            return (
+              <div className="text-[11px] text-purple-600/90 dark:text-purple-300/90 font-bold tracking-wide truncate mt-1.5 flex items-center gap-1">
+                <span className="shrink-0">🎓</span>
+                <span className="truncate">
+                  {shortProgs.join(' • ')}
+                </span>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="flex gap-2 pt-3 mt-2 border-t border-gray-100 dark:border-gray-800/60">
@@ -419,10 +414,7 @@ const CourseVault = () => {
     );
   };
 
-  /* Filter counts */
-  const enrolledCount = courses.filter(c => c.isEnrolled).length;
-  const relatedCount = courses.filter(c => c.isRelated || c.isEnrolled).length;
-
+  /* Filter courses */
   const filteredCourses = courses.filter(c => {
     const matchesSearch = c.courseName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (c.abbreviation && c.abbreviation.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -431,11 +423,17 @@ const CourseVault = () => {
     if (filterMode === 'enrolled') return c.isEnrolled;
     if (filterMode === 'related') return c.isRelated || c.isEnrolled;
     return true;
+  }).sort((a, b) => {
+    // 1. Enrolled courses on top
+    if (a.isEnrolled !== b.isEnrolled) return a.isEnrolled ? -1 : 1;
+    // 2. Descending document count (courses with more documents on top)
+    const totalDocsA = (a.pastPaperCount || 0) + (a.lectureNoteCount || 0);
+    const totalDocsB = (b.pastPaperCount || 0) + (b.lectureNoteCount || 0);
+    if (totalDocsB !== totalDocsA) return totalDocsB - totalDocsA;
+    // 3. Fallback alphabetical
+    return a.courseName.localeCompare(b.courseName);
   });
 
-  // Calculate Batch Action Types
-  const pdfCount = selectedFileObjects.filter(f => isPdfFile(f)).length;
-  const docCount = selectedFileObjects.filter(f => !isPdfFile(f)).length;
 
   let batchButtonText = '';
   let batchButtonClass = '';
