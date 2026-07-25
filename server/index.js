@@ -1806,7 +1806,7 @@ app.post('/api/admin/auth/setup-security', async (req, res) => {
     await user.save();
 
     const session = await registerDeviceSession(user.id, token, req, resend);
-    sendAdminLoginAlertEmail(user, session, resend).catch(err => console.error('[ADMIN LOGIN EMAIL ERROR]', err.message));
+    await sendAdminLoginAlertEmail(user, session, resend);
 
     res.json({
       token,
@@ -1857,7 +1857,7 @@ app.post('/api/admin/auth/verify-security', async (req, res) => {
     await user.save();
 
     const session = await registerDeviceSession(user.id, token, req, resend);
-    sendAdminLoginAlertEmail(user, session, resend).catch(err => console.error('[ADMIN LOGIN EMAIL ERROR]', err.message));
+    await sendAdminLoginAlertEmail(user, session, resend);
 
     res.json({
       token,
