@@ -49,6 +49,9 @@ const userSchema = new mongoose.Schema({
   accessedWeb: { type: Boolean, default: false },
   accessedMobile: { type: Boolean, default: false },
   accessedExtension: { type: Boolean, default: false },
+  lastSeenWeb: { type: Date, default: null },
+  lastSeenMobile: { type: Date, default: null },
+  lastSeenExtension: { type: Date, default: null },
   tempSyncId: { type: String, default: null, index: true },
   // Onboarding sync lifecycle: null (none) | 'scraping' (extension connected, importing) |
   // 'complete' (first full scrape pushed). Drives the web onboarding progress UI.

@@ -147,6 +147,29 @@ function AppLayout() {
     localStorage.setItem('idleTimeout', idleTimeout);
   }, [idleTimeout]);
 
+  // Live Presence Heartbeat (Web Portal)
+  useEffect(() => {
+    if (!token) return;
+    const sendHeartbeat = async () => {
+      if (document.hidden) return; // Skip if tab in background
+      try {
+        await fetch(`${API_BASE}/api/user/heartbeat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-auth-token': token
+          },
+          body: JSON.stringify({ platform: 'web' })
+        });
+      } catch (err) {
+        // Fail silently
+      }
+    };
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 60000);
+    return () => clearInterval(interval);
+  }, [token]);
+
   const [activeTab, setActiveTab] = useState(() => {
     const path = window.location.pathname;
     if (path === '/' || path === '') return 'Welcome';
