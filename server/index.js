@@ -1727,11 +1727,22 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
     const isAdminPortal = req.body.isAdminPortal || req.headers['x-admin-portal'] === 'true';
     if (user.isAdmin && isAdminPortal) {
       const tempToken = jwt.sign({ id: user.id, isTempAdminToken: true }, JWT_SECRET, { expiresIn: '10m', algorithm: JWT_ALG });
+      const userPayload = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isAdmin: true,
+        customProfilePic: user.customProfilePic,
+        portalProfilePic: user.portalProfilePic,
+        originalPortalProfilePic: user.originalPortalProfilePic,
+        profilePic: user.profilePic || user.customProfilePic || user.portalProfilePic || user.originalPortalProfilePic
+      };
+
       if (!user.adminSecuritySetupDone || !user.adminSecurityQuestion || !user.adminSecurityAnswer) {
         return res.json({
           requiresSetup: true,
           tempToken,
-          user: { id: user.id, name: user.name, email: user.email, isAdmin: true }
+          user: userPayload
         });
       }
 
@@ -1739,7 +1750,7 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
         requiresSecurityAnswer: true,
         question: user.adminSecurityQuestion,
         tempToken,
-        user: { id: user.id, name: user.name, email: user.email, isAdmin: true }
+        user: userPayload
       });
     }
 
@@ -1748,10 +1759,20 @@ app.post('/api/web/login', authLimiter, async (req, res) => {
     await registerDeviceSession(user.id, token, req, resend);
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic }
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        customProfilePic: user.customProfilePic,
+        portalProfilePic: user.portalProfilePic,
+        originalPortalProfilePic: user.originalPortalProfilePic,
+        profilePic: user.profilePic || user.customProfilePic || user.portalProfilePic || user.originalPortalProfilePic
+      }
     });
   } catch (err) {
-    res.status(500).json({ message: "Error logging in." });
+    console.error('[WEB LOGIN ERROR]', err);
+    res.status(500).json({ message: "Login service temporarily unavailable." });
   }
 });
 
@@ -1789,11 +1810,20 @@ app.post('/api/admin/auth/setup-security', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic }
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        customProfilePic: user.customProfilePic,
+        portalProfilePic: user.portalProfilePic,
+        originalPortalProfilePic: user.originalPortalProfilePic,
+        profilePic: user.profilePic || user.customProfilePic || user.portalProfilePic || user.originalPortalProfilePic
+      }
     });
   } catch (err) {
     console.error('[ADMIN SETUP SECURITY ERROR]', err);
-    res.status(401).json({ message: "Authentication failed or token expired." });
+    res.status(500).json({ message: "Failed to setup security question." });
   }
 });
 
@@ -1831,7 +1861,16 @@ app.post('/api/admin/auth/verify-security', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, isAdmin: user.isAdmin, profilePic: user.profilePic }
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        customProfilePic: user.customProfilePic,
+        portalProfilePic: user.portalProfilePic,
+        originalPortalProfilePic: user.originalPortalProfilePic,
+        profilePic: user.profilePic || user.customProfilePic || user.portalProfilePic || user.originalPortalProfilePic
+      }
     });
   } catch (err) {
     console.error('[ADMIN VERIFY SECURITY ERROR]', err);
