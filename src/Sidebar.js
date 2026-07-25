@@ -62,7 +62,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, toggleSidebar, binCount = 0,
   }, []);
 
   const linksSubItems = [
-    { id: 'Link-Admin', label: 'Admin Site', icon: Shield, url: adminPortalUrl },
+    { id: 'Link-Admin', label: 'Admin Site', icon: Shield, url: adminPortalUrl, adminOnly: true },
     { id: 'Link-Horizon', label: 'Horizon Portal', icon: Globe, url: 'https://horizon.ucp.edu.pk' },
     { id: 'Link-Email', label: 'Uni Email', icon: Mail, url: 'https://outlook.office.com/mail/' },
   ];
