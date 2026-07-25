@@ -8869,6 +8869,7 @@ app.get('/api/admin/course-materials/courses', auth, adminAuth, async (req, res)
         $group: {
           _id: { courseCode: "$courseCode", sectionCode: "$sectionCode", semester: "$semester" },
           courseName: { $first: "$courseName" },
+          teacherName: { $first: "$teacherName" },
           fileCount: { $sum: 1 }
         }
       },
@@ -8880,6 +8881,7 @@ app.get('/api/admin/course-materials/courses', auth, adminAuth, async (req, res)
             $push: {
               sectionCode: "$_id.sectionCode",
               semester: "$_id.semester",
+              teacherName: "$teacherName",
               fileCount: "$fileCount"
             }
           }
@@ -8912,7 +8914,7 @@ app.get('/api/admin/course-materials/files', auth, adminAuth, async (req, res) =
 
     
     const materials = await CourseMaterial.find({ courseCode, sectionCode, semester })
-      .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key createdAt')
+      .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key createdAt sectionCode teacherName')
       .sort({ isArchiveExtracted: 1, fileName: 1 })
       .lean();
 
