@@ -9,7 +9,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 let transporter = null;
 if (process.env.BREVO_SMTP_USER && process.env.BREVO_SMTP_KEY) {
   transporter = nodemailer.createTransport({
-    host: 'smtp-relay.brevo.com',
+    host: process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com',
     port: parseInt(process.env.BREVO_SMTP_PORT, 10) || 587,
     secure: false, // true for 465, false for other ports
     auth: {
@@ -234,7 +234,7 @@ async function sendLoginAlertEmail(user, session, resend) {
       </div>
     `;
 
-    const fromEmail = process.env.BREVO_SMTP_HOST || 'security@myportalucp.online';
+    const fromEmail = process.env.BREVO_FROM_EMAIL || process.env.BREVO_SENDER_EMAIL || 'security@myportalucp.online';
 
     if (transporter) {
       // Send using Brevo SMTP via Nodemailer
@@ -340,7 +340,7 @@ async function sendAdminLoginAlertEmail(user, session, resendInstance) {
       recipients.push(user.secondaryEmail.trim());
     }
 
-    const fromEmail = process.env.BREVO_SMTP_HOST || 'security@myportalucp.online';
+    const fromEmail = process.env.BREVO_FROM_EMAIL || process.env.BREVO_SENDER_EMAIL || 'security@myportalucp.online';
     const activeResend = resendInstance || resend;
 
     for (const recipient of recipients) {
@@ -411,7 +411,7 @@ async function sendAdminOTPEmail(user, otp, purpose, resendInstance) {
       recipients.push(user.secondaryEmail.trim());
     }
 
-    const fromEmail = process.env.BREVO_SMTP_HOST || 'security@myportalucp.online';
+    const fromEmail = process.env.BREVO_FROM_EMAIL || process.env.BREVO_SENDER_EMAIL || 'security@myportalucp.online';
     const activeResend = resendInstance || resend;
 
     for (const recipient of recipients) {

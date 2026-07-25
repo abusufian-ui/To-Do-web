@@ -5,17 +5,18 @@ const path = require('path');
 // Load env variables
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
-const fromEmail = process.env.BREVO_SMTP_HOST || 'security@myportalucp.online';
+const fromEmail = process.env.BREVO_FROM_EMAIL || 'security@myportalucp.online';
 const targetEmail = 'ranasuffyan9@gmail.com';
 
 console.log("Using SMTP Settings:");
 console.log("- Sender (fromEmail):", fromEmail);
 console.log("- Recipient (targetEmail):", targetEmail);
+console.log("- SMTP Host:", process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com');
 console.log("- SMTP User:", process.env.BREVO_SMTP_USER);
 console.log("- SMTP Port:", process.env.BREVO_SMTP_PORT);
 
 const transporter = nodemailer.createTransport({
-  host: 'smtp-relay.brevo.com',
+  host: process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com',
   port: parseInt(process.env.BREVO_SMTP_PORT, 10) || 587,
   secure: false,
   auth: {
