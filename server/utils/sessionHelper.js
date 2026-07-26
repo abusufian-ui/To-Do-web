@@ -11,7 +11,10 @@ if (process.env.BREVO_SMTP_USER && process.env.BREVO_SMTP_KEY) {
   transporter = nodemailer.createTransport({
     host: process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com',
     port: parseInt(process.env.BREVO_SMTP_PORT, 10) || 587,
-    secure: false, // true for 465, false for other ports
+    secure: false,
+    connectionTimeout: 8000,   // Fail fast if TCP connection stalls (8s max)
+    greetingTimeout: 8000,     // Fail fast if SMTP EHLO greeting stalls
+    socketTimeout: 15000,      // Max time for each socket read/write
     auth: {
       user: process.env.BREVO_SMTP_USER,
       pass: process.env.BREVO_SMTP_KEY

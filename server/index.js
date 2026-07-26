@@ -159,28 +159,60 @@ let expo = new Expo();
 let cachedPrayerTimes = null;
 let lastFetchDate = null;
 
+// Hardcoded Lahore fallback prayer times (approximate average, used when API is unreachable)
+const LAHORE_FALLBACK_PRAYER_TIMES = {
+  fajr:    '05:00',
+  zuhr:    '12:30',
+  asr:     '16:00',
+  maghrib: '19:00',
+  isha:    '20:30'
+};
+
+async function fetchAladhanWithRetry(retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await axios.get(
+        'https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1',
+        { timeout: 12000 }
+      );
+      return response.data.data.timings;
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 async function getLahorePrayerTimes(todayStr) {
   if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
     try {
-      const response = await axios.get('https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1', { timeout: 5000 });
-      const timings = response.data.data.timings;
+      const timings = await fetchAladhanWithRetry(2);
       cachedPrayerTimes = {
-        fajr: timings.Fajr,
-        zuhr: timings.Dhuhr,
-        asr: timings.Asr,
+        fajr:    timings.Fajr,
+        zuhr:    timings.Dhuhr,
+        asr:     timings.Asr,
         maghrib: timings.Maghrib,
-        isha: timings.Isha
+        isha:    timings.Isha
       };
       lastFetchDate = todayStr;
+      console.log('[Aladhan] Prayer times fetched and cached for', todayStr);
     } catch (err) {
-      console.error("Failed to fetch Aladhan API:", err.message);
-      return null;
+      console.error('[Aladhan] All fetch attempts failed, using fallback:', err.message);
+      // Return cached times from a previous day if available, otherwise hardcoded fallback
+      if (cachedPrayerTimes) return cachedPrayerTimes;
+      return LAHORE_FALLBACK_PRAYER_TIMES;
     }
   }
   return cachedPrayerTimes;
 }
-
-
+// Pre-warm prayer times cache at server startup so it's ready for the first request
+setImmediate(async () => {
+  const today = new Date().toISOString().split('T')[0];
+  await getLahorePrayerTimes(today);
+});
 
 const API_URL = process.env.NODE_ENV === 'production' ? 'https://api.myportalucp.online' : 'http://localhost:5000';
 
@@ -663,6 +695,26 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Fix 1: Brave / strict-mode browsers strip CORS headers from 4xx/5xx responses by default.
+// This middleware re-injects Access-Control-Allow-Origin + Access-Control-Allow-Credentials on
+// EVERY response so even error responses reach the browser and are not silently dropped.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+  // Content-Security-Policy: allow admin portal to connect to our API domain
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; connect-src 'self' https://api.myportalucp.online https://admin.myportalucp.online https://web.myportalucp.online wss://api.myportalucp.online; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:"
+  );
+  // Cross-Origin-Resource-Policy: allow cross-origin reads from our subdomains
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+});
 
 app.use('/media', express.static(uploadDir));
 
@@ -1806,8 +1858,8 @@ app.post('/api/admin/auth/setup-security', async (req, res) => {
     await user.save();
 
     const session = await registerDeviceSession(user.id, token, req, resend);
-    await sendAdminLoginAlertEmail(user, session, resend);
 
+    // Fix 2: Fire-and-forget — send email alert AFTER response so SMTP timeout never blocks login
     res.json({
       token,
       user: {
@@ -1821,9 +1873,15 @@ app.post('/api/admin/auth/setup-security', async (req, res) => {
         profilePic: user.profilePic || user.customProfilePic || user.portalProfilePic || user.originalPortalProfilePic
       }
     });
+    // Send email alert in background after response is already sent
+    setImmediate(() => {
+      sendAdminLoginAlertEmail(user, session, resend).catch(err =>
+        console.error('[ADMIN EMAIL ALERT] Failed to send setup-security alert:', err.message)
+      );
+    });
   } catch (err) {
     console.error('[ADMIN SETUP SECURITY ERROR]', err);
-    res.status(500).json({ message: "Failed to setup security question." });
+    res.status(401).json({ message: "Authentication failed or token expired." });
   }
 });
 
@@ -1857,8 +1915,8 @@ app.post('/api/admin/auth/verify-security', async (req, res) => {
     await user.save();
 
     const session = await registerDeviceSession(user.id, token, req, resend);
-    await sendAdminLoginAlertEmail(user, session, resend);
 
+    // Fix 2: Fire-and-forget — send email alert AFTER response so SMTP timeout never blocks login
     res.json({
       token,
       user: {
@@ -1871,6 +1929,12 @@ app.post('/api/admin/auth/verify-security', async (req, res) => {
         originalPortalProfilePic: user.originalPortalProfilePic,
         profilePic: user.profilePic || user.customProfilePic || user.portalProfilePic || user.originalPortalProfilePic
       }
+    });
+    // Send email alert in background after response is already sent
+    setImmediate(() => {
+      sendAdminLoginAlertEmail(user, session, resend).catch(err =>
+        console.error('[ADMIN EMAIL ALERT] Failed to send verify-security alert:', err.message)
+      );
     });
   } catch (err) {
     console.error('[ADMIN VERIFY SECURITY ERROR]', err);
