@@ -374,7 +374,7 @@ const Notes = ({ courses, notes, setNotes, isAddingNew, setIsAddingNew, fetchNot
 
                 const courseObj = courses.find(c => (c._id || c.id) === note.courseId);
                 const courseName = courseObj?.name || 'General Course';
-                const isUni = courseObj?.type === 'uni';
+                const isUni = courseObj?.type === 'uni' || courseObj?.type === 'university';
 
                 return (
                   <div

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Clock, ChevronDown, ChevronUp,
-  GraduationCap, TrendingUp, AlertCircle, BookOpen, Target, Sparkles, Award, Trophy, Users, AlertTriangle
+  GraduationCap, TrendingUp, TrendingDown, AlertCircle, BookOpen, Target, Sparkles, Award, Trophy, Users, AlertTriangle
 } from 'lucide-react';
 import UCPLogo from './UCPLogo';
 
@@ -312,6 +312,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
 
   const fetchData = async () => {
     try {
+      setStats({});
       const token = localStorage.getItem('token');
       const headers = { 'Content-Type': 'application/json', 'x-auth-token': token };
 
@@ -330,8 +331,9 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
       if (Array.isArray(gradesData)) {
         setAllGrades(gradesData);
       }
-      if (statsData && !statsData.message) setStats(statsData);
-
+      if (statsData && !statsData.message) {
+        setStats(statsData);
+      }
       setLoading(false);
     } catch (error) {
       console.error(error);
@@ -356,10 +358,22 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
 
   
   const grades = useMemo(() => {
+    if (selectedSemester && stats?.courses && Array.isArray(stats.courses) && stats.courses.length > 0) {
+      return stats.courses.map(c => ({
+        _id: c._id || c.name,
+        courseName: c.name,
+        code: c.code,
+        creditHours: parseFloat(c.creditHours) || 3,
+        finalGrade: c.finalGrade,
+        gradePoints: c.gradePoints,
+        isPastSemester: true,
+        assessments: []
+      }));
+    }
     if (!courses || courses.length === 0) return allGrades;
-    const uniCourseNames = new Set(courses.filter(c => c.type === 'uni').map(c => c.name));
+    const uniCourseNames = new Set(courses.filter(c => c.type === 'uni' || c.type === 'university').map(c => c.name));
     return allGrades.filter(g => uniCourseNames.has(g.courseName));
-  }, [allGrades, courses]);
+  }, [allGrades, courses, selectedSemester, stats]);
 
   useEffect(() => {
     if (grades.length > 0 && !selectedCourseId) {
@@ -386,14 +400,31 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
     setLeaderboard([]);
     setIsLeaderboardDisabled(false);
     const fetchLeaderboard = async () => {
-      if (!selectedCourse || !matchingCourseInfo) {
+      if (!selectedCourse) {
         setLeaderboard([]);
         return;
       }
       setLeaderboardLoading(true);
       try {
         const token = localStorage.getItem('token');
-        
+        if (selectedCourse.isPastSemester) {
+          const res = await fetch(`${API_BASE}/api/historical-leaderboard?term=${encodeURIComponent(selectedSemester)}&courseName=${encodeURIComponent(selectedCourse.courseName)}&courseCode=${encodeURIComponent(selectedCourse.code || '')}`, {
+            headers: { 'Content-Type': 'application/json', 'x-auth-token': token }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setLeaderboard(Array.isArray(data) ? data : []);
+          }
+          setLeaderboardLoading(false);
+          return;
+        }
+
+        if (!matchingCourseInfo) {
+          setLeaderboard([]);
+          setLeaderboardLoading(false);
+          return;
+        }
+
         // Serialize bestOfConfigs for the current course
         const courseBestOf = [];
         Object.entries(bestOfConfigs).forEach(([key, val]) => {
@@ -426,7 +457,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
     };
     
     fetchLeaderboard();
-  }, [selectedCourse, matchingCourseInfo, bestOfConfigs]);
+  }, [selectedCourse, matchingCourseInfo, bestOfConfigs, selectedSemester]);
 
   const handleBestOfChange = (categoryName, newBestOf) => {
     setBestOfConfigs(prev => ({ ...prev, [`${selectedCourse._id}_${categoryName}`]: newBestOf }));
@@ -613,7 +644,7 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
                       
                       {}
                       <p className={`text-[10px] font-semibold tracking-wider uppercase mt-1 ${isActive ? 'text-blue-200' : 'text-gray-400'}`}>
-                        {totalScore.marked > 0 ? `Score: ${totalScore.percentage.toFixed(1)}%` : 'Active'} • {credits} Cr. Hrs
+                        {course.finalGrade ? `Grade: ${course.finalGrade}` : (totalScore.marked > 0 ? `Score: ${totalScore.percentage.toFixed(1)}%` : 'Active')} • {course.creditHours || credits} Cr. Hrs
                       </p>
                     </div>
                   </div>
@@ -627,15 +658,9 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
       {}
       <div className={`flex-1 h-full overflow-y-auto custom-scrollbar p-4 md:p-8 transition-all duration-300 relative ${isMainSidebarOpen ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
         <div className="w-full max-w-7xl mx-auto pb-24">
-          
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold tracking-widest uppercase mb-3 border border-blue-100 dark:border-blue-500/20">
-                <Sparkles size={12} /> Academic Hub
-              </div>
-              <div className="flex items-center gap-4">
-                <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">Grade Book</h1>
-              </div>
+              <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">Grade Book</h1>
             </div>
           </div>
 
@@ -644,25 +669,49 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
             <div className="md:col-span-2 relative overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 rounded-3xl p-8 text-white shadow-xl shadow-indigo-500/20 border border-white/10 group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2 group-hover:scale-110 transition-transform duration-700"></div>
               <div className="relative z-10 flex flex-col h-full justify-between">
-                <div className="flex items-center gap-2 text-blue-100 font-medium text-sm tracking-wide">
-                  <GraduationCap size={18} /> {stats.isHistorical ? `${stats.term} Final CGPA` : "Current CGPA"}
+                <div className="flex items-center justify-between gap-2 text-blue-100 font-medium text-sm tracking-wide">
+                  <span className="flex items-center gap-2">
+                    <GraduationCap size={18} /> {stats.isHistorical ? `${stats.term} Resulting CGPA` : "Current CGPA"}
+                  </span>
+                  {stats.isHistorical && stats.cgpaDiff && (
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black shadow-sm ${stats.isIncreased ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}`}>
+                      {stats.isIncreased ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                      {stats.cgpaDiff} ({stats.isIncreased ? 'Increased' : 'Decreased'})
+                    </span>
+                  )}
                 </div>
                 <div className="mt-4">
-                  <span className="text-6xl font-black tracking-tighter">{stats.cgpa || "0.00"}</span>
+                  <span className="text-6xl font-black tracking-tighter">{stats.isHistorical ? (stats.finalCgpa || stats.cgpa || "0.00") : (stats.cgpa || "0.00")}</span>
                   <span className="text-xl text-blue-200 font-medium ml-2">/ 4.00</span>
                 </div>
+                {stats.isHistorical && (
+                  <p className="text-xs text-blue-200/80 font-medium mt-2">
+                    Entered semester at <span className="font-bold text-white">{stats.enteringCgpa || "0.00"}</span> CGPA
+                  </p>
+                )}
               </div>
             </div>
             {stats.isHistorical ? (
-              <div className="md:col-span-2 bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-emerald-500/30 transition-colors">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
-                  <Target size={20} />
+              <>
+                <div className="bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-indigo-500/30 transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4">
+                    <GraduationCap size={20} />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{stats.enteringCgpa || "0.00"}</div>
+                    <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Entering CGPA</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{stats.credits || "0"}</div>
-                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Earned Credits</div>
+                <div className="bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-emerald-500/30 transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
+                    <Target size={20} />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{stats.credits || "0"}</div>
+                    <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Earned Credits</div>
+                  </div>
                 </div>
-              </div>
+              </>
             ) : (
               <>
                 <div className="bg-white dark:bg-[#121214] rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-800/60 flex flex-col justify-between hover:border-blue-500/30 transition-colors">
@@ -696,56 +745,76 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
               
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#121214] p-4 rounded-3xl border border-gray-200 dark:border-gray-800/80 shadow-sm">
                 
-                {}
                 <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 ml-2 flex items-center gap-2">
                   <Award size={18} className="text-blue-500" /> {selectedCourse.courseName}
                   <span className="ml-2 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20 shadow-sm whitespace-nowrap">
-                    {matchingCourseInfo?.creditHours ?? 0} Cr. Hrs
+                    {selectedCourse.isPastSemester ? selectedCourse.creditHours : (matchingCourseInfo?.creditHours ?? 0)} Cr. Hrs
                   </span>
                 </h3>
 
-                <div className="flex bg-gray-100 dark:bg-gray-800/50 p-1 rounded-xl">
-                  <button
-                    onClick={() => { setGradingMode('absolute'); localStorage.setItem('gradingPolicyPref', 'absolute'); }}
-                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${gradingMode === 'absolute' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                  >
-                    Absolute
-                  </button>
-                  <button
-                    onClick={() => { setGradingMode('relative'); localStorage.setItem('gradingPolicyPref', 'relative'); }}
-                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${gradingMode === 'relative' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                  >
-                    Relative
-                  </button>
-                </div>
+                {!selectedCourse.isPastSemester && (
+                  <div className="flex bg-gray-100 dark:bg-gray-800/50 p-1 rounded-xl">
+                    <button
+                      onClick={() => { setGradingMode('absolute'); localStorage.setItem('gradingPolicyPref', 'absolute'); }}
+                      className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${gradingMode === 'absolute' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+                    >
+                      Absolute
+                    </button>
+                    <button
+                      onClick={() => { setGradingMode('relative'); localStorage.setItem('gradingPolicyPref', 'relative'); }}
+                      className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${gradingMode === 'relative' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+                    >
+                      Relative
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {}
-              {gradingMode === 'absolute' && (
-                <div className="bg-gradient-to-br from-blue-900 to-slate-900 dark:from-blue-950 dark:to-black rounded-3xl p-6 md:p-8 shadow-lg text-white flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden border border-blue-800/30">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+              {selectedCourse.isPastSemester ? (
+                <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-black rounded-3xl p-6 md:p-8 shadow-xl text-white flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden border border-indigo-800/40">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
                   <div className="relative z-10 w-full md:w-auto text-center md:text-left">
-                    <p className="text-blue-200 text-[11px] font-bold uppercase tracking-widest mb-1">Current Standing</p>
-                    <div className="flex items-baseline justify-center md:justify-start gap-2">
-                      <span className="text-5xl font-black">{courseGradingStats.currentStandingPct.toFixed(1)}%</span>
-                      <span className="text-blue-200 font-medium mb-1">/ 100%</span>
+                    <p className="text-indigo-200 text-[11px] font-bold uppercase tracking-widest mb-1">Final Result Scored</p>
+                    <div className="flex items-baseline justify-center md:justify-start gap-3">
+                      <span className="text-6xl font-black text-white tracking-tight">{selectedCourse.finalGrade || '-'}</span>
+                      <span className="text-indigo-200 text-sm font-semibold">Grade Scored</span>
                     </div>
-                    <p className="text-sm text-blue-100/80 mt-2">Based on {courseGradingStats.totalMarkedWeight.toFixed(1)}% marked assessments</p>
+                    <p className="text-sm font-medium text-indigo-200/80 mt-2">Earned Grade Points: <span className="font-bold text-white">{selectedCourse.gradePoints ?? '-'}</span></p>
                   </div>
-                  <div className="relative z-10 w-full md:w-auto flex justify-center">
-                    <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-2xl text-center min-w-[140px]">
-                      <p className="text-blue-200 text-[10px] font-bold uppercase tracking-widest mb-2 whitespace-nowrap">Est. Grade</p>
-                      <p className={`text-6xl font-black ${getAbsoluteGrade(courseGradingStats.currentStandingPct).color} drop-shadow-sm`}>
-                        {courseGradingStats.totalMarkedWeight > 0 ? getAbsoluteGrade(courseGradingStats.currentStandingPct).grade : '-'}
-                      </p>
+                  <div className="relative z-10 w-full md:w-auto flex justify-center gap-4">
+                    <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl text-center min-w-[130px]">
+                      <p className="text-indigo-200 text-[10px] font-bold uppercase tracking-widest mb-1">Credit Hours</p>
+                      <p className="text-4xl font-black text-emerald-400">{selectedCourse.creditHours}</p>
                     </div>
                   </div>
                 </div>
+              ) : (
+                gradingMode === 'absolute' && (
+                  <div className="bg-gradient-to-br from-blue-900 to-slate-900 dark:from-blue-950 dark:to-black rounded-3xl p-6 md:p-8 shadow-lg text-white flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden border border-blue-800/30">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+                    <div className="relative z-10 w-full md:w-auto text-center md:text-left">
+                      <p className="text-blue-200 text-[11px] font-bold uppercase tracking-widest mb-1">Current Standing</p>
+                      <div className="flex items-baseline justify-center md:justify-start gap-2">
+                        <span className="text-5xl font-black">{courseGradingStats.currentStandingPct.toFixed(1)}%</span>
+                        <span className="text-blue-200 font-medium mb-1">/ 100%</span>
+                      </div>
+                      <p className="text-sm text-blue-100/80 mt-2">Based on {courseGradingStats.totalMarkedWeight.toFixed(1)}% marked assessments</p>
+                    </div>
+                    <div className="relative z-10 w-full md:w-auto flex justify-center">
+                      <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-2xl text-center min-w-[140px]">
+                        <p className="text-blue-200 text-[10px] font-bold uppercase tracking-widest mb-2 whitespace-nowrap">Est. Grade</p>
+                        <p className={`text-6xl font-black ${getAbsoluteGrade(courseGradingStats.currentStandingPct).color} drop-shadow-sm`}>
+                          {courseGradingStats.totalMarkedWeight > 0 ? getAbsoluteGrade(courseGradingStats.currentStandingPct).grade : '-'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
               )}
 
               {}
-              {gradingMode === 'relative' && (
-                <div className="space-y-4 animate-fadeIn">
+              {gradingMode === 'relative' && !selectedCourse.isPastSemester && (
+                <div className="space-y-4 animate-fadeIn mb-6">
                   <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/30 rounded-xl p-4 flex gap-3 items-start">
                     <AlertTriangle className="text-red-500 flex-shrink-0 mt-0.5" size={18} />
                     <div>
@@ -759,7 +828,6 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
                   <div className="bg-gradient-to-br from-indigo-600 to-violet-800 dark:from-indigo-900 dark:to-violet-950 rounded-3xl p-6 md:p-8 shadow-lg text-white flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden border border-indigo-500/20">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
                     <div className="relative z-10 w-full md:w-auto text-center md:text-left">
-                      {}
                       <p className="text-indigo-200 text-[11px] font-bold uppercase tracking-widest mb-1 whitespace-nowrap">Relative Grading Mode</p>
                       <h2 className="text-3xl font-black mb-2 whitespace-nowrap">Class Curve Projection</h2>
                       <p className="text-sm text-indigo-100/90 max-w-md">Your grade is evaluated against the class average and curve set by the instructor.</p>
@@ -777,109 +845,119 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
 
-                  {}
-                  {isLeaderboardDisabled ? (
-                    <div className="bg-white dark:bg-[#121214] border border-red-200 dark:border-red-950/30 rounded-3xl overflow-hidden shadow-sm mt-8 mb-6 p-6 flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-950/20 flex items-center justify-center text-red-500 shrink-0">
-                        <Users className="w-6 h-6" />
+              {/* Leaderboard Section */}
+              {isLeaderboardDisabled ? (
+                <div className="bg-white dark:bg-[#121214] border border-red-200 dark:border-red-950/30 rounded-3xl overflow-hidden shadow-sm mt-8 mb-6 p-6 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-950/20 flex items-center justify-center text-red-500 shrink-0">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      Leaderboard Restricted 🔒
+                    </h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                      Your access to the relative grading leaderboard has been disabled by an administrator. Please reach out to an admin if you believe this is in error.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white dark:bg-[#121214] border border-gray-200 dark:border-gray-800/80 rounded-3xl overflow-hidden shadow-sm mt-8 mb-6">
+                  <div 
+                    className="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors"
+                    onClick={() => setIsLeaderboardExpanded(!isLeaderboardExpanded)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                        <Users size={20} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                          Leaderboard Restricted 🔒
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                          {selectedCourse?.isPastSemester ? `Historical Section Leaderboard (${stats.term || 'Past Semester'})` : "Live Section Leaderboard"}
                         </h4>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                          Your access to the relative grading leaderboard has been disabled by an administrator. Please reach out to an admin if you believe this is in error.
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {selectedCourse?.isPastSemester ? `Classmates and their scored final grades for ${selectedCourse.courseName}` : "See where you stand among your classmates"}
                         </p>
                       </div>
                     </div>
-                  ) : (
-                    <div className="bg-white dark:bg-[#121214] border border-gray-200 dark:border-gray-800/80 rounded-3xl overflow-hidden shadow-sm mt-8 mb-6">
-                      <div 
-                        className="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors"
-                        onClick={() => setIsLeaderboardExpanded(!isLeaderboardExpanded)}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-500">
-                            <Users size={20} />
-                          </div>
-                          <div>
-                            <h4 className="text-sm font-bold text-gray-900 dark:text-white">Live Section Leaderboard</h4>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">See where you stand among your classmates</p>
-                          </div>
-                        </div>
-                        <ChevronDown size={20} className={`transition-transform duration-300 ${isLeaderboardExpanded ? 'rotate-180 text-indigo-500' : 'text-gray-400'}`} />
-                      </div>
+                    <ChevronDown size={20} className={`transition-transform duration-300 ${isLeaderboardExpanded ? 'rotate-180 text-indigo-500' : 'text-gray-400'}`} />
+                  </div>
 
-                      {isLeaderboardExpanded && (
-                        <div className="border-t border-gray-100 dark:border-gray-800/50 p-4">
-                          {leaderboardLoading ? (
-                            <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                              <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-                              <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Syncing live data from section...</p>
-                            </div>
-                          ) : combinedLeaderboard.length === 0 ? (
-                            <div className="bg-gray-50 dark:bg-[#161618] rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 p-8 text-center text-gray-500 shadow-sm">
-                              <Users className="w-10 h-10 mx-auto mb-3 text-gray-400" />
-                              <p className="font-bold text-gray-600 dark:text-gray-300">No Class Data Found</p>
-                              <p className="text-xs mt-1">Waiting for backend connection to populate leaderboard.</p>
-                            </div>
-                          ) : (
-                            <div className="overflow-x-auto custom-scrollbar">
-                              <table className="w-full text-left border-collapse min-w-[500px]">
-                                <thead>
-                                  <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800/80">
-                                    <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider w-24 text-center">Rank</th>
-                                    <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Classmate</th>
-                                    <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-right">Relative Score</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {combinedLeaderboard.map((student, i) => {
-                                    const isMe = student.isMe;
-                                    const isTop3 = student.rank <= 3;
-                                    const rankBg = student.rank === 1 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20' :
-                                                   student.rank === 2 ? 'bg-slate-400/10 text-slate-500 dark:text-slate-300 border border-slate-400/20' :
-                                                   student.rank === 3 ? 'bg-amber-700/10 text-amber-800 dark:text-amber-600 border border-amber-700/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
-                                    return (
-                                      <tr key={i} className={`border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50/50 dark:hover:bg-white/[0.01] transition-colors ${isMe ? 'bg-indigo-50/30 dark:bg-indigo-950/5' : ''}`}>
-                                        <td className="py-4 px-6 text-center">
-                                          <div className="flex justify-center">
-                                            {isTop3 ? 
-                                              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shadow-sm ${rankBg}`}>
-                                                {student.rank}
-                                              </span> : 
-                                              <span className={`text-sm font-bold ${isMe ? 'text-indigo-600' : 'text-gray-400'}`}>#{student.rank}</span>}
+                  {isLeaderboardExpanded && (
+                    <div className="border-t border-gray-100 dark:border-gray-800/50 p-4">
+                      {leaderboardLoading ? (
+                        <div className="flex flex-col items-center justify-center py-10 space-y-3">
+                          <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                          <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Syncing leaderboard data...</p>
+                        </div>
+                      ) : combinedLeaderboard.length === 0 ? (
+                        <div className="bg-gray-50 dark:bg-[#161618] rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 p-8 text-center text-gray-500 shadow-sm">
+                          <Users className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                          <p className="font-bold text-gray-600 dark:text-gray-300">No Class Data Found</p>
+                          <p className="text-xs mt-1">No classmate final grades stored for this course in this semester.</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto custom-scrollbar">
+                          <table className="w-full text-left border-collapse min-w-[500px]">
+                            <thead>
+                              <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800/80">
+                                <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider w-24 text-center">Rank</th>
+                                <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Classmate</th>
+                                <th className="py-4 px-6 text-[11px] font-bold text-gray-400 uppercase tracking-wider text-right">{selectedCourse?.isPastSemester ? "Grade Scored" : "Relative Score"}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {combinedLeaderboard.map((student, i) => {
+                                const isMe = student.isMe;
+                                const isTop3 = student.rank <= 3;
+                                const rankBg = student.rank === 1 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20' :
+                                               student.rank === 2 ? 'bg-slate-400/10 text-slate-500 dark:text-slate-300 border border-slate-400/20' :
+                                               student.rank === 3 ? 'bg-amber-700/10 text-amber-800 dark:text-amber-600 border border-amber-700/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
+                                return (
+                                  <tr key={i} className={`border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50/50 dark:hover:bg-white/[0.01] transition-colors ${isMe ? 'bg-indigo-50/30 dark:bg-indigo-950/5' : ''}`}>
+                                    <td className="py-4 px-6 text-center">
+                                      <div className="flex justify-center">
+                                        {isTop3 ? 
+                                          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shadow-sm ${rankBg}`}>
+                                            {student.rank}
+                                          </span> : 
+                                          <span className={`text-sm font-bold ${isMe ? 'text-indigo-600' : 'text-gray-400'}`}>#{student.rank}</span>}
+                                      </div>
+                                    </td>
+                                    <td className="py-4 px-6">
+                                      <div className="flex items-center gap-4">
+                                        <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 ${isMe ? 'border-indigo-400 shadow-sm' : 'border-gray-100 dark:border-gray-800'}`}>
+                                          <img src={student.pic} alt={student.name} className="w-full h-full object-cover" />
+                                        </div>
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <p className={`text-sm font-bold ${isMe ? 'text-indigo-900 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'}`}>
+                                              {student.name}
+                                            </p>
+                                            {isMe && <span className="px-2 py-0.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded">You</span>}
                                           </div>
-                                        </td>
-                                        <td className="py-4 px-6">
-                                          <div className="flex items-center gap-4">
-                                            <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 ${isMe ? 'border-indigo-400 shadow-sm' : 'border-gray-100 dark:border-gray-800'}`}>
-                                              <img src={student.pic} alt={student.name} className="w-full h-full object-cover" />
-                                            </div>
-                                            <div>
-                                              <div className="flex items-center gap-2">
-                                                <p className={`text-sm font-bold ${isMe ? 'text-indigo-900 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'}`}>
-                                                  {student.name}
-                                                </p>
-                                                {isMe && <span className="px-2 py-0.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded">You</span>}
-                                              </div>
-                                              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">{student.id}</p>
-                                            </div>
-                                          </div>
-                                        </td>
-                                        <td className="py-4 px-6 text-right">
-                                          <span className={`text-[15px] font-black ${isTop3 ? 'text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-400'}`}>
-                                            {student.score.toFixed(1)}<span className="text-[11px] font-semibold text-gray-400">%</span>
+                                          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">{student.id}</p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-4 px-6 text-right">
+                                      <span className={`text-[15px] font-black ${isTop3 ? 'text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-400'}`}>
+                                        {student.finalGrade ? (
+                                          <span className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 font-black text-sm">
+                                            {student.finalGrade}
                                           </span>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
+                                        ) : (
+                                          <>{student.score.toFixed(1)}<span className="text-[11px] font-semibold text-gray-400">%</span></>
+                                        )}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
@@ -888,33 +966,35 @@ const GradeBook = ({ courses, isMainSidebarOpen, user, selectedSemester }) => {
               )}
 
               {}
-              <div className="mt-8 space-y-4">
-                <div className="flex items-center justify-between pl-2 pr-2">
-                  {(() => {
-                    const cScore = calculateTrueScore(selectedCourse.assessments);
-                    return (
-                      <>
-                        <h2 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight leading-none mb-2">
-                          {cScore.percentage.toFixed(1)}%
-                        </h2>
-                        <div className="flex flex-col gap-1">
-                          <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                            Based on {cScore.marked.toFixed(1)}% Marked Weight
-                          </p>
-                        </div>
-                      </>
-                    );
-                  })()}
-                  <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Marked Assessments</h4>
+              {!selectedCourse.isPastSemester && (
+                <div className="mt-8 space-y-4">
+                  <div className="flex items-center justify-between pl-2 pr-2">
+                    {(() => {
+                      const cScore = calculateTrueScore(selectedCourse.assessments);
+                      return (
+                        <>
+                          <h2 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight leading-none mb-2">
+                            {cScore.percentage.toFixed(1)}%
+                          </h2>
+                          <div className="flex flex-col gap-1">
+                            <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                              Based on {cScore.marked.toFixed(1)}% Marked Weight
+                            </p>
+                          </div>
+                        </>
+                      );
+                    })()}
+                    <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Marked Assessments</h4>
+                  </div>
+                  {processedGradebook.length === 0 ? (
+                    <p className="text-sm text-gray-500 pl-2">No assessments graded yet.</p>
+                  ) : (
+                    processedGradebook.map((category, i) => (
+                      <GradeCategoryRow key={i} category={category} onBestOfChange={handleBestOfChange} />
+                    ))
+                  )}
                 </div>
-                {processedGradebook.length === 0 ? (
-                  <p className="text-sm text-gray-500 pl-2">No assessments graded yet.</p>
-                ) : (
-                  processedGradebook.map((category, i) => (
-                    <GradeCategoryRow key={i} category={category} onBestOfChange={handleBestOfChange} />
-                  ))
-                )}
-              </div>
+              )}
             </div>
           )}
         </div>

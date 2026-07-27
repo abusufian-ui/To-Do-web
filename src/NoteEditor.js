@@ -509,8 +509,8 @@ const NoteEditor = ({ courses = [], onBack, initialNote = null, onSave, onDelete
   const autoSaveTimeoutRef = useRef(null);
   const bubbleMenuRef = useRef(null); 
 
-  const uniCourses = courses.filter(c => c.type === 'uni');
-  const generalCourses = courses.filter(c => c.type === 'general');
+  const uniCourses = courses.filter(c => c.type === 'uni' || c.type === 'university');
+  const generalCourses = courses.filter(c => c.type !== 'uni' && c.type !== 'university');
   const selectedCourse = courses.find(c => (c._id || c.id) === courseId);
 
   useEffect(() => {

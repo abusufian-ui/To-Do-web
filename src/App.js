@@ -37,6 +37,18 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocat
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+const normalizeSemester = (term) => {
+  if (!term) return '';
+  let t = term.trim().toLowerCase();
+  const m = t.match(/^(spring|summer|fall|winter)\s+(\d{2,4})$/i);
+  if (m) {
+    const season = m[1].toLowerCase();
+    const yr = m[2].length === 4 ? m[2].slice(2) : m[2];
+    return `${season} ${yr}`;
+  }
+  return t;
+};
+
 
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
@@ -217,11 +229,11 @@ function AppLayout() {
   const [exams, setExams] = useState([]);
 
   const visibleCourses = useMemo(() => {
-    const activeSem = (selectedSemester || user?.currentSemester || '').trim().toLowerCase();
+    const activeSemNorm = normalizeSemester(selectedSemester || user?.currentSemester || '');
     return courses.filter(c => {
-      if (c.type === 'uni') {
-        const courseSem = (c.semester || '').trim().toLowerCase();
-        if (activeSem && courseSem && courseSem !== activeSem) return false;
+      if (c.type === 'uni' || c.type === 'university') {
+        const courseSemNorm = normalizeSemester(c.semester || '');
+        if (activeSemNorm && courseSemNorm && courseSemNorm !== activeSemNorm) return false;
         const explicitPref = user?.coursePreferences?.[c.name];
         if (explicitPref === false) return false;
         if (explicitPref === undefined && c.creditHours === 0) return false;
@@ -1208,11 +1220,11 @@ function AppLayout() {
     if (!selectedSemester) return;
     const existingSemesters = new Set(
       courses
-        .filter(c => c.type === 'uni')
-        .map(c => (c.semester || '').trim().toLowerCase())
+        .filter(c => c.type === 'uni' || c.type === 'university')
+        .map(c => normalizeSemester(c.semester || ''))
         .filter(Boolean)
     );
-    const normalizedSelected = selectedSemester.trim().toLowerCase();
+    const normalizedSelected = normalizeSemester(selectedSemester);
     if (!existingSemesters.has(normalizedSelected)) {
       handleSemesterChange('');
     }

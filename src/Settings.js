@@ -697,6 +697,39 @@ const SyncingStatusSection = ({ user, showToast }) => {
     );
 };
 
+const normalizeSemester = (term) => {
+  if (!term) return '';
+  let t = term.trim().toLowerCase();
+  const m = t.match(/^(spring|summer|fall|winter)\s+(\d{2,4})$/i);
+  if (m) {
+    const season = m[1].toLowerCase();
+    const yr = m[2].length === 4 ? m[2].slice(2) : m[2];
+    return `${season} ${yr}`;
+  }
+  return t;
+};
+
+const SEASON_RANK = { spring: 0, summer: 1, fall: 2, winter: 3 };
+
+const parseSem = (sem) => {
+  const norm = normalizeSemester(sem);
+  const [season, yr] = norm.split(' ');
+  return {
+    year: parseInt(yr || '0', 10),
+    seasonRank: SEASON_RANK[season] ?? 0,
+  };
+};
+
+const sortSemesters = (semList, direction = 'desc') => {
+  return [...semList].sort((a, b) => {
+    const pA = parseSem(a);
+    const pB = parseSem(b);
+    if (pA.year !== pB.year) {
+      return direction === 'desc' ? pB.year - pA.year : pA.year - pB.year;
+    }
+    return direction === 'desc' ? pB.seasonRank - pA.seasonRank : pA.seasonRank - pB.seasonRank;
+  });
+};
 
 const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, user, selectedSemester, onSemesterChange }) => {
     const [newCourse, setNewCourse] = useState("");
@@ -774,21 +807,39 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
         }
     };
 
-    
-    const activeSem = (selectedSemester || user?.currentSemester || '').trim().toLowerCase();
-    
+    const courseSemesters = Array.from(new Set(
+        (courses || [])
+            .filter(c => (c.type === 'uni' || c.type === 'university') && c.semester)
+            .map(c => c.semester.trim())
+    ));
+    const historyTerms = new Set(
+        (history || []).map(h => normalizeSemester(h.term))
+    );
+
+    const activeSemesters = courseSemesters.filter(sem => !historyTerms.has(normalizeSemester(sem)));
+    const sortedActive = sortSemesters(activeSemesters, 'desc');
+    const activeSemCode = sortedActive[0];
+
+    const liveLabel = activeSemCode || user?.currentSemester || user?.academicOrdinalSemester || 'Live';
+
+    const pastSemesters = sortSemesters(
+        courseSemesters.filter(sem => historyTerms.has(normalizeSemester(sem))),
+        'desc'
+    );
+
+    const activeSemNorm = normalizeSemester(selectedSemester || activeSemCode || user?.currentSemester || '');
+
     const filtered = (courses || []).filter(c => {
         const dbType = String(c.type || '').toLowerCase().trim();
         
         if (type === 'uni') {
-            if (activeSem && c.semester && c.semester.trim().toLowerCase() !== activeSem) return false;
+            if (activeSemNorm && c.semester && normalizeSemester(c.semester) !== activeSemNorm) return false;
             return dbType === 'university' || dbType === 'uni'; 
         } else {
             return dbType === 'general'; 
         }
     });
 
-    
     const isProtectedGeneralCourse = (c) => {
         const name = String(c.name || '').trim().toLowerCase();
         const id = String(c.id || c._id || '').trim();
@@ -797,7 +848,6 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
 
     return (
         <div className="animate-fadeIn relative">
-            {/* Semester View Preferences Selector */}
             <div className="bg-white dark:bg-[#151518] border border-gray-200 dark:border-[#2C2C2C] rounded-2xl p-6 mb-8 shadow-sm">
                 <h4 className="font-bold text-gray-800 dark:text-gray-200 text-lg mb-1 flex items-center gap-2">
                     <Calendar size={20} className="text-brand-blue" /> Semester View Preferences
@@ -812,36 +862,12 @@ const CourseSection = ({ courses, addCourse, removeCourse, tasks, showToast, use
                             onChange={(e) => onSemesterChange(e.target.value)}
                             className="w-full bg-gray-50 dark:bg-[#1F1F23] border border-gray-200 dark:border-[#2C2C2C] dark:text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand-blue transition-all font-bold text-sm"
                         >
-                            {(() => {
-                                const courseSemesters = Array.from(new Set(
-                                    (courses || [])
-                                        .filter(c => c.type === 'uni' && c.semester)
-                                        .map(c => c.semester.trim())
-                                ));
-                                const historyTerms = new Set(
-                                    history.map(h => h.term.trim().toLowerCase())
-                                );
-
-                                // Detect active/live semester (course semester not in results history)
-                                const activeSemCode = courseSemesters.find(sem => !historyTerms.has(sem.toLowerCase()));
-
-                                // Label for default option
-                                const liveLabel = activeSemCode || user?.academicOrdinalSemester || user?.currentSemester || 'Live';
-
-                                // Past semesters (course semesters that exist in results history)
-                                const pastSemesters = courseSemesters.filter(sem => historyTerms.has(sem.toLowerCase()));
-
-                                return (
-                                    <>
-                                        <option value="">Current Active Semester ({liveLabel})</option>
-                                        {pastSemesters.sort().reverse().map(sem => (
-                                            <option key={sem} value={sem}>
-                                                Past Semester: {sem}
-                                            </option>
-                                        ))}
-                                    </>
-                                );
-                            })()}
+                            <option value="">Current Active Semester ({liveLabel})</option>
+                            {pastSemesters.map(sem => (
+                                <option key={sem} value={sem}>
+                                    Past Semester: {sem}
+                                </option>
+                            ))}
                         </select>
                     </div>
                     {selectedSemester && (

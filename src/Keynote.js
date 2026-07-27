@@ -117,7 +117,8 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {displayKeynotes.map((note) => {
-              const isUni = courses.find(c => c.name === note.courseName)?.type === 'uni';
+              const matchedType = courses.find(c => c.name === note.courseName)?.type;
+              const isUni = matchedType === 'uni' || matchedType === 'university';
               const images = note.mediaUrls?.filter(url => !isAudio(url)) || [];
               const audios = note.mediaUrls?.filter(url => isAudio(url)) || [];
               const isSelected = selectedIds.includes(note._id);
@@ -201,7 +202,7 @@ const Keynote = ({ keynotes = [], courses = [], onToggleRead, onDelete, onBatchD
             <div className="p-5 sm:p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-start bg-gray-50 dark:bg-[#222230]">
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">
-                  {courses.find(c => c.name === selectedNote.courseName)?.type === 'uni' && <UCPLogo className="w-4 h-4 text-brand-blue" />}
+                  {(courses.find(c => c.name === selectedNote.courseName)?.type === 'uni' || courses.find(c => c.name === selectedNote.courseName)?.type === 'university') && <UCPLogo className="w-4 h-4 text-brand-blue" />}
                   {selectedNote.courseName} • {new Date(selectedNote.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedNote.title}</h2>

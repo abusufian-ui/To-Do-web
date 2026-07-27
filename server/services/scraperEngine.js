@@ -12,9 +12,14 @@ const isValidCourseCode = (code) => {
 const parseSemesterFromCourseCode = (courseCode) => {
     if (!courseCode) return null;
     const parts = courseCode.trim().split('-');
-    for (const part of parts) {
-        const cleanPart = part.trim();
-        const match = cleanPart.match(/^([sSfFuU])(\d{2})$/);
+    
+    // Position 1 in UCP course codes is reserved for the active semester tag (e.g., CSAL3243-R26-BS-CS-F23-F2 -> R26).
+    // Standalone term codes (e.g., R26) are at position 0.
+    // Position 2+ contains student admission batch codes (e.g. F23) and section names (e.g. F2) which MUST NEVER be matched.
+    const candidates = parts.length === 1 ? [parts[0]] : (parts.length >= 2 ? [parts[1]] : []);
+    for (const candidate of candidates) {
+        const cleanPart = candidate.trim();
+        const match = cleanPart.match(/^([sSfFuUrR])(\d{2})$/);
         if (match) {
             const seasonChar = match[1].toLowerCase();
             const year = match[2];
@@ -22,6 +27,7 @@ const parseSemesterFromCourseCode = (courseCode) => {
             if (seasonChar === 's') season = 'spring';
             else if (seasonChar === 'f') season = 'fall';
             else if (seasonChar === 'u') season = 'summer';
+            else if (seasonChar === 'r') season = 'summer'; // R = Summer (UCP Ramadan/Summer semester)
             if (season) return `${season} ${year}`;
         }
     }
@@ -533,6 +539,20 @@ const scrapeServerSide = async (cookieString, mode = 'HIGH', portalIdFallback = 
                         isMakeup: isMakeup
                     });
                 });
+
+                // Deduplicate scraped timetable entries by day, startTime, endTime, courseName
+                const uniqueScrapedMap = new Map();
+                for (const item of timetableData) {
+                    const d = (item.day || '').trim().toLowerCase();
+                    const st = (item.startTime || '').trim();
+                    const et = (item.endTime || '').trim();
+                    const cn = (item.courseName || '').trim().toLowerCase();
+                    const key = `${d}_${st}_${et}_${cn}`;
+                    if (!uniqueScrapedMap.has(key)) {
+                        uniqueScrapedMap.set(key, item);
+                    }
+                }
+                timetableData = Array.from(uniqueScrapedMap.values());
             } catch (e) { 
                 console.error("🔥 Timetable scrape failed:", e);
             }

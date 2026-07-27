@@ -226,8 +226,8 @@ const TaskTable = ({ tasks, updateTask, courses, deleteTask, user, activeGroup, 
   const activeTasks = sortTasks(currentTasks.filter(t => getTaskStatus(t) !== 'Completed'));
   const completedTasks = sortTasks(currentTasks.filter(t => getTaskStatus(t) === 'Completed'));
 
-  const uniCourses = courses.filter(c => c.type === 'uni');
-  const generalCourses = courses.filter(c => c.type !== 'uni');
+  const uniCourses = courses.filter(c => c.type === 'uni' || c.type === 'university');
+  const generalCourses = courses.filter(c => c.type !== 'uni' && c.type !== 'university');
 
   const renderTableHeader = () => (
     <div className="flex items-center py-2 px-0 border-b border-gray-200 dark:border-[#2C2C2C] text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1 select-none">

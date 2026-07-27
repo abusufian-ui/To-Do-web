@@ -648,7 +648,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
-  'http://192.168.0.103:8081',
+  'http://192.168.0.104:8081',
   'http://10.14.100.54:8081',
   'https://to-do-web-01.onrender.com/api',
   'http://127.0.0.1:3001',
@@ -1036,6 +1036,12 @@ app.get('/api/public/settings', async (req, res) => {
         whatsappGroupLink = whatsappSetting.value;
       }
 
+      let instagramLink = "https://instagram.com/";
+      const instagramSetting = await SystemSettings.findOne({ key: "instagram_link" });
+      if (instagramSetting && instagramSetting.value) {
+        instagramLink = instagramSetting.value;
+      }
+
       let chromeExtensionLink = "https://chromewebstore.google.com/";
       const chromeSetting = await SystemSettings.findOne({ key: "chrome_extension_link" });
       if (chromeSetting) {
@@ -1081,7 +1087,8 @@ app.get('/api/public/settings', async (req, res) => {
         webPortalLink, 
         adminPortalLink, 
         termsLink, 
-        whatsappGroupLink, 
+        whatsappGroupLink,
+        instagramLink,
         chromeExtensionLink, 
         mobileAppDownloadLink,
         mobileAppVersion,
@@ -1107,6 +1114,7 @@ app.get('/api/public/settings', async (req, res) => {
       adminPortalLink: cachedSettingsData.adminPortalLink,
       termsLink: cachedSettingsData.termsLink,
       whatsappGroupLink: cachedSettingsData.whatsappGroupLink,
+      instagramLink: cachedSettingsData.instagramLink,
       chromeExtensionLink: cachedSettingsData.chromeExtensionLink,
       mobileAppDownloadLink: effectiveMobileDownloadLink,
       mobileAppVersion: {
@@ -1282,6 +1290,22 @@ app.post('/api/admin/settings/whatsapp-link', auth, adminAuth, async (req, res) 
   } catch (error) {
     console.error("Save WhatsApp Link Error:", error);
     res.status(500).json({ message: "Server Error saving whatsapp link" });
+  }
+});
+
+app.post('/api/admin/settings/instagram-link', auth, adminAuth, async (req, res) => {
+  try {
+    const { link } = req.body;
+    const setting = await SystemSettings.findOneAndUpdate(
+      { key: "instagram_link" },
+      { value: link || "" },
+      { upsert: true, new: true }
+    );
+    invalidateSettingsCache();
+    res.json({ success: true, link: setting.value });
+  } catch (error) {
+    console.error("Save Instagram Link Error:", error);
+    res.status(500).json({ message: "Server Error saving instagram link" });
   }
 });
 
@@ -3150,7 +3174,7 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
             const { id, ...classData } = classItem;
             if (!classData.courseName || classData.courseName.includes("Unknown")) continue;
 
-            const isMakeup = classData.isMakeup || (classData.instructor && classData.instructor.toLowerCase().includes('makeup'));
+            const isMakeup = !!(classData.isMakeup || (classData.instructor && classData.instructor.toLowerCase().includes('makeup')));
             let expiresAt = undefined;
 
             if (isMakeup) {
@@ -3196,29 +3220,25 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
 
           const currentSem = req.body.semester || getCurrentSemesterCode();
 
-          // Deduplicate preparedClasses by day, startTime, courseName, and semester to avoid unique constraint violations
+          // Deduplicate preparedClasses by day, startTime, endTime, courseName
           const uniqueClassesMap = new Map();
           for (const item of preparedClasses) {
-            const key = `${item.day}_${item.startTime}_${item.courseName}_${item.semester}`;
+            const d = (item.day || '').trim().toLowerCase();
+            const st = (item.startTime || '').trim();
+            const et = (item.endTime || '').trim();
+            const cn = (item.courseName || '').trim().toLowerCase();
+            const key = `${d}_${st}_${et}_${cn}`;
             if (!uniqueClassesMap.has(key)) {
               uniqueClassesMap.set(key, item);
             }
           }
           const deduplicatedClasses = Array.from(uniqueClassesMap.values());
 
-          if (existingTimetable.length > 0 && objectsAreEqual(existingTimetable, deduplicatedClasses)) {
-            console.log(`[SYNC] Timetable unchanged, skipping updates.`);
-          } else if (deduplicatedClasses.length > 0) {
-            console.log(`[SYNC] [WRITE] Updating timetable in database (entries count: ${deduplicatedClasses.length}).`);
+          if (deduplicatedClasses.length > 0) {
+            console.log(`[SYNC] [WRITE] Updating timetable in database for user ${userId} (entries count: ${deduplicatedClasses.length}).`);
             
-            // Delete existing records for the semesters we are about to insert to prevent unique key violations
-            const semestersToClear = [...new Set(deduplicatedClasses.map(c => c.semester))];
-            for (const sem of semestersToClear) {
-              if (sem) {
-                console.log(`[SYNC] [WRITE] Clearing existing timetable for user: ${userId} and semester: ${sem}`);
-                await Timetable.deleteMany({ userId, semester: sem });
-              }
-            }
+            // Delete ALL non-makeup existing timetable items for this user to wipe out any stale duplicates
+            await Timetable.deleteMany({ userId, isMakeup: { $ne: true } });
 
             await Timetable.insertMany(deduplicatedClasses);
           }
@@ -3482,6 +3502,21 @@ app.post(['/api/extension-sync', '/api/mobile-sync'], auth, async (req, res) => 
           }
         } catch (semErr) {
           console.error("Error detecting semester completion:", semErr);
+        }
+
+        // Fix #2: Guard — if the incoming scraped semester is different from the last completed
+        // semester, new-semester courses are syncing. Clear the result announcement flag immediately.
+        const incomingSemester = req.body.semester;
+        if (
+          (updateFields.isSemesterCompleted === true ? true : user.isSemesterCompleted) &&
+          incomingSemester &&
+          (updateFields.lastCompletedSemester || user.lastCompletedSemester) &&
+          normalizeSemesterTerm(incomingSemester).toLowerCase() !==
+            normalizeSemesterTerm(updateFields.lastCompletedSemester || user.lastCompletedSemester).toLowerCase()
+        ) {
+          console.log(`[SYNC] 🎓 New semester "${incomingSemester}" in sync payload (last completed: "${updateFields.lastCompletedSemester || user.lastCompletedSemester}"). Resetting isSemesterCompleted.`);
+          updateFields.isSemesterCompleted = false;
+          updateFields.lastCompletedSemester = '';
         }
         if (studentName && studentName !== 'UCP Student') updateFields.name = studentName;
         if (profilePic) {
@@ -5935,39 +5970,32 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/auth/user', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id)
+      .select('-password -ucpCookie -__v')
+      .lean();
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    let changed = false;
     const origin = req.headers.origin || req.headers.referer || '';
     const ua = req.headers['user-agent'] || '';
 
-    
-    if (!user.accessedWeb) {
-      if (origin.includes('web.myportalucp.online') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        user.accessedWeb = true;
-        changed = true;
-      }
+    const updateFields = {};
+    if (!user.accessedWeb && (origin.includes('web.myportalucp.online') || origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+      updateFields.accessedWeb = true;
     }
-
-    
     if (!user.accessedMobile) {
       const isMobileUA = ua.includes('okhttp') || ua.includes('Expo') || ua.includes('React-Native') || ua.includes('Darwin') || ua.includes('Android');
       if (isMobileUA || (user.pushTokens && user.pushTokens.length > 0)) {
-        user.accessedMobile = true;
-        changed = true;
+        updateFields.accessedMobile = true;
       }
     }
 
-    if (changed) {
-      await user.save();
+    if (Object.keys(updateFields).length > 0) {
+      User.updateOne({ _id: req.user.id }, { $set: updateFields }).catch(err => console.error('[AUTH_USER] Update access flags error:', err.message));
     }
 
-    const userObj = user.toObject();
-    delete userObj.password;
-    res.json(userObj);
+    res.json({ ...user, ...updateFields });
   } catch (error) {
     console.error('[AUTH_USER] Error:', error);
     res.status(500).json({ message: "Error" });
@@ -6390,6 +6418,13 @@ const updateUserCurrentSemester = async (userId) => {
       if (user.currentSemester !== detectedCurrent) {
         console.log(`[SEMESTER_DETECTOR] 🔄 Updating currentSemester to detected active term: "${user.currentSemester || ''}" -> "${detectedCurrent}"`);
         user.currentSemester = detectedCurrent;
+        // Fix #1: A new active semester was detected — clear the previous result announcement flag.
+        // This is the primary reset path for when new-semester courses arrive.
+        if (user.isSemesterCompleted) {
+          console.log(`[SEMESTER_DETECTOR] 🎓 New active semester "${detectedCurrent}" detected. Resetting isSemesterCompleted = false, lastCompletedSemester = "".`);
+          user.isSemesterCompleted = false;
+          user.lastCompletedSemester = '';
+        }
         await user.save();
       }
     } else {
@@ -6798,14 +6833,53 @@ app.get('/api/student-stats', auth, async (req, res) => {
       const normalizedTerm = normalizeSemesterTerm(term);
       const ResultHistory = mongoose.model('ResultHistory');
       const allResults = await ResultHistory.find({ userId: req.user.id }).lean();
-      const matched = allResults.find(r => normalizeSemesterTerm(r.term).toLowerCase() === normalizedTerm.toLowerCase());
-      if (matched) {
+      
+      const SEASON_ORDER = { spring: 0, summer: 1, fall: 2, winter: 3 };
+      const parseTermObj = (termStr) => {
+        const norm = (termStr || '').trim().toLowerCase();
+        const m = norm.match(/^(spring|summer|fall|winter)\s+(\d{2,4})$/i);
+        if (m) {
+          const season = m[1].toLowerCase();
+          const yr = m[2].length === 2 ? parseInt('20' + m[2], 10) : parseInt(m[2], 10);
+          return { year: yr, seasonRank: SEASON_ORDER[season] ?? 0 };
+        }
+        return { year: 0, seasonRank: 0 };
+      };
+
+      const sortedResults = [...allResults].sort((a, b) => {
+        const pA = parseTermObj(a.term);
+        const pB = parseTermObj(b.term);
+        if (pA.year !== pB.year) return pA.year - pB.year;
+        return pA.seasonRank - pB.seasonRank;
+      });
+
+      const matchedIndex = sortedResults.findIndex(r => normalizeSemesterTerm(r.term).toLowerCase() === normalizedTerm.toLowerCase());
+      if (matchedIndex !== -1) {
+        const matched = sortedResults[matchedIndex];
+        const precedingEntry = matchedIndex > 0 ? sortedResults[matchedIndex - 1] : null;
+        
+        const enteringCgpa = precedingEntry ? (precedingEntry.cgpa ? precedingEntry.cgpa.toString() : "0.00") : "0.00";
+        const finalCgpa = matched.cgpa ? matched.cgpa.toString() : "0.00";
+        const enteringCredits = precedingEntry ? (precedingEntry.earnedCH ? precedingEntry.earnedCH.toString() : "0") : "0";
+
+        const numEntering = parseFloat(enteringCgpa) || 0;
+        const numFinal = parseFloat(finalCgpa) || 0;
+        const diff = (numFinal - numEntering).toFixed(2);
+        const diffStr = numFinal >= numEntering ? `+${diff}` : `${diff}`;
+        const isIncreased = numFinal >= numEntering;
+
         return res.json({
-          cgpa: matched.cgpa || "0.00",
-          credits: matched.earnedCH || "0",
+          cgpa: enteringCgpa,
+          enteringCgpa: enteringCgpa,
+          finalCgpa: finalCgpa,
+          cgpaDiff: diffStr,
+          isIncreased: isIncreased,
+          enteringCredits: enteringCredits,
+          credits: matched.earnedCH ? matched.earnedCH.toString() : "0",
           inprogressCr: "0",
           isHistorical: true,
-          term: matched.term
+          term: matched.term,
+          courses: matched.courses || []
         });
       }
     }
@@ -6816,13 +6890,82 @@ app.get('/api/student-stats', auth, async (req, res) => {
   }
 });
 app.get('/api/grades', auth, async (req, res) => { try { res.json(await Grade.find({ userId: req.user.id }).sort({ lastUpdated: -1 }).lean()); } catch (error) { res.status(500).json({ message: "Error" }); } });
+const resultsHistoryCache = new Map(); // userId -> { data, expiry }
+const RESULTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 app.get('/api/results-history', auth, async (req, res) => {
   try {
+    const userIdStr = req.user.id.toString();
+    const now = Date.now();
+    const cached = resultsHistoryCache.get(userIdStr);
+    if (cached && now < cached.expiry) {
+      return res.json(cached.data);
+    }
+
     const raw = await ResultHistory.find({ userId: req.user.id }).lean();
     const sorted = sortSemestersJS(raw, 'desc');
     const enriched = await enrichResultHistoryWithCodes(req.user.id, sorted);
+    
+    resultsHistoryCache.set(userIdStr, { data: enriched, expiry: now + RESULTS_CACHE_TTL });
     res.json(enriched);
   } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+// ─── Settings Bundle Endpoint ────────────────────────────────────────────────
+// Bundles /auth/user, /courses, and /results-history into a single HTTP round-trip
+app.get('/api/settings-bundle', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userIdStr = userId.toString();
+    const now = Date.now();
+
+    let cachedHistory = resultsHistoryCache.get(userIdStr);
+    let historyPromise;
+    if (cachedHistory && now < cachedHistory.expiry) {
+      historyPromise = Promise.resolve(cachedHistory.data);
+    } else {
+      historyPromise = ResultHistory.find({ userId }).lean().then(async (raw) => {
+        const sorted = sortSemestersJS(raw, 'desc');
+        const enriched = await enrichResultHistoryWithCodes(userId, sorted);
+        resultsHistoryCache.set(userIdStr, { data: enriched, expiry: now + RESULTS_CACHE_TTL });
+        return enriched;
+      });
+    }
+
+    const [user, courses, history] = await Promise.all([
+      User.findById(userId).select('-password -ucpCookie -__v').lean(),
+      Course.find({ userId }).sort({ createdAt: 1 }).lean(),
+      historyPromise
+    ]);
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Background update access flags
+    const origin = req.headers.origin || req.headers.referer || '';
+    const ua = req.headers['user-agent'] || '';
+    const updateFields = {};
+    if (!user.accessedWeb && (origin.includes('web.myportalucp.online') || origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+      updateFields.accessedWeb = true;
+    }
+    if (!user.accessedMobile) {
+      const isMobileUA = ua.includes('okhttp') || ua.includes('Expo') || ua.includes('React-Native') || ua.includes('Darwin') || ua.includes('Android');
+      if (isMobileUA || (user.pushTokens && user.pushTokens.length > 0)) {
+        updateFields.accessedMobile = true;
+      }
+    }
+    if (Object.keys(updateFields).length > 0) {
+      User.updateOne({ _id: userId }, { $set: updateFields }).catch(() => {});
+    }
+
+    res.json({
+      user: { ...user, ...updateFields },
+      courses,
+      history
+    });
+  } catch (error) {
+    console.error("Error in GET /api/settings-bundle:", error);
     res.status(500).json({ message: "Error" });
   }
 });
@@ -6897,10 +7040,103 @@ app.post('/api/admin/fix-result-history', auth, async (req, res) => {
   }
 });
 
+// ─── Admin: Fix wrong course semester values caused by old broken parser ──────
+// Re-parses every university course code, corrects semester to the proper value
+// (e.g. "fall 23" → "summer 26" for R26 codes), removes orphaned Timetable
+// entries, and resets isSemesterCompleted flags that were triggered by batch-year
+// false-positives. Safe to run multiple times (idempotent).
+app.post('/api/admin/fix-course-semesters', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || (!user.isAdmin && user.email?.toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase())) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const { parseSemesterFromCourseCode: parseCode } = require('./services/scraperEngine');
+
+    // Returns true if a semester label is a pre-portal batch-year (before Spring 2026)
+    const isBatchYear = (sem) => {
+      if (!sem) return false;
+      const m = sem.trim().match(/^(spring|summer|fall|winter)\s+(\d{2,4})$/i);
+      if (!m) return false;
+      const fullYear = m[2].length === 2 ? 2000 + parseInt(m[2], 10) : parseInt(m[2], 10);
+      const season = m[1].toLowerCase();
+      if (fullYear < 2026) return true;
+      if (fullYear === 2026 && (season === 'spring' || season === 'summer')) return false;
+      return false;
+    };
+
+    let coursesFixed = 0, timetableDeleted = 0, usersResetFlag = 0;
+    const report = [];
+
+    const allUsers = await User.find({}).lean();
+
+    for (const u of allUsers) {
+      const uid = u._id;
+      const wrongSems = new Set();
+      const courses = await Course.find({ userId: uid, type: 'university' }).lean();
+      if (!courses.length) continue;
+
+      const bulkOps = [];
+      for (const c of courses) {
+        if (!c.code) continue;
+        const correct = parseCode(c.code);
+        if (!correct || c.semester === correct) continue;
+
+        if (c.semester) wrongSems.add(c.semester);
+        bulkOps.push({
+          updateOne: { filter: { _id: c._id }, update: { $set: { semester: correct } } }
+        });
+        report.push({ user: u.name || u.email, course: c.name, code: c.code, was: c.semester, corrected: correct });
+      }
+
+      if (bulkOps.length) {
+        const r = await Course.bulkWrite(bulkOps, { ordered: false });
+        coursesFixed += r.modifiedCount;
+      }
+
+      for (const bad of wrongSems) {
+        const d = await mongoose.model('TimetableModel').deleteMany({ userId: uid, semester: bad });
+        timetableDeleted += d.deletedCount;
+      }
+
+      if (u.isSemesterCompleted && isBatchYear(u.lastCompletedSemester)) {
+        await User.updateOne({ _id: uid }, { $set: { isSemesterCompleted: false, lastCompletedSemester: '' } });
+        usersResetFlag++;
+      }
+
+      await updateUserCurrentSemester(uid);
+    }
+
+    console.log(`[ADMIN] fix-course-semesters: coursesFixed=${coursesFixed}, timetableDeleted=${timetableDeleted}, usersResetFlag=${usersResetFlag}`);
+    res.json({ success: true, coursesFixed, timetableDeleted, usersResetFlag, report });
+  } catch (error) {
+    console.error('[ADMIN] fix-course-semesters error:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+});
+
 app.get('/api/semester-status', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('isSemesterCompleted lastCompletedSemester').lean();
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Fix #3: Safety net — if DB says completed but new-semester courses exist outside history,
+    // override the response to false. DB will be corrected on next sync (Fixes #1 & #2).
+    if (user.isSemesterCompleted) {
+      const [activeCourses, allHistory] = await Promise.all([
+        Course.find({ userId: req.user.id, type: 'university' }).lean(),
+        ResultHistory.find({ userId: req.user.id }).lean()
+      ]);
+      const historyTermSet = new Set(allHistory.map(h => normalizeSemesterTerm(h.term).toLowerCase()));
+      const hasNewActiveSemester = activeCourses.some(c =>
+        c.semester && !historyTermSet.has(normalizeSemesterTerm(c.semester).toLowerCase())
+      );
+      if (hasNewActiveSemester) {
+        console.log(`[SEMESTER_STATUS] New active semester courses found — overriding isSemesterCompleted=false in response (DB will be corrected on next sync).`);
+        return res.json({ isSemesterCompleted: false, lastCompletedSemester: user.lastCompletedSemester, latestResult: null, previousResult: null });
+      }
+    }
 
     let latestResult = null;
     let previousResult = null;
@@ -8083,6 +8319,92 @@ app.get('/api/course-leaderboard/:courseId', auth, async (req, res) => {
     res.status(200).json(leaderboard);
   } catch (error) {
     res.status(500).json({ error: "Failed to generate relative grading leaderboard" });
+  }
+});
+
+app.get('/api/historical-leaderboard', auth, async (req, res) => {
+  try {
+    const { term, courseName, courseCode } = req.query;
+    if (!term || (!courseName && !courseCode)) {
+      return res.status(400).json({ message: "term and courseName/courseCode parameters are required" });
+    }
+
+    const normTargetTerm = normalizeSemesterTerm(term).toLowerCase();
+    const normTargetCourse = (courseName || '').trim().toLowerCase();
+    const normTargetCode = (courseCode || '').trim().toLowerCase();
+
+    const ResultHistory = mongoose.model('ResultHistory');
+    const allUserHistories = await ResultHistory.find({}).populate('userId', 'name customProfilePic profilePic email portalId rollNumber').lean();
+
+    // 1. Resolve requesting user's full course code for section isolation
+    let myCourseCode = normTargetCode;
+    const myHistory = allUserHistories.find(h => h.userId && h.userId._id.toString() === req.user.id && normalizeSemesterTerm(h.term).toLowerCase() === normTargetTerm);
+    if (myHistory && myHistory.courses) {
+      const myCourse = myHistory.courses.find(c => {
+        const cName = (c.name || '').trim().toLowerCase();
+        const cCode = (c.code || '').trim().toLowerCase();
+        if (normTargetCode && cCode === normTargetCode) return true;
+        if (normTargetCourse && (cName === normTargetCourse || cName.includes(normTargetCourse) || normTargetCourse.includes(cName))) return true;
+        return false;
+      });
+      if (myCourse && myCourse.code) {
+        myCourseCode = myCourse.code.trim().toLowerCase();
+      }
+    }
+
+    const GRADE_POINTS_MAP = {
+      'A+': 4.0, 'A': 4.0, 'A-': 3.67,
+      'B+': 3.33, 'B': 3.0, 'B-': 2.67,
+      'C+': 2.33, 'C': 2.0, 'C-': 1.67,
+      'D+': 1.33, 'D': 1.0, 'F': 0.0, 'W': 0.0
+    };
+
+    const leaderboard = [];
+
+    allUserHistories.forEach(hist => {
+      if (!hist.userId || !hist.term) return;
+      if (normalizeSemesterTerm(hist.term).toLowerCase() !== normTargetTerm) return;
+
+      const matchedCourse = (hist.courses || []).find(c => {
+        const cName = (c.name || '').trim().toLowerCase();
+        const cCode = (c.code || '').trim().toLowerCase();
+
+        // Enforce strict course code / section matching if course code is available
+        if (myCourseCode) {
+          return cCode === myCourseCode;
+        }
+
+        // Fallback to name matching if code isn't available
+        return normTargetCourse && (cName === normTargetCourse || cName.includes(normTargetCourse) || normTargetCourse.includes(cName));
+      });
+
+      if (matchedCourse && matchedCourse.finalGrade && matchedCourse.finalGrade !== '-' && matchedCourse.finalGrade.toUpperCase() !== 'N/A') {
+        const userObj = hist.userId;
+        const finalGrade = matchedCourse.finalGrade.trim().toUpperCase();
+        const pts = parseFloat(matchedCourse.gradePoints) || GRADE_POINTS_MAP[finalGrade] || 0.0;
+        
+        leaderboard.push({
+          id: userObj.portalId || userObj.rollNumber || (userObj.email ? userObj.email.split('@')[0].toUpperCase() : 'STUDENT'),
+          name: userObj.name || 'Student',
+          pic: userObj.customProfilePic || userObj.profilePic || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userObj.name || 'Student')}&backgroundColor=4f46e5`,
+          finalGrade: finalGrade,
+          gradePoints: pts,
+          score: pts,
+          grade: finalGrade,
+          isMe: userObj._id ? userObj._id.toString() === req.user.id : false
+        });
+      }
+    });
+
+    leaderboard.sort((a, b) => b.gradePoints - a.gradePoints);
+    leaderboard.forEach((item, index) => {
+      item.rank = index + 1;
+    });
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error("Error in GET /api/historical-leaderboard:", error);
+    res.status(500).json({ message: "Error generating historical leaderboard" });
   }
 });
 
