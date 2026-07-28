@@ -1881,6 +1881,12 @@ app.post('/api/admin/auth/setup-security', async (req, res) => {
     user.adminSessionToken = tokenSignature;
     await user.save();
 
+    if (typeof io !== 'undefined') {
+      io.to(user.id.toString()).emit('admin_session_terminated', {
+        message: 'Session terminated: Logged in on another device.'
+      });
+    }
+
     const session = await registerDeviceSession(user.id, token, req, resend);
 
     // Fix 2: Fire-and-forget — send email alert AFTER response so SMTP timeout never blocks login
@@ -1937,6 +1943,12 @@ app.post('/api/admin/auth/verify-security', async (req, res) => {
     const tokenSignature = token.split('.')[2] || '';
     user.adminSessionToken = tokenSignature;
     await user.save();
+
+    if (typeof io !== 'undefined') {
+      io.to(user.id.toString()).emit('admin_session_terminated', {
+        message: 'Session terminated: Logged in on another device.'
+      });
+    }
 
     const session = await registerDeviceSession(user.id, token, req, resend);
 
@@ -10198,16 +10210,7 @@ app.post('/api/admin/vault/upload', auth, adminAuth, vaultMemoryUpload.single('f
         break;
       }
 
-      // 2. Exact File Size match (in bytes)
-      if (f.fileSize && f.fileSize === buffer.length && buffer.length > 0) {
-        duplicateFound = {
-          name: f.displayName || f.fileName,
-          reason: `Identical file size (${buffer.length} bytes) to "${f.displayName || f.fileName}"`
-        };
-        break;
-      }
-
-      // 3. Normalized Name match
+      // 2. Normalized Name match
       const fNormDisplay = normStr(f.displayName || '');
       const fNormFile = normStr(f.fileName || '');
       const fNormOrig = normStr(f.originalFileName || '');
@@ -10232,14 +10235,6 @@ app.post('/api/admin/vault/upload', auth, adminAuth, vaultMemoryUpload.single('f
         const matchCourse = isCourseMatch(m.courseName, m.courseCode, targetCourseNorm) ||
                             (targetAbbrNorm && isCourseMatch(m.courseName, m.courseCode, targetAbbrNorm));
         if (!matchCourse) continue;
-
-        if (m.fileSize && m.fileSize === buffer.length && buffer.length > 0) {
-          duplicateFound = {
-            name: m.fileName,
-            reason: `Identical file size (${buffer.length} bytes) to existing material "${m.fileName}"`
-          };
-          break;
-        }
 
         const mNorm = normStr(m.fileName || '');
         if (mNorm && (mNorm === normOriginal || mNorm === normDisplay)) {
@@ -10301,6 +10296,12 @@ app.use((err, req, res, next) => {
   console.error('[EXPRESS_ERROR]', err.stack || err);
   if (res.headersSent) {
     return next(err);
+  }
+  if (err.name === 'MulterError') {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ message: 'File size exceeds maximum allowed limit of 50MB.' });
+    }
+    return res.status(400).json({ message: `FileUpload Error: ${err.message}` });
   }
   res.status(500).json({ message: err.message || 'Internal Server Error' });
 });
