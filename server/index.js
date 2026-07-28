@@ -6828,6 +6828,51 @@ app.get('/api/timetable', auth, async (req, res) => {
     res.status(500).json({ message: "Error" });
   }
 });
+
+app.get('/api/attendance', auth, async (req, res) => {
+  try {
+    const items = await Attendance.find({ userId: req.user.id }).lean();
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+app.get('/api/submissions', auth, async (req, res) => {
+  try {
+    const items = await Submission.find({ userId: req.user.id }).lean();
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+app.get('/api/announcements', auth, async (req, res) => {
+  try {
+    const items = await Announcement.find({ userId: req.user.id }).sort({ createdAt: -1 }).lean();
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+app.get('/api/datesheet', auth, async (req, res) => {
+  try {
+    const items = await Exam.find({ userId: req.user.id }).sort({ date: 1 }).lean();
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+app.get('/api/exams', auth, async (req, res) => {
+  try {
+    const items = await Exam.find({ userId: req.user.id }).sort({ date: 1 }).lean();
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ message: "Error" });
+  }
+});
 app.get('/api/student-stats', auth, async (req, res) => {
   try {
     const term = req.query.term || req.query.t;
