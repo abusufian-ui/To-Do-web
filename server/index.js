@@ -156,57 +156,39 @@ let expo = new Expo();
 
 
 
-let cachedPrayerTimes = null;
+let cachedPrayerTimes = LAHORE_FALLBACK_PRAYER_TIMES;
 let lastFetchDate = null;
 
-// Hardcoded Lahore fallback prayer times (approximate average, used when API is unreachable)
-const LAHORE_FALLBACK_PRAYER_TIMES = {
-  fajr:    '05:00',
-  zuhr:    '12:30',
-  asr:     '16:00',
-  maghrib: '19:00',
-  isha:    '20:30'
-};
-
-async function fetchAladhanWithRetry(retries = 2) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await axios.get(
-        'https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1',
-        { timeout: 12000 }
-      );
-      return response.data.data.timings;
-    } catch (err) {
-      if (attempt < retries) {
-        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
-      } else {
-        throw err;
-      }
-    }
+async function fetchAladhanWithRetry() {
+  try {
+    const response = await axios.get(
+      'https://api.aladhan.com/v1/timingsByCity?city=Lahore&country=Pakistan&method=1',
+      { timeout: 2500 }
+    );
+    return response.data?.data?.timings || null;
+  } catch (err) {
+    return null;
   }
 }
 
 async function getLahorePrayerTimes(todayStr) {
-  if (lastFetchDate !== todayStr || !cachedPrayerTimes) {
-    try {
-      const timings = await fetchAladhanWithRetry(2);
-      cachedPrayerTimes = {
-        fajr:    timings.Fajr,
-        zuhr:    timings.Dhuhr,
-        asr:     timings.Asr,
-        maghrib: timings.Maghrib,
-        isha:    timings.Isha
-      };
-      lastFetchDate = todayStr;
-      console.log('[Aladhan] Prayer times fetched and cached for', todayStr);
-    } catch (err) {
-      console.error('[Aladhan] All fetch attempts failed, using fallback:', err.message);
-      // Return cached times from a previous day if available, otherwise hardcoded fallback
-      if (cachedPrayerTimes) return cachedPrayerTimes;
-      return LAHORE_FALLBACK_PRAYER_TIMES;
-    }
+  if (lastFetchDate !== todayStr) {
+    // Non-blocking async update in background if needed
+    fetchAladhanWithRetry().then(timings => {
+      if (timings) {
+        cachedPrayerTimes = {
+          fajr:    timings.Fajr,
+          zuhr:    timings.Dhuhr,
+          asr:     timings.Asr,
+          maghrib: timings.Maghrib,
+          isha:    timings.Isha
+        };
+        lastFetchDate = todayStr;
+        console.log('[Aladhan] Prayer times updated asynchronously for', todayStr);
+      }
+    }).catch(() => {});
   }
-  return cachedPrayerTimes;
+  return cachedPrayerTimes || LAHORE_FALLBACK_PRAYER_TIMES;
 }
 // Pre-warm prayer times cache at server startup so it's ready for the first request
 setImmediate(async () => {
