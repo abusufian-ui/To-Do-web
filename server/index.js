@@ -1384,9 +1384,26 @@ app.post('/api/admin/settings/apk-upload', auth, adminAuth, (req, res) => {
         { value: apkInfo },
         { upsert: true, new: true }
       );
+
+      // Automatically sync mobile_app_version setting with the newly deployed active APK version
+      const currentVerDoc = await SystemSettings.findOne({ key: "mobile_app_version" });
+      const updatedVerVal = {
+        latestVersion: version,
+        minRequiredVersion: currentVerDoc?.value?.minRequiredVersion || version,
+        forceUpdate: currentVerDoc?.value?.forceUpdate || false,
+        updateNotes: currentVerDoc?.value?.updateNotes || `Version ${version} release update.`,
+        downloadUrl: `${baseUrl}/api/public/download-apk`
+      };
+
+      await SystemSettings.findOneAndUpdate(
+        { key: "mobile_app_version" },
+        { value: updatedVerVal },
+        { upsert: true, new: true }
+      );
+
       invalidateSettingsCache();
 
-      res.json({ success: true, apkInfo });
+      res.json({ success: true, apkInfo, mobileAppVersion: updatedVerVal });
     } catch (error) {
       console.error("APK Settings Save Error:", error);
       if (fs.existsSync(filePath)) {
