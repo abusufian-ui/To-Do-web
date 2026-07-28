@@ -449,8 +449,28 @@ const CourseVault = () => {
 
   /* Filter courses */
   const filteredCourses = courses.filter(c => {
-    const matchesSearch = c.courseName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.abbreviation && c.abbreviation.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) {
+      if (filterMode === 'enrolled') return c.isEnrolled;
+      if (filterMode === 'related') return c.isRelated || c.isEnrolled;
+      return true;
+    }
+
+    let matchesSearch = c.courseName.toLowerCase().includes(q) ||
+      (c.abbreviation && c.abbreviation.toLowerCase().includes(q));
+
+    if (!matchesSearch) {
+      // Alias search matching (e.g. Web Technologies / Web Application Development / WAD / WT)
+      const cName = c.courseName.toLowerCase();
+      const cAbbr = (c.abbreviation || '').toLowerCase();
+      if (cName.includes('web tech') || cAbbr === 'wt') {
+        const aliases = ['wad', 'web app', 'web application', 'web application development', 'web app dev', 'web tech'];
+        if (aliases.some(alias => q.includes(alias) || alias.includes(q))) {
+          matchesSearch = true;
+        }
+      }
+    }
+
     if (!matchesSearch) return false;
 
     if (filterMode === 'enrolled') return c.isEnrolled;
