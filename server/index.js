@@ -156,6 +156,14 @@ let expo = new Expo();
 
 
 
+const LAHORE_FALLBACK_PRAYER_TIMES = {
+  fajr:    '05:00',
+  zuhr:    '12:30',
+  asr:     '16:00',
+  maghrib: '19:00',
+  isha:    '20:30'
+};
+
 let cachedPrayerTimes = LAHORE_FALLBACK_PRAYER_TIMES;
 let lastFetchDate = null;
 
