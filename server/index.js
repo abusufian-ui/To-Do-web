@@ -686,16 +686,39 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Fix 1: Brave / strict-mode browsers strip CORS headers from 4xx/5xx responses by default.
-// This middleware re-injects Access-Control-Allow-Origin + Access-Control-Allow-Credentials on
-// EVERY response so even error responses reach the browser and are not silently dropped.
+// ── Universal CORS Safety Net ──────────────────────────────────────────────────
+// The cors() middleware above covers happy-path 2xx responses, but browsers
+// BLOCK 4xx/5xx responses that lack Access-Control-Allow-Origin. This middleware
+// fires unconditionally on every single request/response — including 400, 401,
+// 409, 413, 500, MulterError, and any uncaught Express error — so the client can
+// always read the JSON body and display the correct message (e.g. duplicate alert).
+//
+// It also handles OPTIONS preflight explicitly (responds 204 immediately) so the
+// browser never gets a preflight timeout for multipart/form-data vault uploads.
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+
+  // Attach CORS headers on every outgoing response
   if (origin && isOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Vary', 'Origin');
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+    );
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, x-auth-token, x-sync-token, x-chunk-index, x-total-chunks, X-Requested-With, Cache-Control, Pragma'
+    );
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length');
   }
+
+  // Handle browser OPTIONS preflight immediately — never let it reach a route
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
   // Content-Security-Policy: allow admin portal to connect to our API domain
   res.setHeader(
     'Content-Security-Policy',
@@ -8930,16 +8953,21 @@ app.get('/api/course-material/:courseCode/:sectionCode', auth, async (req, res) 
     const globalCode = courseCode.split('-')[0].trim();
     const { getCurrentSemesterCode } = require('./services/scraperEngine');
 
-    
     const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
     const activeSemester = course?.semester || getCurrentSemesterCode();
 
-    const materials = await CourseMaterial.find({ courseCode: globalCode, sectionCode, semester: activeSemester, isAdminDeleted: { $ne: true } })
+    let materials = await CourseMaterial.find({ courseCode: globalCode, sectionCode, semester: activeSemester, isAdminDeleted: { $ne: true } })
       .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key sequenceNumber')
       .sort({ isArchiveExtracted: 1, sequenceNumber: 1, fileName: 1 })
       .lean();
 
-    
+    if (materials.length === 0) {
+      materials = await CourseMaterial.find({ courseCode: globalCode, isAdminDeleted: { $ne: true } })
+        .select('fileName fileType fileSize parentArchive isArchiveExtracted b2Key sequenceNumber')
+        .sort({ isArchiveExtracted: 1, sequenceNumber: 1, fileName: 1 })
+        .lean();
+    }
+
     const token = req.header('x-auth-token');
     const baseUrl = getBaseUrl(req);
     const withUrls = materials.map((m) => ({
@@ -8985,8 +9013,10 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
     const course = await Course.findOne({ userId: req.user.id, code: courseCode }).lean();
     const activeSemester = course?.semester || getCurrentSemesterCode();
 
-    const count = await CourseMaterial.countDocuments({ courseCode: globalCode, sectionCode, semester: activeSemester, isAdminDeleted: { $ne: true } });
-    
+    let count = await CourseMaterial.countDocuments({ courseCode: globalCode, sectionCode, semester: activeSemester, isAdminDeleted: { $ne: true } });
+    if (count === 0) {
+      count = await CourseMaterial.countDocuments({ courseCode: globalCode, isAdminDeleted: { $ne: true } });
+    }
     
     const pendingLinkSet = await MaterialLink.findOne({
       userId: req.user.id,
@@ -8995,7 +9025,7 @@ app.get('/api/course-material/status/:courseCode/:sectionCode', auth, async (req
       semester: activeSemester
     }).lean();
 
-    const latest = await CourseMaterial.findOne({ courseCode: globalCode, sectionCode, semester: activeSemester, isAdminDeleted: { $ne: true } })
+    const latest = await CourseMaterial.findOne({ courseCode: globalCode, isAdminDeleted: { $ne: true } })
       .sort({ createdAt: -1 }).lean();
 
     if (pendingLinkSet && pendingLinkSet.links && pendingLinkSet.links.length > 0) {
@@ -10349,6 +10379,28 @@ app.use((err, req, res, next) => {
   if (res.headersSent) {
     return next(err);
   }
+
+  // ── CORS Safety in Error Handler ──────────────────────────────────────────
+  // Express error handler bypasses the universal CORS middleware above because
+  // it uses a separate call-chain. Re-inject headers here so 400/409/413/500
+  // error responses are never blocked by the browser's CORS policy — this is
+  // the key fix for the "Failed to fetch" + "No Access-Control-Allow-Origin"
+  // console errors seen when vault uploads return 409 Conflict.
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+    );
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, x-auth-token, x-sync-token, x-chunk-index, x-total-chunks, X-Requested-With, Cache-Control, Pragma'
+    );
+  }
+
   if (err.name === 'MulterError') {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ message: 'File size exceeds maximum allowed limit of 50MB.' });
