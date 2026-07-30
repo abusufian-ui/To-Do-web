@@ -10368,6 +10368,17 @@ app.post('/api/admin/vault/upload', auth, adminAuth, vaultMemoryUpload.single('f
     res.json(vaultFile);
   } catch (err) {
     console.error('[API] /api/admin/vault/upload error:', err.message);
+    // ── CORS Safety: inject headers before sending the error response ─────────
+    // The universal CORS middleware fires BEFORE route handlers, but this catch
+    // block calls res.json() directly, bypassing the global error handler. Without
+    // re-injecting CORS here, the browser drops the response and reports
+    // "Failed to fetch" instead of showing the real error message.
+    const origin = req.headers.origin;
+    if (origin && isOriginAllowed(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    }
     res.status(500).json({ message: err.message || 'Failed to upload file to vault.' });
   }
 });
